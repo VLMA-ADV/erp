@@ -131,22 +131,9 @@ export default function ColaboradorFormComplete() {
             if (role) {
               setRoleIds([role.id])
             }
-          } else {
-            // Se roles ainda não carregaram, buscar novamente
-            const rolesResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-roles`,
-              { method: 'GET', headers }
-            )
-            if (rolesResponse.ok) {
-              const rolesData = await rolesResponse.json()
-              const allRoles = rolesData.data || []
-              setRoles(allRoles)
-              const role = allRoles.find((r: any) => r.nome.toLowerCase() === categoria.toLowerCase())
-              if (role) {
-                setRoleIds([role.id])
-              }
-            }
           }
+          // Se roles ainda não carregaram, o hook useColaboradorFormData irá carregá-los
+          // e o useEffect que chama loadPermissionsByCategory será executado novamente
         }
       }
     } catch (err) {
