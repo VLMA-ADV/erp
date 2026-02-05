@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ResetPasswordForm from '@/components/auth/reset-password-form'
 
+export const dynamic = 'force-dynamic'
+
 export default async function RedefinirSenhaPage() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()

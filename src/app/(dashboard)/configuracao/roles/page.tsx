@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import RolesList from '@/components/configuracao/roles-list'
 
+export const dynamic = 'force-dynamic'
+
 export default async function RolesPage() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()

@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import CargosList from '@/components/configuracao/cargos-list'
 
+export const dynamic = 'force-dynamic'
+
 export default async function CargosPage() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()

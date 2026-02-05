@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ColaboradorEditForm from '@/components/colaboradores/colaborador-edit-form'
 
+export const dynamic = 'force-dynamic'
+
 export default async function EditarColaboradorPage({
   params,
 }: {

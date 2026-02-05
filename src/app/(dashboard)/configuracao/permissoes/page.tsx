@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PermissionsList from '@/components/configuracao/permissions-list'
 
+export const dynamic = 'force-dynamic'
+
 export default async function PermissoesPage() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()

@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ColaboradorFormComplete from '@/components/colaboradores/colaborador-form-complete'
 
+export const dynamic = 'force-dynamic'
+
 export default async function NovoColaboradorPage() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
