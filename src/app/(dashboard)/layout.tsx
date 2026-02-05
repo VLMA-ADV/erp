@@ -4,6 +4,8 @@ import { Suspense } from 'react'
 import SidebarClient from '@/components/layout/sidebar-client'
 import { PermissionsProvider } from '@/lib/contexts/permissions-context'
 
+export const dynamic = 'force-dynamic'
+
 function SidebarFallback() {
   return (
     <aside className="w-64 border-r bg-gray-50 p-4">
@@ -24,8 +26,17 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  let session = null
+  
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase.auth.getSession()
+    session = data.session
+  } catch (error) {
+    console.error('Error in DashboardLayout:', error)
+    // Se houver erro ao criar cliente, redireciona para login
+    redirect('/login')
+  }
 
   if (!session) {
     redirect('/login')

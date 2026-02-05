@@ -23,15 +23,6 @@ const nextConfig = {
       ignored: ['**/supabase/**'],
     }
     
-    // Adicionar regra para ignorar arquivos do supabase
-    // Retorna um módulo vazio para arquivos do supabase
-    config.module.rules.push({
-      test: /supabase\/.*\.ts$/,
-      use: {
-        loader: require.resolve('./webpack-null-loader.js'),
-      },
-    })
-    
     return config
   },
 }
