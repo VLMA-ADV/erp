@@ -137,7 +137,7 @@ export default function ResetPasswordForm() {
         <Button
           type="submit"
           className="w-full"
-          disabled={loading || tokenValid === false}
+          disabled={loading || tokenValid !== true}
         >
           {loading ? 'Redefinindo...' : 'Redefinir Senha'}
         </Button>
