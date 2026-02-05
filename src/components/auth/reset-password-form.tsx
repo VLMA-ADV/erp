@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { PasswordInput } from '@/components/ui/password-input'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export default function ResetPasswordForm() {
@@ -17,29 +17,19 @@ export default function ResetPasswordForm() {
   const [tokenValid, setTokenValid] = useState<boolean | null>(null)
 
   useEffect(() => {
-    // Verificar se há código na URL
+    // Verificar se há code ou token na URL
     const code = searchParams.get('code')
     const token = searchParams.get('token')
     
-    // Se há código ou token, sempre permitir (o Supabase processa automaticamente)
-    // Se não há código nem token, verificar se há sessão (usuário logado)
-    if (code || token) {
-      setTokenValid(true)
-    } else {
-      const checkSession = async () => {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session) {
-          setTokenValid(true)
-        } else {
-          setTokenValid(false)
-          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-        }
-      }
-      
-      checkSession()
+    if (!code && !token) {
+      setTokenValid(false)
+      setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+      return
     }
+
+    // Para reset de senha, apenas verificamos se há código
+    // O código será validado quando o usuário atualizar a senha
+    setTokenValid(true)
   }, [searchParams])
 
   const validatePassword = (pwd: string): string | null => {
@@ -78,18 +68,34 @@ export default function ResetPasswordForm() {
 
     try {
       const supabase = createClient()
+      const code = searchParams.get('code')
+      const email = searchParams.get('email')
       
-      // Verificar se há sessão ativa (o link cria a sessão automaticamente)
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        setError('Você precisa estar autenticado para alterar a senha. Acesse o link de recuperação novamente.')
-        setLoading(false)
-        return
+      // Para reset de senha com código, precisamos verificar o OTP primeiro
+      if (code && email) {
+        // Verificar o código de recovery usando verifyOtp
+        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+          email: decodeURIComponent(email),
+          token: code,
+          type: 'recovery',
+        })
+
+        if (verifyError) {
+          console.error('Error verifying recovery OTP:', verifyError)
+          setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
+          setLoading(false)
+          return
+        }
+
+        // Se a verificação foi bem-sucedida, agora podemos atualizar a senha
+        if (!verifyData.session) {
+          setError('Erro ao criar sessão de recuperação. Tente novamente.')
+          setLoading(false)
+          return
+        }
       }
       
-      // Atualizar a senha - simplesmente chamar updateUser
-      // O Supabase valida automaticamente se é uma sessão de recovery
+      // Atualizar a senha (agora temos uma sessão de recovery ativa)
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       })
@@ -126,9 +132,10 @@ export default function ResetPasswordForm() {
       <div className="space-y-4 rounded-md shadow-sm">
         <div>
           <Label htmlFor="password">Nova Senha</Label>
-          <PasswordInput
+          <Input
             id="password"
             name="password"
+            type="password"
             autoComplete="new-password"
             required
             value={password}
@@ -142,9 +149,10 @@ export default function ResetPasswordForm() {
         </div>
         <div>
           <Label htmlFor="confirmPassword">Confirmar Senha</Label>
-          <PasswordInput
+          <Input
             id="confirmPassword"
             name="confirmPassword"
+            type="password"
             autoComplete="new-password"
             required
             value={confirmPassword}
