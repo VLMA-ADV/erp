@@ -69,40 +69,27 @@ export default function ResetPasswordForm() {
     try {
       const supabase = createClient()
       const code = searchParams.get('code')
-      const email = searchParams.get('email')
       
-      // Para reset de senha com código, precisamos verificar o OTP primeiro
-      if (code && email) {
-        // Verificar o código de recovery usando verifyOtp
-        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-          email: decodeURIComponent(email),
-          token: code,
-          type: 'recovery',
-        })
-
-        if (verifyError) {
-          console.error('Error verifying recovery OTP:', verifyError)
-          setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
-          setLoading(false)
-          return
-        }
-
-        // Se a verificação foi bem-sucedida, agora podemos atualizar a senha
-        if (!verifyData.session) {
-          setError('Erro ao criar sessão de recuperação. Tente novamente.')
-          setLoading(false)
-          return
-        }
-      }
+      // Para reset de senha, o Supabase valida o código automaticamente quando atualizamos a senha
+      // Não precisamos verificar o OTP separadamente - apenas atualizar a senha
+      // O código na URL será validado automaticamente pelo Supabase
       
-      // Atualizar a senha (agora temos uma sessão de recovery ativa)
+      // Atualizar a senha - o Supabase valida o código de recovery automaticamente
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       })
 
       if (updateError) {
         console.error('Error updating password:', updateError)
-        setError(updateError.message || 'Erro ao redefinir senha. Tente novamente.')
+        
+        // Se o erro for relacionado a token expirado ou inválido
+        if (updateError.message.includes('expired') || 
+            updateError.message.includes('invalid') || 
+            updateError.message.includes('Token')) {
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+        } else {
+          setError(updateError.message || 'Erro ao redefinir senha. Tente novamente.')
+        }
         setLoading(false)
         return
       }
