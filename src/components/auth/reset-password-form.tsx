@@ -21,23 +21,20 @@ export default function ResetPasswordForm() {
     const code = searchParams.get('code')
     const token = searchParams.get('token')
     
-    if (!code && !token) {
-      setTokenValid(false)
-      setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-      return
-    }
-
-    // Verificar se já há uma sessão ativa (o link pode ter criado uma sessão automaticamente)
+    // Verificar se já há uma sessão ativa (usuário logado ou sessão criada pelo link)
     const checkSession = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       
       if (session) {
-        // Se já há sessão, o link funcionou e podemos atualizar a senha diretamente
+        // Se já há sessão (usuário logado ou sessão de recovery), permitir alterar senha
         setTokenValid(true)
+      } else if (!code && !token) {
+        // Se não há sessão nem código, mostrar erro
+        setTokenValid(false)
+        setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
       } else {
-        // Se não há sessão, ainda precisamos verificar o código
-        // Mas vamos fazer isso apenas quando o usuário submeter o formulário
+        // Se há código mas não há sessão ainda, vamos tentar verificar quando submeter
         setTokenValid(true)
       }
     }

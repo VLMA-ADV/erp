@@ -10,9 +10,31 @@ export default async function RedefinirSenhaPage({
   searchParams: Promise<{ code?: string; token?: string }>
 }) {
   const params = await searchParams
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
   
-  // Se não houver código nem token na URL, mostrar erro
+  // Se não houver código nem token na URL
   if (!params.code && !params.token) {
+    // Se o usuário estiver logado, permitir acesso para testar/alterar senha
+    if (session) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
+          <div className="w-full max-w-md space-y-8">
+            <div>
+              <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
+                Redefinir Senha
+              </h2>
+              <p className="mt-2 text-center text-sm text-gray-600">
+                Digite sua nova senha
+              </p>
+            </div>
+            <ResetPasswordForm />
+          </div>
+        </div>
+      )
+    }
+    
+    // Se não estiver logado e não houver código, mostrar erro
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-md space-y-8">
@@ -38,7 +60,6 @@ export default async function RedefinirSenhaPage({
   // Isso garante que a sessão esteja ativa antes do usuário preencher o formulário
   if (params.code) {
     try {
-      const supabase = await createClient()
       // Trocar o código de recovery por uma sessão
       const { data, error } = await supabase.auth.exchangeCodeForSession(params.code)
       
