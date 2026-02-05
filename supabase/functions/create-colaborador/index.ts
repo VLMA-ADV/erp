@@ -297,8 +297,13 @@ Deno.serve(async (req) => {
       }
 
       const createUserData = await createUserResponse.json();
-      newUser = { user: createUserData };
+      console.log("User created in Auth:", createUserData?.id || "undefined");
+      console.log("Full response:", JSON.stringify(createUserData));
+      
+      // A API Admin do Supabase retorna o usuário diretamente, não dentro de { user: ... }
+      newUser = createUserData;
     } catch (createUserError: any) {
+      console.error("Error creating user:", createUserError);
       return new Response(
         JSON.stringify({ 
           error: createUserError?.message || "Failed to create user" 
@@ -310,9 +315,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!newUser?.user?.id) {
+    if (!newUser?.id) {
+      console.error("No user ID in response:", JSON.stringify(newUser));
       return new Response(
-        JSON.stringify({ error: "Failed to create user - no user ID returned" }),
+        JSON.stringify({ 
+          error: "Failed to create user - no user ID returned",
+          details: `Response: ${JSON.stringify(newUser)}`
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -328,7 +337,7 @@ Deno.serve(async (req) => {
 
     // Create colaborador usando função RPC
     const colaboradorData = {
-      user_id: newUser.user.id,
+      user_id: newUser.id,
       nome,
       email,
       cpf: cpfClean,
@@ -363,7 +372,7 @@ Deno.serve(async (req) => {
       // Rollback: delete user if colaborador creation fails usando API REST
       try {
         await fetch(
-          `${supabaseUrl}/auth/v1/admin/users/${newUser.user.id}`,
+          `${supabaseUrl}/auth/v1/admin/users/${newUser.id}`,
           {
             method: 'DELETE',
             headers: {
@@ -394,7 +403,7 @@ Deno.serve(async (req) => {
     const { error: tenantUserError } = await supabase
       .rpc('create_tenant_user', {
         p_user_id: user.id,
-        p_new_user_id: newUser.user.id,
+        p_new_user_id: newUser.id,
         p_status: 'ativo'
       });
 
@@ -408,7 +417,7 @@ Deno.serve(async (req) => {
       const { error: updateRolesError } = await supabase
         .rpc('update_user_roles', {
           p_user_id: user.id,
-          p_colaborador_user_id: newUser.user.id,
+          p_colaborador_user_id: newUser.id,
           p_tenant_id: tenantUser.tenant_id,
           p_role_ids: role_ids
         });
