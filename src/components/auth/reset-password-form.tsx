@@ -18,7 +18,6 @@ export default function ResetPasswordForm() {
 
   useEffect(() => {
     // Verificar se há code ou token na URL
-    // O código já foi trocado por sessão no servidor, então verificamos se existe e se há sessão
     const code = searchParams.get('code')
     const token = searchParams.get('token')
     
@@ -28,30 +27,52 @@ export default function ResetPasswordForm() {
       return
     }
 
-    // Verificar se há sessão válida (após trocar código por sessão)
-    const checkSession = async () => {
+    // Função para trocar código por sessão e verificar
+    const exchangeAndCheck = async () => {
       const supabase = createClient()
+      
+      // Se houver código, tentar trocar por sessão
+      if (code) {
+        try {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          
+          if (error) {
+            console.error('Error exchanging code for session:', error)
+            setTokenValid(false)
+            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+            return
+          }
+          
+          // Se trocou com sucesso, verificar se há sessão
+          if (data.session) {
+            setTokenValid(true)
+            return
+          }
+        } catch (err) {
+          console.error('Exception exchanging code for session:', err)
+          setTokenValid(false)
+          setError('Erro ao validar o link. Tente novamente.')
+          return
+        }
+      }
+      
+      // Se não há código ou se a troca não funcionou, verificar se já há sessão
       const { data: { session } } = await supabase.auth.getSession()
       
       if (session) {
-        // Se há sessão, o código foi trocado com sucesso
         setTokenValid(true)
       } else {
-        // Se não há sessão mas há código, pode ser que ainda não foi processado
-        // Aguardar um pouco e verificar novamente
-        setTimeout(async () => {
-          const { data: { session: retrySession } } = await supabase.auth.getSession()
-          if (retrySession) {
-            setTokenValid(true)
-          } else {
-            setTokenValid(false)
-            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-          }
-        }, 500)
+        // Se há token (fallback), considerar válido
+        if (token) {
+          setTokenValid(true)
+        } else {
+          setTokenValid(false)
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+        }
       }
     }
 
-    checkSession()
+    exchangeAndCheck()
   }, [searchParams])
 
   const validatePassword = (pwd: string): string | null => {

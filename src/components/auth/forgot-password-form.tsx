@@ -19,12 +19,19 @@ export default function ForgotPasswordForm() {
     try {
       const supabase = createClient()
       // Sempre exibe mensagem de sucesso, mesmo se o e-mail não existir (por segurança)
-      await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/redefinir-senha`,
+        captchaToken: undefined, // Não usar captcha por enquanto
       })
+      
+      if (error) {
+        console.error('Error sending reset password email:', error)
+        // Ainda mostra sucesso por segurança
+      }
       
       setSuccess(true)
     } catch (err) {
+      console.error('Exception sending reset password email:', err)
       // Não exibe erro, sempre mostra sucesso por segurança
       setSuccess(true)
     } finally {
