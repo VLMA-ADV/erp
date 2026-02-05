@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import LoginForm from '@/components/auth/login-form'
+import LoginFormWithToast from '@/components/auth/login-form-with-toast'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +23,7 @@ export default async function LoginPage() {
             Faça login em sua conta
           </p>
         </div>
-        <LoginForm />
+        <LoginFormWithToast />
       </div>
     </div>
   )
