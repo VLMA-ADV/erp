@@ -17,14 +17,41 @@ export default function ResetPasswordForm() {
   const [tokenValid, setTokenValid] = useState<boolean | null>(null)
 
   useEffect(() => {
-    // Verificar se há token na URL
+    // Verificar se há code ou token na URL
+    // O código já foi trocado por sessão no servidor, então verificamos se existe e se há sessão
+    const code = searchParams.get('code')
     const token = searchParams.get('token')
-    if (!token) {
+    
+    if (!code && !token) {
       setTokenValid(false)
       setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-    } else {
-      setTokenValid(true)
+      return
     }
+
+    // Verificar se há sessão válida (após trocar código por sessão)
+    const checkSession = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        // Se há sessão, o código foi trocado com sucesso
+        setTokenValid(true)
+      } else {
+        // Se não há sessão mas há código, pode ser que ainda não foi processado
+        // Aguardar um pouco e verificar novamente
+        setTimeout(async () => {
+          const { data: { session: retrySession } } = await supabase.auth.getSession()
+          if (retrySession) {
+            setTokenValid(true)
+          } else {
+            setTokenValid(false)
+            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+          }
+        }, 500)
+      }
+    }
+
+    checkSession()
   }, [searchParams])
 
   const validatePassword = (pwd: string): string | null => {
