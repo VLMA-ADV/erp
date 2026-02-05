@@ -27,9 +27,22 @@ export default function ResetPasswordForm() {
       return
     }
 
-    // Para reset de senha, apenas verificamos se há código
-    // O código será validado quando o usuário atualizar a senha
-    setTokenValid(true)
+    // Verificar se já há uma sessão ativa (o link pode ter criado uma sessão automaticamente)
+    const checkSession = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        // Se já há sessão, o link funcionou e podemos atualizar a senha diretamente
+        setTokenValid(true)
+      } else {
+        // Se não há sessão, ainda precisamos verificar o código
+        // Mas vamos fazer isso apenas quando o usuário submeter o formulário
+        setTokenValid(true)
+      }
+    }
+
+    checkSession()
   }, [searchParams])
 
   const validatePassword = (pwd: string): string | null => {
@@ -68,34 +81,45 @@ export default function ResetPasswordForm() {
 
     try {
       const supabase = createClient()
-      const code = searchParams.get('code')
-      const email = searchParams.get('email')
       
-      // Para reset de senha com código, precisamos verificar o OTP primeiro
-      if (code && email) {
-        // Verificar o código de recovery usando verifyOtp
-        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-          email: decodeURIComponent(email),
-          token: code,
-          type: 'recovery',
-        })
+      // Primeiro, verificar se já há uma sessão ativa (o link pode ter criado uma sessão automaticamente)
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      // Se não há sessão, tentar verificar o OTP para criar uma
+      if (!currentSession) {
+        const code = searchParams.get('code')
+        const email = searchParams.get('email')
+        
+        if (code && email) {
+          // Verificar o código de recovery usando verifyOtp apenas se não houver sessão
+          const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+            email: decodeURIComponent(email),
+            token: code,
+            type: 'recovery',
+          })
 
-        if (verifyError) {
-          console.error('Error verifying recovery OTP:', verifyError)
-          setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
-          setLoading(false)
-          return
-        }
+          if (verifyError) {
+            console.error('Error verifying recovery OTP:', verifyError)
+            setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
+            setLoading(false)
+            return
+          }
 
-        // Se a verificação foi bem-sucedida, agora podemos atualizar a senha
-        if (!verifyData.session) {
-          setError('Erro ao criar sessão de recuperação. Tente novamente.')
+          // Se a verificação foi bem-sucedida, agora podemos atualizar a senha
+          if (!verifyData.session) {
+            setError('Erro ao criar sessão de recuperação. Tente novamente.')
+            setLoading(false)
+            return
+          }
+        } else {
+          // Se não há código nem email, não podemos continuar
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
           setLoading(false)
           return
         }
       }
       
-      // Atualizar a senha (agora temos uma sessão de recovery ativa)
+      // Atualizar a senha (agora temos uma sessão de recovery ativa, seja da verificação ou já existente)
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       })
