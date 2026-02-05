@@ -13,28 +13,10 @@ export default async function RedefinirSenhaPage({
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
   
-  // Se não houver código nem token na URL
-  if (!params.code && !params.token) {
-    // Se o usuário estiver logado, permitir acesso para testar/alterar senha
-    if (session) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-          <div className="w-full max-w-md space-y-8">
-            <div>
-              <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
-                Redefinir Senha
-              </h2>
-              <p className="mt-2 text-center text-sm text-gray-600">
-                Digite sua nova senha
-              </p>
-            </div>
-            <ResetPasswordForm />
-          </div>
-        </div>
-      )
-    }
-    
-    // Se não estiver logado e não houver código, mostrar erro
+  // A página deve ser acessível apenas para usuários autenticados
+  // O link de reset cria a sessão automaticamente quando acessado
+  // Se não houver sessão e não houver código, mostrar erro
+  if (!session && !params.code && !params.token) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-md space-y-8">
@@ -56,26 +38,8 @@ export default async function RedefinirSenhaPage({
     )
   }
 
-  // Trocar código por sessão de recovery no servidor quando a página carrega
-  // Isso garante que a sessão esteja ativa antes do usuário preencher o formulário
-  if (params.code) {
-    try {
-      // Trocar o código de recovery por uma sessão
-      const { data, error } = await supabase.auth.exchangeCodeForSession(params.code)
-      
-      if (error) {
-        console.error('Error exchanging recovery code for session:', error)
-        // Não mostrar erro aqui - deixar o cliente tentar também
-        // O erro será mostrado quando o usuário tentar atualizar a senha
-      } else if (data.session) {
-        // Sessão criada com sucesso - o usuário já está autenticado
-        // O formulário pode atualizar a senha diretamente
-      }
-    } catch (err) {
-      console.error('Exception exchanging recovery code:', err)
-      // Não mostrar erro aqui - deixar o cliente tentar também
-    }
-  }
+  // Se há código, o Supabase cria a sessão automaticamente quando a página carrega
+  // Não precisamos fazer nada manualmente - apenas verificar se há sessão
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">

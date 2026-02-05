@@ -17,25 +17,26 @@ export default function ResetPasswordForm() {
   const [tokenValid, setTokenValid] = useState<boolean | null>(null)
 
   useEffect(() => {
-    // Verificar se há code ou token na URL
-    const code = searchParams.get('code')
-    const token = searchParams.get('token')
-    
-    // Verificar se já há uma sessão ativa (usuário logado ou sessão criada pelo link)
+    // Verificar se há uma sessão ativa
+    // O link de reset cria a sessão automaticamente quando acessado
     const checkSession = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       
       if (session) {
-        // Se já há sessão (usuário logado ou sessão de recovery), permitir alterar senha
+        // Se há sessão, o usuário está autenticado e pode alterar a senha
         setTokenValid(true)
-      } else if (!code && !token) {
-        // Se não há sessão nem código, mostrar erro
-        setTokenValid(false)
-        setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
       } else {
-        // Se há código mas não há sessão ainda, vamos tentar verificar quando submeter
-        setTokenValid(true)
+        // Se não há sessão, aguardar um pouco (o link pode estar criando a sessão)
+        setTimeout(async () => {
+          const { data: { session: retrySession } } = await supabase.auth.getSession()
+          if (retrySession) {
+            setTokenValid(true)
+          } else {
+            setTokenValid(false)
+            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+          }
+        }, 500)
       }
     }
 
@@ -79,44 +80,17 @@ export default function ResetPasswordForm() {
     try {
       const supabase = createClient()
       
-      // Primeiro, verificar se já há uma sessão ativa (o link pode ter criado uma sessão automaticamente)
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      // Verificar se há sessão ativa (o link cria a sessão automaticamente)
+      const { data: { session } } = await supabase.auth.getSession()
       
-      // Se não há sessão, tentar verificar o OTP para criar uma
-      if (!currentSession) {
-        const code = searchParams.get('code')
-        const email = searchParams.get('email')
-        
-        if (code && email) {
-          // Verificar o código de recovery usando verifyOtp apenas se não houver sessão
-          const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-            email: decodeURIComponent(email),
-            token: code,
-            type: 'recovery',
-          })
-
-          if (verifyError) {
-            console.error('Error verifying recovery OTP:', verifyError)
-            setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
-            setLoading(false)
-            return
-          }
-
-          // Se a verificação foi bem-sucedida, agora podemos atualizar a senha
-          if (!verifyData.session) {
-            setError('Erro ao criar sessão de recuperação. Tente novamente.')
-            setLoading(false)
-            return
-          }
-        } else {
-          // Se não há código nem email, não podemos continuar
-          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-          setLoading(false)
-          return
-        }
+      if (!session) {
+        setError('Você precisa estar autenticado para alterar a senha. Acesse o link de recuperação novamente.')
+        setLoading(false)
+        return
       }
       
-      // Atualizar a senha (agora temos uma sessão de recovery ativa, seja da verificação ou já existente)
+      // Atualizar a senha - simplesmente chamar updateUser
+      // O Supabase valida automaticamente se é uma sessão de recovery
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       })
