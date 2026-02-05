@@ -17,30 +17,29 @@ export default function ResetPasswordForm() {
   const [tokenValid, setTokenValid] = useState<boolean | null>(null)
 
   useEffect(() => {
-    // Verificar se há uma sessão ativa
-    // O link de reset cria a sessão automaticamente quando acessado
-    const checkSession = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session) {
-        // Se há sessão, o usuário está autenticado e pode alterar a senha
-        setTokenValid(true)
-      } else {
-        // Se não há sessão, aguardar um pouco (o link pode estar criando a sessão)
-        setTimeout(async () => {
-          const { data: { session: retrySession } } = await supabase.auth.getSession()
-          if (retrySession) {
-            setTokenValid(true)
-          } else {
-            setTokenValid(false)
-            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-          }
-        }, 500)
+    // Verificar se há código na URL
+    const code = searchParams.get('code')
+    const token = searchParams.get('token')
+    
+    // Se há código ou token, sempre permitir (o Supabase processa automaticamente)
+    // Se não há código nem token, verificar se há sessão (usuário logado)
+    if (code || token) {
+      setTokenValid(true)
+    } else {
+      const checkSession = async () => {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session) {
+          setTokenValid(true)
+        } else {
+          setTokenValid(false)
+          setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
+        }
       }
+      
+      checkSession()
     }
-
-    checkSession()
   }, [searchParams])
 
   const validatePassword = (pwd: string): string | null => {
