@@ -20,8 +20,10 @@ export default function ForgotPasswordForm() {
       const supabase = createClient()
       // Sempre exibe mensagem de sucesso, mesmo se o e-mail não existir (por segurança)
       // Incluir o email na URL para facilitar a verificação do código
+      // Codificar a URL completa para garantir que caracteres especiais sejam tratados corretamente
+      const redirectUrl = `${window.location.origin}/redefinir-senha?email=${encodeURIComponent(email)}`
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/redefinir-senha?email=${encodeURIComponent(email)}`,
+        redirectTo: redirectUrl,
         captchaToken: undefined, // Não usar captcha por enquanto
       })
       
