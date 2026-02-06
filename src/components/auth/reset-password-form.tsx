@@ -35,46 +35,31 @@ export default function ResetPasswordForm() {
       const supabase = createClient()
       
       try {
-        // Tentar verificar o OTP com email primeiro (mais confiável)
-        if (email) {
-          const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-            email: decodeURIComponent(email),
-            token: code,
-            type: 'recovery',
-          })
-
-          if (verifyError) {
-            console.error('Error verifying recovery OTP:', verifyError)
-            setTokenValid(false)
-            setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
-            setIsExchanging(false)
-            return
-          }
-
-          if (verifyData?.session) {
-            console.log('Recovery session created successfully:', verifyData.session.user.id)
-            setTokenValid(true)
-            setIsExchanging(false)
-            return
-          }
-        }
-
-        // Se não temos email ou verifyOtp com email falhou, tentar usar apenas o código
-        const { data: verifyData2, error: verifyError2 } = await supabase.auth.verifyOtp({
-          token: code,
-          type: 'recovery',
-        })
-
-        if (verifyError2) {
-          console.error('Error verifying recovery token:', verifyError2)
+        // O email é obrigatório para verificar o OTP de recovery
+        if (!email) {
           setTokenValid(false)
-          setError(verifyError2.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
+          setError('Link inválido: email não encontrado. Solicite um novo link de recuperação.')
           setIsExchanging(false)
           return
         }
 
-        if (verifyData2?.session) {
-          console.log('Recovery session created successfully:', verifyData2.session.user.id)
+        // Verificar o OTP com email e código
+        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+          email: decodeURIComponent(email),
+          token: code,
+          type: 'recovery',
+        })
+
+        if (verifyError) {
+          console.error('Error verifying recovery OTP:', verifyError)
+          setTokenValid(false)
+          setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
+          setIsExchanging(false)
+          return
+        }
+
+        if (verifyData?.session) {
+          console.log('Recovery session created successfully:', verifyData.session.user.id)
           setTokenValid(true)
         } else {
           console.error('No session returned from verification')
