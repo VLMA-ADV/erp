@@ -8,7 +8,6 @@ interface Area {
   nome: string
   codigo: string
   ativo: boolean
-  created_at: string
 }
 
 interface AreasTableProps {

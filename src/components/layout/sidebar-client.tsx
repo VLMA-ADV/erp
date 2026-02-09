@@ -101,6 +101,7 @@ export default function SidebarClient() {
     <aside className="w-64 border-r bg-gray-50 p-4 flex flex-col h-full">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">ERP-VLMA</h1>
+        <p className="text-sm text-gray-500">Versão 1.0.0</p>
       </div>
       <nav className="space-y-1 flex-1">
         {/* Menu Pessoas (Expansível) */}

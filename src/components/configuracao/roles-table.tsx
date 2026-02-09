@@ -8,14 +8,13 @@ interface Role {
   nome: string
   descricao: string | null
   ativo: boolean
-  created_at: string
 }
 
 interface RolesTableProps {
   roles: Role[]
   loading: boolean
-  onEdit: (role: Role) => void
-  onView: (role: Role) => void
+  onEdit: (role: Role) => void | Promise<void>
+  onView: (role: Role) => void | Promise<void>
   onRefresh: () => void
 }
 

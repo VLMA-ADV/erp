@@ -8,9 +8,8 @@ interface Cargo {
   id: string
   nome: string
   codigo: string
-  nivel: number | null
+  nivel?: number | null
   ativo: boolean
-  created_at: string
 }
 
 interface CargosTableProps {

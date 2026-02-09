@@ -17,8 +17,8 @@ interface RolesActionsProps {
   role: Role
   canEdit: boolean
   canView: boolean
-  onEdit: (role: Role) => void
-  onView: (role: Role) => void
+  onEdit: (role: Role) => void | Promise<void>
+  onView: (role: Role) => void | Promise<void>
   onRefresh: () => void
 }
 

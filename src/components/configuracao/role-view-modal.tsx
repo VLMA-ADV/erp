@@ -9,7 +9,6 @@ interface Role {
   nome: string
   descricao: string | null
   ativo: boolean
-  created_at: string
   role_permissions?: Array<{
     permission_id: string
     permissions: {

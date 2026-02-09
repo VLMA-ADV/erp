@@ -13,7 +13,6 @@ interface GrupoEconomico {
   id: string
   nome: string
   ativo: boolean
-  created_at: string
 }
 
 export default function GruposEconomicosList() {
