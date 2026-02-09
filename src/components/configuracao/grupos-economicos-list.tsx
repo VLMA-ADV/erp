@@ -2,42 +2,40 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import CargosTable from './cargos-table'
-import CargosSearch from './cargos-search'
-import CargoModal from './cargo-modal'
+import GruposEconomicosTable from './grupos-economicos-table'
+import GruposEconomicosSearch from './grupos-economicos-search'
+import GrupoEconomicoModal from './grupo-economico-modal'
 import { Button } from '@/components/ui/button'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Plus } from 'lucide-react'
 
-interface Cargo {
+interface GrupoEconomico {
   id: string
   nome: string
-  codigo: string
-  nivel: number | null
   ativo: boolean
   created_at: string
 }
 
-export default function CargosList() {
+export default function GruposEconomicosList() {
   const { hasPermission } = usePermissionsContext()
-  const [cargos, setCargos] = useState<Cargo[]>([])
+  const [grupos, setGrupos] = useState<GrupoEconomico[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
-  const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
+  const [editingGrupo, setEditingGrupo] = useState<GrupoEconomico | null>(null)
 
-  const canWrite = hasPermission('config.cargos.write') || hasPermission('config.cargos.*')
-  const canRead = hasPermission('config.cargos.read') || hasPermission('config.cargos.*')
+  const canWrite = hasPermission('config.grupos.write') || hasPermission('config.grupos.*')
+  const canRead = hasPermission('config.grupos.read') || hasPermission('config.grupos.*')
 
   useEffect(() => {
     if (canRead) {
-      fetchCargos()
+      fetchGrupos()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
-  const fetchCargos = async () => {
+  const fetchGrupos = async () => {
     try {
       setLoading(true)
       const supabase = createClient()
@@ -46,7 +44,7 @@ export default function CargosList() {
       if (!session) return
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-cargos`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-grupos-economicos`,
         {
           method: 'GET',
           headers: {
@@ -58,25 +56,24 @@ export default function CargosList() {
 
       if (response.ok) {
         const data = await response.json()
-        let cargosList = data.data || []
+        let gruposList = data.data || []
         
         // Filtrar por busca
         if (search) {
           const searchLower = search.toLowerCase()
-          cargosList = cargosList.filter((cargo: Cargo) =>
-            cargo.nome.toLowerCase().includes(searchLower) ||
-            cargo.codigo.toLowerCase().includes(searchLower)
+          gruposList = gruposList.filter((grupo: GrupoEconomico) =>
+            grupo.nome.toLowerCase().includes(searchLower)
           )
         }
         
-        setCargos(cargosList)
+        setGrupos(gruposList)
       } else {
         const errorData = await response.json()
-        setError(errorData.error || 'Erro ao carregar cargos')
+        setError(errorData.error || 'Erro ao carregar grupos')
       }
     } catch (err) {
-      console.error('Error fetching cargos:', err)
-      setError('Erro ao carregar cargos')
+      console.error('Error fetching grupos:', err)
+      setError('Erro ao carregar grupos')
     } finally {
       setLoading(false)
     }
@@ -84,25 +81,25 @@ export default function CargosList() {
 
   useEffect(() => {
     if (canRead) {
-      fetchCargos()
+      fetchGrupos()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
   const handleCreate = () => {
-    setEditingCargo(null)
+    setEditingGrupo(null)
     setModalOpen(true)
   }
 
-  const handleEdit = (cargo: Cargo) => {
-    setEditingCargo(cargo)
+  const handleEdit = (grupo: GrupoEconomico) => {
+    setEditingGrupo(grupo)
     setModalOpen(true)
   }
 
   const handleModalSuccess = () => {
     setModalOpen(false)
-    setEditingCargo(null)
-    fetchCargos()
+    setEditingGrupo(null)
+    fetchGrupos()
   }
 
   const handleModalError = (errorMessage: string) => {
@@ -112,7 +109,7 @@ export default function CargosList() {
   if (!canRead) {
     return (
       <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">Você não tem permissão para visualizar cargos</p>
+        <p className="text-sm text-red-800">Você não tem permissão para visualizar grupos econômicos</p>
       </div>
     )
   }
@@ -126,27 +123,27 @@ export default function CargosList() {
       )}
 
       <div className="flex items-center justify-between">
-        <CargosSearch onSearch={setSearch} />
+        <GruposEconomicosSearch onSearch={setSearch} />
         {canWrite && (
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-2" />
-            Novo Cargo
+            Novo Grupo
           </Button>
         )}
       </div>
 
-      <CargosTable
-        cargos={cargos}
+      <GruposEconomicosTable
+        grupos={grupos}
         loading={loading}
         onEdit={handleEdit}
-        onRefresh={fetchCargos}
+        onRefresh={fetchGrupos}
       />
 
       {canWrite && (
-        <CargoModal
+        <GrupoEconomicoModal
           open={modalOpen}
           onOpenChange={setModalOpen}
-          cargo={editingCargo}
+          grupo={editingGrupo}
           onSuccess={handleModalSuccess}
           onError={handleModalError}
         />

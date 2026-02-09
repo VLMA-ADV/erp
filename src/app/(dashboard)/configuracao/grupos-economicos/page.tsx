@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import GruposEconomicosList from '@/components/configuracao/grupos-economicos-list'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,14 +18,7 @@ export default async function GruposEconomicosPage() {
         <h1 className="text-3xl font-bold">Grupos Econômicos</h1>
         <p className="mt-2 text-gray-600">Gerencie os grupos econômicos para agrupamento de clientes</p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Grupos Econômicos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500">Funcionalidade em desenvolvimento...</p>
-        </CardContent>
-      </Card>
+      <GruposEconomicosList />
     </div>
   )
 }

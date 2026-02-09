@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import SegmentosEconomicosList from '@/components/configuracao/segmentos-economicos-list'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,14 +18,7 @@ export default async function SegmentosEconomicosPage() {
         <h1 className="text-3xl font-bold">Segmentos Econômicos</h1>
         <p className="mt-2 text-gray-600">Gerencie os segmentos econômicos para classificação de clientes</p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Segmentos Econômicos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500">Funcionalidade em desenvolvimento...</p>
-        </CardContent>
-      </Card>
+      <SegmentosEconomicosList />
     </div>
   )
 }

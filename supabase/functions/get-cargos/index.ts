@@ -50,6 +50,39 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verificar permissões do usuário
+    const { data: permissionsData, error: permissionsError } = await supabase
+      .rpc('get_user_permissions', { p_user_id: user.id });
+
+    if (permissionsError) {
+      console.error("Permissions error:", permissionsError);
+      return new Response(
+        JSON.stringify({ error: "Erro ao verificar permissões" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const requiredPermission = 'config.cargos.read';
+    const hasPermission = permissionsData?.some((p: any) => 
+      p.permission_key === requiredPermission ||
+      p.permission_key === 'config.cargos.*' ||
+      p.permission_key === 'config.*' ||
+      p.permission_key === '*'
+    );
+
+    if (!hasPermission) {
+      return new Response(
+        JSON.stringify({ error: "Você não tem permissão para realizar esta operação" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Get cargos usando função RPC
     const { data: cargos, error: cargosError } = await supabase
       .rpc('get_cargos', { p_user_id: user.id });

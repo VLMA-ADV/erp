@@ -93,8 +93,9 @@ export function useColaboradorFormData(): UseColaboradorFormDataReturn {
         const rolesData = rolesResponse.ok ? await rolesResponse.json() : { data: [] }
         const permissionsData = permissionsResponse.ok ? await permissionsResponse.json() : { data: {} }
 
-        const cargosList = cargosData.data || []
-        const areasList = areasData.data || []
+        // Filtrar cargos e áreas por ativo=true para formulários
+        const cargosList = (cargosData.data || []).filter((cargo: any) => cargo.ativo === true)
+        const areasList = (areasData.data || []).filter((area: any) => area.ativo === true)
         const rolesList = rolesData.data || []
         const permissionsObj = permissionsData.data || {}
 
