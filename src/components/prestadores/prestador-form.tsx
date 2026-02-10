@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchCEPData } from '@/lib/utils/validation'
+import { maskCEP, maskCpfCnpj, maskPhone, onlyDigits } from '@/lib/utils/masks'
 
 type PrestadorPayload = {
   nome_prestador: string
@@ -16,6 +18,7 @@ type PrestadorPayload = {
   tipo_documento: 'cpf' | 'cnpj'
   servico_recorrente: boolean
   valor_recorrente: string
+  cep: string
   rua: string
   numero: string
   complemento: string
@@ -36,6 +39,7 @@ const emptyPayload: PrestadorPayload = {
   tipo_documento: 'cnpj',
   servico_recorrente: false,
   valor_recorrente: '',
+  cep: '',
   rua: '',
   numero: '',
   complemento: '',
@@ -61,6 +65,8 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
   const [initialLoading, setInitialLoading] = useState(!!prestadorId)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<PrestadorPayload>(emptyPayload)
+  const [cepPreenchido, setCepPreenchido] = useState(false)
+  const [lastCepFetched, setLastCepFetched] = useState<string>('')
 
   const isEdit = useMemo(() => !!prestadorId, [prestadorId])
 
@@ -94,17 +100,20 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         const prestador = data.data?.prestador || {}
         const ri = data.data?.responsavel_interno || {}
         const bank = data.data?.dados_bancarios || {}
+        const tipoDocumento: 'cpf' | 'cnpj' =
+          prestador.tipo_documento === 'cpf' ? 'cpf' : 'cnpj'
 
         setForm({
           ...emptyPayload,
           nome_prestador: prestador.nome_prestador || '',
-          cpf_cnpj: prestador.cpf_cnpj || '',
-          tipo_documento: prestador.tipo_documento || 'cnpj',
+          cpf_cnpj: maskCpfCnpj(prestador.cpf_cnpj || '', tipoDocumento),
+          tipo_documento: tipoDocumento,
           servico_recorrente: !!prestador.servico_recorrente,
           valor_recorrente:
             prestador.valor_recorrente !== null && prestador.valor_recorrente !== undefined
               ? String(prestador.valor_recorrente)
               : '',
+          cep: maskCEP(prestador.cep || ''),
           rua: prestador.rua || '',
           numero: prestador.numero || '',
           complemento: prestador.complemento || '',
@@ -112,7 +121,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
           estado: prestador.estado || '',
           resp_nome: ri.nome || '',
           resp_email: ri.email || '',
-          resp_whatsapp: ri.whatsapp || '',
+          resp_whatsapp: maskPhone(ri.whatsapp || ''),
           banco: bank.banco || '',
           conta_com_digito: bank.conta_com_digito || '',
           agencia: bank.agencia || '',
@@ -128,6 +137,35 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
 
     fetchPrestador()
   }, [prestadorId])
+
+  const handleCepChange = async (value: string) => {
+    const masked = maskCEP(value)
+    const digits = masked.replace(/\D/g, '')
+
+    setForm((prev) => ({ ...prev, cep: masked }))
+
+    if (digits.length !== 8) {
+      setCepPreenchido(false)
+      return
+    }
+
+    if (digits === lastCepFetched) return
+    setLastCepFetched(digits)
+
+    const data = await fetchCEPData(digits)
+    if (!data || data.erro) {
+      setCepPreenchido(false)
+      return
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      rua: data.logradouro || prev.rua,
+      cidade: data.localidade || prev.cidade,
+      estado: data.uf || prev.estado,
+    }))
+    setCepPreenchido(true)
+  }
 
   const submit = async () => {
     setError(null)
@@ -157,7 +195,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
 
       const body: any = {
         nome_prestador: form.nome_prestador,
-        cpf_cnpj: form.cpf_cnpj,
+        cpf_cnpj: onlyDigits(form.cpf_cnpj),
         tipo_documento: form.tipo_documento,
         servico_recorrente: form.servico_recorrente,
         valor_recorrente: form.valor_recorrente ? parseFloat(form.valor_recorrente) : null,
@@ -166,9 +204,10 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         complemento: form.complemento || null,
         cidade: form.cidade || null,
         estado: form.estado || null,
+        cep: onlyDigits(form.cep) || null,
         resp_nome: form.resp_nome || null,
         resp_email: form.resp_email || null,
-        resp_whatsapp: form.resp_whatsapp || null,
+        resp_whatsapp: onlyDigits(form.resp_whatsapp) || null,
         banco: form.banco || null,
         conta_com_digito: form.conta_com_digito || null,
         agencia: form.agencia || null,
@@ -261,7 +300,13 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                   <Input
                     id="cpf_cnpj"
                     value={form.cpf_cnpj}
-                    onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value })}
+                    maxLength={form.tipo_documento === 'cpf' ? 14 : 18}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        cpf_cnpj: maskCpfCnpj(e.target.value, form.tipo_documento),
+                      })
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -269,9 +314,14 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                   <select
                     id="tipo_documento"
                     value={form.tipo_documento}
-                    onChange={(e) =>
-                      setForm({ ...form, tipo_documento: e.target.value as any })
-                    }
+                    onChange={(e) => {
+                      const next = e.target.value as any
+                      setForm((prev) => ({
+                        ...prev,
+                        tipo_documento: next,
+                        cpf_cnpj: maskCpfCnpj(prev.cpf_cnpj, next),
+                      }))
+                    }}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option value="cpf">CPF</option>
@@ -317,8 +367,25 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
+                  <Label htmlFor="cep">CEP</Label>
+                  <Input
+                    id="cep"
+                    value={form.cep}
+                    maxLength={9}
+                    onChange={(e) => handleCepChange(e.target.value)}
+                    placeholder="00000-000"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="rua">Rua</Label>
-                  <Input id="rua" value={form.rua} onChange={(e) => setForm({ ...form, rua: e.target.value })} />
+                  <Input
+                    id="rua"
+                    value={form.rua}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, rua: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="numero">Número</Label>
@@ -330,11 +397,26 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cidade">Cidade</Label>
-                  <Input id="cidade" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                  <Input
+                    id="cidade"
+                    value={form.cidade}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="estado">Estado (UF)</Label>
-                  <Input id="estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} />
+                  <Input
+                    id="estado"
+                    value={form.estado}
+                    maxLength={2}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -358,7 +440,13 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="resp_whatsapp">WhatsApp</Label>
-                  <Input id="resp_whatsapp" value={form.resp_whatsapp} onChange={(e) => setForm({ ...form, resp_whatsapp: e.target.value })} />
+                  <Input
+                    id="resp_whatsapp"
+                    value={form.resp_whatsapp}
+                    maxLength={15}
+                    onChange={(e) => setForm({ ...form, resp_whatsapp: maskPhone(e.target.value) })}
+                    placeholder="(00) 00000-0000"
+                  />
                 </div>
               </div>
             </CardContent>

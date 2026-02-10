@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchCEPData } from '@/lib/utils/validation'
+import { maskCEP, maskCNPJ, maskPhone, onlyDigits } from '@/lib/utils/masks'
 
 type GrupoEconomico = { id: string; nome: string }
 type Segmento = { id: string; nome: string; ativo: boolean }
@@ -18,6 +20,7 @@ type ClientePayload = {
   cliente_estrangeiro: boolean
   cnpj: string
   tipo: 'pessoa_fisica' | 'pessoa_juridica' | ''
+  cep: string
   rua: string
   numero: string
   complemento: string
@@ -41,6 +44,7 @@ const emptyPayload: ClientePayload = {
   cliente_estrangeiro: false,
   cnpj: '',
   tipo: '',
+  cep: '',
   rua: '',
   numero: '',
   complemento: '',
@@ -68,15 +72,23 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!clienteId)
   const [error, setError] = useState<string | null>(null)
+  const [optionsError, setOptionsError] = useState<string | null>(null)
   const [form, setForm] = useState<ClientePayload>(emptyPayload)
+  const [cepPreenchido, setCepPreenchido] = useState(false)
+  const [lastCepFetched, setLastCepFetched] = useState<string>('')
 
   const [grupos, setGrupos] = useState<GrupoEconomico[]>([])
   const [segmentos, setSegmentos] = useState<Segmento[]>([])
 
   const isEdit = useMemo(() => !!clienteId, [clienteId])
+  const segmentosAtivos = useMemo(
+    () => segmentos.filter((s) => s.ativo !== false),
+    [segmentos]
+  )
 
   useEffect(() => {
     const fetchOptions = async () => {
+      setOptionsError(null)
       try {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
@@ -101,10 +113,20 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
 
         const grData = await grResp.json()
         const segData = await segResp.json()
-        if (grResp.ok) setGrupos(grData.data || [])
-        if (segResp.ok) setSegmentos(segData.data || [])
+        if (grResp.ok) {
+          setGrupos(Array.isArray(grData.data) ? grData.data : [])
+        } else {
+          setOptionsError(grData.error || 'Erro ao carregar grupos econômicos')
+        }
+
+        if (segResp.ok) {
+          setSegmentos(Array.isArray(segData.data) ? segData.data : [])
+        } else {
+          setOptionsError(segData.error || 'Erro ao carregar segmentos econômicos')
+        }
       } catch (e) {
         console.error(e)
+        setOptionsError('Erro ao carregar dados auxiliares (grupos/segmentos)')
       }
     }
 
@@ -142,13 +164,15 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         const segmentoIds = (data.data?.segmento_ids || []) as string[]
         const ri = (data.data?.responsaveis_internos || [])[0] || {}
         const rf = (data.data?.responsaveis_financeiros || [])[0] || {}
+        const clienteEstrangeiro = !!cliente.cliente_estrangeiro
 
         setForm({
           ...emptyPayload,
           nome: cliente.nome || '',
-          cliente_estrangeiro: !!cliente.cliente_estrangeiro,
-          cnpj: cliente.cnpj || '',
+          cliente_estrangeiro: clienteEstrangeiro,
+          cnpj: clienteEstrangeiro ? '' : maskCNPJ(cliente.cnpj || ''),
           tipo: cliente.tipo || '',
+          cep: maskCEP(cliente.cep || ''),
           rua: cliente.rua || '',
           numero: cliente.numero || '',
           complemento: cliente.complemento || '',
@@ -160,11 +184,11 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           segmento_ids: segmentoIds,
           resp_int_nome: ri.nome || '',
           resp_int_email: ri.email || '',
-          resp_int_whatsapp: ri.whatsapp || '',
+          resp_int_whatsapp: maskPhone(ri.whatsapp || ''),
           resp_int_data_nascimento: ri.data_nascimento || '',
           resp_fin_nome: rf.nome || '',
           resp_fin_email: rf.email || '',
-          resp_fin_whatsapp: rf.whatsapp || '',
+          resp_fin_whatsapp: maskPhone(rf.whatsapp || ''),
         })
       } catch (e) {
         console.error(e)
@@ -177,17 +201,36 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
     fetchCliente()
   }, [clienteId])
 
-  const toggleSegmento = (id: string) => {
-    setForm((prev) => {
-      const has = prev.segmento_ids.includes(id)
-      return {
-        ...prev,
-        segmento_ids: has
-          ? prev.segmento_ids.filter((x) => x !== id)
-          : [...prev.segmento_ids, id],
-      }
-    })
+  const handleCepChange = async (value: string) => {
+    const masked = maskCEP(value)
+    const digits = masked.replace(/\D/g, '')
+
+    setForm((prev) => ({ ...prev, cep: masked }))
+
+    if (digits.length !== 8) {
+      setCepPreenchido(false)
+      return
+    }
+
+    if (digits === lastCepFetched) return
+    setLastCepFetched(digits)
+
+    const data = await fetchCEPData(digits)
+    if (!data || data.erro) {
+      setCepPreenchido(false)
+      return
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      rua: data.logradouro || prev.rua,
+      cidade: data.localidade || prev.cidade,
+      estado: data.uf || prev.estado,
+    }))
+    setCepPreenchido(true)
   }
+
+  const selectedSegmentoId = form.segmento_ids[0] || ''
 
   const submit = async () => {
     setError(null)
@@ -218,8 +261,9 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       const body: any = {
         nome: form.nome,
         cliente_estrangeiro: form.cliente_estrangeiro,
-        cnpj: form.cnpj ? form.cnpj : null,
+        cnpj: form.cnpj ? onlyDigits(form.cnpj) : null,
         tipo: form.tipo || null,
+        cep: onlyDigits(form.cep) || null,
         rua: form.rua || null,
         numero: form.numero || null,
         complemento: form.complemento || null,
@@ -231,11 +275,11 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         segmento_ids: form.segmento_ids,
         resp_int_nome: form.resp_int_nome || null,
         resp_int_email: form.resp_int_email || null,
-        resp_int_whatsapp: form.resp_int_whatsapp || null,
+        resp_int_whatsapp: onlyDigits(form.resp_int_whatsapp) || null,
         resp_int_data_nascimento: form.resp_int_data_nascimento || null,
         resp_fin_nome: form.resp_fin_nome || null,
         resp_fin_email: form.resp_fin_email || null,
-        resp_fin_whatsapp: form.resp_fin_whatsapp || null,
+        resp_fin_whatsapp: onlyDigits(form.resp_fin_whatsapp) || null,
       }
       if (isEdit) body.id = clienteId
 
@@ -287,9 +331,9 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
 
   return (
     <div className="space-y-8">
-      {error && (
+      {(error || optionsError) && (
         <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
+          <p className="text-sm text-red-800">{error || optionsError}</p>
         </div>
       )}
 
@@ -328,7 +372,12 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 {!form.cliente_estrangeiro && (
                   <div className="space-y-2">
                     <Label htmlFor="cnpj">CNPJ *</Label>
-                    <Input id="cnpj" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} />
+                    <Input
+                      id="cnpj"
+                      value={form.cnpj}
+                      maxLength={18}
+                      onChange={(e) => setForm({ ...form, cnpj: maskCNPJ(e.target.value) })}
+                    />
                   </div>
                 )}
                 <div className="space-y-2">
@@ -379,8 +428,25 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
+                  <Label htmlFor="cep">CEP</Label>
+                  <Input
+                    id="cep"
+                    value={form.cep}
+                    maxLength={9}
+                    onChange={(e) => handleCepChange(e.target.value)}
+                    placeholder="00000-000"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="rua">Rua</Label>
-                  <Input id="rua" value={form.rua} onChange={(e) => setForm({ ...form, rua: e.target.value })} />
+                  <Input
+                    id="rua"
+                    value={form.rua}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, rua: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="numero">Número</Label>
@@ -392,11 +458,26 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cidade">Cidade</Label>
-                  <Input id="cidade" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                  <Input
+                    id="cidade"
+                    value={form.cidade}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="estado">Estado (UF)</Label>
-                  <Input id="estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} />
+                  <Input
+                    id="estado"
+                    value={form.estado}
+                    maxLength={2}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -411,23 +492,44 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
             <CardContent className="space-y-6">
               <div>
                 <h2 className="text-base font-semibold">Segmentos econômicos (opcional)</h2>
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {segmentos
-                    .filter((s) => s.ativo !== false)
-                    .map((s) => (
-                      <label key={s.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={form.segmento_ids.includes(s.id)}
-                          onChange={() => toggleSegmento(s.id)}
-                        />
-                        <span>{s.nome}</span>
-                      </label>
-                    ))}
-                  {segmentos.length === 0 && (
-                    <p className="text-sm text-gray-500">Nenhum segmento cadastrado</p>
-                  )}
-                </div>
+                {segmentosAtivos.length > 0 ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="segmento_id">Segmento econômico</Label>
+                        <select
+                          id="segmento_id"
+                          value={selectedSegmentoId}
+                          onChange={(e) => {
+                            const id = e.target.value
+                            setForm((prev) => ({
+                              ...prev,
+                              segmento_ids: id ? [id] : [],
+                            }))
+                          }}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="">Sem segmento</option>
+                          {segmentosAtivos.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.nome}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    {segmentos.length === 0 ? (
+                      <p className="text-sm text-gray-500">Nenhum segmento cadastrado</p>
+                    ) : (
+                      <p className="text-sm text-gray-500">
+                        Nenhum segmento ativo encontrado. Ative um segmento em Configuração &gt; Segmentos Econômicos.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -464,7 +566,13 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="ri_whats">WhatsApp</Label>
-                    <Input id="ri_whats" value={form.resp_int_whatsapp} onChange={(e) => setForm({ ...form, resp_int_whatsapp: e.target.value })} />
+                    <Input
+                      id="ri_whats"
+                      value={form.resp_int_whatsapp}
+                      maxLength={15}
+                      onChange={(e) => setForm({ ...form, resp_int_whatsapp: maskPhone(e.target.value) })}
+                      placeholder="(00) 00000-0000"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="ri_nasc">Data nascimento</Label>
@@ -490,7 +598,13 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="rf_whats">WhatsApp</Label>
-                    <Input id="rf_whats" value={form.resp_fin_whatsapp} onChange={(e) => setForm({ ...form, resp_fin_whatsapp: e.target.value })} />
+                    <Input
+                      id="rf_whats"
+                      value={form.resp_fin_whatsapp}
+                      maxLength={15}
+                      onChange={(e) => setForm({ ...form, resp_fin_whatsapp: maskPhone(e.target.value) })}
+                      placeholder="(00) 00000-0000"
+                    />
                   </div>
                 </div>
               </CardContent>

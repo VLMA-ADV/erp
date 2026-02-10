@@ -9,10 +9,13 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchCEPData } from '@/lib/utils/validation'
+import { maskCEP, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/utils/masks'
 
 type ParceiroPayload = {
   nome_escritorio: string
   cnpj: string
+  cep: string
   rua: string
   numero: string
   complemento: string
@@ -38,6 +41,7 @@ type ParceiroPayload = {
 const emptyPayload: ParceiroPayload = {
   nome_escritorio: '',
   cnpj: '',
+  cep: '',
   rua: '',
   numero: '',
   complemento: '',
@@ -68,6 +72,8 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
   const [initialLoading, setInitialLoading] = useState(!!parceiroId)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<ParceiroPayload>(emptyPayload)
+  const [cepPreenchido, setCepPreenchido] = useState(false)
+  const [lastCepFetched, setLastCepFetched] = useState<string>('')
 
   const isEdit = useMemo(() => !!parceiroId, [parceiroId])
 
@@ -106,7 +112,8 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
         setForm({
           ...emptyPayload,
           nome_escritorio: parceiro.nome_escritorio || '',
-          cnpj: parceiro.cnpj || '',
+          cnpj: maskCNPJ(parceiro.cnpj || ''),
+          cep: maskCEP(parceiro.cep || ''),
           rua: parceiro.rua || '',
           numero: parceiro.numero || '',
           complemento: parceiro.complemento || '',
@@ -115,11 +122,11 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
           adv_nome: adv.nome || '',
           adv_email: adv.email || '',
           adv_oab: adv.oab || '',
-          adv_cpf: adv.cpf || '',
-          adv_whatsapp: adv.whatsapp || '',
+          adv_cpf: maskCPF(adv.cpf || ''),
+          adv_whatsapp: maskPhone(adv.whatsapp || ''),
           fin_nome: fin.nome || '',
           fin_email: fin.email || '',
-          fin_whatsapp: fin.whatsapp || '',
+          fin_whatsapp: maskPhone(fin.whatsapp || ''),
           banco: bank.banco || '',
           conta_com_digito: bank.conta_com_digito || '',
           agencia: bank.agencia || '',
@@ -135,6 +142,35 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
 
     fetchParceiro()
   }, [parceiroId])
+
+  const handleCepChange = async (value: string) => {
+    const masked = maskCEP(value)
+    const digits = masked.replace(/\D/g, '')
+
+    setForm((prev) => ({ ...prev, cep: masked }))
+
+    if (digits.length !== 8) {
+      setCepPreenchido(false)
+      return
+    }
+
+    if (digits === lastCepFetched) return
+    setLastCepFetched(digits)
+
+    const data = await fetchCEPData(digits)
+    if (!data || data.erro) {
+      setCepPreenchido(false)
+      return
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      rua: data.logradouro || prev.rua,
+      cidade: data.localidade || prev.cidade,
+      estado: data.uf || prev.estado,
+    }))
+    setCepPreenchido(true)
+  }
 
   const submit = async () => {
     setError(null)
@@ -160,7 +196,8 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
 
       const body: any = {
         nome_escritorio: form.nome_escritorio,
-        cnpj: form.cnpj,
+        cnpj: onlyDigits(form.cnpj),
+        cep: onlyDigits(form.cep) || null,
         rua: form.rua || null,
         numero: form.numero || null,
         complemento: form.complemento || null,
@@ -170,12 +207,12 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
         adv_nome: form.adv_nome || null,
         adv_email: form.adv_email || null,
         adv_oab: form.adv_oab || null,
-        adv_cpf: form.adv_cpf || null,
-        adv_whatsapp: form.adv_whatsapp || null,
+        adv_cpf: onlyDigits(form.adv_cpf) || null,
+        adv_whatsapp: onlyDigits(form.adv_whatsapp) || null,
 
         fin_nome: form.fin_nome || null,
         fin_email: form.fin_email || null,
-        fin_whatsapp: form.fin_whatsapp || null,
+        fin_whatsapp: onlyDigits(form.fin_whatsapp) || null,
 
         banco: form.banco || null,
         conta_com_digito: form.conta_com_digito || null,
@@ -241,8 +278,9 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
       )}
 
       <Tabs defaultValue="dados-gerais" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="dados-gerais">Dados Gerais</TabsTrigger>
+          <TabsTrigger value="endereco">Endereço</TabsTrigger>
           <TabsTrigger value="advogado">Advogado</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
           <TabsTrigger value="bancarios">Bancários</TabsTrigger>
@@ -268,28 +306,81 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                   <Input
                     id="cnpj"
                     value={form.cnpj}
-                    onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                    maxLength={18}
+                    onChange={(e) => setForm({ ...form, cnpj: maskCNPJ(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="endereco">
+          <Card>
+            <CardHeader>
+              <CardTitle>Endereço (opcional)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cep">CEP</Label>
+                  <Input
+                    id="cep"
+                    value={form.cep}
+                    maxLength={9}
+                    onChange={(e) => handleCepChange(e.target.value)}
+                    placeholder="00000-000"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="rua">Rua</Label>
-                  <Input id="rua" value={form.rua} onChange={(e) => setForm({ ...form, rua: e.target.value })} />
+                  <Input
+                    id="rua"
+                    value={form.rua}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, rua: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="numero">Número</Label>
-                  <Input id="numero" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} />
+                  <Input
+                    id="numero"
+                    value={form.numero}
+                    onChange={(e) => setForm({ ...form, numero: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="complemento">Complemento</Label>
-                  <Input id="complemento" value={form.complemento} onChange={(e) => setForm({ ...form, complemento: e.target.value })} />
+                  <Input
+                    id="complemento"
+                    value={form.complemento}
+                    onChange={(e) => setForm({ ...form, complemento: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cidade">Cidade</Label>
-                  <Input id="cidade" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                  <Input
+                    id="cidade"
+                    value={form.cidade}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="estado">Estado (UF)</Label>
-                  <Input id="estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} />
+                  <Input
+                    id="estado"
+                    value={form.estado}
+                    maxLength={2}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -317,11 +408,22 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="adv_cpf">CPF</Label>
-                  <Input id="adv_cpf" value={form.adv_cpf} onChange={(e) => setForm({ ...form, adv_cpf: e.target.value })} />
+                  <Input
+                    id="adv_cpf"
+                    value={form.adv_cpf}
+                    maxLength={14}
+                    onChange={(e) => setForm({ ...form, adv_cpf: maskCPF(e.target.value) })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="adv_whatsapp">WhatsApp</Label>
-                  <Input id="adv_whatsapp" value={form.adv_whatsapp} onChange={(e) => setForm({ ...form, adv_whatsapp: e.target.value })} />
+                  <Input
+                    id="adv_whatsapp"
+                    value={form.adv_whatsapp}
+                    maxLength={15}
+                    onChange={(e) => setForm({ ...form, adv_whatsapp: maskPhone(e.target.value) })}
+                    placeholder="(00) 00000-0000"
+                  />
                 </div>
               </div>
             </CardContent>
@@ -345,7 +447,13 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="fin_whatsapp">WhatsApp</Label>
-                  <Input id="fin_whatsapp" value={form.fin_whatsapp} onChange={(e) => setForm({ ...form, fin_whatsapp: e.target.value })} />
+                  <Input
+                    id="fin_whatsapp"
+                    value={form.fin_whatsapp}
+                    maxLength={15}
+                    onChange={(e) => setForm({ ...form, fin_whatsapp: maskPhone(e.target.value) })}
+                    placeholder="(00) 00000-0000"
+                  />
                 </div>
               </div>
             </CardContent>
