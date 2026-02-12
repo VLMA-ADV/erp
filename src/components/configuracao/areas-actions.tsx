@@ -29,7 +29,7 @@ export default function AreasActions({
   const [loading, setLoading] = useState(false)
 
   const handleToggleStatus = async () => {
-    if (!confirm(`Tem certeza que deseja ${area.ativo ? 'desativar' : 'ativar'} esta área?`)) {
+    if (!confirm(`Tem certeza que deseja ${area.ativo ? 'desativar' : 'ativar'} este centro de custo?`)) {
       return
     }
 
@@ -57,14 +57,14 @@ export default function AreasActions({
       const data = await response.json()
 
       if (!response.ok) {
-        alert(data.error || 'Erro ao alterar status da área')
+        alert(data.error || 'Erro ao alterar status do centro de custo')
         return
       }
 
       onRefresh()
     } catch (error) {
       console.error('Error toggling status:', error)
-      alert('Erro ao alterar status da área')
+      alert('Erro ao alterar status do centro de custo')
     } finally {
       setLoading(false)
     }

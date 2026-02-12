@@ -2,6 +2,7 @@
 
 import AreasActions from './areas-actions'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { Table } from '@/components/ui/table'
 
 interface Area {
   id: string
@@ -25,7 +26,7 @@ export default function AreasTable({
 }: AreasTableProps) {
   const { hasPermission } = usePermissionsContext()
 
-  const canEdit = hasPermission('config.areas.write') || hasPermission('config.areas.*')
+  const canEdit = hasPermission('config.centro_custo.write') || hasPermission('config.centro_custo.*')
   const hasAnyAction = canEdit
 
   if (loading) {
@@ -43,7 +44,7 @@ export default function AreasTable({
   if (areas.length === 0) {
     return (
       <div className="rounded-md border p-8 text-center">
-        <p className="text-gray-500">Nenhuma área encontrada</p>
+        <p className="text-gray-500">Nenhum centro de custo encontrado</p>
       </div>
     )
   }
@@ -51,7 +52,7 @@ export default function AreasTable({
   return (
     <div className="space-y-4">
       <div className="rounded-md border overflow-x-auto">
-        <table className="w-full min-w-full">
+        <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -103,7 +104,7 @@ export default function AreasTable({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
     </div>
   )

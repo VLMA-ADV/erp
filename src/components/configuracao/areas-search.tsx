@@ -35,7 +35,7 @@ export default function AreasSearch({ onSearch }: AreasSearchProps) {
     <div className="w-full max-w-md">
       <Input
         type="text"
-        placeholder="Buscar por nome ou código..."
+        placeholder="Buscar centro de custo por nome ou código..."
         value={searchValue}
         onChange={handleChange}
       />

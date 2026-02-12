@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { validateCPF, formatCPF, validateOAB, formatPhone } from '@/lib/utils/validation'
 
@@ -169,7 +170,7 @@ export default function ColaboradorForm() {
 
           <div>
             <Label htmlFor="categoria">Categoria *</Label>
-            <select
+            <NativeSelect
               id="categoria"
               name="categoria"
               required
@@ -181,7 +182,7 @@ export default function ColaboradorForm() {
               <option value="advogado">Advogado</option>
               <option value="administrativo">Administrativo</option>
               <option value="estagiario">Estagiário</option>
-            </select>
+            </NativeSelect>
           </div>
 
           {formData.categoria === 'advogado' && (

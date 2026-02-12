@@ -16,9 +16,19 @@ const configuracaoMenuItems = [
     permission: 'config.cargos.read',
   },
   {
-    label: 'Áreas',
+    label: 'Centro de custo',
     href: '/configuracao/areas',
-    permission: 'config.areas.read',
+    permission: 'config.centro_custo.read',
+  },
+  {
+    label: 'Serviços',
+    href: '/configuracao/servicos',
+    permission: 'config.servicos.read',
+  },
+  {
+    label: 'Produtos',
+    href: '/configuracao/servicos-produtos',
+    permission: 'config.produtos.read',
   },
   {
     label: 'Segmentos Econômicos',

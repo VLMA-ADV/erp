@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MoneyInput } from '@/components/ui/money-input'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -311,7 +313,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tipo_documento">Tipo documento</Label>
-                  <select
+                  <NativeSelect
                     id="tipo_documento"
                     value={form.tipo_documento}
                     onChange={(e) => {
@@ -326,7 +328,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                   >
                     <option value="cpf">CPF</option>
                     <option value="cnpj">CNPJ</option>
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="space-y-2">
                   <Label>Serviço recorrente</Label>
@@ -344,13 +346,9 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                 {form.servico_recorrente && (
                   <div className="space-y-2">
                     <Label htmlFor="valor_recorrente">Valor recorrente *</Label>
-                    <Input
-                      id="valor_recorrente"
-                      type="number"
+                    <MoneyInput
                       value={form.valor_recorrente}
-                      onChange={(e) =>
-                        setForm({ ...form, valor_recorrente: e.target.value })
-                      }
+                      onValueChange={(value) => setForm({ ...form, valor_recorrente: value })}
                     />
                   </div>
                 )}

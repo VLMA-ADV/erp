@@ -25,8 +25,8 @@ export default function AreasList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingArea, setEditingArea] = useState<Area | null>(null)
 
-  const canWrite = hasPermission('config.areas.write') || hasPermission('config.areas.*')
-  const canRead = hasPermission('config.areas.read') || hasPermission('config.areas.*')
+  const canWrite = hasPermission('config.centro_custo.write') || hasPermission('config.centro_custo.*')
+  const canRead = hasPermission('config.centro_custo.read') || hasPermission('config.centro_custo.*')
 
   useEffect(() => {
     if (canRead) {
@@ -70,11 +70,11 @@ export default function AreasList() {
         setAreas(areasList)
       } else {
         const errorData = await response.json()
-        setError(errorData.error || 'Erro ao carregar áreas')
+        setError(errorData.error || 'Erro ao carregar centros de custo')
       }
     } catch (err) {
       console.error('Error fetching areas:', err)
-      setError('Erro ao carregar áreas')
+      setError('Erro ao carregar centros de custo')
     } finally {
       setLoading(false)
     }
@@ -110,7 +110,7 @@ export default function AreasList() {
   if (!canRead) {
     return (
       <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">Você não tem permissão para visualizar áreas</p>
+        <p className="text-sm text-red-800">Você não tem permissão para visualizar centros de custo</p>
       </div>
     )
   }
@@ -128,7 +128,7 @@ export default function AreasList() {
         {canWrite && (
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-2" />
-            Nova Área
+            Novo Centro de custo
           </Button>
         )}
       </div>

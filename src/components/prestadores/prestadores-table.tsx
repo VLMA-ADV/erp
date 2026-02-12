@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import PrestadoresActions from './prestadores-actions'
 import type { PrestadorListItem } from './prestadores-list'
+import { Table } from '@/components/ui/table'
+import { maskCpfCnpj } from '@/lib/utils/masks'
 
 export default function PrestadoresTable({
   items,
@@ -40,7 +42,7 @@ export default function PrestadoresTable({
 
   return (
     <div className="rounded-md border overflow-x-auto">
-      <table className="w-full min-w-full">
+      <Table className="w-full min-w-full">
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -74,7 +76,7 @@ export default function PrestadoresTable({
                 </Link>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {p.cpf_cnpj}
+                {maskCpfCnpj(p.cpf_cnpj || '', p.tipo_documento || undefined)}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {p.servico_recorrente ? `Sim (${p.valor_recorrente ?? '-'})` : 'Não'}
@@ -98,8 +100,7 @@ export default function PrestadoresTable({
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   )
 }
-

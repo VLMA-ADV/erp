@@ -7,6 +7,7 @@ import SidebarItem from './sidebar-item'
 import SidebarMenuPessoas from './sidebar-menu-pessoas'
 import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
 import { Button } from '@/components/ui/button'
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 
 const menuItems = [
   {
@@ -64,7 +65,7 @@ export default function SidebarClient() {
 
   if (loading) {
     return (
-      <aside className="w-64 border-r bg-gray-50 p-4 flex flex-col h-full">
+      <Sidebar>
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded mb-4"></div>
           <div className="space-y-2">
@@ -73,15 +74,9 @@ export default function SidebarClient() {
             ))}
           </div>
         </div>
-      </aside>
+      </Sidebar>
     )
   }
-
-  // Debug: mostrar permissões no console
-  console.log('SidebarClient - Current permissions:', permissions)
-  console.log('SidebarClient - Has dashboard.view:', hasPermission('dashboard.view'))
-  console.log('SidebarClient - Has people.colaboradores.read:', hasPermission('people.colaboradores.read'))
-  console.log('SidebarClient - Loading:', loading)
 
   // Se não houver permissões mas não estiver carregando, mostrar todos os itens (fallback temporário)
   const showAllItems = !loading && permissions.length === 0
@@ -89,21 +84,18 @@ export default function SidebarClient() {
   // Criar uma função hasPermission que sempre retorna true se showAllItems
   const checkPermission = (permission: string) => {
     if (showAllItems) {
-      console.log(`checkPermission(${permission}): true (showAllItems)`)
       return true
     }
-    const result = hasPermission(permission)
-    console.log(`checkPermission(${permission}): ${result}`)
-    return result
+    return hasPermission(permission)
   }
 
   return (
-    <aside className="w-64 border-r bg-gray-50 p-4 flex flex-col h-full">
-      <div className="mb-6">
+    <Sidebar>
+      <SidebarHeader>
         <h1 className="text-xl font-bold text-gray-900">ERP-VLMA</h1>
         <p className="text-sm text-gray-500">Versão 1.0.0</p>
-      </div>
-      <nav className="space-y-1 flex-1">
+      </SidebarHeader>
+      <SidebarContent>
         {/* Menu Pessoas (Expansível) */}
         <SidebarMenuPessoas pathname={pathname} hasPermission={checkPermission} />
 
@@ -126,10 +118,10 @@ export default function SidebarClient() {
             />
           )
         })}
-      </nav>
+      </SidebarContent>
       
       {/* Botão de Logout */}
-      <div className="mt-auto pt-4 border-t">
+      <SidebarFooter>
         <Button
           variant="outline"
           className="w-full"
@@ -137,7 +129,7 @@ export default function SidebarClient() {
         >
           Sair
         </Button>
-      </div>
-    </aside>
+      </SidebarFooter>
+    </Sidebar>
   )
 }

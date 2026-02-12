@@ -6,11 +6,13 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchCEPData } from '@/lib/utils/validation'
-import { maskCEP, maskCNPJ, maskPhone, onlyDigits } from '@/lib/utils/masks'
+import { maskCEP, maskCPF, maskCNPJ, maskPhone, onlyDigits } from '@/lib/utils/masks'
 
 type GrupoEconomico = { id: string; nome: string }
 type Segmento = { id: string; nome: string; ativo: boolean }
@@ -166,12 +168,20 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         const rf = (data.data?.responsaveis_financeiros || [])[0] || {}
         const clienteEstrangeiro = !!cliente.cliente_estrangeiro
 
+        const tipoCliente = (cliente.tipo || '') as ClientePayload['tipo']
+        const documentoMasked =
+          clienteEstrangeiro
+            ? ''
+            : tipoCliente === 'pessoa_fisica'
+              ? maskCPF(cliente.cnpj || '')
+              : maskCNPJ(cliente.cnpj || '')
+
         setForm({
           ...emptyPayload,
           nome: cliente.nome || '',
           cliente_estrangeiro: clienteEstrangeiro,
-          cnpj: clienteEstrangeiro ? '' : maskCNPJ(cliente.cnpj || ''),
-          tipo: cliente.tipo || '',
+          cnpj: documentoMasked,
+          tipo: tipoCliente,
           cep: maskCEP(cliente.cep || ''),
           rua: cliente.rua || '',
           numero: cliente.numero || '',
@@ -244,7 +254,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       return
     }
     if (!form.cliente_estrangeiro && !form.cnpj.trim()) {
-      setError('CNPJ é obrigatório para cliente não estrangeiro')
+      setError(form.tipo === 'pessoa_fisica' ? 'CPF é obrigatório para pessoa física' : 'CNPJ é obrigatório para cliente não estrangeiro')
       return
     }
 
@@ -371,49 +381,54 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 </div>
                 {!form.cliente_estrangeiro && (
                   <div className="space-y-2">
-                    <Label htmlFor="cnpj">CNPJ *</Label>
+                    <Label htmlFor="cnpj">{form.tipo === 'pessoa_fisica' ? 'CPF *' : 'CNPJ *'}</Label>
                     <Input
                       id="cnpj"
                       value={form.cnpj}
-                      maxLength={18}
-                      onChange={(e) => setForm({ ...form, cnpj: maskCNPJ(e.target.value) })}
+                      maxLength={form.tipo === 'pessoa_fisica' ? 14 : 18}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          cnpj: form.tipo === 'pessoa_fisica' ? maskCPF(e.target.value) : maskCNPJ(e.target.value),
+                        })
+                      }
                     />
                   </div>
                 )}
                 <div className="space-y-2">
                   <Label htmlFor="tipo">Tipo</Label>
-                  <select
+                  <NativeSelect
                     id="tipo"
                     value={form.tipo}
-                    onChange={(e) => setForm({ ...form, tipo: e.target.value as any })}
+                    onChange={(e) => {
+                      const tipo = e.target.value as ClientePayload['tipo']
+                      const documento = onlyDigits(form.cnpj || '')
+                      setForm({
+                        ...form,
+                        tipo,
+                        cnpj: tipo === 'pessoa_fisica' ? maskCPF(documento) : maskCNPJ(documento),
+                      })
+                    }}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option value="">Selecione...</option>
                     <option value="pessoa_fisica">Pessoa física</option>
                     <option value="pessoa_juridica">Pessoa jurídica</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="grupo">Grupo econômico</Label>
-                  <select
-                    id="grupo"
-                    value={form.grupo_economico_id}
-                    onChange={(e) =>
-                      setForm({ ...form, grupo_economico_id: e.target.value })
-                    }
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Sem grupo</option>
-                    {grupos.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.nome}
-                      </option>
-                    ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="regime">Regime fiscal</Label>
-                  <Input id="regime" value={form.regime_fiscal} onChange={(e) => setForm({ ...form, regime_fiscal: e.target.value })} />
+                  <NativeSelect
+                    id="regime"
+                    value={form.regime_fiscal}
+                    onChange={(e) => setForm({ ...form, regime_fiscal: e.target.value })}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="Simples Nacional">Simples Nacional</option>
+                    <option value="Lucro Real">Lucro Real</option>
+                    <option value="Lucro Presumido">Lucro Presumido</option>
+                  </NativeSelect>
                 </div>
               </div>
             </CardContent>
@@ -491,13 +506,35 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
+                <h2 className="text-base font-semibold">Grupo econômico (opcional)</h2>
+                <div className="mt-4 max-w-md space-y-2">
+                  <Label htmlFor="grupo">Grupo econômico</Label>
+                  <NativeSelect
+                    id="grupo"
+                    value={form.grupo_economico_id}
+                    onChange={(e) =>
+                      setForm({ ...form, grupo_economico_id: e.target.value })
+                    }
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Sem grupo</option>
+                    {grupos.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.nome}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              </div>
+
+              <div>
                 <h2 className="text-base font-semibold">Segmentos econômicos (opcional)</h2>
                 {segmentosAtivos.length > 0 ? (
                   <div className="mt-4 space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="segmento_id">Segmento econômico</Label>
-                        <select
+                        <NativeSelect
                           id="segmento_id"
                           value={selectedSegmentoId}
                           onChange={(e) => {
@@ -515,7 +552,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                               {s.nome}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </div>
                     </div>
                   </div>
@@ -536,7 +573,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 <h2 className="text-base font-semibold">Observações</h2>
                 <div className="mt-4 space-y-2">
                   <Label htmlFor="obs">Observações</Label>
-                  <textarea
+                  <Textarea
                     id="obs"
                     value={form.observacoes}
                     onChange={(e) => setForm({ ...form, observacoes: e.target.value })}

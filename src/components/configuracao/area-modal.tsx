@@ -86,7 +86,7 @@ export default function AreaModal({
       const data = await response.json()
 
       if (!response.ok) {
-        onError(data.error || `Erro ao ${area ? 'atualizar' : 'criar'} área`)
+        onError(data.error || `Erro ao ${area ? 'atualizar' : 'criar'} centro de custo`)
         return
       }
 
@@ -94,7 +94,7 @@ export default function AreaModal({
       onSuccess()
     } catch (err) {
       console.error('Error saving area:', err)
-      onError(`Erro ao ${area ? 'atualizar' : 'criar'} área`)
+      onError(`Erro ao ${area ? 'atualizar' : 'criar'} centro de custo`)
     } finally {
       setLoading(false)
     }
@@ -104,7 +104,7 @@ export default function AreaModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{area ? 'Editar Área' : 'Nova Área'}</DialogTitle>
+          <DialogTitle>{area ? 'Editar Centro de custo' : 'Novo Centro de custo'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">

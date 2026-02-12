@@ -2,6 +2,7 @@
 
 import GruposEconomicosActions from './grupos-economicos-actions'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { Table } from '@/components/ui/table'
 
 interface GrupoEconomico {
   id: string
@@ -50,7 +51,7 @@ export default function GruposEconomicosTable({
   return (
     <div className="space-y-4">
       <div className="rounded-md border overflow-x-auto">
-        <table className="w-full min-w-full">
+        <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -96,7 +97,7 @@ export default function GruposEconomicosTable({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
     </div>
   )

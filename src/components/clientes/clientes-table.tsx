@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import ClientesActions from './clientes-actions'
 import type { ClienteListItem } from './clientes-list'
+import { Table } from '@/components/ui/table'
+import { maskCpfCnpj } from '@/lib/utils/masks'
 
 export default function ClientesTable({
   items,
@@ -39,7 +41,7 @@ export default function ClientesTable({
 
   return (
     <div className="rounded-md border overflow-x-auto">
-      <table className="w-full min-w-full">
+      <Table className="w-full min-w-full">
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -73,7 +75,12 @@ export default function ClientesTable({
                 </Link>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {c.cnpj || '-'}
+                {c.cnpj
+                  ? maskCpfCnpj(
+                      c.cnpj,
+                      c.tipo === 'pessoa_fisica' ? 'cpf' : c.tipo === 'pessoa_juridica' ? 'cnpj' : undefined,
+                    )
+                  : '-'}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {c.cliente_estrangeiro ? 'Sim' : 'Não'}
@@ -97,8 +104,7 @@ export default function ClientesTable({
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   )
 }
-

@@ -1,0 +1,232 @@
+'use client'
+
+import { Fragment, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import ContratosActions from './contratos-actions'
+import CasosActions from './casos-actions'
+import type { ContratoListItem } from './types'
+import { Table } from '@/components/ui/table'
+
+export default function ContratosList() {
+  const { hasPermission } = usePermissionsContext()
+  const canRead = hasPermission('contracts.contratos.read') || hasPermission('contracts.contratos.*') || hasPermission('contracts.*')
+  const canWrite = hasPermission('contracts.contratos.write') || hasPermission('contracts.contratos.*') || hasPermission('contracts.*')
+
+  const [items, setItems] = useState<ContratoListItem[]>([])
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  const fetchItems = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await resp.json()
+      if (!resp.ok) {
+        setError(data.error || 'Erro ao carregar contratos')
+        return
+      }
+
+      let list = (data.data || []) as ContratoListItem[]
+      if (search.trim()) {
+        const s = search.toLowerCase()
+        list = list.filter((c) =>
+          String(c.numero || '').includes(s) ||
+          c.nome_contrato.toLowerCase().includes(s) ||
+          c.cliente_nome.toLowerCase().includes(s) ||
+          c.casos?.some((caso) => String(caso.numero || '').includes(s) || caso.nome.toLowerCase().includes(s)),
+        )
+      }
+      setItems(list)
+    } catch (e) {
+      console.error(e)
+      setError('Erro ao carregar contratos')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (canRead) fetchItems()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRead])
+
+  useEffect(() => {
+    if (canRead) fetchItems()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  if (!canRead) {
+    return (
+      <div className="rounded-md bg-red-50 p-4">
+        <p className="text-sm text-red-800">Você não tem permissão para visualizar contratos</p>
+      </div>
+    )
+  }
+
+  const statusPill = (status: string) => {
+    if (status === 'ativo') return 'bg-green-100 text-green-800'
+    if (status === 'encerrado') return 'bg-red-100 text-red-800'
+    return 'bg-yellow-100 text-yellow-800'
+  }
+
+  const caseStatusPill = (status: string) => {
+    if (status === 'ativo') return 'bg-green-100 text-green-800'
+    if (status === 'inativo') return 'bg-red-100 text-red-800'
+    return 'bg-yellow-100 text-yellow-800'
+  }
+
+  return (
+    <div className="space-y-4">
+      {error && <div className="rounded-md bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+
+      <div className="flex items-center justify-between gap-3">
+        <Input
+          className="max-w-md"
+          placeholder="Buscar contrato, cliente ou caso..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+
+        {canWrite && (
+          <Link href="/contratos/novo">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Novo contrato
+            </Button>
+          </Link>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="rounded-md border p-4">
+          <div className="animate-pulse space-y-4">
+            {[1, 2, 3].map((i) => <div key={i} className="h-12 rounded bg-gray-200" />)}
+          </div>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-md border p-8 text-center text-gray-500">Nenhum contrato encontrado</div>
+      ) : (
+        <div className="rounded-md border overflow-x-auto">
+          <Table className="w-full min-w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="w-10 px-3 py-3" />
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contrato</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Casos</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {items.map((item) => {
+                const isOpen = !!expanded[item.id]
+
+                return (
+                  <Fragment key={item.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-3 py-4">
+                        <button
+                          className="rounded p-1 hover:bg-gray-100"
+                          onClick={() => setExpanded((prev) => ({ ...prev, [item.id]: !isOpen }))}
+                        >
+                          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.numero || '-'} - {item.nome_contrato}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.cliente_nome}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusPill(item.status)}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.casos?.length || 0}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <ContratosActions
+                          contratoId={item.id}
+                          status={item.status}
+                          canWrite={canWrite}
+                          onRefresh={fetchItems}
+                        />
+                      </td>
+                    </tr>
+
+                    {isOpen && (
+                      <tr className="bg-gray-50/40">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="rounded-md border bg-white overflow-hidden">
+                            <Table className="w-full min-w-full">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Caso</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produto</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Responsável</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {item.casos?.length ? (
+                                  item.casos.map((caso) => (
+                                    <tr key={caso.id}>
+                                      <td className="px-4 py-3 text-sm text-gray-900">{caso.numero || '-'} - {caso.nome}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-700">{caso.produto_nome || '-'}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-700">{caso.responsavel_nome || '-'}</td>
+                                      <td className="px-4 py-3 text-sm">
+                                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${caseStatusPill(caso.status || 'rascunho')}`}>
+                                          {caso.status || 'rascunho'}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3 text-right">
+                                        <CasosActions
+                                          contratoId={item.id}
+                                          casoId={caso.id}
+                                          status={caso.status || 'ativo'}
+                                          canWrite={canWrite}
+                                          onRefresh={fetchItems}
+                                        />
+                                      </td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                                      Nenhum caso cadastrado para este contrato
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </Table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}

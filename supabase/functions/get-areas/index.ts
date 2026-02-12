@@ -65,10 +65,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const requiredPermission = 'config.areas.read';
+    const requiredPermission = 'config.centro_custo.read';
     const hasPermission = permissionsData?.some((p: any) => 
       p.permission_key === requiredPermission ||
-      p.permission_key === 'config.areas.*' ||
+      p.permission_key === 'config.centro_custo.*' ||
       p.permission_key === 'config.*' ||
       p.permission_key === '*'
     );

@@ -2,6 +2,7 @@
 
 import RolesActions from './roles-actions'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { Table } from '@/components/ui/table'
 
 interface Role {
   id: string
@@ -54,7 +55,7 @@ export default function RolesTable({
   return (
     <div className="space-y-4">
       <div className="rounded-md border overflow-x-auto">
-        <table className="w-full min-w-full">
+        <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -108,7 +109,7 @@ export default function RolesTable({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
     </div>
   )

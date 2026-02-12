@@ -271,7 +271,7 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                 )}
                 {colaborador.areas && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Área</p>
+                    <p className="text-sm font-medium text-gray-500">Centro de custo</p>
                     <p className="text-sm">{colaborador.areas.nome}</p>
                   </div>
                 )}

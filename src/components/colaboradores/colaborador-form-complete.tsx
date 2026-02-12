@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { validateCPF, formatCPF, validateOAB, formatPhone, formatCEP, fetchCEPData } from '@/lib/utils/validation'
@@ -327,7 +328,7 @@ export default function ColaboradorFormComplete() {
         isLoading={true}
         currentStep={0}
         totalSteps={4}
-        stepLabels={['Carregando cargos', 'Carregando áreas', 'Carregando roles', 'Carregando permissões']}
+        stepLabels={['Carregando cargos', 'Carregando centros de custo', 'Carregando roles', 'Carregando permissões']}
         message="Preparando formulário..."
       />
     )
@@ -419,7 +420,7 @@ export default function ColaboradorFormComplete() {
 
                 <div>
                   <Label htmlFor="categoria">Categoria *</Label>
-                  <select
+                  <NativeSelect
                     id="categoria"
                     name="categoria"
                     required
@@ -431,7 +432,7 @@ export default function ColaboradorFormComplete() {
                     <option value="advogado">Advogado</option>
                     <option value="administrativo">Administrativo</option>
                     <option value="estagiario">Estagiário</option>
-                  </select>
+                  </NativeSelect>
                 </div>
 
                 {dadosPessoais.categoria === 'advogado' && (
@@ -547,7 +548,7 @@ export default function ColaboradorFormComplete() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="cargo_id">Cargo *</Label>
-                  <select
+                  <NativeSelect
                     id="cargo_id"
                     name="cargo_id"
                     required
@@ -561,30 +562,30 @@ export default function ColaboradorFormComplete() {
                         {cargo.nome}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
 
                 <div>
-                  <Label htmlFor="area_id">Área</Label>
-                  <select
+                  <Label htmlFor="area_id">Centro de custo</Label>
+                  <NativeSelect
                     id="area_id"
                     name="area_id"
                     value={profissional.area_id}
                     onChange={handleProfissionalChange}
                     className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
-                    <option value="">Selecione uma área</option>
+                    <option value="">Selecione um centro de custo</option>
                     {areas.map((area) => (
                       <option key={area.id} value={area.id}>
                         {area.nome}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
 
                 <div>
                   <Label htmlFor="adicional">Adicional</Label>
-                  <select
+                  <NativeSelect
                     id="adicional"
                     name="adicional"
                     value={profissional.adicional}
@@ -594,7 +595,7 @@ export default function ColaboradorFormComplete() {
                     <option value="">Nenhum</option>
                     <option value="lideranca">Liderança</option>
                     <option value="estrategico">Estratégico</option>
-                  </select>
+                  </NativeSelect>
                 </div>
 
                 {profissional.adicional && (

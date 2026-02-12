@@ -15,8 +15,8 @@ export default async function AreasPage() {
   return (
     <div className="container mx-auto py-10">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Áreas</h1>
-        <p className="mt-2 text-gray-600">Gerencie as áreas de atuação da empresa</p>
+        <h1 className="text-3xl font-bold">Centro de custo</h1>
+        <p className="mt-2 text-gray-600">Gerencie os centros de custo da empresa</p>
       </div>
       <AreasList />
     </div>
