@@ -396,39 +396,53 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="tipo">Tipo</Label>
-                  <NativeSelect
-                    id="tipo"
-                    value={form.tipo}
-                    onChange={(e) => {
-                      const tipo = e.target.value as ClientePayload['tipo']
-                      const documento = onlyDigits(form.cnpj || '')
-                      setForm({
-                        ...form,
-                        tipo,
-                        cnpj: tipo === 'pessoa_fisica' ? maskCPF(documento) : maskCNPJ(documento),
-                      })
-                    }}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    <option value="pessoa_fisica">Pessoa física</option>
-                    <option value="pessoa_juridica">Pessoa jurídica</option>
-                  </NativeSelect>
+                  <Label>Tipo</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'pessoa_fisica', label: 'Pessoa física' },
+                      { value: 'pessoa_juridica', label: 'Pessoa jurídica' },
+                    ].map((item) => {
+                      const active = form.tipo === item.value
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() => {
+                            const tipo = item.value as ClientePayload['tipo']
+                            const documento = onlyDigits(form.cnpj || '')
+                            setForm({
+                              ...form,
+                              tipo,
+                              cnpj: tipo === 'pessoa_fisica' ? maskCPF(documento) : maskCNPJ(documento),
+                            })
+                          }}
+                        >
+                          {item.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="regime">Regime fiscal</Label>
-                  <NativeSelect
-                    id="regime"
-                    value={form.regime_fiscal}
-                    onChange={(e) => setForm({ ...form, regime_fiscal: e.target.value })}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    <option value="Simples Nacional">Simples Nacional</option>
-                    <option value="Lucro Real">Lucro Real</option>
-                    <option value="Lucro Presumido">Lucro Presumido</option>
-                  </NativeSelect>
+                  <Label>Regime fiscal</Label>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {['Simples Nacional', 'Lucro Real', 'Lucro Presumido'].map((regime) => {
+                      const active = form.regime_fiscal === regime
+                      return (
+                        <Button
+                          key={regime}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() => setForm({ ...form, regime_fiscal: regime })}
+                        >
+                          {regime}
+                        </Button>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             </CardContent>

@@ -20,6 +20,7 @@ type PrestadorPayload = {
   tipo_documento: 'cpf' | 'cnpj'
   servico_recorrente: boolean
   valor_recorrente: string
+  categoria_prestador_parceiro_id: string
   cep: string
   rua: string
   numero: string
@@ -41,6 +42,7 @@ const emptyPayload: PrestadorPayload = {
   tipo_documento: 'cnpj',
   servico_recorrente: false,
   valor_recorrente: '',
+  categoria_prestador_parceiro_id: '',
   cep: '',
   rua: '',
   numero: '',
@@ -69,6 +71,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
   const [form, setForm] = useState<PrestadorPayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
   const [lastCepFetched, setLastCepFetched] = useState<string>('')
+  const [categoriasOptions, setCategoriasOptions] = useState<Array<{ id: string; nome: string }>>([])
 
   const isEdit = useMemo(() => !!prestadorId, [prestadorId])
 
@@ -115,6 +118,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
             prestador.valor_recorrente !== null && prestador.valor_recorrente !== undefined
               ? String(prestador.valor_recorrente)
               : '',
+          categoria_prestador_parceiro_id: prestador.categoria_prestador_parceiro_id || '',
           cep: maskCEP(prestador.cep || ''),
           rua: prestador.rua || '',
           numero: prestador.numero || '',
@@ -139,6 +143,34 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
 
     fetchPrestador()
   }, [prestadorId])
+
+  useEffect(() => {
+    const fetchCategorias = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const resp = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-categorias-prestadores-parceiros`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        )
+        const data = await resp.json()
+        if (!resp.ok) return
+        setCategoriasOptions((data.data || []).filter((item: any) => item.ativo !== false))
+      } catch (e) {
+        console.error(e)
+      }
+    }
+
+    fetchCategorias()
+  }, [])
 
   const handleCepChange = async (value: string) => {
     const masked = maskCEP(value)
@@ -215,6 +247,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         agencia: form.agencia || null,
         chave_pix: form.chave_pix || null,
         categoria_servico_id: null,
+        categoria_prestador_parceiro_id: form.categoria_prestador_parceiro_id || null,
       }
       if (isEdit) body.id = prestadorId
 
@@ -313,21 +346,48 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tipo_documento">Tipo documento</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'cpf', label: 'CPF' },
+                      { value: 'cnpj', label: 'CNPJ' },
+                    ].map((item) => {
+                      const active = form.tipo_documento === item.value
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          onClick={() => {
+                            const next = item.value as 'cpf' | 'cnpj'
+                            setForm((prev) => ({
+                              ...prev,
+                              tipo_documento: next,
+                              cpf_cnpj: maskCpfCnpj(prev.cpf_cnpj, next),
+                            }))
+                          }}
+                        >
+                          {item.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="categoria_prestador_parceiro_id">Categoria</Label>
                   <NativeSelect
-                    id="tipo_documento"
-                    value={form.tipo_documento}
-                    onChange={(e) => {
-                      const next = e.target.value as any
-                      setForm((prev) => ({
-                        ...prev,
-                        tipo_documento: next,
-                        cpf_cnpj: maskCpfCnpj(prev.cpf_cnpj, next),
-                      }))
-                    }}
+                    id="categoria_prestador_parceiro_id"
+                    value={form.categoria_prestador_parceiro_id}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, categoria_prestador_parceiro_id: e.target.value }))
+                    }
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
-                    <option value="cpf">CPF</option>
-                    <option value="cnpj">CNPJ</option>
+                    <option value="">Selecione...</option>
+                    {categoriasOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nome}
+                      </option>
+                    ))}
                   </NativeSelect>
                 </div>
                 <div className="space-y-2">

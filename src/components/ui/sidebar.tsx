@@ -2,7 +2,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils/cn'
 
 const Sidebar = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement>>(({ className, ...props }, ref) => (
-  <aside ref={ref} className={cn('flex h-full min-h-0 w-64 flex-col border-r bg-gray-50 p-4', className)} {...props} />
+  <aside ref={ref} className={cn('sticky top-0 flex h-screen min-h-0 w-64 flex-col overflow-hidden border-r bg-gray-50 p-4', className)} {...props} />
 ))
 Sidebar.displayName = 'Sidebar'
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { NativeSelect } from '@/components/ui/native-select'
+import { CommandSelect } from '@/components/ui/command-select'
 
 interface OptionItem {
   value: string
@@ -113,14 +113,15 @@ export default function RateioSlider({
       </div>
 
       <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
-        <NativeSelect value={newItemId} onChange={(e) => setNewItemId(e.target.value)} disabled={disabled}>
-          <option value="">Selecione para adicionar...</option>
-          {availableToAdd.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </NativeSelect>
+        <CommandSelect
+          value={newItemId}
+          onValueChange={(value) => setNewItemId(value)}
+          options={availableToAdd}
+          placeholder="Selecione para adicionar..."
+          searchPlaceholder="Buscar..."
+          emptyText="Nenhuma opção encontrada."
+          disabled={disabled}
+        />
         <Button type="button" variant="outline" onClick={addItem} disabled={disabled || !newItemId}>
           Adicionar
         </Button>

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -15,6 +16,7 @@ import { maskCEP, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/utils/m
 type ParceiroPayload = {
   nome_escritorio: string
   cnpj: string
+  categoria_prestador_parceiro_id: string
   cep: string
   rua: string
   numero: string
@@ -41,6 +43,7 @@ type ParceiroPayload = {
 const emptyPayload: ParceiroPayload = {
   nome_escritorio: '',
   cnpj: '',
+  categoria_prestador_parceiro_id: '',
   cep: '',
   rua: '',
   numero: '',
@@ -74,6 +77,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
   const [form, setForm] = useState<ParceiroPayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
   const [lastCepFetched, setLastCepFetched] = useState<string>('')
+  const [categoriasOptions, setCategoriasOptions] = useState<Array<{ id: string; nome: string }>>([])
 
   const isEdit = useMemo(() => !!parceiroId, [parceiroId])
 
@@ -113,6 +117,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
           ...emptyPayload,
           nome_escritorio: parceiro.nome_escritorio || '',
           cnpj: maskCNPJ(parceiro.cnpj || ''),
+          categoria_prestador_parceiro_id: parceiro.categoria_prestador_parceiro_id || '',
           cep: maskCEP(parceiro.cep || ''),
           rua: parceiro.rua || '',
           numero: parceiro.numero || '',
@@ -142,6 +147,33 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
 
     fetchParceiro()
   }, [parceiroId])
+
+  useEffect(() => {
+    const fetchCategorias = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const resp = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-categorias-prestadores-parceiros`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        )
+        const data = await resp.json()
+        if (!resp.ok) return
+        setCategoriasOptions((data.data || []).filter((item: any) => item.ativo !== false))
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    fetchCategorias()
+  }, [])
 
   const handleCepChange = async (value: string) => {
     const masked = maskCEP(value)
@@ -197,6 +229,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
       const body: any = {
         nome_escritorio: form.nome_escritorio,
         cnpj: onlyDigits(form.cnpj),
+        categoria_prestador_parceiro_id: form.categoria_prestador_parceiro_id || null,
         cep: onlyDigits(form.cep) || null,
         rua: form.rua || null,
         numero: form.numero || null,
@@ -309,6 +342,24 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                     maxLength={18}
                     onChange={(e) => setForm({ ...form, cnpj: maskCNPJ(e.target.value) })}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="categoria_prestador_parceiro_id">Categoria</Label>
+                  <NativeSelect
+                    id="categoria_prestador_parceiro_id"
+                    value={form.categoria_prestador_parceiro_id}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, categoria_prestador_parceiro_id: e.target.value }))
+                    }
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    {categoriasOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nome}
+                      </option>
+                    ))}
+                  </NativeSelect>
                 </div>
               </div>
             </CardContent>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, CircleDollarSign, Clock3, HandCoins, Landmark, Layers3, Paperclip, Trash2 } from 'lucide-react'
+import { ChevronRight, CircleDollarSign, Clock3, Eye, HandCoins, Landmark, Layers3, Paperclip, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,7 @@ import type { CasoPayload, ContratoFormOptions } from './types'
 
 const emptyCaso: CasoPayload = {
   nome: '',
+  servico_id: '',
   produto_id: '',
   responsavel_id: '',
   moeda: 'real',
@@ -42,10 +43,12 @@ const emptyCaso: CasoPayload = {
     tabela_preco_nome: '',
     tabela_preco_itens: [],
     cap_enabled: false,
+    cap_limites_enabled: false,
     cap_tipo: 'hora',
     cap_min: '',
     cap_max: '',
     cobra_excedente: false,
+    encontro_contas_enabled: false,
     encontro_periodicidade: 'mensal',
     data_proximo_encontro: '',
     data_ultimo_encontro: '',
@@ -143,6 +146,22 @@ function buildNextDate(base: string, months: number, dayOfMonth?: number): strin
   return formatDateToInput(target)
 }
 
+function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+
+  if (!normalized) return ''
+  if (normalized === 'hora_com_cap') return 'hora'
+  if (normalized === 'projeto_parcelado') return 'projeto'
+  if (normalized === 'exito') return 'exito'
+  if (normalized === 'mensalidade_de_processo') return 'mensalidade_processo'
+  return normalized as CasoPayload['regra_cobranca']
+}
+
 export default function CasoForm({
   contratoId,
   casoId,
@@ -173,7 +192,6 @@ export default function CasoForm({
   })
   const [dayModalOpen, setDayModalOpen] = useState(false)
   const [manualReajusteDate, setManualReajusteDate] = useState(false)
-  const [manualEncontroDate, setManualEncontroDate] = useState(false)
   const [priceTableCatalog, setPriceTableCatalog] = useState<TabelaPrecoCatalog[]>([])
   const [creatingPriceTable, setCreatingPriceTable] = useState(false)
   const [newPriceTableName, setNewPriceTableName] = useState('')
@@ -183,6 +201,8 @@ export default function CasoForm({
   const [caseAnexos, setCaseAnexos] = useState<CasoAnexoItem[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [removingAnexoId, setRemovingAnexoId] = useState<string | null>(null)
+  const [dragRevisorIndex, setDragRevisorIndex] = useState<number | null>(null)
+  const [dragAprovadorIndex, setDragAprovadorIndex] = useState<number | null>(null)
 
   const isEdit = !!casoId
   const isReadOnly = viewOnly || !canWrite
@@ -193,12 +213,26 @@ export default function CasoForm({
   const timesheet = form.timesheet_config || {}
   const indicacao = form.indicacao_config || {}
   const modoPreco = regras.modo_preco || (regras.tabela_preco_id || regras.tabela_preco_nome ? 'tabela' : 'valor_hora')
+  const capMinEnabled = Boolean(
+    regras.cap_min_enabled ??
+      regras.cap_limites_enabled ??
+      (regras.cap_min !== null && regras.cap_min !== undefined && String(regras.cap_min).trim() !== ''),
+  )
+  const capMaxEnabled = Boolean(
+    regras.cap_max_enabled ??
+      regras.cap_limites_enabled ??
+      (regras.cap_max !== null && regras.cap_max !== undefined && String(regras.cap_max).trim() !== ''),
+  )
   const despesasSelecionadas: string[] = despesas.despesas_reembolsaveis || []
   const despesasReembolsaveisEnabled =
     Boolean((despesas as any).reembolsavel_ativo) || (despesasSelecionadas.length > 0 && !despesasSelecionadas.includes('nao'))
   const clienteOptions = useMemo(
     () => (options.clientes || []).map((item) => ({ value: item.id, label: item.nome })),
     [options.clientes],
+  )
+  const servicoOptions = useMemo(
+    () => (options.servicos || []).map((item) => ({ value: item.id, label: item.nome })),
+    [options.servicos],
   )
   const centroOptions = useMemo(
     () => (options.centros_custo || []).map((item) => ({ value: item.id, label: item.nome })),
@@ -211,6 +245,20 @@ export default function CasoForm({
   const colaboradorOptions = useMemo(
     () => (options.colaboradores || []).map((item) => ({ value: item.id, label: item.nome })),
     [options.colaboradores],
+  )
+  const indicacaoOptions = useMemo(
+    () => [
+      { value: 'nao', label: 'Não' },
+      ...(options.colaboradores || []).map((p) => ({
+        value: `colaborador:${p.id}`,
+        label: `${p.nome} (Colaborador)`,
+      })),
+      ...(options.clientes || []).map((p) => ({
+        value: `cliente:${p.id}`,
+        label: `${p.nome} (Cliente)`,
+      })),
+    ],
+    [options.colaboradores, options.clientes],
   )
   const produtoMap = useMemo(() => new Map((options.produtos || []).map((item) => [item.id, item.nome])), [options.produtos])
   const colaboradorMap = useMemo(() => new Map((options.colaboradores || []).map((item) => [item.id, item.nome])), [options.colaboradores])
@@ -289,6 +337,30 @@ export default function CasoForm({
           socios: [],
           tabelas_preco: [],
         }
+
+        if (!Array.isArray(nextOptions.cargos) || nextOptions.cargos.length === 0) {
+          try {
+            const cargosResp = await fetch(
+              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-cargos`,
+              {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+              },
+            )
+            const cargosData = await cargosResp.json()
+            if (cargosResp.ok && Array.isArray(cargosData.data)) {
+              nextOptions.cargos = cargosData.data
+                .filter((item: any) => item?.ativo !== false)
+                .map((item: any) => ({ id: item.id, nome: item.nome }))
+            }
+          } catch (cargosError) {
+            console.error('Fallback de cargos falhou', cargosError)
+          }
+        }
+
         setOptions(nextOptions)
         setPriceTableCatalog(
           (nextOptions.tabelas_preco || []).map((table: any) => ({
@@ -325,8 +397,8 @@ export default function CasoForm({
             data_proximo_reajuste: caso.data_proximo_reajuste || '',
             data_ultimo_reajuste: caso.data_ultimo_reajuste || '',
             indice_reajuste: caso.indice_reajuste || '',
-            regra_cobranca: caso.regra_cobranca || '',
-            regra_cobranca_config: caso.regra_cobranca_config || emptyCaso.regra_cobranca_config,
+            regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca || ''),
+            regra_cobranca_config: { ...emptyCaso.regra_cobranca_config, ...(caso.regra_cobranca_config || {}) },
             centro_custo_rateio: caso.centro_custo_rateio || [],
             pagadores_servico: caso.pagadores_servico || [],
             despesas_config: caso.despesas_config || emptyCaso.despesas_config,
@@ -364,27 +436,44 @@ export default function CasoForm({
   }, [form.periodo_reajuste, form.inicio_vigencia, form.data_ultimo_reajuste, manualReajusteDate])
 
   useEffect(() => {
-    if (manualEncontroDate) return
-    const periodicidade = form.regra_cobranca_config?.encontro_periodicidade || 'mensal'
-    const months = periodToMonths[periodicidade] || 1
-    const day = Number(form.pagamento_dia_mes || '0') || undefined
+    setForm((prev) => {
+      const regras = { ...(prev.regra_cobranca_config || {}) }
+      let changed = false
+      const inicioVigencia = prev.inicio_vigencia || ''
 
-    const base = form.regra_cobranca_config?.data_ultimo_encontro || form.data_inicio_faturamento
-    if (!base) return
+      if ((regras.data_ultimo_encontro || '') !== inicioVigencia) {
+        regras.data_ultimo_encontro = inicioVigencia
+        changed = true
+      }
 
-    setForm((prev) => ({
-      ...prev,
-      regra_cobranca_config: {
-        ...prev.regra_cobranca_config,
-        data_proximo_encontro: buildNextDate(base, months, day),
-      },
-    }))
+      if (!regras.encontro_contas_enabled) {
+        if (regras.data_proximo_encontro) {
+          regras.data_proximo_encontro = ''
+          changed = true
+        }
+      } else if (regras.encontro_periodicidade && regras.data_ultimo_encontro) {
+        const months = periodToMonths[regras.encontro_periodicidade] || 0
+        if (months > 0) {
+          const day = Number(prev.pagamento_dia_mes || '0') || undefined
+          const calculated = buildNextDate(regras.data_ultimo_encontro, months, day)
+          if (!isEdit || !regras.data_proximo_encontro) {
+            if ((regras.data_proximo_encontro || '') !== calculated) {
+              regras.data_proximo_encontro = calculated
+              changed = true
+            }
+          }
+        }
+      }
+
+      if (!changed) return prev
+      return { ...prev, regra_cobranca_config: regras }
+    })
   }, [
+    form.inicio_vigencia,
     form.pagamento_dia_mes,
-    form.data_inicio_faturamento,
+    form.regra_cobranca_config?.encontro_contas_enabled,
     form.regra_cobranca_config?.encontro_periodicidade,
-    form.regra_cobranca_config?.data_ultimo_encontro,
-    manualEncontroDate,
+    isEdit,
   ])
 
   const setField = <K extends keyof CasoPayload>(key: K, value: CasoPayload[K]) => {
@@ -514,6 +603,16 @@ export default function CasoForm({
     setTimesheet('aprovadores', [...aprovadores, { colaborador_id: '', ordem: aprovadores.length + 1 }])
   }
 
+  const reorderTimeList = (field: 'revisores' | 'aprovadores', fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    const current = [...((form.timesheet_config as any)?.[field] || [])]
+    if (!current[fromIndex] || !current[toIndex]) return
+    const [moved] = current.splice(fromIndex, 1)
+    current.splice(toIndex, 0, moved)
+    const normalized = current.map((entry: any, idx: number) => ({ ...entry, ordem: idx + 1 }))
+    setTimesheet(field, normalized)
+  }
+
   const chooseDay = (day: number) => {
     setField('pagamento_dia_mes', String(day))
     setDayModalOpen(false)
@@ -585,6 +684,7 @@ export default function CasoForm({
         itens: saved.itens || itens,
       }
       upsertPriceTableCatalog(savedTable)
+      setRegra('modo_preco', 'tabela')
       setRegra('tabela_preco_id', savedTable.id || '')
       setRegra('tabela_preco_nome', savedTable.nome)
       setRegra('tabela_preco_itens', savedTable.itens)
@@ -617,6 +717,39 @@ export default function CasoForm({
     return value
   }
 
+  const validateFinanceiro = (): string | null => {
+    if (!form.tipo_cobranca_documento) return 'Tipo de cobrança é obrigatório'
+    if (!form.regra_cobranca) return 'Regra de cobrança é obrigatória'
+
+    if (form.regra_cobranca === 'hora') {
+      if (modoPreco === 'valor_hora' && !String(regras.valor_hora || '').trim()) {
+        return 'Informe o valor da hora'
+      }
+      if (modoPreco === 'valor_hora' && regras.cobra_excedente && !String(regras.valor_hora_excedente || '').trim()) {
+        return 'Informe o valor da hora excedente'
+      }
+      if (modoPreco === 'tabela' && !String(regras.tabela_preco_id || regras.tabela_preco_nome || '').trim()) {
+        return 'Selecione uma tabela de preço'
+      }
+      if (regras.cap_enabled && regras.encontro_contas_enabled && !String(regras.encontro_periodicidade || '').trim()) {
+        return 'Selecione a periodicidade do encontro de contas'
+      }
+    }
+
+    if (form.regra_cobranca === 'mensalidade_processo' && !String(regras.valor_mensal || '').trim()) {
+      return 'Informe o valor mensal da mensalidade de processo'
+    }
+
+    return null
+  }
+
+  const validateBasico = (): string | null => {
+    if (!form.nome.trim()) return 'Nome do caso é obrigatório'
+    if (!form.produto_id) return 'Serviço do caso é obrigatório'
+    if (!form.responsavel_id) return 'Responsável do caso é obrigatório'
+    return null
+  }
+
   const submit = async () => {
     setError(null)
 
@@ -625,8 +758,14 @@ export default function CasoForm({
       return
     }
 
-    if (!form.nome.trim()) {
-      setError('Nome do caso é obrigatório')
+    const basicoError = validateBasico()
+    if (basicoError) {
+      setError(basicoError)
+      return
+    }
+    const financeiroError = validateFinanceiro()
+    if (financeiroError) {
+      setError(financeiroError)
       return
     }
 
@@ -637,9 +776,14 @@ export default function CasoForm({
       if (!session) return
 
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${isEdit ? 'update-caso' : 'create-caso'}`
+      const payload = {
+        ...form,
+        regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
+        data_ultimo_reajuste: form.data_ultimo_reajuste || form.data_inicio_faturamento,
+      }
       const body = isEdit
-        ? { id: casoId, ...form, data_ultimo_reajuste: form.data_ultimo_reajuste || form.data_inicio_faturamento, status: 'ativo' }
-        : { contrato_id: contratoId, ...form, data_ultimo_reajuste: form.data_inicio_faturamento, status: 'ativo' }
+        ? { id: casoId, ...payload, status: 'ativo' }
+        : { contrato_id: contratoId, ...payload, status: 'ativo' }
 
       const resp = await fetch(url, {
         method: 'POST',
@@ -906,9 +1050,9 @@ export default function CasoForm({
               <div className="space-y-2">
                 <Label>Serviço</Label>
                 <CommandSelect
-                  value={form.produto_id}
-                  onValueChange={(value) => setField('produto_id', value)}
-                  options={produtoOptions}
+                  value={form.servico_id || ''}
+                  onValueChange={(value) => setField('servico_id', value)}
+                  options={servicoOptions}
                   placeholder="Selecione..."
                   searchPlaceholder="Buscar serviço..."
                   emptyText="Nenhum serviço encontrado."
@@ -917,6 +1061,19 @@ export default function CasoForm({
               </div>
 
               <div className="space-y-2">
+                <Label>Produto</Label>
+                <CommandSelect
+                  value={form.produto_id}
+                  onValueChange={(value) => setField('produto_id', value)}
+                  options={produtoOptions}
+                  placeholder="Selecione..."
+                  searchPlaceholder="Buscar produto..."
+                  emptyText="Nenhum produto encontrado."
+                  disabled={isReadOnly}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
                 <Label>Responsável</Label>
                 <CommandSelect
                   value={form.responsavel_id}
@@ -931,7 +1088,7 @@ export default function CasoForm({
 
               <div className="space-y-2 md:col-span-2">
                 <RateioSlider
-                  title="Centro de custo (múltiplos + percentual opcional)"
+                  title="Centro de custo (rateio)"
                   options={centroOptions}
                   items={(form.centro_custo_rateio || [])
                     .filter((item) => item.centro_custo_id)
@@ -940,6 +1097,79 @@ export default function CasoForm({
                   disabled={isReadOnly}
                   frameless
                 />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Anexos do caso</Label>
+
+                {isEdit && caseAnexos.length > 0 && (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <p className="text-sm font-medium">Anexos já cadastrados</p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+                      {caseAnexos.map((anexo) => (
+                        <div key={anexo.id} className="w-full max-w-[140px]">
+                          <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/20 p-2">
+                            <div className="flex h-full items-center justify-center text-muted-foreground">
+                              <Paperclip className="h-5 w-5" />
+                            </div>
+                            <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="h-8 w-8"
+                                onClick={() => openAnexo(anexo.id)}
+                                disabled={openingAnexoId === anexo.id}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {!isReadOnly && (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="destructive"
+                                  className="h-8 w-8"
+                                  onClick={() => removeAnexo(anexo.id)}
+                                  disabled={removingAnexoId === anexo.id}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-1 space-y-0.5">
+                            <div className="truncate text-xs font-medium">{anexo.nome}</div>
+                            <div className="truncate text-[11px] text-muted-foreground">{anexo.arquivo_nome}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!isReadOnly && (
+                  <div
+                    className="cursor-pointer rounded-md border-2 border-dashed p-6 text-center text-sm text-muted-foreground hover:border-primary/40 hover:bg-muted/30"
+                    onClick={() => setAnexoModalOpen(true)}
+                  >
+                    <p className="text-base font-medium text-foreground">Clique para inserir anexo</p>
+                    <p className="text-sm">Adicione anexos do caso com nome e arquivo</p>
+                    <div className="mt-3">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setAnexoModalOpen(true)}>
+                        <Paperclip className="mr-1 h-4 w-4" />
+                        Novo anexo
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {!isEdit && (
+                  <p className="text-sm text-muted-foreground">Salve o caso primeiro para adicionar anexos.</p>
+                )}
+
+                {isEdit && caseAnexos.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sem anexos cadastrados neste caso.</p>
+                )}
               </div>
             </>
           )}
@@ -1063,6 +1293,7 @@ export default function CasoForm({
                             value={creatingPriceTable ? '__new__' : (regras.tabela_preco_id || regras.tabela_preco_nome || '')}
                             onValueChange={(value) => {
                               if (value === '__new__') {
+                                setRegra('modo_preco', 'tabela')
                                 setCreatingPriceTable(true)
                                 setNewPriceTableName('')
                                 setRegra('tabela_preco_id', '')
@@ -1073,6 +1304,7 @@ export default function CasoForm({
                               }
                               const selected = getPriceTableByKey(value)
                               if (!selected) return
+                              setRegra('modo_preco', 'tabela')
                               setCreatingPriceTable(false)
                               setRegra('tabela_preco_id', selected.id || '')
                               setRegra('tabela_preco_nome', selected.nome)
@@ -1089,6 +1321,192 @@ export default function CasoForm({
                       </div>
                       {(regras.tabela_preco_nome || '').trim() ? <Badge>{regras.tabela_preco_nome}</Badge> : null}
                     </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label>CAP</Label>
+                    <ChoiceCards
+                      value={regras.cap_enabled ? 'sim' : 'nao'}
+                      onChange={(value) => {
+                        const enabled = value === 'sim'
+                        setRegra('cap_enabled', enabled)
+                        if (!enabled) {
+                          setRegra('cap_limites_enabled', false)
+                          setRegra('cap_min_enabled', false)
+                          setRegra('cap_max_enabled', false)
+                          setRegra('cap_min', '')
+                          setRegra('cap_max', '')
+                          setRegra('encontro_contas_enabled', false)
+                          setRegra('encontro_periodicidade', '')
+                          setRegra('data_proximo_encontro', '')
+                        }
+                      }}
+                      disabled={isReadOnly}
+                      options={[
+                        { value: 'nao', label: 'Cap desabilitado' },
+                        { value: 'sim', label: 'Cap habilitado' },
+                      ]}
+                    />
+                  </div>
+
+                  {regras.cap_enabled && (
+                    <>
+                      <div className="space-y-1">
+                        <Label>Tipo de CAP</Label>
+                        <NativeSelect value={regras.cap_tipo || 'hora'} onChange={(e) => setRegra('cap_tipo', e.target.value)} disabled={isReadOnly}>
+                          <option value="hora">Cap por hora</option>
+                          <option value="valor">Cap por valor</option>
+                        </NativeSelect>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Habilitar limites?</Label>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <label className="flex items-center gap-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={capMinEnabled}
+                              onChange={(e) => {
+                                const enabled = e.currentTarget.checked
+                                setRegra('cap_min_enabled', enabled)
+                                setRegra('cap_limites_enabled', enabled || capMaxEnabled)
+                                if (!enabled) setRegra('cap_min', '')
+                              }}
+                              disabled={isReadOnly}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            Ativar limite inferior
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={capMaxEnabled}
+                              onChange={(e) => {
+                                const enabled = e.currentTarget.checked
+                                setRegra('cap_max_enabled', enabled)
+                                setRegra('cap_limites_enabled', capMinEnabled || enabled)
+                                if (!enabled) setRegra('cap_max', '')
+                              }}
+                              disabled={isReadOnly}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            Ativar limite superior
+                          </label>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 md:col-span-2 md:grid-cols-2">
+                        {capMinEnabled ? (
+                          <div className="space-y-1">
+                            <Label>Limite inferior</Label>
+                            <MoneyInput
+                              value={regras.cap_min || ''}
+                              onValueChange={(value) => setRegra('cap_min', value)}
+                              disabled={isReadOnly}
+                              placeholder="Opcional"
+                            />
+                          </div>
+                        ) : (
+                          <div />
+                        )}
+                        {capMaxEnabled && (
+                          <div className="space-y-1">
+                            <Label>Limite superior</Label>
+                            <MoneyInput
+                              value={regras.cap_max || ''}
+                              onValueChange={(value) => setRegra('cap_max', value)}
+                              disabled={isReadOnly}
+                              placeholder="Opcional"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Cobrar excedente?</Label>
+                        <ChoiceCards
+                          value={regras.cobra_excedente ? 'sim' : 'nao'}
+                          onChange={(value) => {
+                            const enabled = value === 'sim'
+                            setRegra('cobra_excedente', enabled)
+                            if (!enabled) {
+                              setRegra('valor_hora_excedente', '')
+                            }
+                          }}
+                          disabled={isReadOnly}
+                          options={[
+                            { value: 'nao', label: 'Não cobra excedente' },
+                            { value: 'sim', label: 'Cobra excedente' },
+                          ]}
+                        />
+                      </div>
+                      {modoPreco === 'valor_hora' && regras.cobra_excedente && (
+                        <div className="space-y-1">
+                          <Label>Valor da hora excedente</Label>
+                          <MoneyInput
+                            value={regras.valor_hora_excedente || ''}
+                            onValueChange={(value) => setRegra('valor_hora_excedente', value)}
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Encontro de contas</Label>
+                        <ChoiceCards
+                          value={regras.encontro_contas_enabled ? 'sim' : 'nao'}
+                          onChange={(value) => {
+                            const enabled = value === 'sim'
+                            setRegra('encontro_contas_enabled', enabled)
+                            if (!enabled) {
+                              setRegra('encontro_periodicidade', '')
+                              setRegra('data_proximo_encontro', '')
+                            }
+                          }}
+                          disabled={isReadOnly}
+                          options={[
+                            { value: 'nao', label: 'Não' },
+                            { value: 'sim', label: 'Sim' },
+                          ]}
+                        />
+                      </div>
+                      {regras.encontro_contas_enabled && (
+                        <>
+                          <div className="space-y-1">
+                            <Label>Periodicidade encontro de contas</Label>
+                            <NativeSelect
+                              value={regras.encontro_periodicidade || ''}
+                              onChange={(e) => {
+                                const periodicidade = e.target.value
+                                setRegra('encontro_periodicidade', periodicidade)
+
+                                const months = periodToMonths[periodicidade] || 0
+                                const baseDate = regras.data_ultimo_encontro || form.inicio_vigencia || ''
+                                const day = Number(form.pagamento_dia_mes || '0') || undefined
+                                const nextDate = months > 0 && baseDate ? buildNextDate(baseDate, months, day) : ''
+                                setRegra('data_proximo_encontro', nextDate)
+                              }}
+                              disabled={isReadOnly}
+                            >
+                              <option value="">Selecione...</option>
+                              <option value="mensal">Encontro mensal</option>
+                              <option value="bimestral">Encontro bimestral</option>
+                              <option value="trimestral">Encontro trimestral</option>
+                              <option value="semestral">Encontro semestral</option>
+                              <option value="anual">Encontro anual</option>
+                            </NativeSelect>
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Data último encontro de contas</Label>
+                            <DatePicker value={regras.data_ultimo_encontro || ''} onChange={() => {}} disabled />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Data próximo encontro de contas</Label>
+                            <DatePicker
+                              value={regras.data_proximo_encontro || ''}
+                              onChange={(value) => setRegra('data_proximo_encontro', value)}
+                              disabled={isReadOnly || !isEdit}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1107,10 +1525,16 @@ export default function CasoForm({
               )}
 
               {form.regra_cobranca === 'mensalidade_processo' && (
-                <Alert className="md:col-span-2">
-                  <AlertTitle>Mensalidade de processo</AlertTitle>
-                  <AlertDescription>Esta configuração ainda será desenvolvida.</AlertDescription>
-                </Alert>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="border-t" />
+                  <p className="text-base font-semibold">Configuração de mensalidade de processo</p>
+                  <Label>Valor mensal</Label>
+                  <MoneyInput
+                    value={regras.valor_mensal || ''}
+                    onValueChange={(value) => setRegra('valor_mensal', value)}
+                    disabled={isReadOnly}
+                  />
+                </div>
               )}
 
               {form.regra_cobranca === 'projeto' && (
@@ -1281,21 +1705,26 @@ export default function CasoForm({
               {despesasReembolsaveisEnabled && (
                 <>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {['viagem', 'cartorio', 'custas', 'deslocamento', 'outros'].map((op) => {
-                      const selected = (despesas.despesas_reembolsaveis || []).includes(op)
+                    {[
+                      { key: 'viagem', label: 'Viagem' },
+                      { key: 'despesas_extrajudiciais', label: 'Despesas Extrajudiciais' },
+                      { key: 'despesas_judiciais', label: 'Despesas Judiciais' },
+                      { key: 'deslocamento', label: 'Deslocamento' },
+                    ].map((op) => {
+                      const selected = (despesas.despesas_reembolsaveis || []).includes(op.key)
                       return (
                         <button
-                          key={op}
+                          key={op.key}
                           type="button"
                           className={`rounded-md border px-3 py-2 text-left text-sm ${selected ? 'border-primary bg-primary/10' : ''}`}
                           onClick={() => {
                             const current = despesas.despesas_reembolsaveis || []
-                            const next = selected ? current.filter((item: string) => item !== op) : [...current, op]
+                            const next = selected ? current.filter((item: string) => item !== op.key) : [...current, op.key]
                             setDespesas('despesas_reembolsaveis', next)
                           }}
                           disabled={isReadOnly}
                         >
-                          {op}
+                          {op.label}
                         </button>
                       )
                     })}
@@ -1330,56 +1759,76 @@ export default function CasoForm({
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Revisores (sócios)</Label>
+                  <Label>Revisores</Label>
                   {!isReadOnly && <Button type="button" variant="outline" size="sm" onClick={addRevisor}>Adicionar</Button>}
                 </div>
+                <p className="text-xs text-muted-foreground">Arraste para ordenar a sequência de revisão.</p>
                 {(timesheet.revisores || []).map((r: any, idx: number) => (
-                  <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                    <NativeSelect value={r.colaborador_id || ''} onChange={(e) => {
+                  <div
+                    key={idx}
+                    className={`grid grid-cols-1 gap-2 rounded-md border p-2 md:grid-cols-[auto_1fr_auto] ${
+                      dragRevisorIndex === idx ? 'opacity-60' : ''
+                    }`}
+                    draggable={!isReadOnly}
+                    onDragStart={() => setDragRevisorIndex(idx)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragRevisorIndex === null) return
+                      reorderTimeList('revisores', dragRevisorIndex, idx)
+                      setDragRevisorIndex(null)
+                    }}
+                    onDragEnd={() => setDragRevisorIndex(null)}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded border text-sm font-semibold text-muted-foreground">
+                      #{idx + 1}
+                    </div>
+                    <CommandSelect value={r.colaborador_id || ''} onValueChange={(value) => {
                       const list = [...(timesheet.revisores || [])]
-                      list[idx] = { ...list[idx], colaborador_id: e.target.value }
+                      list[idx] = { ...list[idx], colaborador_id: value }
                       setTimesheet('revisores', list)
-                    }} disabled={isReadOnly}>
-                      <option value="">Selecione...</option>
-                      {socioOptions.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                    </NativeSelect>
-                    <Input type="number" value={r.ordem || idx + 1} onChange={(e) => {
-                      const list = [...(timesheet.revisores || [])]
-                      list[idx] = { ...list[idx], ordem: Number(e.target.value || idx + 1) }
-                      setTimesheet('revisores', list)
-                    }} disabled={isReadOnly} />
+                    }} disabled={isReadOnly} options={colaboradorOptions} placeholder="Selecione..." searchPlaceholder="Buscar revisor..." emptyText="Nenhum colaborador encontrado." />
                     {!isReadOnly && <Button type="button" variant="outline" onClick={() => {
                       const list = [...(timesheet.revisores || [])]
                       list.splice(idx, 1)
-                      setTimesheet('revisores', list)
+                      setTimesheet('revisores', list.map((entry: any, orderIdx: number) => ({ ...entry, ordem: orderIdx + 1 })))
                     }}>Remover</Button>}
                   </div>
                 ))}
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Aprovadores (sócios)</Label>
+                  <Label>Aprovadores</Label>
                   {!isReadOnly && <Button type="button" variant="outline" size="sm" onClick={addAprovador}>Adicionar</Button>}
                 </div>
+                <p className="text-xs text-muted-foreground">Arraste para ordenar a sequência de aprovação.</p>
                 {(timesheet.aprovadores || []).map((a: any, idx: number) => (
-                  <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                    <NativeSelect value={a.colaborador_id || ''} onChange={(e) => {
+                  <div
+                    key={idx}
+                    className={`grid grid-cols-1 gap-2 rounded-md border p-2 md:grid-cols-[auto_1fr_auto] ${
+                      dragAprovadorIndex === idx ? 'opacity-60' : ''
+                    }`}
+                    draggable={!isReadOnly}
+                    onDragStart={() => setDragAprovadorIndex(idx)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragAprovadorIndex === null) return
+                      reorderTimeList('aprovadores', dragAprovadorIndex, idx)
+                      setDragAprovadorIndex(null)
+                    }}
+                    onDragEnd={() => setDragAprovadorIndex(null)}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded border text-sm font-semibold text-muted-foreground">
+                      #{idx + 1}
+                    </div>
+                    <CommandSelect value={a.colaborador_id || ''} onValueChange={(value) => {
                       const list = [...(timesheet.aprovadores || [])]
-                      list[idx] = { ...list[idx], colaborador_id: e.target.value }
+                      list[idx] = { ...list[idx], colaborador_id: value }
                       setTimesheet('aprovadores', list)
-                    }} disabled={isReadOnly}>
-                      <option value="">Selecione...</option>
-                      {socioOptions.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                    </NativeSelect>
-                    <Input type="number" value={a.ordem || idx + 1} onChange={(e) => {
-                      const list = [...(timesheet.aprovadores || [])]
-                      list[idx] = { ...list[idx], ordem: Number(e.target.value || idx + 1) }
-                      setTimesheet('aprovadores', list)
-                    }} disabled={isReadOnly} />
+                    }} disabled={isReadOnly} options={socioOptions.map((s) => ({ value: s.id, label: s.nome }))} placeholder="Selecione..." searchPlaceholder="Buscar aprovador..." emptyText="Nenhum sócio encontrado." />
                     {!isReadOnly && <Button type="button" variant="outline" onClick={() => {
                       const list = [...(timesheet.aprovadores || [])]
                       list.splice(idx, 1)
-                      setTimesheet('aprovadores', list)
+                      setTimesheet('aprovadores', list.map((entry: any, orderIdx: number) => ({ ...entry, ordem: orderIdx + 1 })))
                     }}>Remover</Button>}
                   </div>
                 ))}
@@ -1391,15 +1840,15 @@ export default function CasoForm({
             <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Pagamento da indicação</Label>
-                <NativeSelect value={indicacao.pagamento_indicacao || 'nao'} onChange={(e) => setIndicacao('pagamento_indicacao', e.target.value)} disabled={isReadOnly}>
-                  <option value="nao">Não</option>
-                  <optgroup label="Colaboradores">
-                    {(options.colaboradores || []).map((p) => <option key={`col-${p.id}`} value={`colaborador:${p.id}`}>{p.nome}</option>)}
-                  </optgroup>
-                  <optgroup label="Clientes">
-                    {(options.clientes || []).map((p) => <option key={`cli-${p.id}`} value={`cliente:${p.id}`}>{p.nome}</option>)}
-                  </optgroup>
-                </NativeSelect>
+                <CommandSelect
+                  value={indicacao.pagamento_indicacao || 'nao'}
+                  onValueChange={(value) => setIndicacao('pagamento_indicacao', value)}
+                  options={indicacaoOptions}
+                  placeholder="Selecione..."
+                  searchPlaceholder="Buscar indicado..."
+                  emptyText="Nenhum indicado encontrado."
+                  disabled={isReadOnly}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Periodicidade</Label>
@@ -1427,67 +1876,6 @@ export default function CasoForm({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="space-y-3 pt-6">
-          <div className="flex items-center justify-between">
-            <p className="text-base font-semibold">Anexos do caso</p>
-            {isEdit && !isReadOnly ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => setAnexoModalOpen(true)}>
-                <Paperclip className="mr-1 h-4 w-4" />
-                Inserir anexo
-              </Button>
-            ) : null}
-          </div>
-
-          {!isEdit && (
-            <p className="text-sm text-muted-foreground">
-              Salve o caso primeiro para adicionar anexos.
-            </p>
-          )}
-
-          {isEdit && caseAnexos.length === 0 && (
-            <p className="text-sm text-muted-foreground">Sem anexos cadastrados neste caso.</p>
-          )}
-
-          {isEdit && caseAnexos.length > 0 && (
-            <div className="space-y-2">
-              {caseAnexos.map((anexo) => (
-                <div key={anexo.id} className="flex items-center justify-between rounded border px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium">{anexo.nome}</p>
-                    <p className="text-xs text-muted-foreground">{anexo.arquivo_nome}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openAnexo(anexo.id)}
-                      disabled={openingAnexoId === anexo.id}
-                    >
-                      <Paperclip className="mr-1 h-4 w-4" />
-                      Abrir
-                    </Button>
-                    {!isReadOnly && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeAnexo(anexo.id)}
-                        disabled={removingAnexoId === anexo.id}
-                      >
-                        <Trash2 className="mr-1 h-4 w-4" />
-                        Remover
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => router.back()} disabled={loading}>Cancelar</Button>
         {!isReadOnly && (
@@ -1509,6 +1897,7 @@ export default function CasoForm({
                 value={creatingPriceTable ? '__new__' : (regras.tabela_preco_id || regras.tabela_preco_nome || '')}
                 onValueChange={(value) => {
                   if (value === '__new__') {
+                    setRegra('modo_preco', 'tabela')
                     setCreatingPriceTable(true)
                     setNewPriceTableName('')
                     setRegra('tabela_preco_id', '')
@@ -1518,6 +1907,7 @@ export default function CasoForm({
                   }
                   const selected = getPriceTableByKey(value)
                   if (!selected) return
+                  setRegra('modo_preco', 'tabela')
                   setCreatingPriceTable(false)
                   setRegra('tabela_preco_id', selected.id || '')
                   setRegra('tabela_preco_nome', selected.nome)

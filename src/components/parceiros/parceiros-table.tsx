@@ -5,6 +5,7 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import ParceirosActions from './parceiros-actions'
 import type { ParceiroListItem } from './parceiros-list'
 import { Table } from '@/components/ui/table'
+import { maskCNPJ } from '@/lib/utils/masks'
 
 export default function ParceirosTable({
   items,
@@ -75,7 +76,7 @@ export default function ParceirosTable({
                 </Link>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {p.cnpj}
+                {maskCNPJ(p.cnpj || '')}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {[p.cidade, p.estado].filter(Boolean).join(' / ') || '-'}
@@ -103,4 +104,3 @@ export default function ParceirosTable({
     </div>
   )
 }
-

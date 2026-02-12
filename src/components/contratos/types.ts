@@ -25,6 +25,7 @@ export interface CasoListItem {
 
 export interface ContratoFormOptions {
   clientes: Array<{ id: string; nome: string }>
+  servicos?: Array<{ id: string; nome: string }>
   produtos: Array<{ id: string; nome: string }>
   centros_custo: Array<{ id: string; nome: string }>
   cargos: Array<{ id: string; nome: string }>
@@ -45,7 +46,9 @@ export interface ContratoFormOptions {
 export interface CasoPayload {
   id?: string
   status?: 'rascunho' | 'ativo' | 'inativo'
+  anexos?: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }>
   nome: string
+  servico_id?: string
   produto_id: string
   responsavel_id: string
   moeda: 'real' | 'euro' | 'dolar'

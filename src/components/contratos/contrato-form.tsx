@@ -17,19 +17,12 @@ import {
   Trash2,
   ChevronRight,
   Paperclip,
+  Pencil,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CommandSelect } from '@/components/ui/command-select'
@@ -42,6 +35,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
+import { Tooltip } from '@/components/ui/tooltip'
 import type { CasoPayload, ContratoFormOptions } from './types'
 import RateioSlider from './rateio-slider'
 
@@ -96,6 +90,7 @@ const caseSubsteps: Array<{ key: CaseSubstepKey; label: string; icon: typeof Lay
 const emptyCaso: CasoPayload = {
   status: 'rascunho',
   nome: '',
+  servico_id: '',
   produto_id: '',
   responsavel_id: '',
   moeda: 'real',
@@ -150,9 +145,19 @@ const emptyCaso: CasoPayload = {
 }
 
 function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
-  if (value === 'hora_com_cap') return 'hora'
-  if (value === 'projeto_parcelado') return 'projeto'
-  return value
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+
+  if (!normalized) return ''
+  if (normalized === 'hora_com_cap') return 'hora'
+  if (normalized === 'projeto_parcelado') return 'projeto'
+  if (normalized === 'exito') return 'exito'
+  if (normalized === 'mensalidade_de_processo') return 'mensalidade_processo'
+  return normalized as CasoPayload['regra_cobranca']
 }
 
 const emptyState: ContratoFormState = {
@@ -161,6 +166,34 @@ const emptyState: ContratoFormState = {
   regime_fiscal: '',
   status: 'rascunho',
   casos: [{ ...emptyCaso }],
+}
+
+const periodToMonths: Record<string, number> = {
+  mensal: 1,
+  bimestral: 2,
+  trimestral: 3,
+  semestral: 6,
+  anual: 12,
+}
+
+function formatDateToInput(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function buildNextDate(base: string, months: number, dayOfMonth?: number): string {
+  if (!base) return ''
+  const dt = new Date(base + 'T00:00:00')
+  if (Number.isNaN(dt.getTime())) return ''
+
+  const y = dt.getFullYear()
+  const m = dt.getMonth()
+  const target = new Date(y, m + months, 1)
+  const finalDay = Math.min(dayOfMonth || dt.getDate(), new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate())
+  target.setDate(finalDay)
+  return formatDateToInput(target)
 }
 
 export default function ContratoForm({
@@ -195,6 +228,7 @@ export default function ContratoForm({
   >([])
   const [options, setOptions] = useState<ContratoFormOptions>({
     clientes: [],
+    servicos: [],
     produtos: [],
     centros_custo: [],
     cargos: [],
@@ -214,11 +248,16 @@ export default function ContratoForm({
   const [deleteDraftOpen, setDeleteDraftOpen] = useState(false)
   const [deleteDraftLoading, setDeleteDraftLoading] = useState(false)
   const [draftContratoId, setDraftContratoId] = useState<string | null>(contratoId ?? null)
+  const [loadedCaseIds, setLoadedCaseIds] = useState<string[]>([])
+  const [loadedCaseStatusById, setLoadedCaseStatusById] = useState<Record<string, string>>({})
   const draftContratoPromiseRef = useRef<Promise<string | null> | null>(null)
   const [anexoDialogOpen, setAnexoDialogOpen] = useState(false)
   const [anexoDialogNome, setAnexoDialogNome] = useState('')
   const [anexoDialogFile, setAnexoDialogFile] = useState<File | null>(null)
   const [anexoDialogFromDrop, setAnexoDialogFromDrop] = useState(false)
+  const [anexoDialogTarget, setAnexoDialogTarget] = useState<'contrato' | 'caso'>('contrato')
+  const [anexoDialogCaseIndex, setAnexoDialogCaseIndex] = useState<number | null>(null)
+  const [pendingCaseAnexos, setPendingCaseAnexos] = useState<Record<number, PendingAnexo[]>>({})
 
   const clienteOptions = useMemo(
     () => (options.clientes || []).map((cliente) => ({ value: cliente.id, label: cliente.nome })),
@@ -227,6 +266,22 @@ export default function ContratoForm({
   const centroOptions = useMemo(
     () => (options.centros_custo || []).map((item) => ({ value: item.id, label: item.nome })),
     [options.centros_custo],
+  )
+  const servicoOptions = useMemo(
+    () => (options.servicos || []).map((item) => ({ value: item.id, label: item.nome })),
+    [options.servicos],
+  )
+  const produtoOptions = useMemo(
+    () => (options.produtos || []).map((item) => ({ value: item.id, label: item.nome })),
+    [options.produtos],
+  )
+  const colaboradorOptions = useMemo(
+    () => (options.colaboradores || []).map((item) => ({ value: item.id, label: item.nome })),
+    [options.colaboradores],
+  )
+  const aprovadorOptions = useMemo(
+    () => (options.socios || []).map((item) => ({ value: item.id, label: item.nome })),
+    [options.socios],
   )
   const produtosMap = useMemo(
     () => new Map((options.produtos || []).map((p) => [p.id, p.nome])),
@@ -244,6 +299,19 @@ export default function ContratoForm({
     () => new Map((options.cargos || []).map((c) => [c.id, c.nome])),
     [options.cargos],
   )
+  const indicacaoOptions = useMemo(
+    () => [
+      ...(options.colaboradores || []).map((p) => ({
+        value: `colaborador:${p.id}`,
+        label: `${p.nome} (Colaborador)`,
+      })),
+      ...(options.clientes || []).map((p) => ({
+        value: `cliente:${p.id}`,
+        label: `${p.nome} (Cliente)`,
+      })),
+    ],
+    [options.colaboradores, options.clientes],
+  )
 
   const currentCaso = form.casos[selectedCaseIndex] || emptyCaso
   const regras = currentCaso.regra_cobranca_config || {}
@@ -258,6 +326,16 @@ export default function ContratoForm({
   const indicacaoPagamentoEnabled =
     Boolean((indicacao as any).pagamento_indicacao_ativo) ||
     (Boolean(indicacao.pagamento_indicacao) && indicacao.pagamento_indicacao !== 'nao')
+  const capMinEnabled = Boolean(
+    regras.cap_min_enabled ??
+      regras.cap_limites_enabled ??
+      (regras.cap_min !== null && regras.cap_min !== undefined && String(regras.cap_min).trim() !== ''),
+  )
+  const capMaxEnabled = Boolean(
+    regras.cap_max_enabled ??
+      regras.cap_limites_enabled ??
+      (regras.cap_max !== null && regras.cap_max !== undefined && String(regras.cap_max).trim() !== ''),
+  )
 
   const validateDados = () => {
     if (!form.cliente_id) return 'Cliente é obrigatório'
@@ -281,6 +359,9 @@ export default function ContratoForm({
       if (modo === 'valor_hora' && !String(regrasCaso.valor_hora || '').trim()) {
         return 'Informe o valor da hora ou selecione tabela de preço'
       }
+      if (modo === 'valor_hora' && regrasCaso.cobra_excedente && !String(regrasCaso.valor_hora_excedente || '').trim()) {
+        return 'Informe o valor da hora excedente'
+      }
       if (modo === 'tabela') {
         if (!String(regrasCaso.tabela_preco_id || regrasCaso.tabela_preco_nome || '').trim()) {
           return 'Selecione ou cadastre uma tabela de preço'
@@ -289,6 +370,12 @@ export default function ContratoForm({
           return 'A tabela de preço precisa ter itens por cargo'
         }
       }
+      if (regrasCaso.cap_enabled && regrasCaso.encontro_contas_enabled && !String(regrasCaso.encontro_periodicidade || '').trim()) {
+        return 'Selecione a periodicidade do encontro de contas'
+      }
+    }
+    if (caso.regra_cobranca === 'mensalidade_processo' && !String(caso.regra_cobranca_config?.valor_mensal || '').trim()) {
+      return 'Informe o valor mensal da mensalidade de processo'
     }
     return null
   }
@@ -398,6 +485,7 @@ export default function ContratoForm({
         }
         const nextOptions = optsData.data || {
           clientes: [],
+          servicos: [],
           produtos: [],
           centros_custo: [],
           cargos: [],
@@ -405,6 +493,30 @@ export default function ContratoForm({
           socios: [],
           tabelas_preco: [],
         }
+
+        if (!Array.isArray(nextOptions.cargos) || nextOptions.cargos.length === 0) {
+          try {
+            const cargosResp = await fetch(
+              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-cargos`,
+              {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+              },
+            )
+            const cargosData = await cargosResp.json()
+            if (cargosResp.ok && Array.isArray(cargosData.data)) {
+              nextOptions.cargos = cargosData.data
+                .filter((item: any) => item?.ativo !== false)
+                .map((item: any) => ({ id: item.id, nome: item.nome }))
+            }
+          } catch (cargosError) {
+            console.error('Fallback de cargos falhou', cargosError)
+          }
+        }
+
         setOptions(nextOptions)
         setPriceTableCatalog(
           (nextOptions.tabelas_preco || []).map((table: any) => ({
@@ -434,6 +546,15 @@ export default function ContratoForm({
 
           const contrato = contratoData.data?.contrato || {}
           const casos = (contratoData.data?.casos || []) as CasoPayload[]
+          const persistedCaseIds = casos
+            .map((caso) => ((caso as any)?.id ? String((caso as any).id) : ''))
+            .filter(Boolean)
+          const persistedCaseStatus = casos.reduce<Record<string, string>>((acc, caso) => {
+            const id = (caso as any)?.id ? String((caso as any).id) : ''
+            if (!id) return acc
+            acc[id] = String((caso as any)?.status || 'rascunho')
+            return acc
+          }, {})
 
           setForm({
             cliente_id: contrato.cliente_id || '',
@@ -454,7 +575,12 @@ export default function ContratoForm({
               : [{ ...emptyCaso }],
           })
 
+          setLoadedCaseIds(persistedCaseIds)
+          setLoadedCaseStatusById(persistedCaseStatus)
           setExistingAnexos(contratoData.data?.anexos || [])
+        } else {
+          setLoadedCaseIds([])
+          setLoadedCaseStatusById({})
         }
       } catch (fetchError) {
         console.error(fetchError)
@@ -513,6 +639,53 @@ export default function ContratoForm({
     modoPreco,
     priceTableCatalog.length,
     creatingPriceTable,
+  ])
+
+  useEffect(() => {
+    setForm((prev) => {
+      const next = [...prev.casos]
+      const current = next[selectedCaseIndex]
+      if (!current) return prev
+
+      const regrasCaso = { ...(current.regra_cobranca_config || {}) }
+      let changed = false
+      const inicioVigencia = current.inicio_vigencia || ''
+
+      if ((regrasCaso.data_ultimo_encontro || '') !== inicioVigencia) {
+        regrasCaso.data_ultimo_encontro = inicioVigencia
+        changed = true
+      }
+
+      if (!regrasCaso.encontro_contas_enabled) {
+        if (regrasCaso.data_proximo_encontro) {
+          regrasCaso.data_proximo_encontro = ''
+          changed = true
+        }
+      } else if (regrasCaso.encontro_periodicidade && regrasCaso.data_ultimo_encontro) {
+        const months = periodToMonths[regrasCaso.encontro_periodicidade] || 0
+        if (months > 0) {
+          const day = Number(current.pagamento_dia_mes || '0') || undefined
+          const calculated = buildNextDate(regrasCaso.data_ultimo_encontro, months, day)
+          if (!isEdit || !regrasCaso.data_proximo_encontro) {
+            if ((regrasCaso.data_proximo_encontro || '') !== calculated) {
+              regrasCaso.data_proximo_encontro = calculated
+              changed = true
+            }
+          }
+        }
+      }
+
+      if (!changed) return prev
+      next[selectedCaseIndex] = { ...current, regra_cobranca_config: regrasCaso }
+      return { ...prev, casos: next }
+    })
+  }, [
+    selectedCaseIndex,
+    currentCaso.inicio_vigencia,
+    currentCaso.pagamento_dia_mes,
+    regras.encontro_contas_enabled,
+    regras.encontro_periodicidade,
+    isEdit,
   ])
 
   const updateCaso = (index: number, patch: Partial<CasoPayload>) => {
@@ -686,6 +859,7 @@ export default function ContratoForm({
         itens: saved.itens || itens,
       }
       upsertPriceTableCatalog(savedTable)
+      updateCurrentRegra('modo_preco', 'tabela')
       updateCurrentRegra('tabela_preco_id', savedTable.id || '')
       updateCurrentRegra('tabela_preco_nome', savedTable.nome)
       updateCurrentRegra('tabela_preco_itens', savedTable.itens)
@@ -777,13 +951,54 @@ export default function ContratoForm({
     setSubstep('basico')
   }
 
+  const isCasoRascunho = (caso?: CasoPayload) => (caso?.status || 'rascunho') === 'rascunho'
+  const getCasoId = (caso: CasoPayload): string | null => {
+    const id = (caso as any)?.id
+    return id ? String(id) : null
+  }
+  const getCasoCardLabel = (caso: CasoPayload | undefined, idx: number) => {
+    const nome = caso?.nome?.trim() || `Caso ${idx + 1}`
+    const numero = (caso as any)?.numero
+    return numero ? `${numero} - ${nome}` : nome
+  }
+  const sortedCaseRefs = useMemo(() => {
+    return form.casos
+      .map((caso, idx) => ({ caso, idx }))
+      .sort((a, b) => {
+        const aNumero = Number((a.caso as any)?.numero)
+        const bNumero = Number((b.caso as any)?.numero)
+        const aHasNumero = Number.isFinite(aNumero) && aNumero > 0
+        const bHasNumero = Number.isFinite(bNumero) && bNumero > 0
+
+        if (aHasNumero && bHasNumero) return aNumero - bNumero
+        if (aHasNumero) return -1
+        if (bHasNumero) return 1
+        return a.idx - b.idx
+      })
+  }, [form.casos])
+
   const removeCaso = (index: number) => {
+    const caso = form.casos[index]
+    if (!isCasoRascunho(caso)) {
+      setError('Só é possível remover casos em rascunho')
+      return
+    }
     setForm((prev) => {
       if (prev.casos.length <= 1) return prev
       return {
         ...prev,
         casos: prev.casos.filter((_, i) => i !== index),
       }
+    })
+    setPendingCaseAnexos((prev) => {
+      const next: Record<number, PendingAnexo[]> = {}
+      Object.entries(prev).forEach(([key, value]) => {
+        const oldIndex = Number(key)
+        if (Number.isNaN(oldIndex) || oldIndex === index) return
+        const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+        next[newIndex] = value
+      })
+      return next
     })
     setSelectedCaseIndex((prev) => Math.max(0, index > 0 ? prev - 1 : 0))
   }
@@ -796,14 +1011,41 @@ export default function ContratoForm({
     setPendingAnexos((prev) => [...prev, { nome, file }])
   }
 
-  const openAnexoDialogByDrop = (file: File) => {
+  const appendPendingCaseAnexo = (caseIndex: number, nome: string, file: File) => {
+    setPendingCaseAnexos((prev) => ({
+      ...prev,
+      [caseIndex]: [...(prev[caseIndex] || []), { nome, file }],
+    }))
+  }
+
+  const removePendingCaseAnexo = (caseIndex: number, anexoIndex: number) => {
+    setPendingCaseAnexos((prev) => {
+      const list = [...(prev[caseIndex] || [])]
+      list.splice(anexoIndex, 1)
+      return { ...prev, [caseIndex]: list }
+    })
+  }
+
+  const openPendingCaseAnexo = (caseIndex: number, anexoIndex: number) => {
+    const item = pendingCaseAnexos[caseIndex]?.[anexoIndex]
+    if (!item?.file) return
+    const url = URL.createObjectURL(item.file)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+
+  const openAnexoDialogByDrop = (file: File, target: 'contrato' | 'caso', caseIndex?: number) => {
+    setAnexoDialogTarget(target)
+    setAnexoDialogCaseIndex(target === 'caso' ? caseIndex ?? selectedCaseIndex : null)
     setAnexoDialogFromDrop(true)
     setAnexoDialogFile(file)
     setAnexoDialogNome('')
     setAnexoDialogOpen(true)
   }
 
-  const openAnexoDialogByClick = () => {
+  const openAnexoDialogByClick = (target: 'contrato' | 'caso', caseIndex?: number) => {
+    setAnexoDialogTarget(target)
+    setAnexoDialogCaseIndex(target === 'caso' ? caseIndex ?? selectedCaseIndex : null)
     setAnexoDialogFromDrop(false)
     setAnexoDialogFile(null)
     setAnexoDialogNome('')
@@ -819,11 +1061,17 @@ export default function ContratoForm({
       setError('Arquivo do anexo é obrigatório')
       return
     }
-    appendPendingAnexo(anexoDialogNome.trim(), anexoDialogFile)
+    if (anexoDialogTarget === 'caso') {
+      const targetIndex = anexoDialogCaseIndex ?? selectedCaseIndex
+      appendPendingCaseAnexo(targetIndex, anexoDialogNome.trim(), anexoDialogFile)
+    } else {
+      appendPendingAnexo(anexoDialogNome.trim(), anexoDialogFile)
+    }
     setAnexoDialogOpen(false)
     setAnexoDialogNome('')
     setAnexoDialogFile(null)
     setAnexoDialogFromDrop(false)
+    setAnexoDialogCaseIndex(null)
     setError(null)
   }
 
@@ -918,6 +1166,46 @@ export default function ContratoForm({
     return uploaded
   }
 
+  const uploadPendingCaseAnexos = async (
+    caseId: string,
+    accessToken: string,
+    anexos: PendingAnexo[],
+  ) => {
+    const uploaded: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }> = []
+    for (const anexo of anexos) {
+      if (!anexo.nome?.trim() || !anexo.file) continue
+      const arquivo_base64 = await toBase64(anexo.file)
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-caso-anexo`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            caso_id: caseId,
+            nome: anexo.nome,
+            arquivo_nome: anexo.file.name,
+            mime_type: anexo.file.type || null,
+            arquivo_base64,
+          }),
+        },
+      )
+      const payload = await resp.json()
+      if (!resp.ok) {
+        throw new Error(payload.error || 'Erro ao enviar anexo do caso')
+      }
+      uploaded.push({
+        id: payload?.data?.id || crypto.randomUUID(),
+        nome: anexo.nome,
+        arquivo_nome: anexo.file.name,
+        created_at: new Date().toISOString(),
+      })
+    }
+    return uploaded
+  }
+
   const openAnexo = async (anexoId: string, tipo: 'contrato' | 'caso') => {
     try {
       setOpeningAnexoId(anexoId)
@@ -971,7 +1259,7 @@ export default function ContratoForm({
     setTimeout(() => URL.revokeObjectURL(url), 10000)
   }
 
-  const removeExistingAnexo = async (anexoId: string) => {
+  const removeExistingAnexo = async (anexoId: string, tipo: 'contrato' | 'caso', caseIndex?: number) => {
     try {
       setRemovingAnexoId(anexoId)
       const supabase = createClient()
@@ -986,14 +1274,26 @@ export default function ContratoForm({
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tipo: 'contrato', id: anexoId }),
+        body: JSON.stringify({ tipo, id: anexoId }),
       })
       const data = await resp.json()
       if (!resp.ok) {
         setError(data.error || 'Erro ao remover anexo')
         return
       }
-      setExistingAnexos((prev) => prev.filter((item) => item.id !== anexoId))
+      if (tipo === 'contrato') {
+        setExistingAnexos((prev) => prev.filter((item) => item.id !== anexoId))
+      } else {
+        const targetIndex = caseIndex ?? selectedCaseIndex
+        setForm((prev) => {
+          const next = [...prev.casos]
+          const current = next[targetIndex]
+          if (!current) return prev
+          const anexos = (((current as any)?.anexos || []) as any[]).filter((item) => item.id !== anexoId)
+          next[targetIndex] = { ...current, anexos }
+          return { ...prev, casos: next }
+        })
+      }
       success('Anexo removido')
     } catch (e) {
       console.error(e)
@@ -1119,6 +1419,30 @@ export default function ContratoForm({
         return
       }
 
+      if (isEdit) {
+        const currentIds = form.casos
+          .map((caso) => getCasoId(caso))
+          .filter((id): id is string => Boolean(id))
+        const removedCaseIds = loadedCaseIds.filter((id) => !currentIds.includes(id))
+        const removedDraftCaseIds = removedCaseIds.filter((id) => loadedCaseStatusById[id] === 'rascunho')
+
+        for (const removedCaseId of removedDraftCaseIds) {
+          const deleteResp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-caso`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: removedCaseId }),
+          })
+          const deleteData = await deleteResp.json()
+          if (!deleteResp.ok) {
+            setError(deleteData.error || 'Erro ao excluir caso removido')
+            return
+          }
+        }
+      }
+
       if (pendingAnexos.length > 0) {
         const uploaded = await uploadPendingAnexos(contractTargetId, session.access_token, pendingAnexos)
         setExistingAnexos((prev) => [...uploaded, ...prev])
@@ -1128,7 +1452,10 @@ export default function ContratoForm({
       let hasPersistedCase = false
       let createdCases = 0
       let updatedCases = 0
-      for (const caso of form.casos) {
+      const persistedCaseIds: string[] = []
+      const persistedCaseStatusById: Record<string, string> = {}
+      for (let caseIndex = 0; caseIndex < form.casos.length; caseIndex += 1) {
+        const caso = form.casos[caseIndex]
         if (isCaseEmpty(caso)) continue
 
         if (!caso.nome?.trim()) {
@@ -1145,7 +1472,8 @@ export default function ContratoForm({
           status: isCaseComplete(caso) ? 'ativo' : 'rascunho',
         }
 
-        const isExistingCase = Boolean((caso as any).id)
+        const existingCaseId = getCasoId(caso)
+        const isExistingCase = Boolean(existingCaseId)
         const caseResp = await fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${isExistingCase ? 'update-caso' : 'create-caso'}`,
           {
@@ -1156,7 +1484,7 @@ export default function ContratoForm({
             },
             body: JSON.stringify(
               isExistingCase
-                ? { id: (caso as any).id, ...payload }
+                ? { id: existingCaseId, ...payload }
                 : { contrato_id: contractTargetId, ...payload },
             ),
           },
@@ -1167,11 +1495,27 @@ export default function ContratoForm({
           return
         }
         hasPersistedCase = true
+        const persistedId = caseData?.data?.id || existingCaseId
+        if (persistedId) {
+          const safeId = String(persistedId)
+          persistedCaseIds.push(safeId)
+          persistedCaseStatusById[safeId] = payload.status || 'rascunho'
+          const pendingCaseList = pendingCaseAnexos[caseIndex] || []
+          if (pendingCaseList.length > 0) {
+            await uploadPendingCaseAnexos(safeId, session.access_token, pendingCaseList)
+            setPendingCaseAnexos((prev) => ({ ...prev, [caseIndex]: [] }))
+          }
+        }
         if (isExistingCase) {
           updatedCases += 1
         } else {
           createdCases += 1
         }
+      }
+
+      if (isEdit) {
+        setLoadedCaseIds(persistedCaseIds)
+        setLoadedCaseStatusById(persistedCaseStatusById)
       }
 
       if (hasPersistedCase && form.status === 'rascunho') {
@@ -1276,18 +1620,6 @@ export default function ContratoForm({
   if (isReadOnly) {
     return (
       <div className="space-y-4">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/contratos">Contratos</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Visualizar contrato</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-
         {error && (
           <Alert className="border-red-200 bg-red-50 text-red-800">
             <AlertTitle>Atenção</AlertTitle>
@@ -1394,17 +1726,26 @@ export default function ContratoForm({
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                {form.casos.map((caso, idx) => (
-                  <Button
-                    key={idx}
-                    type="button"
-                    variant={idx === selectedCaseIndex ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedCaseIndex(idx)}
-                  >
-                    {caso.nome?.trim() || `Caso ${idx + 1}`}
-                  </Button>
-                ))}
+                {sortedCaseRefs.map(({ caso, idx }) => {
+                  const button = (
+                    <Button
+                      key={idx}
+                      type="button"
+                      variant={idx === selectedCaseIndex ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setSelectedCaseIndex(idx)}
+                    >
+                      {getCasoCardLabel(caso, idx)}
+                    </Button>
+                  )
+                  return isCasoRascunho(caso) ? (
+                    <Tooltip key={idx} content="Caso em rascunho">
+                      <span className="inline-flex">{button}</span>
+                    </Tooltip>
+                  ) : (
+                    button
+                  )
+                })}
               </div>
 
               <div className="rounded-md border p-3">
@@ -1530,18 +1871,6 @@ export default function ContratoForm({
 
   return (
     <div className="space-y-4">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/contratos">Contratos</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{isEdit ? 'Editar contrato' : 'Novo contrato'}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
       {error && (
         <Alert className="border-red-200 bg-red-50 text-red-800">
           <AlertTitle>Atenção</AlertTitle>
@@ -1620,7 +1949,7 @@ export default function ContratoForm({
               />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 md:col-span-2">
               <Label>Regime fiscal</Label>
               <ChoiceCards
                 value={form.regime_fiscal}
@@ -1672,7 +2001,7 @@ export default function ContratoForm({
                                 size="icon"
                                 variant="destructive"
                                 className="h-8 w-8"
-                                onClick={() => removeExistingAnexo(anexo.id)}
+                                onClick={() => removeExistingAnexo(anexo.id, 'contrato')}
                                 disabled={removingAnexoId === anexo.id}
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -1693,19 +2022,19 @@ export default function ContratoForm({
               {!isReadOnly && (
                 <div
                   className="cursor-pointer rounded-md border-2 border-dashed p-6 text-center text-sm text-muted-foreground hover:border-primary/40 hover:bg-muted/30"
-                  onClick={openAnexoDialogByClick}
+                  onClick={() => openAnexoDialogByClick('contrato')}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault()
                     const dropped = e.dataTransfer.files?.[0]
                     if (!dropped) return
-                    openAnexoDialogByDrop(dropped)
+                    openAnexoDialogByDrop(dropped, 'contrato')
                   }}
                 >
                   <p className="font-medium text-foreground">Arraste um arquivo aqui</p>
                   <p className="mt-1">ou clique para selecionar</p>
                   <div className="mt-3">
-                    <Button type="button" variant="outline" size="sm" onClick={openAnexoDialogByClick}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => openAnexoDialogByClick('contrato')}>
                       <Plus className="mr-1 h-4 w-4" />
                       Novo anexo
                     </Button>
@@ -1767,33 +2096,58 @@ export default function ContratoForm({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
-              {form.casos.map((_, idx) => (
-                <Button
-                  key={idx}
-                  type="button"
-                  variant={idx === selectedCaseIndex ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedCaseIndex(idx)}
-                >
-                  {form.casos[idx]?.nome?.trim() || `Caso ${idx + 1}`}
-                </Button>
-              ))}
+              {sortedCaseRefs.map(({ caso, idx }) => {
+                const draft = isCasoRascunho(caso)
+                const button = (
+                  <Button
+                    key={idx}
+                    type="button"
+                    variant={idx === selectedCaseIndex ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedCaseIndex(idx)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {getCasoCardLabel(caso, idx)}
+                      {draft ? <Pencil className="h-3.5 w-3.5" /> : null}
+                    </span>
+                  </Button>
+                )
+
+                return draft ? (
+                  <Tooltip key={idx} content="Caso em rascunho">
+                    <span className="inline-flex">{button}</span>
+                  </Tooltip>
+                ) : (
+                  button
+                )
+              })}
               {!isReadOnly && (
                 <Button type="button" variant="outline" size="sm" onClick={addCaso}>
                   <Plus className="mr-1 h-4 w-4" />
                   Novo caso
                 </Button>
               )}
-              {!isReadOnly && form.casos.length > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => removeCaso(selectedCaseIndex)}
+              {!isReadOnly && form.casos.length > 1 ? (
+                <Tooltip
+                  content={
+                    isCasoRascunho(form.casos[selectedCaseIndex])
+                      ? 'Remover caso em rascunho'
+                      : 'Só é possível remover casos em rascunho'
+                  }
                 >
-                  Remover caso atual
-                </Button>
-              )}
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeCaso(selectedCaseIndex)}
+                      disabled={!isCasoRascunho(form.casos[selectedCaseIndex])}
+                    >
+                      Remover caso atual
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
             </div>
 
             <div className="rounded-md border p-3">
@@ -1838,34 +2192,41 @@ export default function ContratoForm({
 
                   <div className="space-y-2">
                     <Label>Serviço</Label>
-                    <NativeSelect
-                      value={currentCaso.produto_id}
-                      onChange={(e) => updateCurrentCaso({ produto_id: e.target.value })}
+                    <CommandSelect
+                      value={currentCaso.servico_id || ''}
+                      onValueChange={(value) => updateCurrentCaso({ servico_id: value })}
+                      options={servicoOptions}
+                      placeholder="Selecione..."
+                      searchPlaceholder="Buscar serviço..."
+                      emptyText="Nenhum serviço encontrado."
                       disabled={isReadOnly}
-                    >
-                      <option value="">Selecione...</option>
-                      {options.produtos.map((produto) => (
-                        <option key={produto.id} value={produto.id}>
-                          {produto.nome}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                    />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Responsável</Label>
-                    <NativeSelect
-                      value={currentCaso.responsavel_id}
-                      onChange={(e) => updateCurrentCaso({ responsavel_id: e.target.value })}
+                    <Label>Produto</Label>
+                    <CommandSelect
+                      value={currentCaso.produto_id}
+                      onValueChange={(value) => updateCurrentCaso({ produto_id: value })}
+                      options={produtoOptions}
+                      placeholder="Selecione..."
+                      searchPlaceholder="Buscar produto..."
+                      emptyText="Nenhum produto encontrado."
                       disabled={isReadOnly}
-                    >
-                      <option value="">Selecione...</option>
-                      {options.colaboradores.map((colaborador) => (
-                        <option key={colaborador.id} value={colaborador.id}>
-                          {colaborador.nome}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Responsável</Label>
+                    <CommandSelect
+                      value={currentCaso.responsavel_id}
+                      onValueChange={(value) => updateCurrentCaso({ responsavel_id: value })}
+                      options={colaboradorOptions}
+                      placeholder="Selecione..."
+                      searchPlaceholder="Buscar responsável..."
+                      emptyText="Nenhum responsável encontrado."
+                      disabled={isReadOnly}
+                    />
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
@@ -1881,6 +2242,126 @@ export default function ContratoForm({
                       onChange={setCentroRateio}
                       disabled={isReadOnly}
                     />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Anexos do caso</Label>
+
+                    {(((currentCaso as any)?.anexos || []) as any[]).length > 0 && (
+                      <div className="space-y-2 rounded-md border p-3">
+                        <p className="text-sm font-medium">Anexos já cadastrados</p>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+                          {(((currentCaso as any)?.anexos || []) as any[]).map((anexo: any) => (
+                            <div key={anexo.id} className="w-full max-w-[140px]">
+                              <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/20 p-2">
+                                <div className="flex h-full items-center justify-center text-muted-foreground">
+                                  <Paperclip className="h-5 w-5" />
+                                </div>
+                                <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="secondary"
+                                    className="h-8 w-8"
+                                    onClick={() => openAnexo(anexo.id, 'caso')}
+                                    disabled={openingAnexoId === anexo.id}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  {!isReadOnly && (
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="destructive"
+                                      className="h-8 w-8"
+                                      onClick={() => removeExistingAnexo(anexo.id, 'caso', selectedCaseIndex)}
+                                      disabled={removingAnexoId === anexo.id}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-1 space-y-0.5">
+                                <div className="truncate text-xs font-medium">{anexo.nome}</div>
+                                <div className="truncate text-[11px] text-muted-foreground">{anexo.arquivo_nome}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!isReadOnly && (
+                      <div
+                        className="cursor-pointer rounded-md border-2 border-dashed p-6 text-center text-sm text-muted-foreground hover:border-primary/40 hover:bg-muted/30"
+                        onClick={() => openAnexoDialogByClick('caso', selectedCaseIndex)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const dropped = e.dataTransfer.files?.[0]
+                          if (!dropped) return
+                          openAnexoDialogByDrop(dropped, 'caso', selectedCaseIndex)
+                        }}
+                      >
+                        <p className="font-medium text-foreground">Arraste um arquivo aqui</p>
+                        <p className="mt-1">ou clique para selecionar</p>
+                        <div className="mt-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openAnexoDialogByClick('caso', selectedCaseIndex)}
+                          >
+                            <Plus className="mr-1 h-4 w-4" />
+                            Novo anexo
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {(pendingCaseAnexos[selectedCaseIndex] || []).length > 0 && (
+                      <div className="space-y-2 rounded-md border p-3">
+                        <p className="text-sm font-medium">Anexos pendentes</p>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+                          {(pendingCaseAnexos[selectedCaseIndex] || []).map((anexo, idx) => (
+                            <div key={`${selectedCaseIndex}-${idx}`} className="w-full max-w-[140px]">
+                              <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30 p-2">
+                                <div className="flex h-full items-center justify-center text-muted-foreground">
+                                  <Paperclip className="h-5 w-5" />
+                                </div>
+                                <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="secondary"
+                                    className="h-8 w-8"
+                                    onClick={() => openPendingCaseAnexo(selectedCaseIndex, idx)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  {!isReadOnly && (
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="destructive"
+                                      className="h-8 w-8"
+                                      onClick={() => removePendingCaseAnexo(selectedCaseIndex, idx)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-1 space-y-0.5">
+                                <div className="truncate text-xs font-medium">{anexo.nome}</div>
+                                <div className="truncate text-[11px] text-muted-foreground">{anexo.file?.name || 'Arquivo pendente'}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2074,6 +2555,7 @@ export default function ContratoForm({
                                     value={creatingPriceTable ? '__new__' : (regras.tabela_preco_id || regras.tabela_preco_nome || '')}
                                     onValueChange={(value) => {
                                       if (value === '__new__') {
+                                        updateCurrentRegra('modo_preco', 'tabela')
                                         setCreatingPriceTable(true)
                                         setNewPriceTableName('')
                                         updateCurrentRegra('tabela_preco_id', '')
@@ -2088,6 +2570,7 @@ export default function ContratoForm({
                                         setError('Tabela de preço não encontrada')
                                         return
                                       }
+                                      updateCurrentRegra('modo_preco', 'tabela')
                                       updateCurrentRegra('tabela_preco_id', selectedTable.id || '')
                                       updateCurrentRegra('tabela_preco_nome', selectedTable.nome)
                                       updateCurrentRegra(
@@ -2133,7 +2616,17 @@ export default function ContratoForm({
                           <Label>CAP</Label>
                           <ChoiceCards
                             value={regras.cap_enabled ? 'sim' : 'nao'}
-                            onChange={(value) => updateCurrentRegra('cap_enabled', value === 'sim')}
+                            onChange={(value) => {
+                              const enabled = value === 'sim'
+                              updateCurrentRegra('cap_enabled', enabled)
+                              if (!enabled) {
+                                updateCurrentRegra('cap_limites_enabled', false)
+                                updateCurrentRegra('cap_min_enabled', false)
+                                updateCurrentRegra('cap_max_enabled', false)
+                                updateCurrentRegra('cap_min', '')
+                                updateCurrentRegra('cap_max', '')
+                              }
+                            }}
                             disabled={isReadOnly}
                             columns={2}
                             options={[
@@ -2156,65 +2649,160 @@ export default function ContratoForm({
                                 <option value="valor">Cap por valor</option>
                               </NativeSelect>
                             </div>
-                            <div className="space-y-1">
-                              <Label>Limite inferior</Label>
-                              <MoneyInput
-                                value={regras.cap_min || ''}
-                                onValueChange={(value) => updateCurrentRegra('cap_min', value)}
-                                disabled={isReadOnly}
-                              />
+                            <div className="space-y-2">
+                              <Label>Habilitar limites?</Label>
+                              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={capMinEnabled}
+                                    onChange={(e) => {
+                                      const enabled = e.currentTarget.checked
+                                      updateCurrentRegra('cap_min_enabled', enabled)
+                                      updateCurrentRegra('cap_limites_enabled', enabled || capMaxEnabled)
+                                      if (!enabled) updateCurrentRegra('cap_min', '')
+                                    }}
+                                    disabled={isReadOnly}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                  />
+                                  Ativar limite inferior
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={capMaxEnabled}
+                                    onChange={(e) => {
+                                      const enabled = e.currentTarget.checked
+                                      updateCurrentRegra('cap_max_enabled', enabled)
+                                      updateCurrentRegra('cap_limites_enabled', capMinEnabled || enabled)
+                                      if (!enabled) updateCurrentRegra('cap_max', '')
+                                    }}
+                                    disabled={isReadOnly}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                  />
+                                  Ativar limite superior
+                                </label>
+                              </div>
                             </div>
-                            <div className="space-y-1">
-                              <Label>Limite superior</Label>
-                              <MoneyInput
-                                value={regras.cap_max || ''}
-                                onValueChange={(value) => updateCurrentRegra('cap_max', value)}
-                                disabled={isReadOnly}
-                              />
+                            <div className="grid grid-cols-1 gap-3 md:col-span-2 md:grid-cols-2">
+                              {capMinEnabled ? (
+                                <div className="space-y-1">
+                                  <Label>Limite inferior</Label>
+                                  <MoneyInput
+                                    value={regras.cap_min || ''}
+                                    onValueChange={(value) => updateCurrentRegra('cap_min', value)}
+                                    disabled={isReadOnly}
+                                    placeholder="Opcional"
+                                  />
+                                </div>
+                              ) : (
+                                <div />
+                              )}
+                              {capMaxEnabled && (
+                                <div className="space-y-1">
+                                  <Label>Limite superior</Label>
+                                  <MoneyInput
+                                    value={regras.cap_max || ''}
+                                    onValueChange={(value) => updateCurrentRegra('cap_max', value)}
+                                    disabled={isReadOnly}
+                                    placeholder="Opcional"
+                                  />
+                                </div>
+                              )}
                             </div>
                             <div className="space-y-2">
                               <Label>Cobrar excedente?</Label>
+                            <ChoiceCards
+                              value={regras.cobra_excedente ? 'sim' : 'nao'}
+                              onChange={(value) => {
+                                const enabled = value === 'sim'
+                                updateCurrentRegra('cobra_excedente', enabled)
+                                if (!enabled) {
+                                  updateCurrentRegra('valor_hora_excedente', '')
+                                }
+                              }}
+                              disabled={isReadOnly}
+                              columns={2}
+                              options={[
+                                { value: 'nao', label: 'Não cobra excedente' },
+                                { value: 'sim', label: 'Cobra excedente' },
+                              ]}
+                            />
+                          </div>
+                          {modoPreco === 'valor_hora' && regras.cobra_excedente && (
+                            <div className="space-y-1">
+                              <Label>Valor da hora excedente</Label>
+                              <MoneyInput
+                                value={regras.valor_hora_excedente || ''}
+                                onValueChange={(value) => updateCurrentRegra('valor_hora_excedente', value)}
+                                disabled={isReadOnly}
+                              />
+                            </div>
+                          )}
+                          <div className="space-y-2 md:col-span-2">
+                              <Label>Encontro de contas</Label>
                               <ChoiceCards
-                                value={regras.cobra_excedente ? 'sim' : 'nao'}
-                                onChange={(value) => updateCurrentRegra('cobra_excedente', value === 'sim')}
+                                value={regras.encontro_contas_enabled ? 'sim' : 'nao'}
+                                onChange={(value) => {
+                                  const enabled = value === 'sim'
+                                  updateCurrentRegra('encontro_contas_enabled', enabled)
+                                  if (!enabled) {
+                                    updateCurrentRegra('encontro_periodicidade', '')
+                                    updateCurrentRegra('data_proximo_encontro', '')
+                                  }
+                                }}
                                 disabled={isReadOnly}
                                 columns={2}
                                 options={[
-                                  { value: 'nao', label: 'Não cobra excedente' },
-                                  { value: 'sim', label: 'Cobra excedente' },
+                                  { value: 'nao', label: 'Não' },
+                                  { value: 'sim', label: 'Sim' },
                                 ]}
                               />
                             </div>
-                            <div className="space-y-1">
-                              <Label>Periodicidade encontro de contas</Label>
-                              <NativeSelect
-                                value={regras.encontro_periodicidade || 'mensal'}
-                                onChange={(e) => updateCurrentRegra('encontro_periodicidade', e.target.value)}
-                                disabled={isReadOnly}
-                              >
-                                <option value="mensal">Encontro mensal</option>
-                                <option value="bimestral">Encontro bimestral</option>
-                                <option value="trimestral">Encontro trimestral</option>
-                                <option value="semestral">Encontro semestral</option>
-                                <option value="anual">Encontro anual</option>
-                              </NativeSelect>
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Data último encontro de contas</Label>
-                              <DatePicker
-                                value={regras.data_ultimo_encontro || ''}
-                                onChange={(value) => updateCurrentRegra('data_ultimo_encontro', value)}
-                                disabled={isReadOnly}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Data próximo encontro de contas</Label>
-                              <DatePicker
-                                value={regras.data_proximo_encontro || ''}
-                                onChange={(value) => updateCurrentRegra('data_proximo_encontro', value)}
-                                disabled={isReadOnly}
-                              />
-                            </div>
+                            {regras.encontro_contas_enabled && (
+                              <>
+                                <div className="space-y-1">
+                                  <Label>Periodicidade encontro de contas</Label>
+                                  <NativeSelect
+                                    value={regras.encontro_periodicidade || ''}
+                                    onChange={(e) => {
+                                      const periodicidade = e.target.value
+                                      updateCurrentRegra('encontro_periodicidade', periodicidade)
+
+                                      const months = periodToMonths[periodicidade] || 0
+                                      const baseDate = regras.data_ultimo_encontro || currentCaso.inicio_vigencia || ''
+                                      const day = Number(currentCaso.pagamento_dia_mes || '0') || undefined
+                                      const nextDate = months > 0 && baseDate ? buildNextDate(baseDate, months, day) : ''
+                                      updateCurrentRegra('data_proximo_encontro', nextDate)
+                                    }}
+                                    disabled={isReadOnly}
+                                  >
+                                    <option value="">Selecione...</option>
+                                    <option value="mensal">Encontro mensal</option>
+                                    <option value="bimestral">Encontro bimestral</option>
+                                    <option value="trimestral">Encontro trimestral</option>
+                                    <option value="semestral">Encontro semestral</option>
+                                    <option value="anual">Encontro anual</option>
+                                  </NativeSelect>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label>Data último encontro de contas</Label>
+                                  <DatePicker
+                                    value={regras.data_ultimo_encontro || ''}
+                                    onChange={() => {}}
+                                    disabled
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label>Data próximo encontro de contas</Label>
+                                  <DatePicker
+                                    value={regras.data_proximo_encontro || ''}
+                                    onChange={(value) => updateCurrentRegra('data_proximo_encontro', value)}
+                                    disabled={isReadOnly || !isEdit}
+                                  />
+                                </div>
+                              </>
+                            )}
                           </>
                         )}
                       </div>
@@ -2226,6 +2814,19 @@ export default function ContratoForm({
                       <div className="border-t" />
                       <p className="text-base font-semibold">Configuração de cobrança mensal</p>
                       <Label>Valor mensal do projeto</Label>
+                      <MoneyInput
+                        value={regras.valor_mensal || ''}
+                        onValueChange={(value) => updateCurrentRegra('valor_mensal', value)}
+                        disabled={isReadOnly}
+                      />
+                    </div>
+                  )}
+
+                  {currentCaso.regra_cobranca === 'mensalidade_processo' && (
+                    <div className="space-y-2 md:col-span-2">
+                      <div className="border-t" />
+                      <p className="text-base font-semibold">Configuração de mensalidade de processo</p>
+                      <Label>Valor mensal</Label>
                       <MoneyInput
                         value={regras.valor_mensal || ''}
                         onValueChange={(value) => updateCurrentRegra('valor_mensal', value)}
@@ -2421,23 +3022,28 @@ export default function ContratoForm({
 
                   {despesasReembolsaveisEnabled && (
                     <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                      {['viagem', 'cartorio', 'custas', 'deslocamento', 'outros'].map((op) => {
+                      {[
+                        { key: 'viagem', label: 'Viagem' },
+                        { key: 'despesas_extrajudiciais', label: 'Despesas Extrajudiciais' },
+                        { key: 'despesas_judiciais', label: 'Despesas Judiciais' },
+                        { key: 'deslocamento', label: 'Deslocamento' },
+                      ].map((op) => {
                         const selected: string[] = despesas.despesas_reembolsaveis || []
-                        const isSelected = selected.includes(op)
+                        const isSelected = selected.includes(op.key)
                         return (
                           <button
-                            key={op}
+                            key={op.key}
                             type="button"
                             className={`rounded-md border px-3 py-2 text-left text-sm ${
                               isSelected ? 'border-primary bg-primary/10' : ''
                             }`}
                             disabled={isReadOnly}
                             onClick={() => {
-                              const next = isSelected ? selected.filter((s) => s !== op) : [...selected, op]
+                              const next = isSelected ? selected.filter((s) => s !== op.key) : [...selected, op.key]
                               updateCurrentDespesas('despesas_reembolsaveis', next)
                             }}
                           >
-                            {op}
+                            {op.label}
                           </button>
                         )
                       })}
@@ -2493,7 +3099,7 @@ export default function ContratoForm({
 
                   <div className="space-y-2">
                     <div className="mb-2 flex items-center justify-between">
-                      <Label>Revisores (sócios)</Label>
+                      <Label>Revisores</Label>
                       {!isReadOnly && (
                         <Button
                           type="button"
@@ -2531,22 +3137,19 @@ export default function ContratoForm({
                         <div className="flex h-10 w-10 items-center justify-center rounded border text-sm font-semibold text-muted-foreground">
                           #{idx + 1}
                         </div>
-                        <NativeSelect
+                        <CommandSelect
                           value={item.colaborador_id || ''}
-                          disabled={isReadOnly}
-                          onChange={(e) => {
+                          onValueChange={(value) => {
                             const list = [...(timesheet.revisores || [])]
-                            list[idx] = { ...list[idx], colaborador_id: e.target.value }
+                            list[idx] = { ...list[idx], colaborador_id: value }
                             updateCurrentTimesheet('revisores', list)
                           }}
-                        >
-                          <option value="">Selecione...</option>
-                          {(options.socios || []).map((socio) => (
-                            <option key={socio.id} value={socio.id}>
-                              {socio.nome}
-                            </option>
-                          ))}
-                        </NativeSelect>
+                          options={colaboradorOptions}
+                          placeholder="Selecione..."
+                          searchPlaceholder="Buscar revisor..."
+                          emptyText="Nenhum colaborador encontrado."
+                          disabled={isReadOnly}
+                        />
                         {!isReadOnly && (
                           <Button
                             type="button"
@@ -2569,7 +3172,7 @@ export default function ContratoForm({
 
                   <div className="space-y-2">
                     <div className="mb-2 flex items-center justify-between">
-                      <Label>Aprovadores (sócios)</Label>
+                      <Label>Aprovadores</Label>
                       {!isReadOnly && (
                         <Button
                           type="button"
@@ -2607,22 +3210,19 @@ export default function ContratoForm({
                         <div className="flex h-10 w-10 items-center justify-center rounded border text-sm font-semibold text-muted-foreground">
                           #{idx + 1}
                         </div>
-                        <NativeSelect
+                        <CommandSelect
                           value={item.colaborador_id || ''}
-                          disabled={isReadOnly}
-                          onChange={(e) => {
+                          onValueChange={(value) => {
                             const list = [...(timesheet.aprovadores || [])]
-                            list[idx] = { ...list[idx], colaborador_id: e.target.value }
+                            list[idx] = { ...list[idx], colaborador_id: value }
                             updateCurrentTimesheet('aprovadores', list)
                           }}
-                        >
-                          <option value="">Selecione...</option>
-                          {(options.socios || []).map((socio) => (
-                            <option key={socio.id} value={socio.id}>
-                              {socio.nome}
-                            </option>
-                          ))}
-                        </NativeSelect>
+                          options={aprovadorOptions}
+                          placeholder="Selecione..."
+                          searchPlaceholder="Buscar aprovador..."
+                          emptyText="Nenhum sócio encontrado."
+                          disabled={isReadOnly}
+                        />
                         {!isReadOnly && (
                           <Button
                             type="button"
@@ -2675,27 +3275,15 @@ export default function ContratoForm({
                   {indicacaoPagamentoEnabled && (
                     <div className="space-y-2">
                       <Label>Indicado</Label>
-                      <NativeSelect
+                      <CommandSelect
                         value={indicacao.pagamento_indicacao || ''}
+                        onValueChange={(value) => updateCurrentIndicacao('pagamento_indicacao', value)}
+                        options={indicacaoOptions}
+                        placeholder="Selecione..."
+                        searchPlaceholder="Buscar indicado..."
+                        emptyText="Nenhum indicado encontrado."
                         disabled={isReadOnly}
-                        onChange={(e) => updateCurrentIndicacao('pagamento_indicacao', e.target.value)}
-                      >
-                        <option value="">Selecione...</option>
-                        <optgroup label="Colaboradores">
-                          {(options.colaboradores || []).map((p) => (
-                            <option key={`col-${p.id}`} value={`colaborador:${p.id}`}>
-                              {p.nome}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="Clientes">
-                          {(options.clientes || []).map((p) => (
-                            <option key={`cli-${p.id}`} value={`cliente:${p.id}`}>
-                              {p.nome}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </NativeSelect>
+                      />
                     </div>
                   )}
 
@@ -2751,6 +3339,8 @@ export default function ContratoForm({
             setAnexoDialogNome('')
             setAnexoDialogFile(null)
             setAnexoDialogFromDrop(false)
+            setAnexoDialogCaseIndex(null)
+            setAnexoDialogTarget('contrato')
           }
         }}
       >
@@ -2813,6 +3403,7 @@ export default function ContratoForm({
                 value={creatingPriceTable ? '__new__' : (regras.tabela_preco_id || regras.tabela_preco_nome || '')}
                 onValueChange={(value) => {
                   if (value === '__new__') {
+                    updateCurrentRegra('modo_preco', 'tabela')
                     setCreatingPriceTable(true)
                     setNewPriceTableName('')
                     updateCurrentRegra('tabela_preco_id', '')
@@ -2826,6 +3417,7 @@ export default function ContratoForm({
                     return
                   }
                   setCreatingPriceTable(false)
+                  updateCurrentRegra('modo_preco', 'tabela')
                   updateCurrentRegra('tabela_preco_id', selectedTable.id || '')
                   updateCurrentRegra('tabela_preco_nome', selectedTable.nome)
                   updateCurrentRegra('tabela_preco_itens', selectedTable?.itens || buildDefaultTabelaPrecoItens())

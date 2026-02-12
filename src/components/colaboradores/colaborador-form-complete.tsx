@@ -13,6 +13,7 @@ import { validateCPF, formatCPF, validateOAB, formatPhone, formatCEP, fetchCEPDa
 import { PasswordInput } from '@/components/ui/password-input'
 import { useColaboradorFormData } from '@/lib/hooks/use-colaborador-form-data'
 import { LoadingProgressWithSteps } from '@/components/ui/loading-progress'
+import { MoneyInput } from '@/components/ui/money-input'
 
 export default function ColaboradorFormComplete() {
   const router = useRouter()
@@ -55,6 +56,21 @@ export default function ColaboradorFormComplete() {
     percentual_adicional: '',
     salario: '',
   })
+
+  const permissoesSistema = [
+    { value: 'socio', label: 'Sócio' },
+    { value: 'advogado', label: 'Advogado' },
+    { value: 'administrativo', label: 'Administrativo' },
+    { value: 'estagiario', label: 'Estagiário' },
+  ]
+
+  const categoriasProfissionais = [
+    { value: 'contencioso', label: 'Contencioso' },
+    { value: 'consultoria', label: 'Consultoria' },
+    { value: 'administrativo', label: 'Administrativo' },
+    { value: 'coordenacao', label: 'Coordenação' },
+    { value: 'socios', label: 'Sócios' },
+  ]
 
   // Form fields - Bancário
   const [bancario, setBancario] = useState({
@@ -147,7 +163,7 @@ export default function ColaboradorFormComplete() {
     
     let formattedValue = value
     if (name === 'whatsapp') {
-      formattedValue = formatPhone(value)
+      formattedValue = formatPhone(value.replace(/\D/g, '').slice(0, 11))
     } else if (name === 'cep') {
       formattedValue = formatCEP(value)
     }
@@ -419,20 +435,27 @@ export default function ColaboradorFormComplete() {
                 </div>
 
                 <div>
-                  <Label htmlFor="categoria">Categoria *</Label>
-                  <NativeSelect
-                    id="categoria"
-                    name="categoria"
-                    required
-                    value={dadosPessoais.categoria}
-                    onChange={handleDadosPessoaisChange}
-                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="socio">Sócio</option>
-                    <option value="advogado">Advogado</option>
-                    <option value="administrativo">Administrativo</option>
-                    <option value="estagiario">Estagiário</option>
-                  </NativeSelect>
+                  <Label>Permissão no sistema *</Label>
+                  <div className="mt-1 grid grid-cols-2 gap-2">
+                    {permissoesSistema.map((item) => {
+                      const active = dadosPessoais.categoria === item.value
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() =>
+                            handleDadosPessoaisChange({
+                              target: { name: 'categoria', value: item.value },
+                            } as React.ChangeEvent<HTMLInputElement>)
+                          }
+                        >
+                          {item.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {dadosPessoais.categoria === 'advogado' && (
@@ -459,6 +482,7 @@ export default function ColaboradorFormComplete() {
                     onChange={handleContatoChange}
                     className="mt-1"
                     placeholder="(00) 00000-0000"
+                    maxLength={15}
                   />
                 </div>
 
@@ -583,50 +607,41 @@ export default function ColaboradorFormComplete() {
                   </NativeSelect>
                 </div>
 
-                <div>
-                  <Label htmlFor="adicional">Adicional</Label>
-                  <NativeSelect
-                    id="adicional"
-                    name="adicional"
-                    value={profissional.adicional}
-                    onChange={handleProfissionalChange}
-                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Nenhum</option>
-                    <option value="lideranca">Liderança</option>
-                    <option value="estrategico">Estratégico</option>
-                  </NativeSelect>
-                </div>
-
-                {profissional.adicional && (
-                  <div>
-                    <Label htmlFor="percentual_adicional">Percentual Adicional (%)</Label>
-                    <Input
-                      id="percentual_adicional"
-                      name="percentual_adicional"
-                      type="number"
-                      min="5"
-                      max="20"
-                      step="0.01"
-                      value={profissional.percentual_adicional}
-                      onChange={handleProfissionalChange}
-                      className="mt-1"
-                      placeholder="5.00 a 20.00"
-                    />
+                <div className="md:col-span-2">
+                  <Label>Categoria</Label>
+                  <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-5">
+                    {categoriasProfissionais.map((item) => {
+                      const active = profissional.adicional === item.value
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() =>
+                            setProfissional((prev) => ({
+                              ...prev,
+                              adicional: item.value,
+                            }))
+                          }
+                        >
+                          {item.label}
+                        </Button>
+                      )
+                    })}
                   </div>
-                )}
+                </div>
 
                 <div>
                   <Label htmlFor="salario">Salário</Label>
-                  <Input
-                    id="salario"
-                    name="salario"
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     value={profissional.salario}
-                    onChange={handleProfissionalChange}
-                    className="mt-1"
-                    placeholder="0.00"
+                    onValueChange={(value) =>
+                      setProfissional((prev) => ({
+                        ...prev,
+                        salario: value,
+                      }))
+                    }
                   />
                 </div>
               </div>

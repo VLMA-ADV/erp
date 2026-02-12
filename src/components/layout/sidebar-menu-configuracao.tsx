@@ -31,6 +31,11 @@ const configuracaoMenuItems = [
     permission: 'config.produtos.read',
   },
   {
+    label: 'Categorias Prest/Parc',
+    href: '/configuracao/categorias-prestadores-parceiros',
+    permission: 'config.categorias_prestadores_parceiros.read',
+  },
+  {
     label: 'Segmentos Econômicos',
     href: '/configuracao/segmentos-economicos',
     permission: 'config.segmentos.read',
