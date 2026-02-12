@@ -474,7 +474,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Acme <onboarding@resend.dev>",
+            from: "VLMA <no-reply@erp.vlma.com.br>",
             to: [email],
             subject: "Bem-vindo ao ERP-VLMA",
             html: `
