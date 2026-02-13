@@ -52,6 +52,7 @@ export default function ColaboradorFormComplete() {
   const [profissional, setProfissional] = useState({
     cargo_id: '',
     area_id: '',
+    categoria_profissional: '',
     adicional: '',
     percentual_adicional: '',
     salario: '',
@@ -264,8 +265,8 @@ export default function ColaboradorFormComplete() {
 
     if (profissional.percentual_adicional) {
       const percentual = parseFloat(profissional.percentual_adicional)
-      if (percentual < 5 || percentual > 20) {
-        return 'Percentual adicional deve estar entre 5% e 20%'
+      if (percentual < 0 || percentual > 20) {
+        return 'Percentual adicional deve estar entre 0% e 20%'
       }
     }
     
@@ -303,6 +304,7 @@ export default function ColaboradorFormComplete() {
         ...profissional,
         ...bancario,
         area_id: profissional.area_id || null,
+        categoria_profissional: profissional.categoria_profissional || null,
         adicional: profissional.adicional || null,
         percentual_adicional: profissional.percentual_adicional ? parseFloat(profissional.percentual_adicional) : null,
         salario: profissional.salario ? parseFloat(profissional.salario) : null,
@@ -611,6 +613,34 @@ export default function ColaboradorFormComplete() {
                   <Label>Categoria</Label>
                   <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-5">
                     {categoriasProfissionais.map((item) => {
+                      const active = profissional.categoria_profissional === item.value
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() =>
+                            setProfissional((prev) => ({
+                              ...prev,
+                              categoria_profissional: item.value,
+                            }))
+                          }
+                        >
+                          {item.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Label>Função adicional</Label>
+                  <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-3">
+                    {[
+                      { value: 'lideranca', label: 'Liderança' },
+                      { value: 'estrategico', label: 'Estratégico' },
+                    ].map((item) => {
                       const active = profissional.adicional === item.value
                       return (
                         <Button
@@ -621,7 +651,8 @@ export default function ColaboradorFormComplete() {
                           onClick={() =>
                             setProfissional((prev) => ({
                               ...prev,
-                              adicional: item.value,
+                              adicional: active ? '' : item.value,
+                              percentual_adicional: active ? '' : (prev.percentual_adicional || '0'),
                             }))
                           }
                         >
@@ -629,8 +660,49 @@ export default function ColaboradorFormComplete() {
                         </Button>
                       )
                     })}
+                    <Button
+                      type="button"
+                      variant={!profissional.adicional ? 'default' : 'outline'}
+                      className="justify-start"
+                      onClick={() =>
+                        setProfissional((prev) => ({
+                          ...prev,
+                          adicional: '',
+                          percentual_adicional: '',
+                        }))
+                      }
+                    >
+                      Sem adicional
+                    </Button>
                   </div>
                 </div>
+
+                {profissional.adicional ? (
+                  <div>
+                    <Label htmlFor="percentual_adicional">% adicional</Label>
+                    <div className="mt-2 space-y-2">
+                      <input
+                        id="percentual_adicional"
+                        name="percentual_adicional"
+                        type="range"
+                        min={0}
+                        max={20}
+                        step={1}
+                        value={Number(profissional.percentual_adicional || 0)}
+                        onChange={(e) =>
+                          setProfissional((prev) => ({
+                            ...prev,
+                            percentual_adicional: e.target.value,
+                          }))
+                        }
+                        className="w-full"
+                      />
+                      <p className="text-sm font-medium text-gray-700">
+                        {Number(profissional.percentual_adicional || 0)}%
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div>
                   <Label htmlFor="salario">Salário</Label>

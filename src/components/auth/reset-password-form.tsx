@@ -18,59 +18,75 @@ export default function ResetPasswordForm() {
   const [isExchanging, setIsExchanging] = useState(true)
 
   useEffect(() => {
-    // Verificar se há code na URL
     const code = searchParams.get('code')
-    const email = searchParams.get('email')
-    
-    if (!code) {
-      setTokenValid(false)
-      setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-      setIsExchanging(false)
-      return
-    }
+    const tokenHash = searchParams.get('token_hash')
+    const type = searchParams.get('type')
 
-    // Criar sessão de recovery imediatamente ao carregar a página
+    const hashParams = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      : new URLSearchParams()
+    const hashAccessToken = hashParams.get('access_token')
+    const hashRefreshToken = hashParams.get('refresh_token')
+
     const createRecoverySession = async () => {
       setIsExchanging(true)
       const supabase = createClient()
       
       try {
-        // O email é obrigatório para verificar o OTP de recovery
-        if (!email) {
-          setTokenValid(false)
-          setError('Link inválido: email não encontrado. Solicite um novo link de recuperação.')
-          setIsExchanging(false)
-          return
-        }
-
-        // Verificar o OTP com email e código
-        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-          email: decodeURIComponent(email),
-          token: code,
-          type: 'recovery',
-        })
-
-        if (verifyError) {
-          console.error('Error verifying recovery OTP:', verifyError)
-          setTokenValid(false)
-          setError(verifyError.message || 'Link inválido ou expirado. Solicite um novo link de recuperação.')
-          setIsExchanging(false)
-          return
-        }
-
-        if (verifyData?.session) {
-          console.log('Recovery session created successfully:', verifyData.session.user.id)
+        // 1) Se já existe sessão ativa (ex: link já autenticou), não valida token novamente
+        const { data: sessionData } = await supabase.auth.getSession()
+        if (sessionData.session) {
           setTokenValid(true)
-        } else {
-          console.error('No session returned from verification')
-          setTokenValid(false)
-          setError('Erro ao criar sessão de recuperação. Tente novamente.')
+          return
         }
+
+        // 2) Fluxo hash (implicit): access_token + refresh_token
+        if (hashAccessToken && hashRefreshToken) {
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          })
+
+          if (!setSessionError) {
+            setTokenValid(true)
+            return
+          }
+        }
+
+        // 3) Fluxo PKCE: code
+        if (code) {
+          const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          if (!exchangeError && exchangeData.session) {
+            setTokenValid(true)
+            return
+          }
+        }
+
+        // 4) Fluxo token_hash/type=recovery
+        if (tokenHash && type === 'recovery') {
+          const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: 'recovery',
+          })
+
+          if (!verifyError && verifyData.session) {
+            setTokenValid(true)
+            return
+          }
+        }
+
+        // Nenhum fluxo conseguiu criar sessão de recovery
+        setTokenValid(false)
+        setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
       } catch (err) {
         console.error('Exception creating recovery session:', err)
         setTokenValid(false)
         setError('Erro ao validar o link. Tente novamente.')
       } finally {
+        // Limpar hash sensível da URL depois da troca da sessão
+        if (typeof window !== 'undefined' && window.location.hash) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
+        }
         setIsExchanging(false)
       }
     }
