@@ -17,7 +17,7 @@ export default function ContratosActions({
   onRefresh,
 }: {
   contratoId: string
-  status: 'rascunho' | 'ativo' | 'encerrado'
+  status: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
   canWrite: boolean
   onRefresh: () => void
 }) {
@@ -28,7 +28,7 @@ export default function ContratosActions({
   const { success, error: toastError } = useToast()
 
   const toggleStatus = async () => {
-    const next = status === 'encerrado' ? 'ativo' : 'encerrado'
+    const next = status === 'encerrado' ? 'ativo' : status === 'em_analise' ? 'ativo' : 'encerrado'
 
     try {
       setLoading(true)
@@ -129,9 +129,9 @@ export default function ContratosActions({
             </Link>
           </Tooltip>
 
-          <Tooltip content={status === 'encerrado' ? 'Ativar contrato' : 'Encerrar contrato'}>
+          <Tooltip content={status === 'encerrado' || status === 'em_analise' ? 'Ativar contrato' : 'Encerrar contrato'}>
             <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(true)} disabled={loading}>
-              <Power className={`h-4 w-4 ${status === 'encerrado' ? 'text-green-600' : 'text-red-600'}`} />
+              <Power className={`h-4 w-4 ${status === 'encerrado' || status === 'em_analise' ? 'text-green-600' : 'text-red-600'}`} />
             </Button>
           </Tooltip>
 
@@ -153,8 +153,8 @@ export default function ContratosActions({
           <AlertDialog
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
-            title={status === 'encerrado' ? 'Ativar contrato?' : 'Encerrar contrato?'}
-            description={`Confirme para alterar o status para ${status === 'encerrado' ? 'ativo' : 'encerrado'}.`}
+            title={status === 'encerrado' || status === 'em_analise' ? 'Ativar contrato?' : 'Encerrar contrato?'}
+            description={`Confirme para alterar o status para ${status === 'encerrado' || status === 'em_analise' ? 'ativo' : 'encerrado'}.`}
             confirmLabel="Confirmar"
             cancelLabel="Cancelar"
             onConfirm={toggleStatus}

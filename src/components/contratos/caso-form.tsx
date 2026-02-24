@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, CircleDollarSign, Clock3, Eye, HandCoins, Landmark, Layers3, Paperclip, Trash2 } from 'lucide-react'
+import { ChevronRight, CircleDollarSign, Clock3, Eye, Landmark, Layers3, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -38,13 +38,17 @@ const emptyCaso: CasoPayload = {
   indice_reajuste: '',
   regra_cobranca: '',
   regra_cobranca_config: {
+    natureza_caso: '',
+    regras_adicionais: [],
     valor_hora: '',
+    valor_hora_excedente: '',
     usa_tabela_preco: false,
     tabela_preco_nome: '',
     tabela_preco_itens: [],
     cap_enabled: false,
     cap_limites_enabled: false,
     cap_tipo: 'hora',
+    cap_desejado_horas: '',
     cap_min: '',
     cap_max: '',
     cobra_excedente: false,
@@ -60,6 +64,8 @@ const emptyCaso: CasoPayload = {
     valor_exito_calculado: '',
     data_pagamento_exito: '',
     regra_cobranca_texto: '',
+    cross_sell_ativo: false,
+    cross_sell_origem_colaborador_id: '',
   },
   centro_custo_rateio: [],
   pagadores_servico: [],
@@ -79,6 +85,11 @@ const emptyCaso: CasoPayload = {
     periodicidade: 'mensal',
     modo: 'percentual',
     valor: '',
+    data_pagamento_unico: '',
+    usar_dia_vencimento: true,
+    dia_pagamento_mensal: '',
+    data_fim_pagamentos: '',
+    parcelas_pagamento: [],
   },
 }
 
@@ -107,14 +118,33 @@ interface CasoAnexoItem {
   created_at: string
 }
 
-type CaseSubstepKey = 'basico' | 'financeiro' | 'despesas' | 'timesheet' | 'indicacao'
+type BillingRuleStatus = 'rascunho' | 'ativo' | 'encerrado'
+
+interface BillingRuleDraft {
+  id: string
+  status: BillingRuleStatus
+  moeda: CasoPayload['moeda']
+  tipo_cobranca_documento: CasoPayload['tipo_cobranca_documento']
+  data_inicio_faturamento: string
+  pagamento_dia_mes: string
+  inicio_vigencia: string
+  periodo_reajuste: string
+  data_proximo_reajuste: string
+  data_ultimo_reajuste: string
+  indice_reajuste: string
+  regra_cobranca: CasoPayload['regra_cobranca']
+  regra_cobranca_config: Record<string, any>
+  pagadores_servico: CasoPayload['pagadores_servico']
+  indicacao_config: CasoPayload['indicacao_config']
+}
+
+type CaseSubstepKey = 'basico' | 'financeiro' | 'despesas' | 'timesheet'
 
 const caseSubsteps: Array<{ key: CaseSubstepKey; label: string; icon: typeof Layers3 }> = [
   { key: 'basico', label: 'Dados básicos', icon: Layers3 },
   { key: 'financeiro', label: 'Regras financeiras', icon: CircleDollarSign },
   { key: 'despesas', label: 'Despesas', icon: Landmark },
   { key: 'timesheet', label: 'Timesheet', icon: Clock3 },
-  { key: 'indicacao', label: 'Indicação', icon: HandCoins },
 ]
 
 const periodToMonths: Record<string, number> = {
@@ -146,6 +176,13 @@ function buildNextDate(base: string, months: number, dayOfMonth?: number): strin
   return formatDateToInput(target)
 }
 
+function formatDateBr(value: string) {
+  if (!value) return '-'
+  const [y, m, d] = value.split('-')
+  if (!y || !m || !d) return value
+  return `${d}/${m}/${y}`
+}
+
 function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
   const normalized = String(value || '')
     .normalize('NFD')
@@ -160,6 +197,18 @@ function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
   if (normalized === 'exito') return 'exito'
   if (normalized === 'mensalidade_de_processo') return 'mensalidade_processo'
   return normalized as CasoPayload['regra_cobranca']
+}
+
+function createRuleId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `regra_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function sanitizeSingleRuleConfig(config: Record<string, any> | undefined | null) {
+  const next = { ...(config || {}) }
+  delete (next as any).regras_cobranca
+  delete (next as any).regras_financeiras
+  return next
 }
 
 export default function CasoForm({
@@ -183,6 +232,8 @@ export default function CasoForm({
   const [form, setForm] = useState<CasoPayload>(emptyCaso)
   const [options, setOptions] = useState<ContratoFormOptions>({
     clientes: [],
+    prestadores: [],
+    parceiros: [],
     produtos: [],
     centros_custo: [],
     cargos: [],
@@ -203,6 +254,8 @@ export default function CasoForm({
   const [removingAnexoId, setRemovingAnexoId] = useState<string | null>(null)
   const [dragRevisorIndex, setDragRevisorIndex] = useState<number | null>(null)
   const [dragAprovadorIndex, setDragAprovadorIndex] = useState<number | null>(null)
+  const [billingRules, setBillingRules] = useState<BillingRuleDraft[]>([])
+  const [selectedBillingRuleIndex, setSelectedBillingRuleIndex] = useState(0)
 
   const isEdit = !!casoId
   const isReadOnly = viewOnly || !canWrite
@@ -248,21 +301,156 @@ export default function CasoForm({
   )
   const indicacaoOptions = useMemo(
     () => [
-      { value: 'nao', label: 'Não' },
       ...(options.colaboradores || []).map((p) => ({
         value: `colaborador:${p.id}`,
         label: `${p.nome} (Colaborador)`,
+        group: 'Colaboradores',
       })),
       ...(options.clientes || []).map((p) => ({
         value: `cliente:${p.id}`,
         label: `${p.nome} (Cliente)`,
+        group: 'Clientes',
+      })),
+      ...(options.prestadores || []).map((p) => ({
+        value: `prestador:${p.id}`,
+        label: `${p.nome} (Prestador de Serviço)`,
+        group: 'Prestadores de Serviço',
+      })),
+      ...(options.parceiros || []).map((p) => ({
+        value: `parceiro:${p.id}`,
+        label: `${p.nome} (Parceiro)`,
+        group: 'Parceiros',
       })),
     ],
-    [options.colaboradores, options.clientes],
+    [options.colaboradores, options.clientes, options.prestadores, options.parceiros],
   )
   const produtoMap = useMemo(() => new Map((options.produtos || []).map((item) => [item.id, item.nome])), [options.produtos])
   const colaboradorMap = useMemo(() => new Map((options.colaboradores || []).map((item) => [item.id, item.nome])), [options.colaboradores])
   const centroMap = useMemo(() => new Map((options.centros_custo || []).map((item) => [item.id, item.nome])), [options.centros_custo])
+  const currentBillingRule = billingRules[selectedBillingRuleIndex]
+  const isCurrentRuleDraft = (currentBillingRule?.status || 'rascunho') === 'rascunho'
+  const isCurrentRuleClosed = (currentBillingRule?.status || '') === 'encerrado'
+  const indicacaoPagamentoEnabled =
+    Boolean((indicacao as any).pagamento_indicacao_ativo) ||
+    (Boolean(indicacao.pagamento_indicacao) && indicacao.pagamento_indicacao !== 'nao')
+
+  const composeBillingRuleFromForm = (base?: BillingRuleDraft): BillingRuleDraft => ({
+    id: base?.id || createRuleId(),
+    status: base?.status || 'rascunho',
+    moeda: form.moeda,
+    tipo_cobranca_documento: form.tipo_cobranca_documento,
+    data_inicio_faturamento: form.data_inicio_faturamento,
+    pagamento_dia_mes: form.pagamento_dia_mes,
+    inicio_vigencia: form.inicio_vigencia,
+    periodo_reajuste: form.periodo_reajuste,
+    data_proximo_reajuste: form.data_proximo_reajuste,
+    data_ultimo_reajuste: form.data_ultimo_reajuste,
+    indice_reajuste: form.indice_reajuste,
+    regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
+    regra_cobranca_config: sanitizeSingleRuleConfig(form.regra_cobranca_config || {}),
+    pagadores_servico: [...(form.pagadores_servico || [])],
+    indicacao_config: { ...(form.indicacao_config || emptyCaso.indicacao_config) },
+  })
+
+  const applyBillingRuleToForm = (rule: BillingRuleDraft) => {
+    setForm((prev) => {
+      return {
+        ...prev,
+        moeda: rule.moeda,
+        tipo_cobranca_documento: rule.tipo_cobranca_documento,
+        data_inicio_faturamento: rule.data_inicio_faturamento,
+        pagamento_dia_mes: rule.pagamento_dia_mes,
+        inicio_vigencia: rule.inicio_vigencia,
+        periodo_reajuste: rule.periodo_reajuste,
+        data_proximo_reajuste: rule.data_proximo_reajuste,
+        data_ultimo_reajuste: rule.data_ultimo_reajuste,
+        indice_reajuste: rule.indice_reajuste,
+        regra_cobranca: rule.regra_cobranca,
+        regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+        pagadores_servico: [...(rule.pagadores_servico || [])],
+        indicacao_config: { ...(rule.indicacao_config || emptyCaso.indicacao_config) },
+      }
+    })
+  }
+
+  const syncCurrentRule = (nextStatus?: BillingRuleStatus) => {
+    if (!billingRules[selectedBillingRuleIndex]) return
+    const updated = [...billingRules]
+    updated[selectedBillingRuleIndex] = {
+      ...composeBillingRuleFromForm(updated[selectedBillingRuleIndex]),
+      status: nextStatus || updated[selectedBillingRuleIndex].status,
+    }
+    setBillingRules(updated)
+  }
+
+  const selectBillingRule = (index: number) => {
+    if (!billingRules[index]) return
+    const updated = [...billingRules]
+    if (updated[selectedBillingRuleIndex]) {
+      updated[selectedBillingRuleIndex] = composeBillingRuleFromForm(updated[selectedBillingRuleIndex])
+    }
+    setBillingRules(updated)
+    setSelectedBillingRuleIndex(index)
+    applyBillingRuleToForm(updated[index])
+  }
+
+  const addBillingRule = () => {
+    const updated = [...billingRules]
+    if (updated[selectedBillingRuleIndex]) {
+      updated[selectedBillingRuleIndex] = composeBillingRuleFromForm(updated[selectedBillingRuleIndex])
+    }
+    const nextRule: BillingRuleDraft = {
+      id: createRuleId(),
+      status: 'rascunho',
+      moeda: form.moeda || 'real',
+      tipo_cobranca_documento: '',
+      data_inicio_faturamento: form.data_inicio_faturamento || '',
+      pagamento_dia_mes: form.pagamento_dia_mes || '',
+      inicio_vigencia: form.inicio_vigencia || '',
+      periodo_reajuste: '',
+      data_proximo_reajuste: '',
+      data_ultimo_reajuste: '',
+      indice_reajuste: '',
+      regra_cobranca: '',
+      regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
+      pagadores_servico: [],
+      indicacao_config: { ...emptyCaso.indicacao_config },
+    }
+    updated.push(nextRule)
+    setBillingRules(updated)
+    setSelectedBillingRuleIndex(updated.length - 1)
+    applyBillingRuleToForm(nextRule)
+  }
+
+  const removeCurrentBillingRule = () => {
+    const current = billingRules[selectedBillingRuleIndex]
+    if (!current) return
+    if (current.status !== 'rascunho') {
+      setError('Só é possível remover regra de cobrança em rascunho')
+      return
+    }
+    if (billingRules.length <= 1) {
+      setError('É necessário manter ao menos uma regra de cobrança')
+      return
+    }
+    const updated = billingRules.filter((_, idx) => idx !== selectedBillingRuleIndex)
+    const nextIndex = Math.max(0, selectedBillingRuleIndex - 1)
+    setBillingRules(updated)
+    setSelectedBillingRuleIndex(nextIndex)
+    applyBillingRuleToForm(updated[nextIndex])
+  }
+
+  const toggleCurrentBillingRuleStatus = () => {
+    const current = billingRules[selectedBillingRuleIndex]
+    if (!current) return
+    const nextStatus: BillingRuleStatus = current.status === 'encerrado' ? 'ativo' : 'encerrado'
+    const updated = [...billingRules]
+    updated[selectedBillingRuleIndex] = {
+      ...composeBillingRuleFromForm(current),
+      status: nextStatus,
+    }
+    setBillingRules(updated)
+  }
 
   const loadCaseAnexos = async (accessToken?: string) => {
     if (!casoId) {
@@ -330,6 +518,8 @@ export default function CasoForm({
         }
         const nextOptions = optsData.data || {
           clientes: [],
+          prestadores: [],
+          parceiros: [],
           produtos: [],
           centros_custo: [],
           cargos: [],
@@ -383,7 +573,7 @@ export default function CasoForm({
             return
           }
 
-          setForm({
+          const loadedForm: CasoPayload = {
             ...emptyCaso,
             nome: caso.nome || '',
             produto_id: caso.produto_id || '',
@@ -398,16 +588,74 @@ export default function CasoForm({
             data_ultimo_reajuste: caso.data_ultimo_reajuste || '',
             indice_reajuste: caso.indice_reajuste || '',
             regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca || ''),
-            regra_cobranca_config: { ...emptyCaso.regra_cobranca_config, ...(caso.regra_cobranca_config || {}) },
+            regra_cobranca_config: {
+              ...emptyCaso.regra_cobranca_config,
+              ...sanitizeSingleRuleConfig(caso.regra_cobranca_config || {}),
+            },
             centro_custo_rateio: caso.centro_custo_rateio || [],
             pagadores_servico: caso.pagadores_servico || [],
             despesas_config: caso.despesas_config || emptyCaso.despesas_config,
             pagadores_despesa: caso.pagadores_despesa || [],
             timesheet_config: caso.timesheet_config || emptyCaso.timesheet_config,
             indicacao_config: caso.indicacao_config || emptyCaso.indicacao_config,
-          })
+          }
+          setForm(loadedForm)
+          const rulesFromColumn = Array.isArray((caso as any)?.regras_financeiras)
+            ? ((caso as any).regras_financeiras as BillingRuleDraft[])
+            : []
+          const configRules = Array.isArray((loadedForm.regra_cobranca_config as any)?.regras_cobranca)
+            ? ((loadedForm.regra_cobranca_config as any).regras_cobranca as BillingRuleDraft[])
+            : []
+          const sourceRules = rulesFromColumn.length > 0 ? rulesFromColumn : configRules
+          const initialRules: BillingRuleDraft[] = sourceRules.length > 0
+            ? sourceRules.map((item) => ({
+              ...item,
+              id: item.id || createRuleId(),
+              status: (item.status || 'ativo') as BillingRuleStatus,
+              regra_cobranca: normalizeRegraCobranca(item.regra_cobranca as CasoPayload['regra_cobranca']),
+              regra_cobranca_config: sanitizeSingleRuleConfig(item.regra_cobranca_config || {}),
+              indicacao_config: { ...(item.indicacao_config || loadedForm.indicacao_config || emptyCaso.indicacao_config) },
+            }))
+            : [{
+              id: createRuleId(),
+              status: (caso.status || 'ativo') as BillingRuleStatus,
+              moeda: loadedForm.moeda,
+              tipo_cobranca_documento: loadedForm.tipo_cobranca_documento,
+              data_inicio_faturamento: loadedForm.data_inicio_faturamento,
+              pagamento_dia_mes: loadedForm.pagamento_dia_mes,
+              inicio_vigencia: loadedForm.inicio_vigencia,
+              periodo_reajuste: loadedForm.periodo_reajuste,
+              data_proximo_reajuste: loadedForm.data_proximo_reajuste,
+              data_ultimo_reajuste: loadedForm.data_ultimo_reajuste,
+              indice_reajuste: loadedForm.indice_reajuste,
+              regra_cobranca: normalizeRegraCobranca(loadedForm.regra_cobranca),
+              regra_cobranca_config: sanitizeSingleRuleConfig(loadedForm.regra_cobranca_config || {}),
+              pagadores_servico: [...(loadedForm.pagadores_servico || [])],
+              indicacao_config: { ...(loadedForm.indicacao_config || emptyCaso.indicacao_config) },
+            }]
+          setBillingRules(initialRules)
+          setSelectedBillingRuleIndex(0)
           setCaseAnexos(((caso?.anexos || []) as CasoAnexoItem[]) ?? [])
         } else {
+          const initialRule: BillingRuleDraft = {
+            id: createRuleId(),
+            status: 'rascunho',
+            moeda: emptyCaso.moeda,
+            tipo_cobranca_documento: emptyCaso.tipo_cobranca_documento,
+            data_inicio_faturamento: emptyCaso.data_inicio_faturamento,
+            pagamento_dia_mes: emptyCaso.pagamento_dia_mes,
+            inicio_vigencia: emptyCaso.inicio_vigencia,
+            periodo_reajuste: emptyCaso.periodo_reajuste,
+            data_proximo_reajuste: emptyCaso.data_proximo_reajuste,
+            data_ultimo_reajuste: emptyCaso.data_ultimo_reajuste,
+            indice_reajuste: emptyCaso.indice_reajuste,
+            regra_cobranca: emptyCaso.regra_cobranca,
+            regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
+            pagadores_servico: [],
+            indicacao_config: { ...emptyCaso.indicacao_config },
+          }
+          setBillingRules([initialRule])
+          setSelectedBillingRuleIndex(0)
           setCaseAnexos([])
         }
       } catch (e) {
@@ -476,6 +724,31 @@ export default function CasoForm({
     isEdit,
   ])
 
+  useEffect(() => {
+    setBillingRules((prev) => {
+      if (!prev[selectedBillingRuleIndex]) return prev
+      const next = [...prev]
+      next[selectedBillingRuleIndex] = composeBillingRuleFromForm(prev[selectedBillingRuleIndex])
+      return next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedBillingRuleIndex,
+    form.moeda,
+    form.tipo_cobranca_documento,
+    form.data_inicio_faturamento,
+    form.pagamento_dia_mes,
+    form.inicio_vigencia,
+    form.periodo_reajuste,
+    form.data_proximo_reajuste,
+    form.data_ultimo_reajuste,
+    form.indice_reajuste,
+    form.regra_cobranca,
+    form.regra_cobranca_config,
+    form.pagadores_servico,
+    form.indicacao_config,
+  ])
+
   const setField = <K extends keyof CasoPayload>(key: K, value: CasoPayload[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
@@ -519,6 +792,78 @@ export default function CasoForm({
       },
     }))
   }
+
+  const setIndicacaoPeriodicidade = (periodicidade: string) => {
+    setIndicacao('periodicidade', periodicidade)
+    if (periodicidade === 'mensal') {
+      setIndicacao('usar_dia_vencimento', true)
+      setIndicacao('parcelas_pagamento', [])
+      if (!indicacao.data_fim_pagamentos) {
+        setIndicacao('data_fim_pagamentos', form.inicio_vigencia || form.data_inicio_faturamento || '')
+      }
+      return
+    }
+    if (periodicidade === 'parcelado') {
+      setIndicacao('data_pagamento_unico', '')
+      if (!Array.isArray(indicacao.parcelas_pagamento) || indicacao.parcelas_pagamento.length === 0) {
+        setIndicacao('parcelas_pagamento', [{ valor: '', data_pagamento: '' }])
+      }
+      return
+    }
+    setIndicacao('parcelas_pagamento', [])
+    setIndicacao('data_fim_pagamentos', '')
+    setIndicacao('dia_pagamento_mensal', '')
+    if (!indicacao.data_pagamento_unico) {
+      setIndicacao('data_pagamento_unico', form.inicio_vigencia || form.data_inicio_faturamento || '')
+    }
+  }
+
+  const addIndicacaoParcela = () => {
+    const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? indicacao.parcelas_pagamento : []
+    setIndicacao('parcelas_pagamento', [...parcelas, { valor: '', data_pagamento: '' }])
+  }
+
+  const updateIndicacaoParcela = (idx: number, field: 'valor' | 'data_pagamento', value: string) => {
+    const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? [...indicacao.parcelas_pagamento] : []
+    if (!parcelas[idx]) return
+    parcelas[idx] = { ...parcelas[idx], [field]: value }
+    setIndicacao('parcelas_pagamento', parcelas)
+  }
+
+  const removeIndicacaoParcela = (idx: number) => {
+    const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? [...indicacao.parcelas_pagamento] : []
+    parcelas.splice(idx, 1)
+    setIndicacao('parcelas_pagamento', parcelas)
+  }
+
+  const indicacaoPreview = useMemo(() => {
+    if (!indicacaoPagamentoEnabled) return []
+    const periodicidade = String(indicacao.periodicidade || '')
+    if (periodicidade === 'parcelado') {
+      const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? indicacao.parcelas_pagamento : []
+      if (!parcelas.length) return ['Nenhuma parcela configurada']
+      return parcelas.map((p: any, idx: number) => {
+        const valor = String(p?.valor || '').trim() || '0,00'
+        const data = formatDateBr(String(p?.data_pagamento || ''))
+        return `Parcela ${idx + 1}: ${valor} em ${data}`
+      })
+    }
+    if (periodicidade === 'mensal') {
+      const usaVencimento = Boolean(indicacao.usar_dia_vencimento)
+      const dia = usaVencimento
+        ? String(form.pagamento_dia_mes || '').trim()
+        : String(indicacao.dia_pagamento_mensal || '').trim()
+      const fim = String(indicacao.data_fim_pagamentos || '').trim()
+      const valor = String(indicacao.valor || '').trim()
+      const linhas = [
+        `Mensalidade ${indicacao.modo === 'valor' ? `de ${valor || '0,00'}` : `de ${valor || '0'}%`} com pagamento todo dia ${dia || '-'}`,
+      ]
+      linhas.push(`Até ${formatDateBr(fim)}`)
+      return linhas
+    }
+    const data = String(indicacao.data_pagamento_unico || '').trim()
+    return [`Pagamento único em ${formatDateBr(data)}`]
+  }, [indicacao, indicacaoPagamentoEnabled, form.pagamento_dia_mes])
 
   const setCentroRateio = (items: Array<{ id: string; percentual: number }>) => {
     setField(
@@ -712,10 +1057,37 @@ export default function CasoForm({
       const nome = options.clientes.find((item) => item.id === entityId)?.nome
       return nome ? `${nome} (Cliente)` : `Cliente (${entityId})`
     }
-    if (tipoRaw === 'prestador') return `Prestador (${entityId})`
-    if (tipoRaw === 'parceiro') return `Parceiro (${entityId})`
+    if (tipoRaw === 'prestador') {
+      const nome = options.prestadores?.find((item) => item.id === entityId)?.nome
+      return nome ? `${nome} (Prestador de Serviço)` : `Prestador (${entityId})`
+    }
+    if (tipoRaw === 'parceiro') {
+      const nome = options.parceiros?.find((item) => item.id === entityId)?.nome
+      return nome ? `${nome} (Parceiro)` : `Parceiro (${entityId})`
+    }
     return value
   }
+
+  const periodicidadeIndicacaoOptions = useMemo(() => {
+    const regra = normalizeRegraCobranca(currentBillingRule?.regra_cobranca || form.regra_cobranca)
+    if (regra === 'mensal' || regra === 'mensalidade_processo') {
+      return [
+        { value: 'mensal', label: 'Mensal' },
+        { value: 'pontual', label: 'Única' },
+      ]
+    }
+    if (regra === 'projeto') {
+      return [
+        { value: 'pontual', label: 'Única' },
+        { value: 'parcelado', label: 'Parcelada por datas' },
+      ]
+    }
+    return [
+      { value: 'pontual', label: 'Única' },
+      { value: 'mensal', label: 'Mensal' },
+      { value: 'ao_final', label: 'Ao final' },
+    ]
+  }, [currentBillingRule?.regra_cobranca, form.regra_cobranca])
 
   const validateFinanceiro = (): string | null => {
     if (!form.tipo_cobranca_documento) return 'Tipo de cobrança é obrigatório'
@@ -745,7 +1117,8 @@ export default function CasoForm({
 
   const validateBasico = (): string | null => {
     if (!form.nome.trim()) return 'Nome do caso é obrigatório'
-    if (!form.produto_id) return 'Serviço do caso é obrigatório'
+    if (!form.servico_id) return 'Serviço do caso é obrigatório'
+    if (!form.produto_id) return 'Produto do caso é obrigatório'
     if (!form.responsavel_id) return 'Responsável do caso é obrigatório'
     return null
   }
@@ -776,10 +1149,39 @@ export default function CasoForm({
       if (!session) return
 
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${isEdit ? 'update-caso' : 'create-caso'}`
+      const preparedRules = (() => {
+        const list = [...billingRules]
+        if (!list[selectedBillingRuleIndex]) {
+          list.push(composeBillingRuleFromForm({ id: createRuleId(), status: 'rascunho' } as BillingRuleDraft))
+        } else {
+          list[selectedBillingRuleIndex] = {
+            ...composeBillingRuleFromForm(list[selectedBillingRuleIndex]),
+            status: list[selectedBillingRuleIndex].status === 'encerrado' ? 'encerrado' : 'ativo',
+          }
+        }
+        return list
+      })()
       const payload = {
         ...form,
         regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
         data_ultimo_reajuste: form.data_ultimo_reajuste || form.data_inicio_faturamento,
+        regras_financeiras: preparedRules.map((rule) => ({
+          ...rule,
+          regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+        })),
+        indicacao_config: {
+          ...(preparedRules[selectedBillingRuleIndex]?.indicacao_config ||
+            preparedRules[0]?.indicacao_config ||
+            form.indicacao_config ||
+            {}),
+        },
+        regra_cobranca_config: {
+          ...sanitizeSingleRuleConfig(form.regra_cobranca_config || {}),
+          regras_cobranca: preparedRules.map((rule) => ({
+            ...rule,
+            regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+          })),
+        },
       }
       const body = isEdit
         ? { id: casoId, ...payload, status: 'ativo' }
@@ -1029,7 +1431,7 @@ export default function CasoForm({
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Aprovadores</p><p className="font-medium">{(timesheet.aprovadores || []).map((a: any) => `${colaboradorMap.get(a.colaborador_id) || '-'} (#${a.ordem || '-'})`).join(' | ') || '-'}</p></div>
                 </div>
               )}
-              {substep === 'indicacao' && (
+              {false && (
                 <div className="grid grid-cols-1 gap-3 md:col-span-2 md:grid-cols-2">
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Pagamento da indicação</p><p className="font-medium">{formatIndicacaoPagador(indicacao.pagamento_indicacao)}</p></div>
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Periodicidade</p><p className="font-medium">{indicacao.periodicidade || '-'}</p></div>
@@ -1069,6 +1471,19 @@ export default function CasoForm({
                   placeholder="Selecione..."
                   searchPlaceholder="Buscar produto..."
                   emptyText="Nenhum produto encontrado."
+                  disabled={isReadOnly}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Natureza do caso</Label>
+                <ChoiceCards
+                  value={String(regras.natureza_caso || '')}
+                  onChange={(value) => setRegra('natureza_caso', value)}
+                  options={[
+                    { value: 'contencioso', label: 'Contencioso' },
+                    { value: 'consultivo', label: 'Consultivo' },
+                  ]}
                   disabled={isReadOnly}
                 />
               </div>
@@ -1176,6 +1591,51 @@ export default function CasoForm({
 
           {substep === 'financeiro' && (
             <>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Regras de cobrança</Label>
+                <div className="flex flex-wrap gap-2">
+                  {billingRules.map((rule, idx) => {
+                    const selected = idx === selectedBillingRuleIndex
+                    const labelTipo = rule.regra_cobranca
+                      ? rule.regra_cobranca.replaceAll('_', ' ')
+                      : 'Nova regra'
+                    return (
+                      <Button
+                        key={rule.id}
+                        type="button"
+                        variant={selected ? 'default' : 'outline'}
+                        className="gap-1.5"
+                        onClick={() => selectBillingRule(idx)}
+                      >
+                        {idx + 1}. {labelTipo}
+                        {rule.status === 'rascunho' ? <Pencil className="h-3.5 w-3.5" /> : null}
+                        {rule.status === 'encerrado' ? <Badge className="bg-muted text-muted-foreground">encerrada</Badge> : null}
+                      </Button>
+                    )
+                  })}
+                  {!isReadOnly && (
+                    <Button type="button" variant="outline" onClick={addBillingRule}>
+                      + Nova regra
+                    </Button>
+                  )}
+                  {!isReadOnly && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={removeCurrentBillingRule}
+                      disabled={!isCurrentRuleDraft}
+                    >
+                      Remover regra atual
+                    </Button>
+                  )}
+                  {!isReadOnly && (
+                    <Button type="button" variant="outline" onClick={toggleCurrentBillingRuleStatus}>
+                      <Power className={`mr-1 h-3.5 w-3.5 ${isCurrentRuleClosed ? 'text-green-600' : 'text-red-600'}`} />
+                      {isCurrentRuleClosed ? 'Reativar regra' : 'Encerrar regra'}
+                    </Button>
+                  )}
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label>Moeda</Label>
                 <NativeSelect value={form.moeda} onChange={(e) => setField('moeda', e.target.value as any)} disabled={isReadOnly}>
@@ -1223,18 +1683,16 @@ export default function CasoForm({
                 <DatePicker
                   value={form.data_proximo_reajuste}
                   onChange={(value) => {
-                    setManualReajusteDate(true)
+                    if (isEdit) setManualReajusteDate(true)
                     setField('data_proximo_reajuste', value)
                   }}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || !isEdit}
                 />
               </div>
-              {isEdit && (
-                <div className="space-y-2">
-                  <Label>Data último reajuste</Label>
-                  <DatePicker value={form.data_ultimo_reajuste} onChange={(value) => setField('data_ultimo_reajuste', value)} disabled={isReadOnly} />
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>Data último reajuste</Label>
+                <DatePicker value={form.data_ultimo_reajuste} onChange={(value) => setField('data_ultimo_reajuste', value)} disabled={isReadOnly} />
+              </div>
               <div className="space-y-2">
                 <Label>Índice de reajuste</Label>
                 <NativeSelect value={form.indice_reajuste} onChange={(e) => setField('indice_reajuste', e.target.value)} disabled={isReadOnly}>
@@ -1255,6 +1713,18 @@ export default function CasoForm({
                   <option value="projeto">Projeto</option>
                   <option value="exito">Êxito</option>
                 </NativeSelect>
+              </div>
+              <div className="space-y-2">
+                <Label>Cap desejado (Quantidade de horas)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={String(regras.cap_desejado_horas || '')}
+                  onChange={(e) => setRegra('cap_desejado_horas', e.target.value)}
+                  disabled={isReadOnly}
+                  placeholder="Ex: 120"
+                />
               </div>
 
               {form.regra_cobranca === 'hora' && (
@@ -1668,6 +2138,202 @@ export default function CasoForm({
                 </div>
               )}
 
+              <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <div className="border-t" />
+                  <p className="pt-2 text-base font-semibold">Regras de negócio e indicação</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Cross Sell de cobrança?</Label>
+                  <ChoiceCards
+                    value={regras.cross_sell_ativo ? 'sim' : 'nao'}
+                    onChange={(value) => {
+                      const enabled = value === 'sim'
+                      setRegra('cross_sell_ativo', enabled)
+                      if (!enabled) setRegra('cross_sell_origem_colaborador_id', '')
+                    }}
+                    options={[
+                      { value: 'nao', label: 'Não' },
+                      { value: 'sim', label: 'Sim' },
+                    ]}
+                    disabled={isReadOnly}
+                  />
+                </div>
+                {regras.cross_sell_ativo && (
+                  <div className="space-y-2">
+                    <Label>Origem do cross sell</Label>
+                    <CommandSelect
+                      value={String(regras.cross_sell_origem_colaborador_id || '')}
+                      onValueChange={(value) => setRegra('cross_sell_origem_colaborador_id', value)}
+                      options={colaboradorOptions}
+                      placeholder="Selecione..."
+                      searchPlaceholder="Buscar colaborador..."
+                      emptyText="Nenhum colaborador encontrado."
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Pagamento da indicação</Label>
+                  <ChoiceCards
+                    value={indicacaoPagamentoEnabled ? 'sim' : 'nao'}
+                    onChange={(value) => {
+                      if (value === 'nao') {
+                        setIndicacao('pagamento_indicacao_ativo', false)
+                        setIndicacao('pagamento_indicacao', 'nao')
+                        return
+                      }
+                      const nextValue =
+                        options.colaboradores?.[0]
+                          ? `colaborador:${options.colaboradores[0].id}`
+                          : options.clientes?.[0]
+                            ? `cliente:${options.clientes[0].id}`
+                            : options.prestadores?.[0]
+                              ? `prestador:${options.prestadores[0].id}`
+                              : options.parceiros?.[0]
+                                ? `parceiro:${options.parceiros[0].id}`
+                                : ''
+                      setIndicacao('pagamento_indicacao_ativo', true)
+                      setIndicacao('pagamento_indicacao', nextValue)
+                    }}
+                    options={[
+                      { value: 'nao', label: 'Não' },
+                      { value: 'sim', label: 'Sim' },
+                    ]}
+                    disabled={isReadOnly}
+                  />
+                </div>
+                {indicacaoPagamentoEnabled && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Indicado por</Label>
+                      <CommandSelect
+                        value={indicacao.pagamento_indicacao || ''}
+                        onValueChange={(value) => setIndicacao('pagamento_indicacao', value)}
+                        options={indicacaoOptions}
+                        placeholder="Selecione..."
+                        searchPlaceholder="Buscar indicado..."
+                        emptyText="Nenhum indicado encontrado."
+                        disabled={isReadOnly}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Periodicidade</Label>
+                      <NativeSelect
+                        value={indicacao.periodicidade || periodicidadeIndicacaoOptions[0]?.value || 'pontual'}
+                        onChange={(e) => setIndicacaoPeriodicidade(e.target.value)}
+                        disabled={isReadOnly}
+                      >
+                        {periodicidadeIndicacaoOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tipo de valor</Label>
+                      <NativeSelect value={indicacao.modo || 'percentual'} onChange={(e) => setIndicacao('modo', e.target.value)} disabled={isReadOnly}>
+                        <option value="percentual">Percentual</option>
+                        <option value="valor">Valor</option>
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{indicacao.modo === 'valor' ? 'Valor' : 'Percentual'}</Label>
+                      {indicacao.modo === 'valor' ? (
+                        <MoneyInput value={indicacao.valor || ''} onValueChange={(value) => setIndicacao('valor', value)} disabled={isReadOnly} />
+                      ) : (
+                        <Input value={indicacao.valor || ''} onChange={(e) => setIndicacao('valor', e.target.value)} disabled={isReadOnly} />
+                      )}
+                    </div>
+                    {(indicacao.periodicidade === 'pontual' || indicacao.periodicidade === 'ao_final') && (
+                      <div className="space-y-2">
+                        <Label>Data do pagamento</Label>
+                        <DatePicker value={indicacao.data_pagamento_unico || ''} onChange={(value) => setIndicacao('data_pagamento_unico', value)} disabled={isReadOnly} />
+                      </div>
+                    )}
+                    {indicacao.periodicidade === 'mensal' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Usar dia de vencimento do caso?</Label>
+                          <ChoiceCards
+                            value={indicacao.usar_dia_vencimento ? 'sim' : 'nao'}
+                            onChange={(value) => setIndicacao('usar_dia_vencimento', value === 'sim')}
+                            disabled={isReadOnly}
+                            options={[
+                              { value: 'sim', label: 'Sim' },
+                              { value: 'nao', label: 'Não' },
+                            ]}
+                          />
+                        </div>
+                        {!indicacao.usar_dia_vencimento && (
+                          <div className="space-y-2">
+                            <Label>Dia do pagamento mensal</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={indicacao.dia_pagamento_mensal || ''}
+                              onChange={(e) => setIndicacao('dia_pagamento_mensal', e.target.value)}
+                              disabled={isReadOnly}
+                            />
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label>Data final dos pagamentos</Label>
+                          <DatePicker value={indicacao.data_fim_pagamentos || ''} onChange={(value) => setIndicacao('data_fim_pagamentos', value)} disabled={isReadOnly} />
+                        </div>
+                      </>
+                    )}
+                    {indicacao.periodicidade === 'parcelado' && (
+                      <div className="space-y-2 md:col-span-2">
+                        <div className="flex items-center justify-between">
+                          <Label>Parcelas da indicação</Label>
+                          {!isReadOnly && (
+                            <Button type="button" variant="outline" size="sm" onClick={addIndicacaoParcela}>
+                              Adicionar parcela
+                            </Button>
+                          )}
+                        </div>
+                        {(Array.isArray(indicacao.parcelas_pagamento) ? indicacao.parcelas_pagamento : []).map((parcela: any, idx: number) => (
+                          <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                            <MoneyInput
+                              value={parcela?.valor || ''}
+                              onValueChange={(value) => updateIndicacaoParcela(idx, 'valor', value)}
+                              disabled={isReadOnly}
+                            />
+                            <DatePicker
+                              value={parcela?.data_pagamento || ''}
+                              onChange={(value) => updateIndicacaoParcela(idx, 'data_pagamento', value)}
+                              disabled={isReadOnly}
+                            />
+                            {!isReadOnly && (
+                              <Button type="button" variant="outline" onClick={() => removeIndicacaoParcela(idx)}>
+                                Remover
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Previsão de pagamento da indicação</Label>
+                      <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                        {indicacaoPreview.length ? (
+                          <ul className="space-y-1">
+                            {indicacaoPreview.map((linha, idx) => (
+                              <li key={`${linha}-${idx}`}>{linha}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>Defina os dados para visualizar a previsão.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="space-y-2 md:col-span-2">
                 <RateioSlider
                   title="Pagadores do serviço (rateio)"
@@ -1836,39 +2502,110 @@ export default function CasoForm({
             </div>
           )}
 
-          {substep === 'indicacao' && (
+          {false && (
             <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Pagamento da indicação</Label>
-                <CommandSelect
-                  value={indicacao.pagamento_indicacao || 'nao'}
-                  onValueChange={(value) => setIndicacao('pagamento_indicacao', value)}
-                  options={indicacaoOptions}
-                  placeholder="Selecione..."
-                  searchPlaceholder="Buscar indicado..."
-                  emptyText="Nenhum indicado encontrado."
+              <div className="space-y-2 md:col-span-2">
+                <Label>Cross Sell</Label>
+                <ChoiceCards
+                  value={regras.cross_sell_ativo ? 'sim' : 'nao'}
+                  onChange={(value) => {
+                    const enabled = value === 'sim'
+                    setRegra('cross_sell_ativo', enabled)
+                    if (!enabled) setRegra('cross_sell_origem_colaborador_id', '')
+                  }}
+                  options={[
+                    { value: 'nao', label: 'Não' },
+                    { value: 'sim', label: 'Sim' },
+                  ]}
                   disabled={isReadOnly}
                 />
               </div>
+              {regras.cross_sell_ativo && (
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Origem do Cross Sell</Label>
+                  <CommandSelect
+                    value={String(regras.cross_sell_origem_colaborador_id || '')}
+                    onValueChange={(value) => setRegra('cross_sell_origem_colaborador_id', value)}
+                    options={colaboradorOptions}
+                    placeholder="Selecione..."
+                    searchPlaceholder="Buscar colaborador..."
+                    emptyText="Nenhum colaborador encontrado."
+                    disabled={isReadOnly}
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label>Periodicidade</Label>
-                <NativeSelect value={indicacao.periodicidade || 'mensal'} onChange={(e) => setIndicacao('periodicidade', e.target.value)} disabled={isReadOnly}>
-                  <option value="mensal">Mensal</option>
-                  <option value="ao_final">Ao final</option>
-                  <option value="pontual">Pontual</option>
-                </NativeSelect>
+                <Label>Pagamento da indicação</Label>
+                <ChoiceCards
+                  value={indicacaoPagamentoEnabled ? 'sim' : 'nao'}
+                  onChange={(value) => {
+                    if (value === 'nao') {
+                      setIndicacao('pagamento_indicacao_ativo', false)
+                      setIndicacao('pagamento_indicacao', 'nao')
+                      return
+                    }
+                    const nextValue =
+                      options.colaboradores?.[0]
+                        ? `colaborador:${options.colaboradores[0].id}`
+                        : options.clientes?.[0]
+                          ? `cliente:${options.clientes[0].id}`
+                          : options.prestadores?.[0]
+                            ? `prestador:${options.prestadores[0].id}`
+                            : options.parceiros?.[0]
+                              ? `parceiro:${options.parceiros[0].id}`
+                              : ''
+                    setIndicacao('pagamento_indicacao_ativo', true)
+                    setIndicacao('pagamento_indicacao', nextValue)
+                  }}
+                  options={[
+                    { value: 'nao', label: 'Não' },
+                    { value: 'sim', label: 'Sim' },
+                  ]}
+                  disabled={isReadOnly}
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Tipo de valor</Label>
-                <NativeSelect value={indicacao.modo || 'percentual'} onChange={(e) => setIndicacao('modo', e.target.value)} disabled={isReadOnly}>
-                  <option value="percentual">Percentual</option>
-                  <option value="valor">Valor</option>
-                </NativeSelect>
-              </div>
-              <div className="space-y-2">
-                <Label>{indicacao.modo === 'valor' ? 'Valor' : 'Percentual'}</Label>
-                <Input value={indicacao.valor || ''} onChange={(e) => setIndicacao('valor', e.target.value)} disabled={isReadOnly} />
-              </div>
+              {indicacaoPagamentoEnabled && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Indicado por</Label>
+                    <CommandSelect
+                      value={indicacao.pagamento_indicacao || ''}
+                      onValueChange={(value) => setIndicacao('pagamento_indicacao', value)}
+                      options={indicacaoOptions}
+                      placeholder="Selecione..."
+                      searchPlaceholder="Buscar indicado..."
+                      emptyText="Nenhum indicado encontrado."
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Periodicidade</Label>
+                    <NativeSelect
+                      value={indicacao.periodicidade || periodicidadeIndicacaoOptions[0]?.value || 'pontual'}
+                      onChange={(e) => setIndicacao('periodicidade', e.target.value)}
+                      disabled={isReadOnly}
+                    >
+                      {periodicidadeIndicacaoOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de valor</Label>
+                    <NativeSelect value={indicacao.modo || 'percentual'} onChange={(e) => setIndicacao('modo', e.target.value)} disabled={isReadOnly}>
+                      <option value="percentual">Percentual</option>
+                      <option value="valor">Valor</option>
+                    </NativeSelect>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{indicacao.modo === 'valor' ? 'Valor' : 'Percentual'}</Label>
+                    <Input value={indicacao.valor || ''} onChange={(e) => setIndicacao('valor', e.target.value)} disabled={isReadOnly} />
+                  </div>
+                </>
+              )}
             </div>
           )}
             </>

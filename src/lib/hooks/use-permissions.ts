@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const CACHE_KEY_PREFIX = 'permissions_cache_'
@@ -19,6 +19,7 @@ interface CacheData {
 export function usePermissions() {
   const [permissions, setPermissions] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const isLoadingRef = useRef(false)
 
   // Função para obter chave de cache baseada no user_id
   const getCacheKey = useCallback(async (): Promise<string | null> => {
@@ -66,6 +67,23 @@ export function usePermissions() {
       if (!session?.user?.id) return
 
       const cacheKey = `${CACHE_KEY_PREFIX}${session.user.id}`
+      const existing = localStorage.getItem(cacheKey)
+      if (existing) {
+        const existingCache = JSON.parse(existing) as CacheData
+        const samePermissions =
+          JSON.stringify(existingCache.permissions || []) === JSON.stringify(permissions || [])
+        if (samePermissions) {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              ...existingCache,
+              timestamp: Date.now(),
+            } satisfies CacheData)
+          )
+          return
+        }
+      }
+
       const cacheData: CacheData = {
         permissions,
         timestamp: Date.now(),
@@ -156,6 +174,8 @@ export function usePermissions() {
 
   useEffect(() => {
     async function loadPermissions() {
+      if (isLoadingRef.current) return
+      isLoadingRef.current = true
       setLoading(true)
 
       try {
@@ -185,6 +205,7 @@ export function usePermissions() {
         setPermissions([])
       } finally {
         setLoading(false)
+        isLoadingRef.current = false
       }
     }
 
@@ -192,9 +213,21 @@ export function usePermissions() {
 
     // Listener para invalidar cache em eventos específicos
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key?.startsWith(CACHE_KEY_PREFIX)) {
-        // Cache foi modificado em outra aba, recarregar
-        loadPermissions()
+      if (!e.key?.startsWith(CACHE_KEY_PREFIX)) return
+      if (!e.newValue) {
+        void loadPermissions()
+        return
+      }
+
+      try {
+        const cacheData = JSON.parse(e.newValue) as CacheData
+        if (!Array.isArray(cacheData.permissions)) {
+          void loadPermissions()
+          return
+        }
+        setPermissions(cacheData.permissions)
+      } catch {
+        void loadPermissions()
       }
     }
 

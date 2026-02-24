@@ -5,7 +5,8 @@ export interface ContratoListItem {
   cliente_nome: string
   nome_contrato: string
   regime_fiscal: string | null
-  status: 'rascunho' | 'ativo' | 'encerrado'
+  forma_entrada?: 'organico' | 'prospeccao' | null
+  status: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
   created_at: string
   casos: CasoListItem[]
 }
@@ -14,6 +15,8 @@ export interface CasoListItem {
   id: string
   numero?: number
   nome: string
+  servico_id?: string | null
+  servico_nome?: string | null
   produto_id: string | null
   produto_nome?: string | null
   responsavel_id: string | null
@@ -25,6 +28,8 @@ export interface CasoListItem {
 
 export interface ContratoFormOptions {
   clientes: Array<{ id: string; nome: string }>
+  prestadores?: Array<{ id: string; nome: string }>
+  parceiros?: Array<{ id: string; nome: string }>
   servicos?: Array<{ id: string; nome: string }>
   produtos: Array<{ id: string; nome: string }>
   centros_custo: Array<{ id: string; nome: string }>
@@ -47,6 +52,7 @@ export interface CasoPayload {
   id?: string
   status?: 'rascunho' | 'ativo' | 'inativo'
   anexos?: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }>
+  regras_financeiras?: Array<Record<string, any>>
   nome: string
   servico_id?: string
   produto_id: string
@@ -82,6 +88,7 @@ export interface ContratoPayload {
   cliente_id: string
   nome_contrato: string
   regime_fiscal: string
-  status?: 'rascunho' | 'ativo' | 'encerrado'
+  forma_entrada?: 'organico' | 'prospeccao' | ''
+  status?: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
   casos: CasoPayload[]
 }

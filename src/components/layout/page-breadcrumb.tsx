@@ -29,6 +29,8 @@ const labelMap: Record<string, string> = {
   servicos: 'Serviços',
   produtos: 'Produtos',
   contratos: 'Contratos',
+  'solicitacoes-contrato': 'Solicitações de Contrato',
+  timesheet: 'Timesheet',
   novo: 'Novo',
   editar: 'Editar',
 }

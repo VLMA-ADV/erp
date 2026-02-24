@@ -7,13 +7,13 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Clock3,
-  HandCoins,
   Landmark,
   Layers3,
   FileText,
   Eye,
   Lock,
   Plus,
+  Power,
   Trash2,
   ChevronRight,
   Paperclip,
@@ -67,12 +67,33 @@ interface ContratoFormState {
   cliente_id: string
   nome_contrato: string
   regime_fiscal: string
-  status: 'rascunho' | 'ativo' | 'encerrado'
+  forma_entrada: 'organico' | 'prospeccao' | ''
+  status: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
   casos: CasoPayload[]
 }
 
+type BillingRuleStatus = 'rascunho' | 'ativo' | 'encerrado'
+
+interface BillingRuleDraft {
+  id: string
+  status: BillingRuleStatus
+  moeda: CasoPayload['moeda']
+  tipo_cobranca_documento: CasoPayload['tipo_cobranca_documento']
+  data_inicio_faturamento: string
+  pagamento_dia_mes: string
+  inicio_vigencia: string
+  periodo_reajuste: string
+  data_proximo_reajuste: string
+  data_ultimo_reajuste: string
+  indice_reajuste: string
+  regra_cobranca: CasoPayload['regra_cobranca']
+  regra_cobranca_config: Record<string, any>
+  pagadores_servico: CasoPayload['pagadores_servico']
+  indicacao_config: CasoPayload['indicacao_config']
+}
+
 type StepKey = 'dados' | 'casos'
-type CaseSubstepKey = 'basico' | 'financeiro' | 'despesas' | 'timesheet' | 'indicacao'
+type CaseSubstepKey = 'basico' | 'financeiro' | 'despesas' | 'timesheet'
 
 const steps: Array<{ key: StepKey; label: string; icon: typeof FileText }> = [
   { key: 'dados', label: 'Contrato', icon: FileText },
@@ -84,7 +105,6 @@ const caseSubsteps: Array<{ key: CaseSubstepKey; label: string; icon: typeof Lay
   { key: 'financeiro', label: 'Regras financeiras', icon: CircleDollarSign },
   { key: 'despesas', label: 'Despesas', icon: Landmark },
   { key: 'timesheet', label: 'Timesheet', icon: Clock3 },
-  { key: 'indicacao', label: 'Indicação', icon: HandCoins },
 ]
 
 const emptyCaso: CasoPayload = {
@@ -104,6 +124,7 @@ const emptyCaso: CasoPayload = {
   indice_reajuste: '',
   regra_cobranca: '',
   regra_cobranca_config: {
+    natureza_caso: '',
     valor_hora: '',
     tabela_preco_nome: '',
     tabela_preco_id: '',
@@ -122,6 +143,9 @@ const emptyCaso: CasoPayload = {
     valor_acao: '',
     valor_exito_calculado: '',
     data_pagamento_exito: '',
+    cap_desejado_horas: '',
+    cross_sell_ativo: false,
+    cross_sell_origem_colaborador_id: '',
   },
   centro_custo_rateio: [],
   pagadores_servico: [],
@@ -141,6 +165,11 @@ const emptyCaso: CasoPayload = {
     periodicidade: 'mensal',
     modo: 'percentual',
     valor: '',
+    data_pagamento_unico: '',
+    usar_dia_vencimento: true,
+    dia_pagamento_mensal: '',
+    data_fim_pagamentos: '',
+    parcelas_pagamento: [],
   },
 }
 
@@ -164,6 +193,7 @@ const emptyState: ContratoFormState = {
   cliente_id: '',
   nome_contrato: '',
   regime_fiscal: '',
+  forma_entrada: '',
   status: 'rascunho',
   casos: [{ ...emptyCaso }],
 }
@@ -194,6 +224,51 @@ function buildNextDate(base: string, months: number, dayOfMonth?: number): strin
   const finalDay = Math.min(dayOfMonth || dt.getDate(), new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate())
   target.setDate(finalDay)
   return formatDateToInput(target)
+}
+
+function formatDateBr(value: string) {
+  if (!value) return '-'
+  const [y, m, d] = value.split('-')
+  if (!y || !m || !d) return value
+  return `${d}/${m}/${y}`
+}
+
+function createRuleId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `regra_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function getRuleStatusFromCasoStatus(status?: string): BillingRuleStatus {
+  if (status === 'rascunho') return 'rascunho'
+  if (status === 'inativo') return 'encerrado'
+  return 'ativo'
+}
+
+function buildLegacyRuleFromCaso(caso: CasoPayload): BillingRuleDraft {
+  return {
+    id: createRuleId(),
+    status: getRuleStatusFromCasoStatus(caso.status),
+    moeda: caso.moeda || 'real',
+    tipo_cobranca_documento: caso.tipo_cobranca_documento || '',
+    data_inicio_faturamento: caso.data_inicio_faturamento || '',
+    pagamento_dia_mes: caso.pagamento_dia_mes || '',
+    inicio_vigencia: caso.inicio_vigencia || '',
+    periodo_reajuste: caso.periodo_reajuste || '',
+    data_proximo_reajuste: caso.data_proximo_reajuste || '',
+    data_ultimo_reajuste: caso.data_ultimo_reajuste || '',
+    indice_reajuste: caso.indice_reajuste || '',
+    regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca),
+    regra_cobranca_config: { ...(caso.regra_cobranca_config || {}) },
+    pagadores_servico: [...(caso.pagadores_servico || [])],
+    indicacao_config: { ...(caso.indicacao_config || emptyCaso.indicacao_config) },
+  }
+}
+
+function sanitizeSingleRuleConfig(config: Record<string, any> | undefined | null) {
+  const next = { ...(config || {}) }
+  delete (next as any).regras_cobranca
+  delete (next as any).regras_financeiras
+  return next
 }
 
 export default function ContratoForm({
@@ -228,6 +303,8 @@ export default function ContratoForm({
   >([])
   const [options, setOptions] = useState<ContratoFormOptions>({
     clientes: [],
+    prestadores: [],
+    parceiros: [],
     servicos: [],
     produtos: [],
     centros_custo: [],
@@ -258,6 +335,7 @@ export default function ContratoForm({
   const [anexoDialogTarget, setAnexoDialogTarget] = useState<'contrato' | 'caso'>('contrato')
   const [anexoDialogCaseIndex, setAnexoDialogCaseIndex] = useState<number | null>(null)
   const [pendingCaseAnexos, setPendingCaseAnexos] = useState<Record<number, PendingAnexo[]>>({})
+  const [selectedFinanceRuleByCase, setSelectedFinanceRuleByCase] = useState<Record<string, number>>({})
 
   const clienteOptions = useMemo(
     () => (options.clientes || []).map((cliente) => ({ value: cliente.id, label: cliente.nome })),
@@ -304,16 +382,82 @@ export default function ContratoForm({
       ...(options.colaboradores || []).map((p) => ({
         value: `colaborador:${p.id}`,
         label: `${p.nome} (Colaborador)`,
+        group: 'Colaboradores',
       })),
       ...(options.clientes || []).map((p) => ({
         value: `cliente:${p.id}`,
         label: `${p.nome} (Cliente)`,
+        group: 'Clientes',
+      })),
+      ...(options.prestadores || []).map((p) => ({
+        value: `prestador:${p.id}`,
+        label: `${p.nome} (Prestador de Serviço)`,
+        group: 'Prestadores de Serviço',
+      })),
+      ...(options.parceiros || []).map((p) => ({
+        value: `parceiro:${p.id}`,
+        label: `${p.nome} (Parceiro)`,
+        group: 'Parceiros',
       })),
     ],
-    [options.colaboradores, options.clientes],
+    [options.colaboradores, options.clientes, options.prestadores, options.parceiros],
   )
 
   const currentCaso = form.casos[selectedCaseIndex] || emptyCaso
+  const currentCaseKey = String((currentCaso as any)?.id || `idx:${selectedCaseIndex}`)
+  const getCasoFinanceRules = (caso: CasoPayload): BillingRuleDraft[] => {
+    const fromCaseArray = Array.isArray((caso as any)?.regras_financeiras)
+      ? ((caso as any).regras_financeiras as any[])
+      : []
+    if (fromCaseArray.length > 0) {
+      return fromCaseArray.map((rule, idx) => ({
+        id: String(rule?.id || createRuleId()),
+        status: (rule?.status || 'ativo') as BillingRuleStatus,
+        moeda: (rule?.moeda || 'real') as CasoPayload['moeda'],
+        tipo_cobranca_documento: (rule?.tipo_cobranca_documento || '') as CasoPayload['tipo_cobranca_documento'],
+        data_inicio_faturamento: String(rule?.data_inicio_faturamento || ''),
+        pagamento_dia_mes: String(rule?.pagamento_dia_mes || ''),
+        inicio_vigencia: String(rule?.inicio_vigencia || ''),
+        periodo_reajuste: String(rule?.periodo_reajuste || ''),
+        data_proximo_reajuste: String(rule?.data_proximo_reajuste || ''),
+        data_ultimo_reajuste: String(rule?.data_ultimo_reajuste || ''),
+        indice_reajuste: String(rule?.indice_reajuste || ''),
+        regra_cobranca: normalizeRegraCobranca(rule?.regra_cobranca as CasoPayload['regra_cobranca']),
+        regra_cobranca_config: {
+          ...emptyCaso.regra_cobranca_config,
+          ...sanitizeSingleRuleConfig(rule?.regra_cobranca_config || {}),
+        },
+        pagadores_servico: Array.isArray(rule?.pagadores_servico) ? rule.pagadores_servico : [],
+        indicacao_config: { ...(rule?.indicacao_config || caso.indicacao_config || emptyCaso.indicacao_config) },
+      }))
+    }
+
+    const fromLegacyConfig = Array.isArray((caso.regra_cobranca_config as any)?.regras_cobranca)
+      ? (((caso.regra_cobranca_config as any).regras_cobranca || []) as any[])
+      : []
+    if (fromLegacyConfig.length > 0) {
+      return fromLegacyConfig.map((rule) => ({
+        ...buildLegacyRuleFromCaso(caso),
+        ...rule,
+        id: String(rule?.id || createRuleId()),
+        status: (rule?.status || 'ativo') as BillingRuleStatus,
+        regra_cobranca: normalizeRegraCobranca(rule?.regra_cobranca as CasoPayload['regra_cobranca']),
+        regra_cobranca_config: {
+          ...emptyCaso.regra_cobranca_config,
+          ...sanitizeSingleRuleConfig(rule?.regra_cobranca_config || {}),
+        },
+        indicacao_config: { ...(rule?.indicacao_config || caso.indicacao_config || emptyCaso.indicacao_config) },
+      }))
+    }
+
+    return [buildLegacyRuleFromCaso(caso)]
+  }
+  const currentFinanceRules = getCasoFinanceRules(currentCaso)
+  const selectedFinanceRuleIndex = Math.min(
+    Math.max(selectedFinanceRuleByCase[currentCaseKey] ?? 0, 0),
+    Math.max(currentFinanceRules.length - 1, 0),
+  )
+  const currentFinanceRule = currentFinanceRules[selectedFinanceRuleIndex] || currentFinanceRules[0]
   const regras = currentCaso.regra_cobranca_config || {}
   const despesas = currentCaso.despesas_config || {}
   const timesheet = currentCaso.timesheet_config || {}
@@ -336,16 +480,97 @@ export default function ContratoForm({
       regras.cap_limites_enabled ??
       (regras.cap_max !== null && regras.cap_max !== undefined && String(regras.cap_max).trim() !== ''),
   )
+  const isCurrentFinanceRuleDraft = (currentFinanceRule?.status || 'rascunho') === 'rascunho'
+  const isCurrentFinanceRuleClosed = (currentFinanceRule?.status || '') === 'encerrado'
+
+  const composeCurrentFinanceRule = (base?: BillingRuleDraft): BillingRuleDraft => ({
+    id: base?.id || createRuleId(),
+    status: base?.status || 'rascunho',
+    moeda: currentCaso.moeda || 'real',
+    tipo_cobranca_documento: currentCaso.tipo_cobranca_documento || '',
+    data_inicio_faturamento: currentCaso.data_inicio_faturamento || '',
+    pagamento_dia_mes: currentCaso.pagamento_dia_mes || '',
+    inicio_vigencia: currentCaso.inicio_vigencia || '',
+    periodo_reajuste: currentCaso.periodo_reajuste || '',
+    data_proximo_reajuste: currentCaso.data_proximo_reajuste || '',
+    data_ultimo_reajuste: currentCaso.data_ultimo_reajuste || '',
+    indice_reajuste: currentCaso.indice_reajuste || '',
+    regra_cobranca: normalizeRegraCobranca(currentCaso.regra_cobranca),
+    regra_cobranca_config: sanitizeSingleRuleConfig(currentCaso.regra_cobranca_config || {}),
+    pagadores_servico: [...(currentCaso.pagadores_servico || [])],
+    indicacao_config: { ...(currentCaso.indicacao_config || emptyCaso.indicacao_config) },
+  })
+
+  const setFinanceRulesForCurrentCase = (rules: BillingRuleDraft[]) => {
+    const normalizedRules = rules.map((rule) => ({
+      ...rule,
+      regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+    }))
+    setForm((prev) => {
+      const next = [...prev.casos]
+      const current = next[selectedCaseIndex]
+      if (!current) return prev
+
+      const currentRules = Array.isArray(current.regras_financeiras)
+        ? current.regras_financeiras.map((rule: any) => ({
+            ...rule,
+            regra_cobranca_config: sanitizeSingleRuleConfig(rule?.regra_cobranca_config || {}),
+          }))
+        : []
+      const sameRules = JSON.stringify(currentRules) === JSON.stringify(normalizedRules)
+
+      const currentLegacyRules = Array.isArray((current.regra_cobranca_config as any)?.regras_cobranca)
+        ? ((current.regra_cobranca_config as any).regras_cobranca || []).map((rule: any) => ({
+            ...rule,
+            regra_cobranca_config: sanitizeSingleRuleConfig(rule?.regra_cobranca_config || {}),
+          }))
+        : []
+      const sameLegacyRules = JSON.stringify(currentLegacyRules) === JSON.stringify(normalizedRules)
+
+      if (sameRules && sameLegacyRules) return prev
+
+      next[selectedCaseIndex] = {
+        ...current,
+        regras_financeiras: normalizedRules,
+        regra_cobranca_config: {
+          ...sanitizeSingleRuleConfig(current.regra_cobranca_config || {}),
+          regras_cobranca: normalizedRules,
+        },
+      }
+      return { ...prev, casos: next }
+    })
+  }
+
+  const applyFinanceRuleToCurrentCaso = (rule: BillingRuleDraft) => {
+    updateCurrentCaso({
+      moeda: rule.moeda,
+      tipo_cobranca_documento: rule.tipo_cobranca_documento,
+      data_inicio_faturamento: rule.data_inicio_faturamento,
+      pagamento_dia_mes: rule.pagamento_dia_mes,
+      inicio_vigencia: rule.inicio_vigencia,
+      periodo_reajuste: rule.periodo_reajuste,
+      data_proximo_reajuste: rule.data_proximo_reajuste,
+      data_ultimo_reajuste: rule.data_ultimo_reajuste,
+      indice_reajuste: rule.indice_reajuste,
+      regra_cobranca: rule.regra_cobranca,
+      regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+      pagadores_servico: [...(rule.pagadores_servico || [])],
+      indicacao_config: { ...(rule.indicacao_config || emptyCaso.indicacao_config) },
+    })
+  }
 
   const validateDados = () => {
     if (!form.cliente_id) return 'Cliente é obrigatório'
     if (!form.nome_contrato.trim()) return 'Nome do contrato é obrigatório'
+    if (!form.forma_entrada) return 'Forma de entrada é obrigatória'
+    if (!form.regime_fiscal) return 'Regime fiscal é obrigatório'
     return null
   }
 
   const validateCasoBasico = (caso: CasoPayload) => {
     if (!caso.nome.trim()) return 'Nome do caso é obrigatório'
-    if (!caso.produto_id) return 'Serviço do caso é obrigatório'
+    if (!caso.servico_id) return 'Serviço do caso é obrigatório'
+    if (!caso.produto_id) return 'Produto do caso é obrigatório'
     if (!caso.responsavel_id) return 'Responsável do caso é obrigatório'
     return null
   }
@@ -485,6 +710,8 @@ export default function ContratoForm({
         }
         const nextOptions = optsData.data || {
           clientes: [],
+          prestadores: [],
+          parceiros: [],
           servicos: [],
           produtos: [],
           centros_custo: [],
@@ -560,14 +787,42 @@ export default function ContratoForm({
             cliente_id: contrato.cliente_id || '',
             nome_contrato: contrato.nome_contrato || '',
             regime_fiscal: contrato.regime_fiscal || '',
-            status: (contrato.status || 'rascunho') as 'rascunho' | 'ativo' | 'encerrado',
+            forma_entrada: (contrato.forma_entrada || '') as 'organico' | 'prospeccao' | '',
+            status: (contrato.status || 'rascunho') as 'rascunho' | 'em_analise' | 'ativo' | 'encerrado',
             casos: casos.length
               ? casos.map((caso) => ({
                   ...emptyCaso,
                   ...caso,
                   regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca as CasoPayload['regra_cobranca']),
                   pagamento_dia_mes: caso.pagamento_dia_mes ? String(caso.pagamento_dia_mes) : '',
-                  regra_cobranca_config: { ...emptyCaso.regra_cobranca_config, ...(caso.regra_cobranca_config || {}) },
+                  regra_cobranca_config: {
+                    ...emptyCaso.regra_cobranca_config,
+                    ...sanitizeSingleRuleConfig(caso.regra_cobranca_config || {}),
+                  },
+                  regras_financeiras: Array.isArray((caso as any)?.regras_financeiras)
+                    ? ((caso as any).regras_financeiras as any[]).map((rule) => ({
+                        id: String(rule?.id || createRuleId()),
+                        status: String(rule?.status || 'ativo'),
+                        moeda: rule?.moeda || 'real',
+                        tipo_cobranca_documento: rule?.tipo_cobranca_documento || '',
+                        data_inicio_faturamento: String(rule?.data_inicio_faturamento || ''),
+                        pagamento_dia_mes: String(rule?.pagamento_dia_mes || ''),
+                        inicio_vigencia: String(rule?.inicio_vigencia || ''),
+                        periodo_reajuste: String(rule?.periodo_reajuste || ''),
+                        data_proximo_reajuste: String(rule?.data_proximo_reajuste || ''),
+                        data_ultimo_reajuste: String(rule?.data_ultimo_reajuste || ''),
+                        indice_reajuste: String(rule?.indice_reajuste || ''),
+                        regra_cobranca: normalizeRegraCobranca(rule?.regra_cobranca as CasoPayload['regra_cobranca']),
+                        regra_cobranca_config: {
+                          ...emptyCaso.regra_cobranca_config,
+                          ...sanitizeSingleRuleConfig(rule?.regra_cobranca_config || {}),
+                        },
+                        pagadores_servico: Array.isArray(rule?.pagadores_servico) ? rule.pagadores_servico : [],
+                        indicacao_config: {
+                          ...(rule?.indicacao_config || caso.indicacao_config || emptyCaso.indicacao_config),
+                        },
+                      }))
+                    : undefined,
                   despesas_config: { ...emptyCaso.despesas_config, ...(caso.despesas_config || {}) },
                   timesheet_config: { ...emptyCaso.timesheet_config, ...(caso.timesheet_config || {}) },
                   indicacao_config: { ...emptyCaso.indicacao_config, ...(caso.indicacao_config || {}) },
@@ -642,6 +897,27 @@ export default function ContratoForm({
   ])
 
   useEffect(() => {
+    if (isEdit) return
+    const months = periodToMonths[currentCaso.periodo_reajuste] || 0
+    if (!months) return
+
+    const base = currentCaso.data_ultimo_reajuste || currentCaso.inicio_vigencia
+    if (!base) return
+
+    const calculated = buildNextDate(base, months)
+    if (!calculated || calculated === currentCaso.data_proximo_reajuste) return
+
+    updateCurrentCaso({ data_proximo_reajuste: calculated })
+  }, [
+    isEdit,
+    selectedCaseIndex,
+    currentCaso.periodo_reajuste,
+    currentCaso.inicio_vigencia,
+    currentCaso.data_ultimo_reajuste,
+    currentCaso.data_proximo_reajuste,
+  ])
+
+  useEffect(() => {
     setForm((prev) => {
       const next = [...prev.casos]
       const current = next[selectedCaseIndex]
@@ -686,6 +962,36 @@ export default function ContratoForm({
     regras.encontro_contas_enabled,
     regras.encontro_periodicidade,
     isEdit,
+  ])
+
+  useEffect(() => {
+    if (step !== 'casos' || substep !== 'financeiro') return
+    if (!currentFinanceRules[selectedFinanceRuleIndex]) return
+    const nextRules = [...currentFinanceRules]
+    nextRules[selectedFinanceRuleIndex] = {
+      ...composeCurrentFinanceRule(nextRules[selectedFinanceRuleIndex]),
+      status: nextRules[selectedFinanceRuleIndex].status || 'rascunho',
+    }
+    setFinanceRulesForCurrentCase(nextRules)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedCaseIndex,
+    selectedFinanceRuleIndex,
+    currentCaso.moeda,
+    currentCaso.tipo_cobranca_documento,
+    currentCaso.data_inicio_faturamento,
+    currentCaso.pagamento_dia_mes,
+    currentCaso.inicio_vigencia,
+    currentCaso.periodo_reajuste,
+    currentCaso.data_proximo_reajuste,
+    currentCaso.data_ultimo_reajuste,
+    currentCaso.indice_reajuste,
+    currentCaso.regra_cobranca,
+    currentCaso.regra_cobranca_config,
+    currentCaso.pagadores_servico,
+    currentCaso.indicacao_config,
+    step,
+    substep,
   ])
 
   const updateCaso = (index: number, patch: Partial<CasoPayload>) => {
@@ -758,6 +1064,49 @@ export default function ContratoForm({
       }
       return { ...prev, casos: next }
     })
+  }
+
+  const setIndicacaoPeriodicidade = (periodicidade: string) => {
+    updateCurrentIndicacao('periodicidade', periodicidade)
+    if (periodicidade === 'mensal') {
+      updateCurrentIndicacao('usar_dia_vencimento', true)
+      updateCurrentIndicacao('parcelas_pagamento', [])
+      if (!indicacao.data_fim_pagamentos) {
+        updateCurrentIndicacao('data_fim_pagamentos', currentCaso.inicio_vigencia || currentCaso.data_inicio_faturamento || '')
+      }
+      return
+    }
+    if (periodicidade === 'parcelado') {
+      updateCurrentIndicacao('data_pagamento_unico', '')
+      if (!Array.isArray(indicacao.parcelas_pagamento) || indicacao.parcelas_pagamento.length === 0) {
+        updateCurrentIndicacao('parcelas_pagamento', [{ valor: '', data_pagamento: '' }])
+      }
+      return
+    }
+    updateCurrentIndicacao('parcelas_pagamento', [])
+    updateCurrentIndicacao('data_fim_pagamentos', '')
+    updateCurrentIndicacao('dia_pagamento_mensal', '')
+    if (!indicacao.data_pagamento_unico) {
+      updateCurrentIndicacao('data_pagamento_unico', currentCaso.inicio_vigencia || currentCaso.data_inicio_faturamento || '')
+    }
+  }
+
+  const addIndicacaoParcela = () => {
+    const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? indicacao.parcelas_pagamento : []
+    updateCurrentIndicacao('parcelas_pagamento', [...parcelas, { valor: '', data_pagamento: '' }])
+  }
+
+  const updateIndicacaoParcela = (idx: number, field: 'valor' | 'data_pagamento', value: string) => {
+    const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? [...indicacao.parcelas_pagamento] : []
+    if (!parcelas[idx]) return
+    parcelas[idx] = { ...parcelas[idx], [field]: value }
+    updateCurrentIndicacao('parcelas_pagamento', parcelas)
+  }
+
+  const removeIndicacaoParcela = (idx: number) => {
+    const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? [...indicacao.parcelas_pagamento] : []
+    parcelas.splice(idx, 1)
+    updateCurrentIndicacao('parcelas_pagamento', parcelas)
   }
 
   const setCentroRateio = (items: Array<{ id: string; percentual: number }>) => {
@@ -937,10 +1286,66 @@ export default function ContratoForm({
       const nome = options.clientes.find((item) => item.id === entityId)?.nome
       return nome ? `${nome} (Cliente)` : `Cliente (${entityId})`
     }
-    if (tipoRaw === 'prestador') return `Prestador (${entityId})`
-    if (tipoRaw === 'parceiro') return `Parceiro (${entityId})`
+    if (tipoRaw === 'prestador') {
+      const nome = options.prestadores?.find((item) => item.id === entityId)?.nome
+      return nome ? `${nome} (Prestador de Serviço)` : `Prestador (${entityId})`
+    }
+    if (tipoRaw === 'parceiro') {
+      const nome = options.parceiros?.find((item) => item.id === entityId)?.nome
+      return nome ? `${nome} (Parceiro)` : `Parceiro (${entityId})`
+    }
     return value
   }
+
+  const periodicidadeIndicacaoOptions = useMemo(() => {
+    const regra = normalizeRegraCobranca(currentFinanceRule?.regra_cobranca || currentCaso.regra_cobranca)
+    if (regra === 'mensal' || regra === 'mensalidade_processo') {
+      return [
+        { value: 'mensal', label: 'Mensal' },
+        { value: 'pontual', label: 'Única' },
+      ]
+    }
+    if (regra === 'projeto') {
+      return [
+        { value: 'pontual', label: 'Única' },
+        { value: 'parcelado', label: 'Parcelada por datas' },
+      ]
+    }
+    return [
+      { value: 'pontual', label: 'Única' },
+      { value: 'mensal', label: 'Mensal' },
+      { value: 'ao_final', label: 'Ao final' },
+    ]
+  }, [currentFinanceRule?.regra_cobranca, currentCaso.regra_cobranca])
+
+  const indicacaoPreview = useMemo(() => {
+    if (!indicacaoPagamentoEnabled) return []
+    const periodicidade = String(indicacao.periodicidade || '')
+    if (periodicidade === 'parcelado') {
+      const parcelas = Array.isArray(indicacao.parcelas_pagamento) ? indicacao.parcelas_pagamento : []
+      if (!parcelas.length) return ['Nenhuma parcela configurada']
+      return parcelas.map((p: any, idx: number) => {
+        const valor = String(p?.valor || '').trim() || '0,00'
+        const data = formatDateBr(String(p?.data_pagamento || ''))
+        return `Parcela ${idx + 1}: ${valor} em ${data}`
+      })
+    }
+    if (periodicidade === 'mensal') {
+      const usaVencimento = Boolean(indicacao.usar_dia_vencimento)
+      const dia = usaVencimento
+        ? String(currentCaso.pagamento_dia_mes || '').trim()
+        : String(indicacao.dia_pagamento_mensal || '').trim()
+      const fim = String(indicacao.data_fim_pagamentos || '').trim()
+      const valor = String(indicacao.valor || '').trim()
+      const linhas = [
+        `Mensalidade ${indicacao.modo === 'valor' ? `de ${valor || '0,00'}` : `de ${valor || '0'}%`} com pagamento todo dia ${dia || '-'}`,
+      ]
+      linhas.push(`Até ${formatDateBr(fim)}`)
+      return linhas
+    }
+    const data = String(indicacao.data_pagamento_unico || '').trim()
+    return [`Pagamento único em ${formatDateBr(data)}`]
+  }, [indicacao, indicacaoPagamentoEnabled, currentCaso.pagamento_dia_mes])
 
   const addCaso = () => {
     setForm((prev) => ({
@@ -949,6 +1354,74 @@ export default function ContratoForm({
     }))
     setSelectedCaseIndex(form.casos.length)
     setSubstep('basico')
+  }
+
+  const selectFinanceRule = (index: number) => {
+    if (!currentFinanceRules[index]) return
+    const nextRules = [...currentFinanceRules]
+    nextRules[selectedFinanceRuleIndex] = composeCurrentFinanceRule(nextRules[selectedFinanceRuleIndex])
+    setFinanceRulesForCurrentCase(nextRules)
+    const selectedRule = nextRules[index]
+    setSelectedFinanceRuleByCase((prev) => ({ ...prev, [currentCaseKey]: index }))
+    applyFinanceRuleToCurrentCaso(selectedRule)
+  }
+
+  const addFinanceRule = () => {
+    const nextRules = [...currentFinanceRules]
+    nextRules[selectedFinanceRuleIndex] = composeCurrentFinanceRule(nextRules[selectedFinanceRuleIndex])
+    const newRule: BillingRuleDraft = {
+      id: createRuleId(),
+      status: 'rascunho',
+      moeda: currentCaso.moeda || 'real',
+      tipo_cobranca_documento: '',
+      data_inicio_faturamento: currentCaso.data_inicio_faturamento || '',
+      pagamento_dia_mes: currentCaso.pagamento_dia_mes || '',
+      inicio_vigencia: currentCaso.inicio_vigencia || '',
+      periodo_reajuste: '',
+      data_proximo_reajuste: '',
+      data_ultimo_reajuste: '',
+      indice_reajuste: '',
+      regra_cobranca: '',
+      regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
+      pagadores_servico: [],
+      indicacao_config: { ...emptyCaso.indicacao_config },
+    }
+    nextRules.push(newRule)
+    setFinanceRulesForCurrentCase(nextRules)
+    const nextIndex = nextRules.length - 1
+    setSelectedFinanceRuleByCase((prev) => ({ ...prev, [currentCaseKey]: nextIndex }))
+    applyFinanceRuleToCurrentCaso(newRule)
+  }
+
+  const removeCurrentFinanceRule = () => {
+    const current = currentFinanceRules[selectedFinanceRuleIndex]
+    if (!current) return
+    if (current.status !== 'rascunho') {
+      setError('Só é possível remover regra financeira em rascunho')
+      return
+    }
+    if (currentFinanceRules.length <= 1) {
+      setError('É necessário manter pelo menos uma regra financeira')
+      return
+    }
+    const nextRules = currentFinanceRules.filter((_, idx) => idx !== selectedFinanceRuleIndex)
+    const nextIndex = Math.max(0, selectedFinanceRuleIndex - 1)
+    setFinanceRulesForCurrentCase(nextRules)
+    setSelectedFinanceRuleByCase((prev) => ({ ...prev, [currentCaseKey]: nextIndex }))
+    applyFinanceRuleToCurrentCaso(nextRules[nextIndex])
+  }
+
+  const toggleCurrentFinanceRuleStatus = () => {
+    const current = currentFinanceRules[selectedFinanceRuleIndex]
+    if (!current) return
+    const nextStatus: BillingRuleStatus = current.status === 'encerrado' ? 'ativo' : 'encerrado'
+    const nextRules = [...currentFinanceRules]
+    nextRules[selectedFinanceRuleIndex] = {
+      ...composeCurrentFinanceRule(current),
+      status: nextStatus,
+    }
+    setFinanceRulesForCurrentCase(nextRules)
+    setError(null)
   }
 
   const isCasoRascunho = (caso?: CasoPayload) => (caso?.status || 'rascunho') === 'rascunho'
@@ -1091,6 +1564,7 @@ export default function ContratoForm({
           cliente_id: form.cliente_id,
           nome_contrato: form.nome_contrato,
           regime_fiscal: form.regime_fiscal,
+          forma_entrada: form.forma_entrada || null,
           status: 'rascunho',
           casos: [],
         }),
@@ -1355,6 +1829,7 @@ export default function ContratoForm({
               cliente_id: form.cliente_id,
               nome_contrato: form.nome_contrato,
               regime_fiscal: form.regime_fiscal,
+              forma_entrada: form.forma_entrada || null,
             }),
           })
           const updateData = await updateResp.json()
@@ -1410,6 +1885,7 @@ export default function ContratoForm({
           cliente_id: form.cliente_id,
           nome_contrato: form.nome_contrato,
           regime_fiscal: form.regime_fiscal,
+          forma_entrada: form.forma_entrada || null,
         }),
       })
 
@@ -1525,14 +2001,14 @@ export default function ContratoForm({
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ id: contractTargetId, status: 'ativo' }),
+          body: JSON.stringify({ id: contractTargetId, status: 'em_analise' }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {
-          setError(statusData.error || 'Erro ao ativar contrato')
+          setError(statusData.error || 'Erro ao mover contrato para análise')
           return
         }
-        setForm((prev) => ({ ...prev, status: 'ativo' }))
+        setForm((prev) => ({ ...prev, status: 'em_analise' }))
       }
 
       const successMessage =
@@ -1681,6 +2157,10 @@ export default function ContratoForm({
                   <p className="font-medium">{clienteOptions.find((c) => c.value === form.cliente_id)?.label || '-'}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-muted-foreground">Forma de entrada</p>
+                  <p className="font-medium">{form.forma_entrada || '-'}</p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground">Regime fiscal</p>
                   <p className="font-medium">{form.regime_fiscal || '-'}</p>
                 </div>
@@ -1779,6 +2259,16 @@ export default function ContratoForm({
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div><p className="text-xs text-muted-foreground">Nome</p><p className="font-medium">{currentCaso.nome || '-'}</p></div>
                     <div><p className="text-xs text-muted-foreground">Serviço</p><p className="font-medium">{produtosMap.get(currentCaso.produto_id) || '-'}</p></div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Natureza do caso</p>
+                      <p className="font-medium">
+                        {String(regras.natureza_caso || '').trim()
+                          ? String(regras.natureza_caso).toLowerCase() === 'consultivo'
+                            ? 'Consultivo'
+                            : 'Contencioso'
+                          : '-'}
+                      </p>
+                    </div>
                     <div><p className="text-xs text-muted-foreground">Responsável</p><p className="font-medium">{colaboradoresMap.get(currentCaso.responsavel_id) || '-'}</p></div>
                     <div>
                       <p className="text-xs text-muted-foreground">Centro de custo (total {calcRateioTotal(currentCaso.centro_custo_rateio || [])}%)</p>
@@ -1816,7 +2306,7 @@ export default function ContratoForm({
                     <p><span className="text-xs text-muted-foreground">Aprovadores:</span> <span className="font-medium">{(timesheet.aprovadores || []).map((a: any) => `${colaboradoresMap.get(a.colaborador_id) || '-'} (#${a.ordem || '-'})`).join(' | ') || '-'}</span></p>
                   </div>
                 )}
-                {substep === 'indicacao' && (
+                {false && (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div><p className="text-xs text-muted-foreground">Pagamento da indicação</p><p className="font-medium">{formatIndicacaoPagador(indicacao.pagamento_indicacao)}</p></div>
                     <div><p className="text-xs text-muted-foreground">Periodicidade</p><p className="font-medium">{indicacao.periodicidade || '-'}</p></div>
@@ -1946,6 +2436,20 @@ export default function ContratoForm({
                 value={form.nome_contrato}
                 onChange={(e) => setForm((prev) => ({ ...prev, nome_contrato: e.target.value }))}
                 disabled={isReadOnly}
+              />
+            </div>
+
+            <div className="space-y-3 md:col-span-2">
+              <Label>Forma de entrada</Label>
+              <ChoiceCards
+                value={form.forma_entrada}
+                onChange={(value) => setForm((prev) => ({ ...prev, forma_entrada: value as 'organico' | 'prospeccao' }))}
+                disabled={isReadOnly}
+                options={[
+                  { value: 'organico', label: 'Orgânico' },
+                  { value: 'prospeccao', label: 'Prospecção' },
+                ]}
+                columns={2}
               />
             </div>
 
@@ -2217,6 +2721,19 @@ export default function ContratoForm({
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
+                    <Label>Natureza do caso</Label>
+                    <ChoiceCards
+                      value={String(regras.natureza_caso || '')}
+                      onChange={(value) => updateCurrentRegra('natureza_caso', value)}
+                      options={[
+                        { value: 'contencioso', label: 'Contencioso' },
+                        { value: 'consultivo', label: 'Consultivo' },
+                      ]}
+                      disabled={isReadOnly}
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
                     <Label>Responsável</Label>
                     <CommandSelect
                       value={currentCaso.responsavel_id}
@@ -2368,6 +2885,57 @@ export default function ContratoForm({
 
               {substep === 'financeiro' && (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Regras financeiras</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {currentFinanceRules.map((rule, idx) => {
+                        const selected = idx === selectedFinanceRuleIndex
+                        const labelTipo = rule.regra_cobranca
+                          ? rule.regra_cobranca.replaceAll('_', ' ')
+                          : 'Nova regra'
+                        return (
+                          <Button
+                            key={rule.id}
+                            type="button"
+                            variant={selected ? 'default' : 'outline'}
+                            className="gap-1.5"
+                            onClick={() => selectFinanceRule(idx)}
+                          >
+                            {idx + 1}. {labelTipo}
+                            {rule.status === 'rascunho' ? <Pencil className="h-3.5 w-3.5" /> : null}
+                            {rule.status === 'encerrado' ? (
+                              <Badge className="bg-muted text-muted-foreground">encerrada</Badge>
+                            ) : null}
+                          </Button>
+                        )
+                      })}
+
+                      {!isReadOnly && (
+                        <Button type="button" variant="outline" onClick={addFinanceRule}>
+                          + Nova regra
+                        </Button>
+                      )}
+
+                      {!isReadOnly && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={removeCurrentFinanceRule}
+                          disabled={!isCurrentFinanceRuleDraft}
+                        >
+                          Remover regra atual
+                        </Button>
+                      )}
+
+                      {!isReadOnly && (
+                        <Button type="button" variant="outline" onClick={toggleCurrentFinanceRuleStatus}>
+                          <Power className={`mr-1 h-3.5 w-3.5 ${isCurrentFinanceRuleClosed ? 'text-green-600' : 'text-red-600'}`} />
+                          {isCurrentFinanceRuleClosed ? 'Reativar regra' : 'Encerrar regra'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Moeda</Label>
                     <NativeSelect
@@ -2455,21 +3023,21 @@ export default function ContratoForm({
                     <Label>Data próximo reajuste</Label>
                     <DatePicker
                       value={currentCaso.data_proximo_reajuste}
-                      onChange={(value) => updateCurrentCaso({ data_proximo_reajuste: value })}
-                      disabled={isReadOnly}
+                      onChange={(value) => {
+                        if (isEdit) updateCurrentCaso({ data_proximo_reajuste: value })
+                      }}
+                      disabled={isReadOnly || !isEdit}
                     />
                   </div>
 
-                  {isEdit ? (
-                    <div className="space-y-2">
-                      <Label>Data último reajuste</Label>
-                      <DatePicker
-                        value={currentCaso.data_ultimo_reajuste}
-                        onChange={(value) => updateCurrentCaso({ data_ultimo_reajuste: value })}
-                        disabled={isReadOnly}
-                      />
-                    </div>
-                  ) : null}
+                  <div className="space-y-2">
+                    <Label>Data último reajuste</Label>
+                    <DatePicker
+                      value={currentCaso.data_ultimo_reajuste}
+                      onChange={(value) => updateCurrentCaso({ data_ultimo_reajuste: value })}
+                      disabled={isReadOnly}
+                    />
+                  </div>
 
                   <div className="space-y-2">
                     <Label>Índice de reajuste</Label>
@@ -2502,6 +3070,19 @@ export default function ContratoForm({
                       <option value="projeto">Projeto</option>
                       <option value="exito">Êxito</option>
                     </NativeSelect>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cap desejado (Quantidade de horas)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={String(regras.cap_desejado_horas || '')}
+                      onChange={(e) => updateCurrentRegra('cap_desejado_horas', e.target.value)}
+                      disabled={isReadOnly}
+                      placeholder="Ex: 120"
+                    />
                   </div>
 
                   {currentCaso.regra_cobranca === 'hora' && (
@@ -2973,6 +3554,224 @@ export default function ContratoForm({
                     </div>
                   )}
 
+                  <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <div className="border-t" />
+                      <p className="pt-2 text-base font-semibold">Regras de negócio e indicação</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cross Sell de cobrança?</Label>
+                      <ChoiceCards
+                        value={regras.cross_sell_ativo ? 'sim' : 'nao'}
+                        onChange={(value) => {
+                          const enabled = value === 'sim'
+                          updateCurrentRegra('cross_sell_ativo', enabled)
+                          if (!enabled) updateCurrentRegra('cross_sell_origem_colaborador_id', '')
+                        }}
+                        options={[
+                          { value: 'nao', label: 'Não' },
+                          { value: 'sim', label: 'Sim' },
+                        ]}
+                        disabled={isReadOnly}
+                        columns={2}
+                      />
+                    </div>
+                    {regras.cross_sell_ativo && (
+                      <div className="space-y-2">
+                        <Label>Origem do cross sell</Label>
+                        <CommandSelect
+                          value={String(regras.cross_sell_origem_colaborador_id || '')}
+                          onValueChange={(value) => updateCurrentRegra('cross_sell_origem_colaborador_id', value)}
+                          options={colaboradorOptions}
+                          placeholder="Selecione..."
+                          searchPlaceholder="Buscar colaborador..."
+                          emptyText="Nenhum colaborador encontrado."
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label>Pagamento da indicação</Label>
+                      <ChoiceCards
+                        value={indicacaoPagamentoEnabled ? 'sim' : 'nao'}
+                        disabled={isReadOnly}
+                        onChange={(value) => {
+                          if (value === 'nao') {
+                            updateCurrentIndicacao('pagamento_indicacao_ativo', false)
+                            updateCurrentIndicacao('pagamento_indicacao', 'nao')
+                            return
+                          }
+                          const nextValue =
+                            options.colaboradores?.[0]
+                              ? `colaborador:${options.colaboradores[0].id}`
+                              : options.clientes?.[0]
+                                ? `cliente:${options.clientes[0].id}`
+                                : options.prestadores?.[0]
+                                  ? `prestador:${options.prestadores[0].id}`
+                                  : options.parceiros?.[0]
+                                    ? `parceiro:${options.parceiros[0].id}`
+                                    : ''
+                          updateCurrentIndicacao('pagamento_indicacao_ativo', true)
+                          updateCurrentIndicacao('pagamento_indicacao', nextValue)
+                        }}
+                        columns={2}
+                        options={[
+                          { value: 'nao', label: 'Não' },
+                          { value: 'sim', label: 'Sim' },
+                        ]}
+                      />
+                    </div>
+                    {indicacaoPagamentoEnabled && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Indicado por</Label>
+                          <CommandSelect
+                            value={indicacao.pagamento_indicacao || ''}
+                            onValueChange={(value) => updateCurrentIndicacao('pagamento_indicacao', value)}
+                            options={indicacaoOptions}
+                            placeholder="Selecione..."
+                            searchPlaceholder="Buscar indicado..."
+                            emptyText="Nenhum indicado encontrado."
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Periodicidade</Label>
+                          <NativeSelect
+                            value={indicacao.periodicidade || periodicidadeIndicacaoOptions[0]?.value || 'pontual'}
+                            disabled={isReadOnly}
+                            onChange={(e) => setIndicacaoPeriodicidade(e.target.value)}
+                          >
+                            {periodicidadeIndicacaoOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Modo</Label>
+                          <NativeSelect
+                            value={indicacao.modo || 'percentual'}
+                            disabled={isReadOnly}
+                            onChange={(e) => updateCurrentIndicacao('modo', e.target.value)}
+                          >
+                            <option value="percentual">Percentual</option>
+                            <option value="valor">Valor</option>
+                          </NativeSelect>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{indicacao.modo === 'valor' ? 'Valor' : 'Percentual'}</Label>
+                          {indicacao.modo === 'valor' ? (
+                            <MoneyInput
+                              value={indicacao.valor || ''}
+                              onValueChange={(value) => updateCurrentIndicacao('valor', value)}
+                              disabled={isReadOnly}
+                            />
+                          ) : (
+                            <Input
+                              value={indicacao.valor || ''}
+                              disabled={isReadOnly}
+                              onChange={(e) => updateCurrentIndicacao('valor', e.target.value)}
+                            />
+                          )}
+                        </div>
+                        {(indicacao.periodicidade === 'pontual' || indicacao.periodicidade === 'ao_final') && (
+                          <div className="space-y-2">
+                            <Label>Data do pagamento</Label>
+                            <DatePicker
+                              value={indicacao.data_pagamento_unico || ''}
+                              onChange={(value) => updateCurrentIndicacao('data_pagamento_unico', value)}
+                              disabled={isReadOnly}
+                            />
+                          </div>
+                        )}
+                        {indicacao.periodicidade === 'mensal' && (
+                          <>
+                            <div className="space-y-2">
+                              <Label>Usar dia de vencimento do caso?</Label>
+                              <ChoiceCards
+                                value={indicacao.usar_dia_vencimento ? 'sim' : 'nao'}
+                                onChange={(value) => updateCurrentIndicacao('usar_dia_vencimento', value === 'sim')}
+                                disabled={isReadOnly}
+                                options={[
+                                  { value: 'sim', label: 'Sim' },
+                                  { value: 'nao', label: 'Não' },
+                                ]}
+                              />
+                            </div>
+                            {!indicacao.usar_dia_vencimento && (
+                              <div className="space-y-2">
+                                <Label>Dia do pagamento mensal</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={31}
+                                  value={indicacao.dia_pagamento_mensal || ''}
+                                  onChange={(e) => updateCurrentIndicacao('dia_pagamento_mensal', e.target.value)}
+                                  disabled={isReadOnly}
+                                />
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              <Label>Data final dos pagamentos</Label>
+                              <DatePicker
+                                value={indicacao.data_fim_pagamentos || ''}
+                                onChange={(value) => updateCurrentIndicacao('data_fim_pagamentos', value)}
+                                disabled={isReadOnly}
+                              />
+                            </div>
+                          </>
+                        )}
+                        {indicacao.periodicidade === 'parcelado' && (
+                          <div className="space-y-2 md:col-span-2">
+                            <div className="flex items-center justify-between">
+                              <Label>Parcelas da indicação</Label>
+                              {!isReadOnly && (
+                                <Button type="button" variant="outline" size="sm" onClick={addIndicacaoParcela}>
+                                  Adicionar parcela
+                                </Button>
+                              )}
+                            </div>
+                            {(Array.isArray(indicacao.parcelas_pagamento) ? indicacao.parcelas_pagamento : []).map((parcela: any, idx: number) => (
+                              <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                <MoneyInput
+                                  value={parcela?.valor || ''}
+                                  onValueChange={(value) => updateIndicacaoParcela(idx, 'valor', value)}
+                                  disabled={isReadOnly}
+                                />
+                                <DatePicker
+                                  value={parcela?.data_pagamento || ''}
+                                  onChange={(value) => updateIndicacaoParcela(idx, 'data_pagamento', value)}
+                                  disabled={isReadOnly}
+                                />
+                                {!isReadOnly && (
+                                  <Button type="button" variant="outline" onClick={() => removeIndicacaoParcela(idx)}>
+                                    Remover
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>Previsão de pagamento da indicação</Label>
+                          <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                            {indicacaoPreview.length ? (
+                              <ul className="space-y-1">
+                                {indicacaoPreview.map((linha, idx) => (
+                                  <li key={`${linha}-${idx}`}>{linha}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>Defina os dados para visualizar a previsão.</p>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
                   <div className="space-y-2 md:col-span-2">
                     <div className="border-t" />
                     <p className="text-base font-semibold">Pagadores do serviço (rateio)</p>
@@ -3246,7 +4045,7 @@ export default function ContratoForm({
                 </div>
               )}
 
-              {substep === 'indicacao' && (
+              {false && (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Pagamento da indicação</Label>
@@ -3259,8 +4058,16 @@ export default function ContratoForm({
                           updateCurrentIndicacao('pagamento_indicacao', 'nao')
                           return
                         }
-                        const firstColaborador = options.colaboradores?.[0]
-                        const nextValue = firstColaborador ? `colaborador:${firstColaborador.id}` : ''
+                        const nextValue =
+                          options.colaboradores?.[0]
+                            ? `colaborador:${options.colaboradores[0].id}`
+                            : options.clientes?.[0]
+                              ? `cliente:${options.clientes[0].id}`
+                              : options.prestadores?.[0]
+                                ? `prestador:${options.prestadores[0].id}`
+                                : options.parceiros?.[0]
+                                  ? `parceiro:${options.parceiros[0].id}`
+                                  : ''
                         updateCurrentIndicacao('pagamento_indicacao_ativo', true)
                         updateCurrentIndicacao('pagamento_indicacao', nextValue)
                       }}
@@ -3274,7 +4081,7 @@ export default function ContratoForm({
 
                   {indicacaoPagamentoEnabled && (
                     <div className="space-y-2">
-                      <Label>Indicado</Label>
+                      <Label>Indicado por</Label>
                       <CommandSelect
                         value={indicacao.pagamento_indicacao || ''}
                         onValueChange={(value) => updateCurrentIndicacao('pagamento_indicacao', value)}

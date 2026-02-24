@@ -19,6 +19,11 @@ const menuItems = [
     permission: 'contracts.contratos.read',
   },
   {
+    label: 'Solicitações de Contrato',
+    href: '/solicitacoes-contrato',
+    permission: 'contracts.solicitacoes.read',
+  },
+  {
     label: 'Timesheet',
     href: '/timesheet',
     permission: 'operations.timesheet.read',

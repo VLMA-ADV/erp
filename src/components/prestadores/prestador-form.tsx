@@ -29,7 +29,15 @@ type PrestadorPayload = {
   estado: string
   resp_nome: string
   resp_email: string
+  resp_cpf: string
+  resp_telefone: string
   resp_whatsapp: string
+  resp_cep: string
+  resp_rua: string
+  resp_numero: string
+  resp_complemento: string
+  resp_cidade: string
+  resp_estado: string
   banco: string
   conta_com_digito: string
   agencia: string
@@ -51,7 +59,15 @@ const emptyPayload: PrestadorPayload = {
   estado: '',
   resp_nome: '',
   resp_email: '',
+  resp_cpf: '',
+  resp_telefone: '',
   resp_whatsapp: '',
+  resp_cep: '',
+  resp_rua: '',
+  resp_numero: '',
+  resp_complemento: '',
+  resp_cidade: '',
+  resp_estado: '',
   banco: '',
   conta_com_digito: '',
   agencia: '',
@@ -71,6 +87,8 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
   const [form, setForm] = useState<PrestadorPayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
   const [lastCepFetched, setLastCepFetched] = useState<string>('')
+  const [respCepPreenchido, setRespCepPreenchido] = useState(false)
+  const [lastRespCepFetched, setLastRespCepFetched] = useState<string>('')
   const [categoriasOptions, setCategoriasOptions] = useState<Array<{ id: string; nome: string }>>([])
 
   const isEdit = useMemo(() => !!prestadorId, [prestadorId])
@@ -127,7 +145,15 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
           estado: prestador.estado || '',
           resp_nome: ri.nome || '',
           resp_email: ri.email || '',
+          resp_cpf: maskCpfCnpj(ri.cpf || '', 'cpf'),
+          resp_telefone: maskPhone(ri.telefone || ''),
           resp_whatsapp: maskPhone(ri.whatsapp || ''),
+          resp_cep: maskCEP(ri.cep || ''),
+          resp_rua: ri.rua || '',
+          resp_numero: ri.numero || '',
+          resp_complemento: ri.complemento || '',
+          resp_cidade: ri.cidade || '',
+          resp_estado: ri.estado || '',
           banco: bank.banco || '',
           conta_com_digito: bank.conta_com_digito || '',
           agencia: bank.agencia || '',
@@ -201,6 +227,35 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
     setCepPreenchido(true)
   }
 
+  const handleRespCepChange = async (value: string) => {
+    const masked = maskCEP(value)
+    const digits = masked.replace(/\D/g, '')
+
+    setForm((prev) => ({ ...prev, resp_cep: masked }))
+
+    if (digits.length !== 8) {
+      setRespCepPreenchido(false)
+      return
+    }
+
+    if (digits === lastRespCepFetched) return
+    setLastRespCepFetched(digits)
+
+    const data = await fetchCEPData(digits)
+    if (!data || data.erro) {
+      setRespCepPreenchido(false)
+      return
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      resp_rua: data.logradouro || prev.resp_rua,
+      resp_cidade: data.localidade || prev.resp_cidade,
+      resp_estado: (data.uf || prev.resp_estado || '').toUpperCase(),
+    }))
+    setRespCepPreenchido(true)
+  }
+
   const submit = async () => {
     setError(null)
 
@@ -210,6 +265,10 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
     }
     if (!form.nome_prestador.trim() || !form.cpf_cnpj.trim()) {
       setError('Nome e CPF/CNPJ são obrigatórios')
+      return
+    }
+    if (!form.resp_nome.trim()) {
+      setError('Responsável é obrigatório')
       return
     }
     if (form.servico_recorrente && !form.valor_recorrente.trim()) {
@@ -241,7 +300,15 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         cep: onlyDigits(form.cep) || null,
         resp_nome: form.resp_nome || null,
         resp_email: form.resp_email || null,
+        resp_cpf: onlyDigits(form.resp_cpf) || null,
+        resp_telefone: onlyDigits(form.resp_telefone) || null,
         resp_whatsapp: onlyDigits(form.resp_whatsapp) || null,
+        resp_cep: onlyDigits(form.resp_cep) || null,
+        resp_rua: form.resp_rua || null,
+        resp_numero: form.resp_numero || null,
+        resp_complemento: form.resp_complemento || null,
+        resp_cidade: form.resp_cidade || null,
+        resp_estado: form.resp_estado || null,
         banco: form.banco || null,
         conta_com_digito: form.conta_com_digito || null,
         agencia: form.agencia || null,
@@ -484,17 +551,37 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         <TabsContent value="responsavel">
           <Card>
             <CardHeader>
-              <CardTitle>Responsável Interno (opcional)</CardTitle>
+              <CardTitle>Responsável Interno</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="resp_nome">Nome</Label>
+                  <Label htmlFor="resp_nome">Nome *</Label>
                   <Input id="resp_nome" value={form.resp_nome} onChange={(e) => setForm({ ...form, resp_nome: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="resp_email">E-mail</Label>
                   <Input id="resp_email" value={form.resp_email} onChange={(e) => setForm({ ...form, resp_email: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_cpf">CPF</Label>
+                  <Input
+                    id="resp_cpf"
+                    value={form.resp_cpf}
+                    maxLength={14}
+                    onChange={(e) => setForm({ ...form, resp_cpf: maskCpfCnpj(e.target.value, 'cpf') })}
+                    placeholder="000.000.000-00"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_telefone">Telefone</Label>
+                  <Input
+                    id="resp_telefone"
+                    value={form.resp_telefone}
+                    maxLength={15}
+                    onChange={(e) => setForm({ ...form, resp_telefone: maskPhone(e.target.value) })}
+                    placeholder="(00) 00000-0000"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="resp_whatsapp">WhatsApp</Label>
@@ -504,6 +591,58 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                     maxLength={15}
                     onChange={(e) => setForm({ ...form, resp_whatsapp: maskPhone(e.target.value) })}
                     placeholder="(00) 00000-0000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_cep">CEP</Label>
+                  <Input
+                    id="resp_cep"
+                    value={form.resp_cep}
+                    maxLength={9}
+                    onChange={(e) => handleRespCepChange(e.target.value)}
+                    placeholder="00000-000"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="resp_rua">Rua</Label>
+                  <Input
+                    id="resp_rua"
+                    value={form.resp_rua}
+                    readOnly={respCepPreenchido}
+                    className={respCepPreenchido ? 'cursor-not-allowed bg-gray-100' : ''}
+                    onChange={(e) => setForm({ ...form, resp_rua: e.target.value })}
+                    placeholder={respCepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_numero">Número</Label>
+                  <Input id="resp_numero" value={form.resp_numero} onChange={(e) => setForm({ ...form, resp_numero: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_complemento">Complemento</Label>
+                  <Input id="resp_complemento" value={form.resp_complemento} onChange={(e) => setForm({ ...form, resp_complemento: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_cidade">Cidade</Label>
+                  <Input
+                    id="resp_cidade"
+                    value={form.resp_cidade}
+                    readOnly={respCepPreenchido}
+                    className={respCepPreenchido ? 'cursor-not-allowed bg-gray-100' : ''}
+                    onChange={(e) => setForm({ ...form, resp_cidade: e.target.value })}
+                    placeholder={respCepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="resp_estado">Estado (UF)</Label>
+                  <Input
+                    id="resp_estado"
+                    maxLength={2}
+                    value={form.resp_estado}
+                    readOnly={respCepPreenchido}
+                    className={respCepPreenchido ? 'cursor-not-allowed bg-gray-100' : ''}
+                    onChange={(e) => setForm({ ...form, resp_estado: e.target.value.toUpperCase() })}
+                    placeholder={respCepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
                   />
                 </div>
               </div>

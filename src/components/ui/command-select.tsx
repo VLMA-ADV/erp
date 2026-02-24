@@ -9,6 +9,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 export interface CommandSelectOption {
   value: string
   label: string
+  group?: string
 }
 
 interface CommandSelectProps {
@@ -52,6 +53,22 @@ export function CommandSelect({
     return options.filter((option) => option.label.toLowerCase().includes(normalized))
   }, [options, query])
 
+  const groupedOptions = useMemo(() => {
+    const map = new Map<string, CommandSelectOption[]>()
+    for (const option of filteredOptions) {
+      const groupName = option.group || ''
+      const current = map.get(groupName) || []
+      current.push(option)
+      map.set(groupName, current)
+    }
+    return Array.from(map.entries()).sort(([groupA], [groupB]) => {
+      if (!groupA && !groupB) return 0
+      if (!groupA) return -1
+      if (!groupB) return 1
+      return groupA.localeCompare(groupB, 'pt-BR')
+    })
+  }, [filteredOptions])
+
   return (
     <div ref={containerRef} className="relative">
       <Button
@@ -76,25 +93,28 @@ export function CommandSelect({
               onChange={(event) => setQuery(event.target.value)}
             />
             <CommandList>
-              {filteredOptions.length === 0 ? (
+              {groupedOptions.length === 0 ? (
                 <CommandEmpty>{emptyText}</CommandEmpty>
               ) : (
-                <CommandGroup>
-                  {filteredOptions.map((option) => (
-                    <CommandItem
-                      key={option.value}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        onValueChange(option.value)
-                        setOpen(false)
-                        setQuery('')
-                      }}
-                    >
-                      <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
-                      {option.label}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
+                groupedOptions.map(([groupName, groupOptions]) => (
+                  <CommandGroup key={groupName || '__default__'}>
+                    {groupName ? <div className="px-2 py-1 text-xs font-medium text-muted-foreground">{groupName}</div> : null}
+                    {groupOptions.map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          onValueChange(option.value)
+                          setOpen(false)
+                          setQuery('')
+                        }}
+                      >
+                        <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                        {option.label}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))
               )}
             </CommandList>
           </Command>
