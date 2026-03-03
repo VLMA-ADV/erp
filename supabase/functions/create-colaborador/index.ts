@@ -356,6 +356,8 @@ Deno.serve(async (req) => {
       adicional: adicional || null,
       percentual_adicional: percentual_adicional || null,
       salario: salario || null,
+      conta_contabil: body.conta_contabil || null,
+      skills: Array.isArray(body.skills) ? body.skills : [],
       banco: banco || null,
       agencia: agencia || null,
       conta_com_digito: conta_com_digito || null,
@@ -398,6 +400,18 @@ Deno.serve(async (req) => {
     }
 
     const colaboradorId = colaborador.id;
+
+    if (Array.isArray(body.skills)) {
+      const { error: upsertSkillsError } = await supabase
+        .rpc('upsert_colaborador_skills_catalog', {
+          p_user_id: user.id,
+          p_skills: body.skills,
+        });
+
+      if (upsertSkillsError) {
+        console.error("Error upserting skills catalog:", upsertSkillsError);
+      }
+    }
 
     // Create tenant_user usando RPC
     const { error: tenantUserError } = await supabase

@@ -32,10 +32,10 @@ const emptyCaso: CasoPayload = {
   data_inicio_faturamento: '',
   pagamento_dia_mes: '',
   inicio_vigencia: '',
-  periodo_reajuste: '',
+  periodo_reajuste: 'nao_tem',
   data_proximo_reajuste: '',
   data_ultimo_reajuste: '',
-  indice_reajuste: '',
+  indice_reajuste: 'nao_tem',
   regra_cobranca: '',
   regra_cobranca_config: {
     natureza_caso: '',
@@ -276,6 +276,13 @@ export default function CasoForm({
       regras.cap_limites_enabled ??
       (regras.cap_max !== null && regras.cap_max !== undefined && String(regras.cap_max).trim() !== ''),
   )
+  const reajusteEnabled = (form.periodo_reajuste || 'nao_tem') !== 'nao_tem'
+  const capDesejadoEnabled = Boolean(
+    regras.cap_desejado_enabled ??
+      (regras.cap_desejado_horas !== null &&
+        regras.cap_desejado_horas !== undefined &&
+        String(regras.cap_desejado_horas).trim() !== ''),
+  )
   const despesasSelecionadas: string[] = despesas.despesas_reembolsaveis || []
   const despesasReembolsaveisEnabled =
     Boolean((despesas as any).reembolsavel_ativo) || (despesasSelecionadas.length > 0 && !despesasSelecionadas.includes('nao'))
@@ -407,10 +414,10 @@ export default function CasoForm({
       data_inicio_faturamento: form.data_inicio_faturamento || '',
       pagamento_dia_mes: form.pagamento_dia_mes || '',
       inicio_vigencia: form.inicio_vigencia || '',
-      periodo_reajuste: '',
+      periodo_reajuste: 'nao_tem',
       data_proximo_reajuste: '',
       data_ultimo_reajuste: '',
-      indice_reajuste: '',
+      indice_reajuste: 'nao_tem',
       regra_cobranca: '',
       regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
       pagadores_servico: [],
@@ -1669,8 +1676,23 @@ export default function CasoForm({
               </div>
               <div className="space-y-2">
                 <Label>Período reajuste</Label>
-                <NativeSelect value={form.periodo_reajuste} onChange={(e) => setField('periodo_reajuste', e.target.value)} disabled={isReadOnly}>
-                  <option value="">Selecione...</option>
+                <NativeSelect
+                  value={form.periodo_reajuste || 'nao_tem'}
+                  onChange={(e) => {
+                    const nextPeriod = e.target.value
+                    if (nextPeriod === 'nao_tem') {
+                      setField('periodo_reajuste', 'nao_tem')
+                      setField('indice_reajuste', 'nao_tem')
+                      setField('data_proximo_reajuste', '')
+                      setField('data_ultimo_reajuste', '')
+                      if (isEdit) setManualReajusteDate(true)
+                      return
+                    }
+                    setField('periodo_reajuste', nextPeriod)
+                  }}
+                  disabled={isReadOnly}
+                >
+                  <option value="nao_tem">Não tem</option>
                   <option value="mensal">Mensal</option>
                   <option value="bimestral">Bimestral</option>
                   <option value="trimestral">Trimestral</option>
@@ -1678,31 +1700,35 @@ export default function CasoForm({
                   <option value="anual">Anual</option>
                 </NativeSelect>
               </div>
-              <div className="space-y-2">
-                <Label>Data próximo reajuste</Label>
-                <DatePicker
-                  value={form.data_proximo_reajuste}
-                  onChange={(value) => {
-                    if (isEdit) setManualReajusteDate(true)
-                    setField('data_proximo_reajuste', value)
-                  }}
-                  disabled={isReadOnly || !isEdit}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Data último reajuste</Label>
-                <DatePicker value={form.data_ultimo_reajuste} onChange={(value) => setField('data_ultimo_reajuste', value)} disabled={isReadOnly} />
-              </div>
-              <div className="space-y-2">
-                <Label>Índice de reajuste</Label>
-                <NativeSelect value={form.indice_reajuste} onChange={(e) => setField('indice_reajuste', e.target.value)} disabled={isReadOnly}>
-                  <option value="">Selecione...</option>
-                  <option value="IPCA">IPCA</option>
-                  <option value="SELIC">SELIC</option>
-                  <option value="IGP-M">IGP-M</option>
-                  <option value="INPC">INPC</option>
-                </NativeSelect>
-              </div>
+              {reajusteEnabled ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Data próximo reajuste</Label>
+                    <DatePicker
+                      value={form.data_proximo_reajuste}
+                      onChange={(value) => {
+                        if (isEdit) setManualReajusteDate(true)
+                        setField('data_proximo_reajuste', value)
+                      }}
+                      disabled={isReadOnly || !isEdit}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data último reajuste</Label>
+                    <DatePicker value={form.data_ultimo_reajuste} onChange={(value) => setField('data_ultimo_reajuste', value)} disabled={isReadOnly} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Índice de reajuste</Label>
+                    <NativeSelect value={form.indice_reajuste || 'nao_tem'} onChange={(e) => setField('indice_reajuste', e.target.value)} disabled={isReadOnly}>
+                      <option value="nao_tem">Não tem</option>
+                      <option value="IPCA">IPCA</option>
+                      <option value="SELIC">SELIC</option>
+                      <option value="IGP-M">IGP-M</option>
+                      <option value="INPC">INPC</option>
+                    </NativeSelect>
+                  </div>
+                </>
+              ) : null}
               <div className="space-y-2">
                 <Label>Regra de cobrança</Label>
                 <NativeSelect value={form.regra_cobranca} onChange={(e) => setField('regra_cobranca', e.target.value as any)} disabled={isReadOnly}>
@@ -1714,18 +1740,40 @@ export default function CasoForm({
                   <option value="exito">Êxito</option>
                 </NativeSelect>
               </div>
-              <div className="space-y-2">
-                <Label>Cap desejado (Quantidade de horas)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={String(regras.cap_desejado_horas || '')}
-                  onChange={(e) => setRegra('cap_desejado_horas', e.target.value)}
+              <div className="space-y-2 md:col-span-2">
+                <Label>Habilitar cap desejado</Label>
+                <ChoiceCards
+                  value={capDesejadoEnabled ? 'sim' : 'nao'}
+                  onChange={(value) => {
+                    if (value === 'nao') {
+                      setRegra('cap_desejado_enabled', false)
+                      setRegra('cap_desejado_horas', '')
+                      return
+                    }
+                    setRegra('cap_desejado_enabled', true)
+                    if (!String(regras.cap_desejado_horas || '').trim()) setRegra('cap_desejado_horas', '0')
+                  }}
                   disabled={isReadOnly}
-                  placeholder="Ex: 120"
+                  options={[
+                    { value: 'nao', label: 'Não' },
+                    { value: 'sim', label: 'Sim' },
+                  ]}
                 />
               </div>
+              {capDesejadoEnabled ? (
+                <div className="space-y-2">
+                  <Label>Cap desejado (Quantidade de horas)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={String(regras.cap_desejado_horas || '')}
+                    onChange={(e) => setRegra('cap_desejado_horas', e.target.value)}
+                    disabled={isReadOnly}
+                    placeholder="Ex: 120"
+                  />
+                </div>
+              ) : null}
 
               {form.regra_cobranca === 'hora' && (
                 <div className="space-y-3 md:col-span-2">

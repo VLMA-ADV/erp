@@ -8,7 +8,8 @@ import PrestadoresTable from './prestadores-table'
 
 export interface PrestadorListItem {
   id: string
-  nome_prestador: string
+  nome_prestador?: string
+  nome_fornecedor?: string
   cpf_cnpj: string
   tipo_documento: 'cpf' | 'cnpj'
   servico_recorrente: boolean
@@ -17,10 +18,30 @@ export interface PrestadorListItem {
   created_at: string
 }
 
-export default function PrestadoresList() {
+export default function PrestadoresList({
+  basePath = '/pessoas/prestadores',
+  entityPluralLabel = 'prestadores',
+  entityLabel = 'prestador',
+  fetchEndpoint = 'get-prestadores',
+  permissionPrefixes = ['people.prestadores'],
+  nameField = 'nome_prestador',
+  toggleEndpoint = 'toggle-prestador-status',
+}: {
+  basePath?: string
+  entityPluralLabel?: string
+  entityLabel?: string
+  fetchEndpoint?: string
+  permissionPrefixes?: string[]
+  nameField?: 'nome_prestador' | 'nome_fornecedor'
+  toggleEndpoint?: string
+}) {
   const { hasPermission } = usePermissionsContext()
   const canRead =
-    hasPermission('people.prestadores.read') || hasPermission('people.prestadores.*')
+    permissionPrefixes.some((prefix) =>
+      hasPermission(`${prefix}.read`) || hasPermission(`${prefix}.*`)
+    ) ||
+    hasPermission('people.*') ||
+    hasPermission('*')
 
   const [items, setItems] = useState<PrestadorListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,7 +57,7 @@ export default function PrestadoresList() {
       if (!session) return
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-prestadores`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${fetchEndpoint}`,
         {
           method: 'GET',
           headers: {
@@ -48,7 +69,7 @@ export default function PrestadoresList() {
 
       const data = await response.json()
       if (!response.ok) {
-        setError(data.error || 'Erro ao carregar prestadores')
+        setError(data.error || `Erro ao carregar ${entityPluralLabel}`)
         return
       }
 
@@ -57,14 +78,14 @@ export default function PrestadoresList() {
         const s = search.toLowerCase()
         list = list.filter(
           (p) =>
-            p.nome_prestador?.toLowerCase().includes(s) ||
+            ((p as any)[nameField] as string | undefined)?.toLowerCase().includes(s) ||
             p.cpf_cnpj?.toLowerCase().includes(s)
         )
       }
       setItems(list)
     } catch (e) {
       console.error(e)
-      setError('Erro ao carregar prestadores')
+      setError(`Erro ao carregar ${entityPluralLabel}`)
     } finally {
       setLoading(false)
     }
@@ -84,7 +105,7 @@ export default function PrestadoresList() {
     return (
       <div className="rounded-md bg-red-50 p-4">
         <p className="text-sm text-red-800">
-          Você não tem permissão para visualizar prestadores
+          Você não tem permissão para visualizar {entityPluralLabel}
         </p>
       </div>
     )
@@ -107,8 +128,16 @@ export default function PrestadoresList() {
         />
       </div>
 
-      <PrestadoresTable items={items} loading={loading} onRefresh={fetchItems} />
+      <PrestadoresTable
+        items={items}
+        loading={loading}
+        onRefresh={fetchItems}
+        basePath={basePath}
+        entityLabel={entityLabel}
+        permissionPrefixes={permissionPrefixes}
+        nameField={nameField}
+        toggleEndpoint={toggleEndpoint}
+      />
     </div>
   )
 }
-

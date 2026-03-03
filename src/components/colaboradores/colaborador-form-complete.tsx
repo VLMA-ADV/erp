@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { useColaboradorFormData } from '@/lib/hooks/use-colaborador-form-data'
 import { LoadingProgressWithSteps } from '@/components/ui/loading-progress'
 import { MoneyInput } from '@/components/ui/money-input'
+import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
 
 export default function ColaboradorFormComplete() {
   const router = useRouter()
@@ -34,6 +35,7 @@ export default function ColaboradorFormComplete() {
     data_nascimento: '',
     categoria: 'estagiario',
     oab: '',
+    conta_contabil: '',
   })
 
   // Form fields - Contato
@@ -56,7 +58,9 @@ export default function ColaboradorFormComplete() {
     adicional: '',
     percentual_adicional: '',
     salario: '',
+    skills: [] as string[],
   })
+  const [skillsCatalog, setSkillsCatalog] = useState<string[]>([])
 
   const permissoesSistema = [
     { value: 'socio', label: 'Sócio' },
@@ -99,6 +103,33 @@ export default function ColaboradorFormComplete() {
     prefillPermissionsIfNeeded()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingFormData, colaboradorPermissionIds.length, permissions, dadosPessoais.categoria])
+
+  useEffect(() => {
+    async function loadSkillsCatalog() {
+      try {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) return
+
+        const { data: rows, error } = await supabase.rpc('get_colaborador_skills_catalog', {
+          p_user_id: user.id,
+        })
+        if (error) throw error
+
+        const loadedSkills = new Set<string>()
+        for (const row of rows || []) {
+          const normalized = String((row as any)?.skill || '').trim()
+          if (normalized) loadedSkills.add(normalized)
+        }
+        setSkillsCatalog(Array.from(loadedSkills).sort((a, b) => a.localeCompare(b, 'pt-BR')))
+      } catch (error) {
+        console.error('Error loading skills catalog:', error)
+      }
+    }
+    loadSkillsCatalog()
+  }, [])
 
   const handleDadosPessoaisChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -213,6 +244,28 @@ export default function ColaboradorFormComplete() {
     }))
   }
 
+  const addSkill = (rawValue: string) => {
+    const value = rawValue.trim()
+    if (!value) return
+    setProfissional((prev) => ({
+      ...prev,
+      skills: prev.skills.includes(value) ? prev.skills : [...prev.skills, value],
+    }))
+    setSkillsCatalog((prev) => (prev.includes(value) ? prev : [...prev, value].sort((a, b) => a.localeCompare(b, 'pt-BR'))))
+  }
+
+  const removeSkill = (skill: string) => {
+    setProfissional((prev) => ({
+      ...prev,
+      skills: prev.skills.filter((item) => item !== skill),
+    }))
+  }
+
+  const skillOptions = useMemo<CommandSelectOption[]>(
+    () => skillsCatalog.map((skill) => ({ value: skill, label: skill })),
+    [skillsCatalog],
+  )
+
   const handleBancarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setBancario((prev) => ({
@@ -308,6 +361,8 @@ export default function ColaboradorFormComplete() {
         adicional: profissional.adicional || null,
         percentual_adicional: profissional.percentual_adicional ? parseFloat(profissional.percentual_adicional) : null,
         salario: profissional.salario ? parseFloat(profissional.salario) : null,
+        conta_contabil: dadosPessoais.conta_contabil || null,
+        skills: profissional.skills,
         data_nascimento: dadosPessoais.data_nascimento || null,
         beneficios,
         role_ids: roleIds,
@@ -474,6 +529,18 @@ export default function ColaboradorFormComplete() {
                     />
                   </div>
                 )}
+
+                <div>
+                  <Label htmlFor="conta_contabil">Conta Contábil</Label>
+                  <Input
+                    id="conta_contabil"
+                    name="conta_contabil"
+                    value={dadosPessoais.conta_contabil}
+                    onChange={handleDadosPessoaisChange}
+                    className="mt-1"
+                    placeholder="Ex.: 1.1.02.0001"
+                  />
+                </div>
 
                 <div>
                   <Label htmlFor="whatsapp">WhatsApp</Label>
@@ -715,6 +782,36 @@ export default function ColaboradorFormComplete() {
                       }))
                     }
                   />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="skills_select">Skills</Label>
+                  <div className="mt-1">
+                    <CommandSelect
+                      value=""
+                      onValueChange={(value) => addSkill(value)}
+                      options={skillOptions}
+                      placeholder="Selecione ou cadastre uma skill"
+                      searchPlaceholder="Buscar skill..."
+                      emptyText="Nenhuma skill encontrada."
+                      onCreateOption={(label) => addSkill(label)}
+                      createOptionLabel="Cadastrar skill"
+                    />
+                  </div>
+                  {profissional.skills.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {profissional.skills.map((skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          className="rounded-full border px-3 py-1 text-sm"
+                          onClick={() => removeSkill(skill)}
+                          title="Remover skill"
+                        >
+                          {skill} x
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -21,6 +21,7 @@ type ClientePayload = {
   nome: string
   cliente_estrangeiro: boolean
   cnpj: string
+  conta_contabil: string
   tipo: 'pessoa_fisica' | 'pessoa_juridica' | ''
   cep: string
   rua: string
@@ -45,6 +46,7 @@ const emptyPayload: ClientePayload = {
   nome: '',
   cliente_estrangeiro: false,
   cnpj: '',
+  conta_contabil: '',
   tipo: '',
   cep: '',
   rua: '',
@@ -181,6 +183,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           nome: cliente.nome || '',
           cliente_estrangeiro: clienteEstrangeiro,
           cnpj: documentoMasked,
+          conta_contabil: cliente.conta_contabil || '',
           tipo: tipoCliente,
           cep: maskCEP(cliente.cep || ''),
           rua: cliente.rua || '',
@@ -272,6 +275,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         nome: form.nome,
         cliente_estrangeiro: form.cliente_estrangeiro,
         cnpj: form.cnpj ? onlyDigits(form.cnpj) : null,
+        conta_contabil: form.conta_contabil || null,
         tipo: form.tipo || null,
         cep: onlyDigits(form.cep) || null,
         rua: form.rua || null,
@@ -443,6 +447,15 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                       )
                     })}
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="conta_contabil">Conta Contábil</Label>
+                  <Input
+                    id="conta_contabil"
+                    value={form.conta_contabil}
+                    onChange={(e) => setForm({ ...form, conta_contabil: e.target.value })}
+                    placeholder="Ex.: 1.1.01.0030"
+                  />
                 </div>
               </div>
             </CardContent>

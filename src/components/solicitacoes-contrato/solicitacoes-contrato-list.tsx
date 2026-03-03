@@ -29,6 +29,8 @@ interface SolicitacaoContrato {
   id: string
   descricao: string
   status: 'aberta' | 'concluida' | 'cancelada'
+  cliente_id: string | null
+  cliente_nome: string | null
   contrato_id: string | null
   contrato_numero: number | null
   contrato_nome: string | null
@@ -43,6 +45,11 @@ interface ContratoOption {
   id: string
   nome_contrato: string
   numero?: number
+}
+
+interface ClienteOption {
+  id: string
+  nome: string
 }
 
 interface PendingAnexo {
@@ -102,6 +109,8 @@ export default function SolicitacoesContratoList() {
   const [solicitacaoToConcluir, setSolicitacaoToConcluir] = useState<SolicitacaoContrato | null>(null)
   const [selectedContratoId, setSelectedContratoId] = useState('')
   const [contratos, setContratos] = useState<ContratoOption[]>([])
+  const [clientes, setClientes] = useState<ClienteOption[]>([])
+  const [selectedClienteId, setSelectedClienteId] = useState('')
 
   const contratosOptions = useMemo(
     () =>
@@ -112,6 +121,15 @@ export default function SolicitacoesContratoList() {
     [contratos],
   )
 
+  const clientesOptions = useMemo(
+    () =>
+      clientes.map((c) => ({
+        value: c.id,
+        label: c.nome,
+      })),
+    [clientes],
+  )
+
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return items
@@ -120,6 +138,7 @@ export default function SolicitacoesContratoList() {
       const contratoLabel = `${item.contrato_numero || ''} ${item.contrato_nome || ''}`.toLowerCase()
       return (
         item.descricao.toLowerCase().includes(term) ||
+        (item.cliente_nome || '').toLowerCase().includes(term) ||
         (item.solicitante_nome || '').toLowerCase().includes(term) ||
         contratoLabel.includes(term)
       )
@@ -139,8 +158,9 @@ export default function SolicitacoesContratoList() {
     const session = await getSession()
     if (!session) return
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos?_ts=${Date.now()}`, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
@@ -153,6 +173,24 @@ export default function SolicitacoesContratoList() {
       (contrato) => contrato.status === 'ativo',
     )
     setContratos(ativos)
+  }
+
+  const fetchClientes = async () => {
+    const session = await getSession()
+    if (!session) return
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-clientes?_ts=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const payload = await response.json()
+    if (!response.ok) return
+    setClientes((payload.data || []) as ClienteOption[])
   }
 
   const fetchItems = async () => {
@@ -189,6 +227,7 @@ export default function SolicitacoesContratoList() {
     if (!canRead) return
     void fetchItems()
     void fetchContratos()
+    void fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead, canManage])
 
@@ -201,6 +240,11 @@ export default function SolicitacoesContratoList() {
   const createSolicitacao = async () => {
     if (!descricao.trim()) {
       toastError('Descrição é obrigatória')
+      return
+    }
+
+    if (!selectedClienteId) {
+      toastError('Cliente é obrigatório')
       return
     }
 
@@ -225,7 +269,7 @@ export default function SolicitacoesContratoList() {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ descricao: descricao.trim(), anexos: anexosPayload }),
+        body: JSON.stringify({ descricao: descricao.trim(), cliente_id: selectedClienteId, anexos: anexosPayload }),
       })
 
       const payload = await response.json()
@@ -237,6 +281,7 @@ export default function SolicitacoesContratoList() {
       success('Solicitação criada com sucesso')
       setCreateOpen(false)
       setDescricao('')
+      setSelectedClienteId('')
       setPendingAnexos([])
       await fetchItems()
     } catch (err) {
@@ -350,7 +395,14 @@ export default function SolicitacoesContratoList() {
         />
 
         {canWrite ? (
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button
+            onClick={() => {
+              setDescricao('')
+              setSelectedClienteId('')
+              setPendingAnexos([])
+              setCreateOpen(true)
+            }}
+          >
             <FilePlus2 className="mr-2 h-4 w-4" />
             Nova solicitação
           </Button>
@@ -362,6 +414,7 @@ export default function SolicitacoesContratoList() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Solicitante</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Contrato</th>
@@ -372,13 +425,13 @@ export default function SolicitacoesContratoList() {
           <tbody className="divide-y divide-gray-100 bg-white">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Carregando solicitações...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Nenhuma solicitação encontrada.
                 </td>
               </tr>
@@ -397,6 +450,7 @@ export default function SolicitacoesContratoList() {
                       <p className="font-medium text-gray-900">{item.descricao}</p>
                       <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{item.cliente_nome || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">{item.solicitante_nome || '-'}</td>
                     <td className="px-4 py-3">
                       <Badge className={statusClassName}>{item.status}</Badge>
@@ -470,6 +524,18 @@ export default function SolicitacoesContratoList() {
           </DialogHeader>
 
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <CommandSelect
+                value={selectedClienteId}
+                onValueChange={setSelectedClienteId}
+                options={clientesOptions}
+                placeholder="Selecione o cliente"
+                searchPlaceholder="Buscar cliente..."
+                emptyText="Nenhum cliente encontrado"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label>Descrição</Label>
               <Textarea

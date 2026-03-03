@@ -118,10 +118,10 @@ const emptyCaso: CasoPayload = {
   data_inicio_faturamento: '',
   pagamento_dia_mes: '',
   inicio_vigencia: '',
-  periodo_reajuste: '',
+  periodo_reajuste: 'nao_tem',
   data_proximo_reajuste: '',
   data_ultimo_reajuste: '',
-  indice_reajuste: '',
+  indice_reajuste: 'nao_tem',
   regra_cobranca: '',
   regra_cobranca_config: {
     natureza_caso: '',
@@ -482,6 +482,13 @@ export default function ContratoForm({
   )
   const isCurrentFinanceRuleDraft = (currentFinanceRule?.status || 'rascunho') === 'rascunho'
   const isCurrentFinanceRuleClosed = (currentFinanceRule?.status || '') === 'encerrado'
+  const reajusteEnabled = (currentCaso.periodo_reajuste || 'nao_tem') !== 'nao_tem'
+  const capDesejadoEnabled = Boolean(
+    regras.cap_desejado_enabled ??
+      (regras.cap_desejado_horas !== null &&
+        regras.cap_desejado_horas !== undefined &&
+        String(regras.cap_desejado_horas).trim() !== ''),
+  )
 
   const composeCurrentFinanceRule = (base?: BillingRuleDraft): BillingRuleDraft => ({
     id: base?.id || createRuleId(),
@@ -1377,10 +1384,10 @@ export default function ContratoForm({
       data_inicio_faturamento: currentCaso.data_inicio_faturamento || '',
       pagamento_dia_mes: currentCaso.pagamento_dia_mes || '',
       inicio_vigencia: currentCaso.inicio_vigencia || '',
-      periodo_reajuste: '',
+      periodo_reajuste: 'nao_tem',
       data_proximo_reajuste: '',
       data_ultimo_reajuste: '',
-      indice_reajuste: '',
+      indice_reajuste: 'nao_tem',
       regra_cobranca: '',
       regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
       pagadores_servico: [],
@@ -3006,11 +3013,23 @@ export default function ContratoForm({
                   <div className="space-y-2">
                     <Label>Período reajuste</Label>
                     <NativeSelect
-                      value={currentCaso.periodo_reajuste}
-                      onChange={(e) => updateCurrentCaso({ periodo_reajuste: e.target.value })}
+                      value={currentCaso.periodo_reajuste || 'nao_tem'}
+                      onChange={(e) => {
+                        const nextPeriod = e.target.value
+                        if (nextPeriod === 'nao_tem') {
+                          updateCurrentCaso({
+                            periodo_reajuste: 'nao_tem',
+                            indice_reajuste: 'nao_tem',
+                            data_proximo_reajuste: '',
+                            data_ultimo_reajuste: '',
+                          })
+                          return
+                        }
+                        updateCurrentCaso({ periodo_reajuste: nextPeriod })
+                      }}
                       disabled={isReadOnly}
                     >
-                      <option value="">Selecione...</option>
+                      <option value="nao_tem">Não tem</option>
                       <option value="mensal">Mensal</option>
                       <option value="bimestral">Bimestral</option>
                       <option value="trimestral">Trimestral</option>
@@ -3019,40 +3038,44 @@ export default function ContratoForm({
                     </NativeSelect>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Data próximo reajuste</Label>
-                    <DatePicker
-                      value={currentCaso.data_proximo_reajuste}
-                      onChange={(value) => {
-                        if (isEdit) updateCurrentCaso({ data_proximo_reajuste: value })
-                      }}
-                      disabled={isReadOnly || !isEdit}
-                    />
-                  </div>
+                  {reajusteEnabled ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Data próximo reajuste</Label>
+                        <DatePicker
+                          value={currentCaso.data_proximo_reajuste}
+                          onChange={(value) => {
+                            if (isEdit) updateCurrentCaso({ data_proximo_reajuste: value })
+                          }}
+                          disabled={isReadOnly || !isEdit}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label>Data último reajuste</Label>
-                    <DatePicker
-                      value={currentCaso.data_ultimo_reajuste}
-                      onChange={(value) => updateCurrentCaso({ data_ultimo_reajuste: value })}
-                      disabled={isReadOnly}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Data último reajuste</Label>
+                        <DatePicker
+                          value={currentCaso.data_ultimo_reajuste}
+                          onChange={(value) => updateCurrentCaso({ data_ultimo_reajuste: value })}
+                          disabled={isReadOnly}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label>Índice de reajuste</Label>
-                    <NativeSelect
-                      value={currentCaso.indice_reajuste}
-                      onChange={(e) => updateCurrentCaso({ indice_reajuste: e.target.value })}
-                      disabled={isReadOnly}
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="IPCA">IPCA</option>
-                      <option value="SELIC">SELIC</option>
-                      <option value="IGP-M">IGP-M</option>
-                      <option value="INPC">INPC</option>
-                    </NativeSelect>
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Índice de reajuste</Label>
+                        <NativeSelect
+                          value={currentCaso.indice_reajuste || 'nao_tem'}
+                          onChange={(e) => updateCurrentCaso({ indice_reajuste: e.target.value })}
+                          disabled={isReadOnly}
+                        >
+                          <option value="nao_tem">Não tem</option>
+                          <option value="IPCA">IPCA</option>
+                          <option value="SELIC">SELIC</option>
+                          <option value="IGP-M">IGP-M</option>
+                          <option value="INPC">INPC</option>
+                        </NativeSelect>
+                      </div>
+                    </>
+                  ) : null}
 
                   <div className="space-y-2">
                     <Label>Regra de cobrança</Label>
@@ -3072,18 +3095,42 @@ export default function ContratoForm({
                     </NativeSelect>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Cap desejado (Quantidade de horas)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={String(regras.cap_desejado_horas || '')}
-                      onChange={(e) => updateCurrentRegra('cap_desejado_horas', e.target.value)}
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Habilitar cap desejado</Label>
+                    <ChoiceCards
+                      value={capDesejadoEnabled ? 'sim' : 'nao'}
+                      onChange={(value) => {
+                        if (value === 'nao') {
+                          updateCurrentRegra('cap_desejado_enabled', false)
+                          updateCurrentRegra('cap_desejado_horas', '')
+                          return
+                        }
+                        updateCurrentRegra('cap_desejado_enabled', true)
+                        if (!String(regras.cap_desejado_horas || '').trim()) {
+                          updateCurrentRegra('cap_desejado_horas', '0')
+                        }
+                      }}
                       disabled={isReadOnly}
-                      placeholder="Ex: 120"
+                      options={[
+                        { value: 'nao', label: 'Não' },
+                        { value: 'sim', label: 'Sim' },
+                      ]}
                     />
                   </div>
+                  {capDesejadoEnabled ? (
+                    <div className="space-y-2">
+                      <Label>Cap desejado (Quantidade de horas)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={String(regras.cap_desejado_horas || '')}
+                        onChange={(e) => updateCurrentRegra('cap_desejado_horas', e.target.value)}
+                        disabled={isReadOnly}
+                        placeholder="Ex: 120"
+                      />
+                    </div>
+                  ) : null}
 
                   {currentCaso.regra_cobranca === 'hora' && (
                     <div className="space-y-3 md:col-span-2">
@@ -4333,7 +4380,7 @@ export default function ContratoForm({
         ) : (
           !isReadOnly && (
             <Button onClick={submit} disabled={loading}>
-              {loading ? 'Salvando...' : isEdit ? 'Atualizar contrato' : 'Criar contrato'}
+              {loading ? 'Salvando...' : isEdit ? (step === 'casos' ? 'Atualizar caso' : 'Atualizar contrato') : 'Criar contrato'}
             </Button>
           )
         )}

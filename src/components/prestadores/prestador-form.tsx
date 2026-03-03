@@ -18,6 +18,7 @@ type PrestadorPayload = {
   nome_prestador: string
   cpf_cnpj: string
   tipo_documento: 'cpf' | 'cnpj'
+  conta_contabil: string
   servico_recorrente: boolean
   valor_recorrente: string
   categoria_prestador_parceiro_id: string
@@ -48,6 +49,7 @@ const emptyPayload: PrestadorPayload = {
   nome_prestador: '',
   cpf_cnpj: '',
   tipo_documento: 'cnpj',
+  conta_contabil: '',
   servico_recorrente: false,
   valor_recorrente: '',
   categoria_prestador_parceiro_id: '',
@@ -74,12 +76,38 @@ const emptyPayload: PrestadorPayload = {
   chave_pix: '',
 }
 
-export default function PrestadorForm({ prestadorId }: { prestadorId?: string }) {
+export default function PrestadorForm({
+  prestadorId,
+  redirectBasePath = '/pessoas/prestadores',
+  permissionPrefixes = ['people.prestadores'],
+  getEndpoint = 'get-prestador',
+  createEndpoint = 'create-prestador',
+  updateEndpoint = 'update-prestador',
+  entityResponseKey = 'prestador',
+  entityNameField = 'nome_prestador',
+  entityLabel = 'prestador',
+  entityPluralLabel = 'prestadores',
+}: {
+  prestadorId?: string
+  redirectBasePath?: string
+  permissionPrefixes?: string[]
+  getEndpoint?: string
+  createEndpoint?: string
+  updateEndpoint?: string
+  entityResponseKey?: 'prestador' | 'fornecedor'
+  entityNameField?: 'nome_prestador' | 'nome_fornecedor'
+  entityLabel?: string
+  entityPluralLabel?: string
+}) {
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
 
   const canWrite =
-    hasPermission('people.prestadores.write') || hasPermission('people.prestadores.*')
+    permissionPrefixes.some((prefix) =>
+      hasPermission(`${prefix}.write`) || hasPermission(`${prefix}.*`)
+    ) ||
+    hasPermission('people.*') ||
+    hasPermission('*')
 
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!prestadorId)
@@ -105,7 +133,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         if (!session) return
 
         const resp = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-prestador?id=${prestadorId}`,
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${getEndpoint}?id=${prestadorId}`,
           {
             method: 'GET',
             headers: {
@@ -116,11 +144,11 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         )
         const data = await resp.json()
         if (!resp.ok) {
-          setError(data.error || 'Erro ao carregar prestador')
+          setError(data.error || `Erro ao carregar ${entityLabel}`)
           return
         }
 
-        const prestador = data.data?.prestador || {}
+        const prestador = data.data?.[entityResponseKey] || {}
         const ri = data.data?.responsavel_interno || {}
         const bank = data.data?.dados_bancarios || {}
         const tipoDocumento: 'cpf' | 'cnpj' =
@@ -128,9 +156,10 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
 
         setForm({
           ...emptyPayload,
-          nome_prestador: prestador.nome_prestador || '',
+          nome_prestador: prestador[entityNameField] || '',
           cpf_cnpj: maskCpfCnpj(prestador.cpf_cnpj || '', tipoDocumento),
           tipo_documento: tipoDocumento,
+          conta_contabil: prestador.conta_contabil || '',
           servico_recorrente: !!prestador.servico_recorrente,
           valor_recorrente:
             prestador.valor_recorrente !== null && prestador.valor_recorrente !== undefined
@@ -161,14 +190,14 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
         })
       } catch (e) {
         console.error(e)
-        setError('Erro ao carregar prestador')
+        setError(`Erro ao carregar ${entityLabel}`)
       } finally {
         setInitialLoading(false)
       }
     }
 
     fetchPrestador()
-  }, [prestadorId])
+  }, [entityLabel, entityNameField, entityResponseKey, getEndpoint, prestadorId])
 
   useEffect(() => {
     const fetchCategorias = async () => {
@@ -283,13 +312,14 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
       if (!session) return
 
       const url = isEdit
-        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-prestador`
-        : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-prestador`
+        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${updateEndpoint}`
+        : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${createEndpoint}`
 
       const body: any = {
-        nome_prestador: form.nome_prestador,
+        [entityNameField]: form.nome_prestador,
         cpf_cnpj: onlyDigits(form.cpf_cnpj),
         tipo_documento: form.tipo_documento,
+        conta_contabil: form.conta_contabil || null,
         servico_recorrente: form.servico_recorrente,
         valor_recorrente: form.valor_recorrente ? parseFloat(form.valor_recorrente) : null,
         rua: form.rua || null,
@@ -328,15 +358,15 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
       })
       const data = await resp.json()
       if (!resp.ok) {
-        setError(data.error || 'Erro ao salvar prestador')
+        setError(data.error || `Erro ao salvar ${entityLabel}`)
         return
       }
 
-      router.push('/pessoas/prestadores')
+      router.push(redirectBasePath)
       router.refresh()
     } catch (e) {
       console.error(e)
-      setError('Erro ao salvar prestador')
+      setError(`Erro ao salvar ${entityLabel}`)
     } finally {
       setLoading(false)
     }
@@ -346,7 +376,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
     return (
       <div className="rounded-md bg-red-50 p-4">
         <p className="text-sm text-red-800">
-          Você não tem permissão para criar/editar prestadores
+          Você não tem permissão para criar/editar {entityPluralLabel}
         </p>
       </div>
     )
@@ -456,6 +486,17 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
                       </option>
                     ))}
                   </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="conta_contabil">Conta Contábil</Label>
+                  <Input
+                    id="conta_contabil"
+                    value={form.conta_contabil}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, conta_contabil: e.target.value }))
+                    }
+                    placeholder="Ex.: 2.1.01.0004"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Serviço recorrente</Label>
@@ -680,7 +721,7 @@ export default function PrestadorForm({ prestadorId }: { prestadorId?: string })
       </Tabs>
 
       <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" onClick={() => router.push('/pessoas/prestadores')} disabled={loading}>
+        <Button variant="outline" onClick={() => router.push(redirectBasePath)} disabled={loading}>
           Cancelar
         </Button>
         <Button onClick={submit} disabled={loading}>

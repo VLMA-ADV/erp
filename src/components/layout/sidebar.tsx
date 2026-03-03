@@ -5,6 +5,7 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import SidebarItem from './sidebar-item'
 import SidebarMenuPessoas from './sidebar-menu-pessoas'
 import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
+import SidebarMenuFaturamento from './sidebar-menu-faturamento'
 import { cn } from '@/lib/utils/cn'
 
 const menuItems = [
@@ -32,11 +33,6 @@ const menuItems = [
     label: 'Despesas',
     href: '/despesas',
     permission: 'operations.despesas.read',
-  },
-  {
-    label: 'Financeiro',
-    href: '/financeiro',
-    permission: 'finance.faturamento.read',
   },
   {
     label: 'PDI',
@@ -80,6 +76,9 @@ export default function Sidebar() {
 
         {/* Menu Configuração (Expansível) */}
         <SidebarMenuConfiguracao pathname={pathname} hasPermission={hasPermission} />
+
+        {/* Menu Faturamento (Expansível) */}
+        <SidebarMenuFaturamento pathname={pathname} hasPermission={hasPermission} />
 
         {/* Outros itens do menu */}
         {menuItems.map((item) => {

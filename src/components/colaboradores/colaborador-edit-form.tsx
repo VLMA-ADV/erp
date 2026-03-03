@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { validateCPF, formatCPF, validateOAB, formatPhone, formatCEP, fetchCEPDa
 import { useColaboradorFormData } from '@/lib/hooks/use-colaborador-form-data'
 import { LoadingProgressWithSteps } from '@/components/ui/loading-progress'
 import { MoneyInput } from '@/components/ui/money-input'
+import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
 
 interface ColaboradorEditFormProps {
   colaboradorId: string
@@ -38,6 +39,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
     data_nascimento: '',
     categoria: 'estagiario',
     oab: '',
+    conta_contabil: '',
   })
 
   // Form fields - Contato
@@ -59,7 +61,9 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
     adicional: '',
     percentual_adicional: '',
     salario: '',
+    skills: [] as string[],
   })
+  const [skillsCatalog, setSkillsCatalog] = useState<string[]>([])
 
   const permissoesSistema = [
     { value: 'socio', label: 'Sócio' },
@@ -132,6 +136,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
           data_nascimento: colaborador.data_nascimento || '',
           categoria: colaborador.categoria || 'estagiario',
           oab: colaborador.oab || '',
+          conta_contabil: colaborador.conta_contabil || '',
         })
 
         // Preencher contato (assumindo que os dados de endereço estão no colaborador)
@@ -158,6 +163,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
           adicional: colaborador.adicional || '',
           percentual_adicional: colaborador.percentual_adicional?.toString() || '',
           salario: colaborador.salario?.toString() || '',
+          skills: Array.isArray(colaborador.skills) ? colaborador.skills : [],
         })
 
         // Preencher bancário
@@ -199,6 +205,35 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         }
 
         setLoadingStep(5) // Completo
+
+        try {
+          const {
+            data: { user: currentUser },
+          } = await supabase.auth.getUser()
+          if (!currentUser) throw new Error('Usuário não autenticado')
+
+          const { data: skillsRows, error: skillsError } = await supabase
+            .rpc('get_colaborador_skills_catalog', { p_user_id: currentUser.id })
+          if (skillsError) throw skillsError
+
+          const loadedSkills = new Set<string>()
+          for (const row of skillsRows || []) {
+            const normalized = String((row as any)?.skill || '').trim()
+            if (normalized) loadedSkills.add(normalized)
+          }
+          for (const currentSkill of Array.isArray(colaborador.skills) ? colaborador.skills : []) {
+            const normalized = String(currentSkill || '').trim()
+            if (normalized) loadedSkills.add(normalized)
+          }
+          setSkillsCatalog(Array.from(loadedSkills).sort((a, b) => a.localeCompare(b, 'pt-BR')))
+        } catch (catalogError) {
+          console.error('Error loading skills catalog:', catalogError)
+          const rawSkills: unknown[] = Array.isArray(colaborador.skills) ? colaborador.skills : []
+          const localSkills: string[] = rawSkills
+            .map((item) => String(item ?? '').trim())
+            .filter((item) => item.length > 0)
+          setSkillsCatalog(Array.from(new Set(localSkills)).sort((a, b) => a.localeCompare(b, 'pt-BR')))
+        }
       } catch (err) {
         console.error('Error fetching initial data:', err)
         setError('Erro ao carregar dados do colaborador')
@@ -341,6 +376,28 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
     }))
   }
 
+  const addSkill = (rawValue: string) => {
+    const value = rawValue.trim()
+    if (!value) return
+    setProfissional((prev) => ({
+      ...prev,
+      skills: prev.skills.includes(value) ? prev.skills : [...prev.skills, value],
+    }))
+    setSkillsCatalog((prev) => (prev.includes(value) ? prev : [...prev, value].sort((a, b) => a.localeCompare(b, 'pt-BR'))))
+  }
+
+  const removeSkill = (skill: string) => {
+    setProfissional((prev) => ({
+      ...prev,
+      skills: prev.skills.filter((item) => item !== skill),
+    }))
+  }
+
+  const skillOptions = useMemo<CommandSelectOption[]>(
+    () => skillsCatalog.map((skill) => ({ value: skill, label: skill })),
+    [skillsCatalog],
+  )
+
   const handleBancarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setBancario((prev) => ({
@@ -437,6 +494,8 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         adicional: profissional.adicional || null,
         percentual_adicional: profissional.percentual_adicional ? parseFloat(profissional.percentual_adicional) : null,
         salario: profissional.salario ? parseFloat(profissional.salario) : null,
+        conta_contabil: dadosPessoais.conta_contabil || null,
+        skills: profissional.skills,
         data_nascimento: dadosPessoais.data_nascimento || null,
         beneficios,
         role_ids: roleIds,
@@ -594,6 +653,18 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     />
                   </div>
                 )}
+
+                <div>
+                  <Label htmlFor="conta_contabil">Conta Contábil</Label>
+                  <Input
+                    id="conta_contabil"
+                    name="conta_contabil"
+                    value={dadosPessoais.conta_contabil}
+                    onChange={handleDadosPessoaisChange}
+                    className="mt-1"
+                    placeholder="Ex.: 1.1.02.0001"
+                  />
+                </div>
 
                 <div>
                   <Label htmlFor="whatsapp">WhatsApp</Label>
@@ -835,6 +906,36 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                       }))
                     }
                   />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="skills_select">Skills</Label>
+                  <div className="mt-1">
+                    <CommandSelect
+                      value=""
+                      onValueChange={(value) => addSkill(value)}
+                      options={skillOptions}
+                      placeholder="Selecione ou cadastre uma skill"
+                      searchPlaceholder="Buscar skill..."
+                      emptyText="Nenhuma skill encontrada."
+                      onCreateOption={(label) => addSkill(label)}
+                      createOptionLabel="Cadastrar skill"
+                    />
+                  </div>
+                  {profissional.skills.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {profissional.skills.map((skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          className="rounded-full border px-3 py-1 text-sm"
+                          onClick={() => removeSkill(skill)}
+                          title="Remover skill"
+                        >
+                          {skill} x
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

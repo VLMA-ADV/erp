@@ -191,6 +191,7 @@ Deno.serve(async (req) => {
       'nome', 'email', 'cpf', 'data_nascimento', 'categoria', 'oab', 'whatsapp',
       'rua', 'numero', 'complemento', 'cidade', 'estado',
       'cargo_id', 'area_id', 'adicional', 'percentual_adicional', 'salario',
+      'conta_contabil', 'skills',
       'banco', 'agencia', 'conta_com_digito', 'chave_pix'
     ];
     
@@ -198,7 +199,7 @@ Deno.serve(async (req) => {
       // Incluir campo se estiver definido (mesmo que seja string vazia ou null)
       if (updateData.hasOwnProperty(field)) {
         // Converter strings vazias para null para campos opcionais
-        if (updateData[field] === '' && ['rua', 'numero', 'complemento', 'cidade', 'estado', 'oab', 'whatsapp', 'banco', 'agencia', 'conta_com_digito', 'chave_pix'].includes(field)) {
+        if (updateData[field] === '' && ['rua', 'numero', 'complemento', 'cidade', 'estado', 'oab', 'whatsapp', 'conta_contabil', 'banco', 'agencia', 'conta_com_digito', 'chave_pix'].includes(field)) {
           fieldsToUpdate[field] = null;
         } else {
           fieldsToUpdate[field] = updateData[field];
@@ -249,6 +250,18 @@ Deno.serve(async (req) => {
     console.log("Updated colaborador data:", JSON.stringify(updatedColab, null, 2));
     console.log("Current colaborador tenant_id:", currentColab.tenant_id);
     console.log("Updated colaborador tenant_id:", updatedColab?.tenant_id);
+
+    if (Array.isArray(fieldsToUpdate.skills)) {
+      const { error: upsertSkillsError } = await supabase
+        .rpc('upsert_colaborador_skills_catalog', {
+          p_user_id: user.id,
+          p_skills: fieldsToUpdate.skills,
+        });
+
+      if (upsertSkillsError) {
+        console.error("Error upserting skills catalog:", upsertSkillsError);
+      }
+    }
 
     // Update roles if provided - usar função RPC
     if (role_ids !== undefined && Array.isArray(role_ids)) {

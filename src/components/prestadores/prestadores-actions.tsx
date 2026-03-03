@@ -11,16 +11,22 @@ import type { PrestadorListItem } from './prestadores-list'
 export default function PrestadoresActions({
   prestador,
   onRefresh,
+  basePath = '/pessoas/prestadores',
+  entityLabel = 'prestador',
+  toggleEndpoint = 'toggle-prestador-status',
 }: {
   prestador: PrestadorListItem
   onRefresh: () => void
+  basePath?: string
+  entityLabel?: string
+  toggleEndpoint?: string
 }) {
   const [loading, setLoading] = useState(false)
 
   const handleToggle = async () => {
     if (
       !confirm(
-        `Tem certeza que deseja ${prestador.ativo ? 'desativar' : 'ativar'} este prestador?`
+        `Tem certeza que deseja ${prestador.ativo ? 'desativar' : 'ativar'} este ${entityLabel}?`
       )
     ) {
       return
@@ -33,7 +39,7 @@ export default function PrestadoresActions({
       if (!session) return
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/toggle-prestador-status`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${toggleEndpoint}`,
         {
           method: 'POST',
           headers: {
@@ -46,14 +52,14 @@ export default function PrestadoresActions({
 
       const data = await response.json()
       if (!response.ok) {
-        alert(data.error || 'Erro ao alterar status do prestador')
+          alert(data.error || `Erro ao alterar status do ${entityLabel}`)
         return
       }
 
       onRefresh()
     } catch (e) {
       console.error(e)
-      alert('Erro ao alterar status do prestador')
+      alert(`Erro ao alterar status do ${entityLabel}`)
     } finally {
       setLoading(false)
     }
@@ -62,7 +68,7 @@ export default function PrestadoresActions({
   return (
     <div className="flex items-center justify-end gap-2">
       <Tooltip content="Editar">
-        <Link href={`/pessoas/prestadores/${prestador.id}/editar`}>
+        <Link href={`${basePath}/${prestador.id}/editar`}>
           <Button variant="ghost" size="icon" className="h-8 w-8">
             <Edit className="h-4 w-4" />
           </Button>
@@ -84,4 +90,3 @@ export default function PrestadoresActions({
     </div>
   )
 }
-

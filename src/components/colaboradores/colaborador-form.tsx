@@ -23,6 +23,7 @@ export default function ColaboradorForm() {
     cpf: '',
     categoria: 'estagiario',
     oab: '',
+    conta_contabil: '',
     cargo_id: '',
     whatsapp: '',
   })
@@ -199,6 +200,18 @@ export default function ColaboradorForm() {
               />
             </div>
           )}
+
+          <div>
+            <Label htmlFor="conta_contabil">Conta Contábil</Label>
+            <Input
+              id="conta_contabil"
+              name="conta_contabil"
+              value={formData.conta_contabil}
+              onChange={handleChange}
+              className="mt-1"
+              placeholder="Ex.: 1.1.02.0001"
+            />
+          </div>
 
           <div>
             <Label htmlFor="whatsapp">WhatsApp</Label>

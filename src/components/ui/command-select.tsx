@@ -20,6 +20,8 @@ interface CommandSelectProps {
   searchPlaceholder?: string
   emptyText?: string
   disabled?: boolean
+  onCreateOption?: (label: string) => void
+  createOptionLabel?: string
 }
 
 export function CommandSelect({
@@ -30,6 +32,8 @@ export function CommandSelect({
   searchPlaceholder = 'Buscar...',
   emptyText = 'Nenhum resultado.',
   disabled,
+  onCreateOption,
+  createOptionLabel = 'Cadastrar',
 }: CommandSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -69,23 +73,29 @@ export function CommandSelect({
     })
   }, [filteredOptions])
 
+  const canCreateOption = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    if (!onCreateOption || !normalized) return false
+    return !options.some((option) => option.label.trim().toLowerCase() === normalized)
+  }, [onCreateOption, options, query])
+
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full min-w-0">
       <Button
         type="button"
         variant="outline"
         role="combobox"
         aria-expanded={open}
-        className="h-10 w-full justify-between font-normal"
+        className="h-10 w-full min-w-0 max-w-full justify-between overflow-hidden font-normal"
         onClick={() => !disabled && setOpen((prev) => !prev)}
         disabled={disabled}
       >
-        <span className="truncate">{selected?.label || placeholder}</span>
+        <span className="block min-w-0 truncate text-left">{selected?.label || placeholder}</span>
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </Button>
 
       {open && (
-        <div className="absolute z-30 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div className="absolute left-0 z-[80] mt-1 w-full max-w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
           <Command>
             <CommandInput
               placeholder={searchPlaceholder}
@@ -93,29 +103,42 @@ export function CommandSelect({
               onChange={(event) => setQuery(event.target.value)}
             />
             <CommandList>
-              {groupedOptions.length === 0 ? (
-                <CommandEmpty>{emptyText}</CommandEmpty>
-              ) : (
-                groupedOptions.map(([groupName, groupOptions]) => (
-                  <CommandGroup key={groupName || '__default__'}>
-                    {groupName ? <div className="px-2 py-1 text-xs font-medium text-muted-foreground">{groupName}</div> : null}
-                    {groupOptions.map((option) => (
-                      <CommandItem
-                        key={option.value}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          onValueChange(option.value)
-                          setOpen(false)
-                          setQuery('')
-                        }}
-                      >
-                        <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
-                        {option.label}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                ))
-              )}
+              {groupedOptions.length === 0 ? <CommandEmpty>{emptyText}</CommandEmpty> : null}
+              {groupedOptions.map(([groupName, groupOptions]) => (
+                <CommandGroup key={groupName || '__default__'}>
+                  {groupName ? <div className="px-2 py-1 text-xs font-medium text-muted-foreground">{groupName}</div> : null}
+                  {groupOptions.map((option) => (
+                    <CommandItem
+                      key={option.value}
+                      className="max-w-full truncate"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        onValueChange(option.value)
+                        setOpen(false)
+                        setQuery('')
+                      }}
+                    >
+                      <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                      {option.label}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ))}
+              {canCreateOption ? (
+                <CommandGroup>
+                  <CommandItem
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      onCreateOption?.(query.trim())
+                      setOpen(false)
+                      setQuery('')
+                    }}
+                  >
+                    <span className="font-medium">{createOptionLabel}</span>
+                    <span className="ml-1 truncate">"{query.trim()}"</span>
+                  </CommandItem>
+                </CommandGroup>
+              ) : null}
             </CommandList>
           </Command>
         </div>

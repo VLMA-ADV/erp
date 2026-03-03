@@ -16,6 +16,7 @@ import { maskCEP, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/utils/m
 type ParceiroPayload = {
   nome_escritorio: string
   cnpj: string
+  conta_contabil: string
   categoria_prestador_parceiro_id: string
   cep: string
   rua: string
@@ -43,6 +44,7 @@ type ParceiroPayload = {
 const emptyPayload: ParceiroPayload = {
   nome_escritorio: '',
   cnpj: '',
+  conta_contabil: '',
   categoria_prestador_parceiro_id: '',
   cep: '',
   rua: '',
@@ -117,6 +119,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
           ...emptyPayload,
           nome_escritorio: parceiro.nome_escritorio || '',
           cnpj: maskCNPJ(parceiro.cnpj || ''),
+          conta_contabil: parceiro.conta_contabil || '',
           categoria_prestador_parceiro_id: parceiro.categoria_prestador_parceiro_id || '',
           cep: maskCEP(parceiro.cep || ''),
           rua: parceiro.rua || '',
@@ -229,6 +232,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
       const body: any = {
         nome_escritorio: form.nome_escritorio,
         cnpj: onlyDigits(form.cnpj),
+        conta_contabil: form.conta_contabil || null,
         categoria_prestador_parceiro_id: form.categoria_prestador_parceiro_id || null,
         cep: onlyDigits(form.cep) || null,
         rua: form.rua || null,
@@ -360,6 +364,15 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                       </option>
                     ))}
                   </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="conta_contabil">Conta Contábil</Label>
+                  <Input
+                    id="conta_contabil"
+                    value={form.conta_contabil}
+                    onChange={(e) => setForm({ ...form, conta_contabil: e.target.value })}
+                    placeholder="Ex.: 1.1.02.0001"
+                  />
                 </div>
               </div>
             </CardContent>

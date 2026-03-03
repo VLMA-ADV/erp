@@ -26,6 +26,11 @@ const pessoasMenuItems = [
     permission: 'people.prestadores.read',
   },
   {
+    label: 'Fornecedores',
+    href: '/pessoas/fornecedores',
+    permission: 'people.prestadores.read',
+  },
+  {
     label: 'Clientes',
     href: '/pessoas/clientes',
     permission: 'crm.clientes.read',

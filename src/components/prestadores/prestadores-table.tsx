@@ -11,14 +11,28 @@ export default function PrestadoresTable({
   items,
   loading,
   onRefresh,
+  basePath = '/pessoas/prestadores',
+  entityLabel = 'prestador',
+  permissionPrefixes = ['people.prestadores'],
+  nameField = 'nome_prestador',
+  toggleEndpoint = 'toggle-prestador-status',
 }: {
   items: PrestadorListItem[]
   loading: boolean
   onRefresh: () => void
+  basePath?: string
+  entityLabel?: string
+  permissionPrefixes?: string[]
+  nameField?: 'nome_prestador' | 'nome_fornecedor'
+  toggleEndpoint?: string
 }) {
   const { hasPermission } = usePermissionsContext()
   const canEdit =
-    hasPermission('people.prestadores.write') || hasPermission('people.prestadores.*')
+    permissionPrefixes.some((prefix) =>
+      hasPermission(`${prefix}.write`) || hasPermission(`${prefix}.*`)
+    ) ||
+    hasPermission('people.*') ||
+    hasPermission('*')
 
   if (loading) {
     return (
@@ -35,7 +49,7 @@ export default function PrestadoresTable({
   if (items.length === 0) {
     return (
       <div className="rounded-md border p-8 text-center">
-        <p className="text-gray-500">Nenhum prestador encontrado</p>
+        <p className="text-gray-500">Nenhum {entityLabel} encontrado</p>
       </div>
     )
   }
@@ -69,10 +83,10 @@ export default function PrestadoresTable({
             <tr key={p.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 <Link
-                  href={`/pessoas/prestadores/${p.id}/editar`}
+                  href={`${basePath}/${p.id}/editar`}
                   className="hover:underline"
                 >
-                  {p.nome_prestador}
+                  {(p as any)[nameField] || p.nome_prestador || p.nome_fornecedor}
                 </Link>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -94,7 +108,13 @@ export default function PrestadoresTable({
               </td>
               {canEdit && (
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <PrestadoresActions prestador={p} onRefresh={onRefresh} />
+                  <PrestadoresActions
+                    prestador={p}
+                    onRefresh={onRefresh}
+                    basePath={basePath}
+                    entityLabel={entityLabel}
+                    toggleEndpoint={toggleEndpoint}
+                  />
                 </td>
               )}
             </tr>
