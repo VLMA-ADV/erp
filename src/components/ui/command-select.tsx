@@ -37,6 +37,7 @@ export function CommandSelect({
 }: CommandSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [panelWidth, setPanelWidth] = useState<number>(360)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -48,6 +49,12 @@ export function CommandSelect({
     document.addEventListener('mousedown', onOutsideClick)
     return () => document.removeEventListener('mousedown', onOutsideClick)
   }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const triggerWidth = containerRef.current?.getBoundingClientRect().width ?? 0
+    setPanelWidth(Math.max(Math.round(triggerWidth), 360))
+  }, [open])
 
   const selected = useMemo(() => options.find((o) => o.value === value), [options, value])
 
@@ -95,14 +102,17 @@ export function CommandSelect({
       </Button>
 
       {open && (
-        <div className="absolute left-0 z-[80] mt-1 w-full max-w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div
+          className="absolute left-0 z-[80] mt-1 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+          style={{ width: panelWidth }}
+        >
           <Command>
             <CommandInput
               placeholder={searchPlaceholder}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <CommandList>
+            <CommandList className="max-h-72 overflow-y-auto overflow-x-hidden">
               {groupedOptions.length === 0 ? <CommandEmpty>{emptyText}</CommandEmpty> : null}
               {groupedOptions.map(([groupName, groupOptions]) => (
                 <CommandGroup key={groupName || '__default__'}>

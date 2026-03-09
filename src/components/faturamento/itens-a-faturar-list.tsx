@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 
@@ -19,6 +20,7 @@ interface CasoAgrupado {
   total_valor: string
   total_itens: number
   extrato?: Array<{
+    origem_id?: string
     tipo: string
     descricao: string
     data_referencia: string | null
@@ -75,6 +77,93 @@ function formatDate(value: string | null | undefined) {
   return `${day}/${month}/${year}`
 }
 
+type RegraTabKey = 'todas' | 'hora' | 'mensalidade_processo' | 'mensalidade' | 'projeto' | 'projeto_parcelado' | 'exito'
+
+const REGRA_TABS: Array<{ key: RegraTabKey; label: string }> = [
+  { key: 'todas', label: 'Todas' },
+  { key: 'hora', label: 'Horas' },
+  { key: 'mensalidade_processo', label: 'Mensalidade de processo' },
+  { key: 'mensalidade', label: 'Mensalidade' },
+  { key: 'projeto', label: 'Projeto' },
+  { key: 'projeto_parcelado', label: 'Projeto parcelado' },
+  { key: 'exito', label: 'Êxito' },
+]
+
+function normalizeRuleType(tipo: string | null | undefined) {
+  const normalized = (tipo || '').trim().toLowerCase()
+  if (normalized === 'timesheet') return 'hora'
+  if (normalized === 'mensal') return 'mensalidade'
+  if (normalized === 'mensalidade_processo') return 'mensalidade_processo'
+  if (normalized === 'projeto') return 'projeto'
+  if (normalized === 'projeto_parcela') return 'projeto_parcelado'
+  if (normalized === 'projeto_parcelado') return 'projeto_parcelado'
+  if (normalized === 'exito') return 'exito'
+  return normalized
+}
+
+function matchRuleTab(tab: RegraTabKey, tipo: string | null | undefined) {
+  if (tab === 'todas') return true
+  return normalizeRuleType(tipo) === tab
+}
+
+function filterTreeByRule(items: ClienteAgrupado[], regraTab: RegraTabKey): ClienteAgrupado[] {
+  const filteredClientes: ClienteAgrupado[] = []
+
+  for (const cliente of items) {
+    const filteredContratos: ContratoAgrupado[] = []
+
+    for (const contrato of cliente.contratos || []) {
+      const filteredCasos: CasoAgrupado[] = []
+
+      for (const caso of contrato.casos || []) {
+        const filteredExtrato = (Array.isArray(caso.extrato) ? caso.extrato : []).filter((linha) =>
+          matchRuleTab(regraTab, linha.tipo),
+        )
+        if (filteredExtrato.length === 0) continue
+
+        const totalHoras = filteredExtrato.reduce((acc, linha) => acc + Number(linha.horas || 0), 0)
+        const totalValor = filteredExtrato.reduce((acc, linha) => acc + Number(linha.valor || 0), 0)
+
+        filteredCasos.push({
+          ...caso,
+          total_horas: totalHoras.toFixed(2),
+          total_valor: totalValor.toFixed(2),
+          total_itens: filteredExtrato.length,
+          extrato: filteredExtrato,
+        })
+      }
+
+      if (filteredCasos.length === 0) continue
+      const totalHorasContrato = filteredCasos.reduce((acc, caso) => acc + Number(caso.total_horas || 0), 0)
+      const totalValorContrato = filteredCasos.reduce((acc, caso) => acc + Number(caso.total_valor || 0), 0)
+      const totalItensContrato = filteredCasos.reduce((acc, caso) => acc + Number(caso.total_itens || 0), 0)
+
+      filteredContratos.push({
+        ...contrato,
+        total_horas: totalHorasContrato.toFixed(2),
+        total_valor: totalValorContrato.toFixed(2),
+        total_itens: totalItensContrato,
+        casos: filteredCasos,
+      })
+    }
+
+    if (filteredContratos.length === 0) continue
+    const totalHorasCliente = filteredContratos.reduce((acc, contrato) => acc + Number(contrato.total_horas || 0), 0)
+    const totalValorCliente = filteredContratos.reduce((acc, contrato) => acc + Number(contrato.total_valor || 0), 0)
+    const totalItensCliente = filteredContratos.reduce((acc, contrato) => acc + Number(contrato.total_itens || 0), 0)
+
+    filteredClientes.push({
+      ...cliente,
+      total_horas: totalHorasCliente.toFixed(2),
+      total_valor: totalValorCliente.toFixed(2),
+      total_itens: totalItensCliente,
+      contratos: filteredContratos,
+    })
+  }
+
+  return filteredClientes
+}
+
 export default function ItensAFaturarList() {
   const today = new Date()
   const { success, error: toastError } = useToast()
@@ -88,6 +177,8 @@ export default function ItensAFaturarList() {
   const [expandedContratos, setExpandedContratos] = useState<Record<string, boolean>>({})
   const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
   const [sendingTarget, setSendingTarget] = useState<string | null>(null)
+  const [regraTab, setRegraTab] = useState<RegraTabKey>('todas')
+  const [selectedCasos, setSelectedCasos] = useState<Record<string, boolean>>({})
 
   const loadItems = async () => {
     try {
@@ -141,6 +232,7 @@ export default function ItensAFaturarList() {
       setExpandedClientes(nextExpandedClientes)
       setExpandedContratos(nextExpandedContratos)
       setExpandedCasos(nextExpandedCasos)
+      setSelectedCasos({})
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar itens a faturar')
@@ -155,19 +247,36 @@ export default function ItensAFaturarList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const totals = useMemo(() => {
-    return items.reduce(
-      (acc, cliente) => {
-        acc.valor += Number(cliente.total_valor || 0)
-        acc.horas += Number(cliente.total_horas || 0)
-        acc.itens += Number(cliente.total_itens || 0)
-        return acc
-      },
-      { valor: 0, horas: 0, itens: 0 },
-    )
-  }, [items])
+  const filteredTree = useMemo(() => filterTreeByRule(items, regraTab), [items, regraTab])
 
-  const startFlow = async (targetType: 'cliente' | 'contrato', targetId: string, label: string) => {
+  const totals = useMemo(
+    () =>
+      filteredTree.reduce(
+        (acc, cliente) => {
+          acc.valor += Number(cliente.total_valor || 0)
+          acc.horas += Number(cliente.total_horas || 0)
+          acc.itens += Number(cliente.total_itens || 0)
+          return acc
+        },
+        { valor: 0, horas: 0, itens: 0 },
+      ),
+    [filteredTree],
+  )
+
+  const visibleCaseIds = useMemo(
+    () =>
+      filteredTree.flatMap((cliente) =>
+        (cliente.contratos || []).flatMap((contrato) => (contrato.casos || []).map((caso) => caso.caso_id)),
+      ),
+    [filteredTree],
+  )
+
+  const selectedVisibleCount = useMemo(
+    () => visibleCaseIds.filter((casoId) => selectedCasos[casoId]).length,
+    [visibleCaseIds, selectedCasos],
+  )
+
+  const startFlow = async (targetType: 'cliente' | 'contrato' | 'caso', targetId: string, label: string) => {
     try {
       setSendingTarget(targetId)
       const supabase = createClient()
@@ -213,6 +322,54 @@ export default function ItensAFaturarList() {
     }
   }
 
+  const startFlowForSelectedCases = async () => {
+    const selectedIds = visibleCaseIds.filter((casoId) => selectedCasos[casoId])
+    if (selectedIds.length === 0) {
+      toastError('Selecione ao menos um item para enviar ao fluxo.')
+      return
+    }
+
+    try {
+      setSendingTarget('__bulk__')
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data_inicio: dateStart,
+          data_fim: dateEnd,
+          alvo_tipo: 'caso',
+          alvo_ids: selectedIds,
+          search: search.trim() || null,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao enviar itens selecionados para revisão')
+        return
+      }
+
+      const created = Number(payload?.data?.itens_criados || 0)
+      success(`Itens selecionados enviados para revisão (${created} itens).`)
+      setSelectedCasos({})
+      await loadItems()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao enviar itens selecionados para revisão')
+    } finally {
+      setSendingTarget(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {error ? (
@@ -250,16 +407,57 @@ export default function ItensAFaturarList() {
         <div className="text-sm font-semibold">{formatMoney(totals.valor)}</div>
       </div>
 
+      <Tabs value={regraTab} defaultValue="todas" onValueChange={(value) => setRegraTab(value as RegraTabKey)}>
+        <TabsList className="h-auto flex-wrap justify-start">
+          {REGRA_TABS.map((tab) => (
+            <TabsTrigger key={tab.key} value={tab.key}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <div className="flex justify-end">
-        <Button onClick={() => void loadItems()} disabled={loading}>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void startFlowForSelectedCases()}
+            disabled={loading || sendingTarget === '__bulk__' || selectedVisibleCount === 0}
+          >
+            {sendingTarget === '__bulk__' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+            Enviar selecionados ({selectedVisibleCount})
+          </Button>
+          <Button onClick={() => void loadItems()} disabled={loading}>
           {loading ? 'Atualizando...' : 'Atualizar lista'}
         </Button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-md border bg-white">
         <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
+              <th className="w-10 px-2 py-3 text-left">
+                <input
+                  type="checkbox"
+                  checked={visibleCaseIds.length > 0 && selectedVisibleCount === visibleCaseIds.length}
+                  ref={(element) => {
+                    if (element) {
+                      element.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleCaseIds.length
+                    }
+                  }}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setSelectedCasos((prev) => {
+                      const next = { ...prev }
+                      for (const caseId of visibleCaseIds) {
+                        next[caseId] = checked
+                      }
+                      return next
+                    })
+                  }}
+                />
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente / Contrato / Caso</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Horas em aberto</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Itens</th>
@@ -270,22 +468,45 @@ export default function ItensAFaturarList() {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Carregando...
                 </td>
               </tr>
-            ) : items.length === 0 ? (
+            ) : filteredTree.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Nenhum item encontrado para o período informado.
                 </td>
               </tr>
             ) : (
-              items.map((cliente) => {
+              filteredTree.map((cliente) => {
                 const clienteExpanded = expandedClientes[cliente.cliente_id]
+                const clienteCaseIds = (cliente.contratos || []).flatMap((contrato) => (contrato.casos || []).map((caso) => caso.caso_id))
+                const clienteSelected = clienteCaseIds.filter((casoId) => selectedCasos[casoId]).length
                 return (
                   <Fragment key={cliente.cliente_id}>
                     <tr key={cliente.cliente_id} className="bg-muted/10">
+                      <td className="px-2 py-3">
+                        <input
+                          type="checkbox"
+                          checked={clienteCaseIds.length > 0 && clienteSelected === clienteCaseIds.length}
+                          ref={(element) => {
+                            if (element) {
+                              element.indeterminate = clienteSelected > 0 && clienteSelected < clienteCaseIds.length
+                            }
+                          }}
+                          onChange={(event) => {
+                            const checked = event.target.checked
+                            setSelectedCasos((prev) => {
+                              const next = { ...prev }
+                              for (const caseId of clienteCaseIds) {
+                                next[caseId] = checked
+                              }
+                              return next
+                            })
+                          }}
+                        />
+                      </td>
                       <td className="px-4 py-3 font-semibold">
                         <button
                           className="inline-flex items-center gap-2"
@@ -324,6 +545,34 @@ export default function ItensAFaturarList() {
                         return (
                           <Fragment key={contrato.contrato_id}>
                             <tr key={contrato.contrato_id}>
+                              <td className="px-2 py-3">
+                                {(() => {
+                                  const contratoCaseIds = (contrato.casos || []).map((caso) => caso.caso_id)
+                                  const contratoSelected = contratoCaseIds.filter((casoId) => selectedCasos[casoId]).length
+                                  return (
+                                    <input
+                                      type="checkbox"
+                                      checked={contratoCaseIds.length > 0 && contratoSelected === contratoCaseIds.length}
+                                      ref={(element) => {
+                                        if (element) {
+                                          element.indeterminate =
+                                            contratoSelected > 0 && contratoSelected < contratoCaseIds.length
+                                        }
+                                      }}
+                                      onChange={(event) => {
+                                        const checked = event.target.checked
+                                        setSelectedCasos((prev) => {
+                                          const next = { ...prev }
+                                          for (const caseId of contratoCaseIds) {
+                                            next[caseId] = checked
+                                          }
+                                          return next
+                                        })
+                                      }}
+                                    />
+                                  )
+                                })()}
+                              </td>
                               <td className="px-4 py-3 pl-10">
                                 <button
                                   className="inline-flex items-center gap-2"
@@ -378,6 +627,18 @@ export default function ItensAFaturarList() {
                                 return (
                                   <Fragment key={caso.caso_id}>
                                     <tr>
+                                      <td className="px-2 py-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!selectedCasos[caso.caso_id]}
+                                          onChange={(event) =>
+                                            setSelectedCasos((prev) => ({
+                                              ...prev,
+                                              [caso.caso_id]: event.target.checked,
+                                            }))
+                                          }
+                                        />
+                                      </td>
                                       <td className="px-4 py-3 pl-16 text-muted-foreground">
                                         <button
                                           className="inline-flex items-center gap-2"
@@ -396,12 +657,34 @@ export default function ItensAFaturarList() {
                                       <td className="px-4 py-3 text-muted-foreground">{formatHours(caso.total_horas)}</td>
                                       <td className="px-4 py-3 text-muted-foreground">{caso.total_itens}</td>
                                       <td className="px-4 py-3 text-right text-muted-foreground">{formatMoney(caso.total_valor)}</td>
-                                      <td className="px-4 py-3 text-right text-xs text-muted-foreground">-</td>
+                                      <td className="px-4 py-3 text-right">
+                                        <Tooltip content={sendingTarget === caso.caso_id ? 'Enviando caso...' : 'Enviar caso'}>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={!!sendingTarget}
+                                            onClick={() =>
+                                              void startFlow(
+                                                'caso',
+                                                caso.caso_id,
+                                                `Caso ${caso.caso_numero ? `${caso.caso_numero} - ` : ''}${caso.caso_nome}`,
+                                              )
+                                            }
+                                          >
+                                            {sendingTarget === caso.caso_id ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <Send className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </Tooltip>
+                                      </td>
                                     </tr>
 
                                     {casoExpanded &&
                                       extrato.map((linha, index) => (
                                         <tr key={`${caso.caso_id}-linha-${index}`} className="bg-muted/5">
+                                          <td className="px-2 py-2" />
                                           <td className="px-4 py-2 pl-24 text-xs text-muted-foreground">
                                             {(linha.descricao || linha.tipo) + ' • ' + formatDate(linha.data_referencia)}
                                           </td>
@@ -415,7 +698,7 @@ export default function ItensAFaturarList() {
                                             {formatMoney(linha.valor)}
                                           </td>
                                           <td className="px-4 py-2 text-right text-xs text-muted-foreground">-</td>
-                                        </tr>
+                    </tr>
                                       ))}
                                   </Fragment>
                                 )

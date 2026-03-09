@@ -1,19 +1,26 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface RevisaoItem {
+  id: string
   contrato_id: string
   caso_id: string
   contrato_numero: number | null
   contrato_nome: string
-  cliente_nome: string
+  caso_numero?: number | null
+  caso_nome?: string | null
   origem_tipo: string
+  data_referencia?: string | null
+  regra_nome?: string | null
   status: 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado' | 'cancelado' | 'disponivel'
   responsavel_fluxo_nome?: string | null
   responsavel_revisao_nome?: string | null
@@ -56,11 +63,25 @@ function getSnapshotTimesheetTotals(item: RevisaoItem) {
 }
 
 interface ContratoEmRevisao {
-  contratoId: string
+  key: string
   contratoNumero: number | null
   contratoNome: string
-  clienteNome: string
+  casoNumero: number | null
+  casoNome: string
+  regraFinanceira: string
+  regraTipo: string
   itens: number
+  horas: number
+  valor: number
+  statusLabel: string
+  responsavelAtual: string
+  detalhes: FluxoItemDetalhe[]
+}
+
+interface FluxoItemDetalhe {
+  id: string
+  descricao: string
+  referencia: string
   horas: number
   valor: number
   statusLabel: string
@@ -102,12 +123,78 @@ function getEffectiveValue(item: RevisaoItem) {
   return Number(item.valor_aprovado ?? item.valor_revisado ?? item.valor_informado ?? 0)
 }
 
+function asText(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function getRuleKind(item: RevisaoItem) {
+  return asText(item.snapshot?.regra_cobranca || '').trim().toLowerCase()
+}
+
+function getRuleTitle(item: RevisaoItem) {
+  if (item.origem_tipo === 'timesheet') return 'Timesheet'
+  const kind = getRuleKind(item)
+  if (kind === 'mensalidade_processo') return 'Mensalidade de processo'
+  if (kind === 'mensal') return 'Mensalidade'
+  if (kind === 'projeto') return 'Projeto'
+  if (kind === 'projeto_parcelado') return 'Projeto parcelado'
+  if (kind === 'exito') return 'Êxito'
+  if (kind === 'hora') return 'Hora'
+  return asText(item.regra_nome).trim() || 'Regra financeira'
+}
+
+function getRuleType(item: RevisaoItem) {
+  if (item.origem_tipo === 'timesheet') return 'hora'
+  const kind = getRuleKind(item)
+  if (kind === 'mensalidade_processo') return 'mensalidade_processo'
+  if (kind === 'mensal') return 'mensalidade'
+  if (kind === 'projeto') return 'projeto'
+  if (kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'exito') return 'exito'
+  if (kind === 'hora') return 'hora'
+  return 'outros'
+}
+
+function resolveResponsavelAtual(item: RevisaoItem) {
+  const snapshot = item.snapshot || {}
+  const snapshotRevisor = typeof snapshot.responsavel_revisao_nome === 'string' ? snapshot.responsavel_revisao_nome : null
+  const snapshotAprovador = typeof snapshot.responsavel_aprovacao_nome === 'string' ? snapshot.responsavel_aprovacao_nome : null
+  const snapshotFluxo = typeof snapshot.responsavel_fluxo_nome === 'string' ? snapshot.responsavel_fluxo_nome : null
+
+  if (item.status === 'em_revisao') {
+    return item.responsavel_fluxo_nome || item.responsavel_revisao_nome || snapshotFluxo || snapshotRevisor || '-'
+  }
+  if (item.status === 'em_aprovacao') {
+    return item.responsavel_fluxo_nome || item.responsavel_aprovacao_nome || snapshotFluxo || snapshotAprovador || '-'
+  }
+  return '-'
+}
+
+function getItemMetrics(item: RevisaoItem) {
+  if (item.origem_tipo === 'timesheet') {
+    const snapshotTotals = getSnapshotTimesheetTotals(item)
+    if (snapshotTotals) {
+      return { horas: snapshotTotals.hours, valor: snapshotTotals.value, itens: 1 }
+    }
+  }
+
+  return {
+    horas: getEffectiveHours(item),
+    valor: getEffectiveValue(item),
+    itens: 1,
+  }
+}
+
 export default function FluxoDeFaturamentoList() {
   const [loading, setLoading] = useState(true)
   const [loadingContratos, setLoadingContratos] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('')
+  const [caso, setCaso] = useState('')
+  const [regraTipoTab, setRegraTipoTab] = useState('all')
   const [contratosEmRevisao, setContratosEmRevisao] = useState<ContratoEmRevisao[]>([])
+  const [casoOptions, setCasoOptions] = useState<CommandSelectOption[]>([])
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
 
   const loadContratosEmRevisao = async () => {
     try {
@@ -121,6 +208,7 @@ export default function FluxoDeFaturamentoList() {
       if (!session) return
       const params = new URLSearchParams()
       if (status) params.set('status', status)
+      if (caso) params.set('caso', caso)
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura?${params.toString()}`, {
         method: 'GET',
         headers: {
@@ -137,105 +225,87 @@ export default function FluxoDeFaturamentoList() {
 
       const itens = (payload.data || []) as RevisaoItem[]
       const grouped = new Map<string, ContratoEmRevisao>()
-      const caseGroups = new Map<string, RevisaoItem[]>()
-      const statusMap = new Map<string, Set<string>>()
-      const responsavelMap = new Map<string, Set<string>>()
+      const nextCaseOptionsMap = new Map<string, CommandSelectOption>()
 
       for (const item of itens) {
         const contratoId = item.contrato_id
         if (!contratoId) continue
-        const statusLabel = formatStatus(item.status)
-        const snapshot = item.snapshot || {}
-        const snapshotRevisor = typeof snapshot.responsavel_revisao_nome === 'string' ? snapshot.responsavel_revisao_nome : null
-        const snapshotAprovador = typeof snapshot.responsavel_aprovacao_nome === 'string' ? snapshot.responsavel_aprovacao_nome : null
-        const snapshotFluxo = typeof snapshot.responsavel_fluxo_nome === 'string' ? snapshot.responsavel_fluxo_nome : null
-        const responsavelAtual =
-          item.status === 'em_revisao'
-            ? item.responsavel_fluxo_nome || item.responsavel_revisao_nome || snapshotFluxo || snapshotRevisor || null
-            : item.status === 'em_aprovacao'
-              ? item.responsavel_fluxo_nome || item.responsavel_aprovacao_nome || snapshotFluxo || snapshotAprovador || null
-              : null
-
-        if (!statusMap.has(contratoId)) statusMap.set(contratoId, new Set<string>())
-        statusMap.get(contratoId)?.add(statusLabel)
-        if (responsavelAtual) {
-          if (!responsavelMap.has(contratoId)) responsavelMap.set(contratoId, new Set<string>())
-          responsavelMap.get(contratoId)?.add(responsavelAtual)
+        const casoNumero = Number(item.caso_numero ?? 0) || null
+        const casoNome = asText(item.caso_nome).trim() || 'Caso sem nome'
+        const caseFilterLabel = `${casoNumero ? `${casoNumero} - ` : ''}${casoNome}`
+        if (caseFilterLabel) {
+          nextCaseOptionsMap.set(caseFilterLabel, {
+            value: caseFilterLabel,
+            label: caseFilterLabel,
+          })
         }
+        const statusLabel = formatStatus(item.status)
+        const responsavelAtual = resolveResponsavelAtual(item)
+        const metrics = getItemMetrics(item)
 
-        const caseKey = `${contratoId}::${item.caso_id || 'sem-caso'}`
-        if (!caseGroups.has(caseKey)) caseGroups.set(caseKey, [])
-        caseGroups.get(caseKey)?.push(item)
+        const ruleLabel = getRuleTitle(item)
+        const ruleType = getRuleType(item)
+        const groupKey = `${contratoId}::${item.caso_id || 'sem-caso'}::${ruleLabel}::${item.status}::${responsavelAtual}`
 
-        if (!grouped.has(contratoId)) {
-          grouped.set(contratoId, {
-            contratoId,
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, {
+            key: groupKey,
             contratoNumero: item.contrato_numero ?? null,
             contratoNome: item.contrato_nome || 'Contrato sem nome',
-            clienteNome: item.cliente_nome || 'Cliente sem nome',
+            casoNumero,
+            casoNome,
+            regraFinanceira: ruleLabel,
+            regraTipo: ruleType,
             itens: 0,
             horas: 0,
             valor: 0,
             statusLabel,
-            responsavelAtual: responsavelAtual || '-',
+            responsavelAtual,
+            detalhes: [],
           })
         }
-      }
 
-      for (const [, caseItems] of caseGroups) {
-        if (caseItems.length === 0) continue
-        const contractId = caseItems[0].contrato_id
-        const contract = grouped.get(contractId)
+        const contract = grouped.get(groupKey)
         if (!contract) continue
 
-        const timesheetItems = caseItems.filter((entry) => entry.origem_tipo === 'timesheet')
-        const nonTimesheetItems = caseItems.filter((entry) => entry.origem_tipo !== 'timesheet')
-        const snapshotCarrier = caseItems.find((entry) => {
-          const snapshot = entry.snapshot || {}
-          return Array.isArray(snapshot.timesheet_itens_revisao) && snapshot.timesheet_itens_revisao.length > 0
+        contract.horas += metrics.horas
+        contract.valor += metrics.valor
+        contract.itens += metrics.itens
+        contract.detalhes.push({
+          id: item.id,
+          descricao: item.origem_tipo === 'timesheet' ? 'Timesheet' : getRuleTitle(item),
+          referencia: asText(item.data_referencia),
+          horas: metrics.horas,
+          valor: metrics.valor,
+          statusLabel,
+          responsavelAtual,
         })
-        const snapshotTotals = snapshotCarrier ? getSnapshotTimesheetTotals(snapshotCarrier) : null
-
-        const timesheetHoursFallback = timesheetItems.reduce(
-          (acc, entry) => acc + getEffectiveHours(entry),
-          0,
-        )
-        const timesheetValueFallback = timesheetItems.reduce(
-          (acc, entry) => acc + getEffectiveValue(entry),
-          0,
-        )
-
-        const timesheetHours = snapshotTotals ? snapshotTotals.hours : timesheetHoursFallback
-        const timesheetValue = snapshotTotals ? snapshotTotals.value : timesheetValueFallback
-        const hasTimesheetLine = Boolean(snapshotCarrier || timesheetItems.length > 0 || caseItems.length > 0)
-
-        const nonTimesheetHours = nonTimesheetItems.reduce(
-          (acc, entry) => acc + getEffectiveHours(entry),
-          0,
-        )
-        const nonTimesheetValue = nonTimesheetItems.reduce(
-          (acc, entry) => acc + getEffectiveValue(entry),
-          0,
-        )
-
-        contract.horas += nonTimesheetHours + (hasTimesheetLine ? timesheetHours : 0)
-        contract.valor += nonTimesheetValue + (hasTimesheetLine ? timesheetValue : 0)
-        contract.itens += nonTimesheetItems.length + (hasTimesheetLine ? 1 : 0)
       }
 
       const contratos = Array.from(grouped.values())
-        .map((contrato) => {
-          const statuses = Array.from(statusMap.get(contrato.contratoId) || [])
-          const responsaveis = Array.from(responsavelMap.get(contrato.contratoId) || [])
-          return {
-            ...contrato,
-            statusLabel: statuses.length <= 1 ? (statuses[0] || '-') : 'Múltiplos',
-            responsavelAtual: responsaveis.length <= 1 ? (responsaveis[0] || '-') : 'Múltiplos responsáveis',
-          }
+        .map((contrato) => ({
+          ...contrato,
+          detalhes: contrato.detalhes.sort((a, b) => (a.referencia || '').localeCompare(b.referencia || '', 'pt-BR')),
+        }))
+        .sort((a, b) => {
+          const contratoOrder = a.contratoNome.localeCompare(b.contratoNome, 'pt-BR')
+          if (contratoOrder !== 0) return contratoOrder
+          const casoOrder = a.casoNome.localeCompare(b.casoNome, 'pt-BR')
+          if (casoOrder !== 0) return casoOrder
+          return a.regraFinanceira.localeCompare(b.regraFinanceira, 'pt-BR')
         })
-        .sort((a, b) => a.clienteNome.localeCompare(b.clienteNome))
 
       setContratosEmRevisao(contratos)
+      setExpandedRows((previous) => {
+        const next: Record<string, boolean> = {}
+        for (const entry of contratos) {
+          next[entry.key] = previous[entry.key] ?? false
+        }
+        return next
+      })
+      setCasoOptions(
+        Array.from(nextCaseOptionsMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
+      )
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar fluxo de faturamento')
@@ -248,10 +318,15 @@ export default function FluxoDeFaturamentoList() {
   useEffect(() => {
     void loadContratosEmRevisao()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status])
+  }, [status, caso])
+
+  const contratosFiltradosPorRegra = useMemo(() => {
+    if (regraTipoTab === 'all') return contratosEmRevisao
+    return contratosEmRevisao.filter((entry) => entry.regraTipo === regraTipoTab)
+  }, [contratosEmRevisao, regraTipoTab])
 
   const totals = useMemo(() => {
-    return contratosEmRevisao.reduce(
+    return contratosFiltradosPorRegra.reduce(
       (acc, contrato) => {
         acc.valor += contrato.valor
         acc.horas += contrato.horas
@@ -260,7 +335,7 @@ export default function FluxoDeFaturamentoList() {
       },
       { valor: 0, horas: 0, itens: 0 },
     )
-  }, [contratosEmRevisao])
+  }, [contratosFiltradosPorRegra])
 
   return (
     <div className="space-y-4">
@@ -272,7 +347,7 @@ export default function FluxoDeFaturamentoList() {
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-4">
-        <div className="space-y-1 md:col-span-2">
+        <div className="space-y-1">
           <label className="text-sm font-medium">Status</label>
           <NativeSelect value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="">Todos os status</option>
@@ -282,6 +357,17 @@ export default function FluxoDeFaturamentoList() {
             <option value="faturado">Faturado</option>
             <option value="cancelado">Cancelado</option>
           </NativeSelect>
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Caso</label>
+          <CommandSelect
+            value={caso}
+            onValueChange={(value) => setCaso(value)}
+            options={casoOptions}
+            placeholder="Todos os casos"
+            searchPlaceholder="Buscar caso..."
+            emptyText="Nenhum caso disponível"
+          />
         </div>
         <div className="md:col-span-2 flex items-end justify-end">
           <Button
@@ -298,7 +384,7 @@ export default function FluxoDeFaturamentoList() {
       <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
         <div className="text-sm text-muted-foreground">
           <span className="mr-4">
-            Contratos: <strong className="text-foreground">{contratosEmRevisao.length}</strong>
+            Regras: <strong className="text-foreground">{contratosFiltradosPorRegra.length}</strong>
           </span>
           <span className="mr-4">
             Itens: <strong className="text-foreground">{totals.itens}</strong>
@@ -311,13 +397,26 @@ export default function FluxoDeFaturamentoList() {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Contratos no fluxo</h3>
+        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Regras financeiras no fluxo</h3>
+        <Tabs value={regraTipoTab} defaultValue="all" onValueChange={setRegraTipoTab}>
+          <TabsList className="w-full justify-start overflow-x-auto">
+            <TabsTrigger value="all">Todas</TabsTrigger>
+            <TabsTrigger value="hora">Hora</TabsTrigger>
+            <TabsTrigger value="mensalidade_processo">Mensalidade de processo</TabsTrigger>
+            <TabsTrigger value="mensalidade">Mensalidade</TabsTrigger>
+            <TabsTrigger value="projeto">Projeto</TabsTrigger>
+            <TabsTrigger value="projeto_parcelado">Projeto parcelado</TabsTrigger>
+            <TabsTrigger value="exito">Êxito</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="overflow-hidden rounded-md border bg-white">
           <Table className="w-full min-w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente</th>
+                <th className="w-10 px-2 py-3" />
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Regra financeira</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Contrato</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Caso</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Responsável atual</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Itens</th>
@@ -328,30 +427,80 @@ export default function FluxoDeFaturamentoList() {
             <tbody className="divide-y divide-gray-100">
               {loadingContratos ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Carregando contratos em revisão...
+                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Carregando regras financeiras no fluxo...
                   </td>
                 </tr>
-              ) : contratosEmRevisao.length === 0 ? (
+              ) : contratosFiltradosPorRegra.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Nenhum contrato em revisão.
+                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Nenhuma regra financeira no fluxo.
                   </td>
                 </tr>
               ) : (
-                contratosEmRevisao.map((contrato) => (
-                  <tr key={contrato.contratoId}>
-                    <td className="px-4 py-3">{contrato.clienteNome}</td>
-                    <td className="px-4 py-3 font-medium">
-                      {contrato.contratoNumero ? `${contrato.contratoNumero} - ` : ''}
-                      {contrato.contratoNome}
-                    </td>
-                    <td className="px-4 py-3">{contrato.statusLabel}</td>
-                    <td className="px-4 py-3">{contrato.responsavelAtual}</td>
-                    <td className="px-4 py-3">{contrato.itens}</td>
-                    <td className="px-4 py-3">{formatHours(contrato.horas)}</td>
-                    <td className="px-4 py-3 text-right">{formatMoney(contrato.valor)}</td>
-                  </tr>
+                contratosFiltradosPorRegra.map((contrato) => (
+                  <Fragment key={contrato.key}>
+                    <tr>
+                      <td className="px-2 py-3">
+                        <button
+                          type="button"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
+                          onClick={() => {
+                            setExpandedRows((previous) => ({ ...previous, [contrato.key]: !previous[contrato.key] }))
+                          }}
+                          aria-label={expandedRows[contrato.key] ? 'Recolher detalhes' : 'Expandir detalhes'}
+                        >
+                          {expandedRows[contrato.key] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 font-medium">{contrato.regraFinanceira}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {contrato.contratoNumero ? `${contrato.contratoNumero} - ` : ''}
+                        {contrato.contratoNome}
+                      </td>
+                      <td className="px-4 py-3">
+                        {contrato.casoNumero ? `${contrato.casoNumero} - ` : ''}
+                        {contrato.casoNome}
+                      </td>
+                      <td className="px-4 py-3">{contrato.statusLabel}</td>
+                      <td className="px-4 py-3">{contrato.responsavelAtual}</td>
+                      <td className="px-4 py-3">{contrato.itens}</td>
+                      <td className="px-4 py-3">{formatHours(contrato.horas)}</td>
+                      <td className="px-4 py-3 text-right">{formatMoney(contrato.valor)}</td>
+                    </tr>
+                    {expandedRows[contrato.key] ? (
+                      <tr>
+                        <td colSpan={9} className="bg-muted/20 px-4 py-3">
+                          <div className="rounded-md border bg-white">
+                            <Table className="w-full min-w-full">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Item</th>
+                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Referência</th>
+                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
+                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Responsável</th>
+                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Horas</th>
+                                  <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {contrato.detalhes.map((detalhe) => (
+                                  <tr key={detalhe.id}>
+                                    <td className="px-3 py-2 text-sm">{detalhe.descricao}</td>
+                                    <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
+                                    <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
+                                    <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
+                                    <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
+                                    <td className="px-3 py-2 text-right text-sm">{formatMoney(detalhe.valor)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </Table>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))
               )}
             </tbody>

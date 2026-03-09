@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, FilePlus2, Paperclip } from 'lucide-react'
+import { FilePlus2, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 
 interface SolicitacaoAnexo {
@@ -28,6 +27,7 @@ interface SolicitacaoAnexo {
 interface SolicitacaoContrato {
   id: string
   descricao: string
+  nome?: string | null
   status: 'aberta' | 'concluida' | 'cancelada'
   cliente_id: string | null
   cliente_nome: string | null
@@ -39,12 +39,6 @@ interface SolicitacaoContrato {
   concluida_em: string | null
   created_at: string
   anexos: SolicitacaoAnexo[]
-}
-
-interface ContratoOption {
-  id: string
-  nome_contrato: string
-  numero?: number
 }
 
 interface ClienteOption {
@@ -101,25 +95,12 @@ export default function SolicitacoesContratoList() {
   const [search, setSearch] = useState('')
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [descricao, setDescricao] = useState('')
+  const [nomeSolicitacao, setNomeSolicitacao] = useState('')
   const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
 
-  const [concluirOpen, setConcluirOpen] = useState(false)
-  const [solicitacaoToConcluir, setSolicitacaoToConcluir] = useState<SolicitacaoContrato | null>(null)
-  const [selectedContratoId, setSelectedContratoId] = useState('')
-  const [contratos, setContratos] = useState<ContratoOption[]>([])
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
-
-  const contratosOptions = useMemo(
-    () =>
-      contratos.map((c) => ({
-        value: c.id,
-        label: `${c.numero || '-'} - ${c.nome_contrato}`,
-      })),
-    [contratos],
-  )
 
   const clientesOptions = useMemo(
     () =>
@@ -136,8 +117,10 @@ export default function SolicitacoesContratoList() {
 
     return items.filter((item) => {
       const contratoLabel = `${item.contrato_numero || ''} ${item.contrato_nome || ''}`.toLowerCase()
+      const nome = (item.nome || '').toLowerCase()
       return (
         item.descricao.toLowerCase().includes(term) ||
+        nome.includes(term) ||
         (item.cliente_nome || '').toLowerCase().includes(term) ||
         (item.solicitante_nome || '').toLowerCase().includes(term) ||
         contratoLabel.includes(term)
@@ -151,28 +134,6 @@ export default function SolicitacoesContratoList() {
       data: { session },
     } = await supabase.auth.getSession()
     return session
-  }
-
-  const fetchContratos = async () => {
-    if (!canManage) return
-    const session = await getSession()
-    if (!session) return
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos?_ts=${Date.now()}`, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const payload = await response.json()
-    if (!response.ok) return
-    const ativos = ((payload.data || []) as Array<ContratoOption & { status?: string }>).filter(
-      (contrato) => contrato.status === 'ativo',
-    )
-    setContratos(ativos)
   }
 
   const fetchClientes = async () => {
@@ -226,20 +187,25 @@ export default function SolicitacoesContratoList() {
   useEffect(() => {
     if (!canRead) return
     void fetchItems()
-    void fetchContratos()
     void fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRead, canManage])
+  }, [canRead])
 
   const onAddFiles = (files: FileList | null) => {
     if (!files) return
-    const next = Array.from(files).map((file) => ({ nome: file.name, file }))
-    setPendingAnexos((prev) => [...prev, ...next])
+    const file = files[0]
+    if (!file) return
+    setPendingAnexos([{ nome: 'Proposta', file }])
   }
 
   const createSolicitacao = async () => {
-    if (!descricao.trim()) {
-      toastError('Descrição é obrigatória')
+    if (!nomeSolicitacao.trim()) {
+      toastError('Nome é obrigatório')
+      return
+    }
+
+    if (pendingAnexos.length === 0) {
+      toastError('Anexo de proposta é obrigatório')
       return
     }
 
@@ -255,7 +221,7 @@ export default function SolicitacoesContratoList() {
 
       const anexosPayload = await Promise.all(
         pendingAnexos.map(async (item) => ({
-          nome: item.nome,
+          nome: 'Proposta',
           arquivo_nome: item.file.name,
           mime_type: item.file.type || 'application/octet-stream',
           tamanho_bytes: item.file.size,
@@ -269,7 +235,12 @@ export default function SolicitacoesContratoList() {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ descricao: descricao.trim(), cliente_id: selectedClienteId, anexos: anexosPayload }),
+        body: JSON.stringify({
+          nome: nomeSolicitacao.trim(),
+          descricao: nomeSolicitacao.trim(),
+          cliente_id: selectedClienteId,
+          anexos: anexosPayload,
+        }),
       })
 
       const payload = await response.json()
@@ -280,49 +251,13 @@ export default function SolicitacoesContratoList() {
 
       success('Solicitação criada com sucesso')
       setCreateOpen(false)
-      setDescricao('')
+      setNomeSolicitacao('')
       setSelectedClienteId('')
       setPendingAnexos([])
       await fetchItems()
     } catch (err) {
       console.error(err)
       toastError('Erro ao criar solicitação')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const concluirSolicitacao = async () => {
-    if (!solicitacaoToConcluir) return
-
-    try {
-      setSubmitting(true)
-      const session = await getSession()
-      if (!session) return
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/concluir-solicitacao-contrato`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: solicitacaoToConcluir.id, contrato_id: selectedContratoId || null }),
-      })
-
-      const payload = await response.json()
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao concluir solicitação')
-        return
-      }
-
-      success('Solicitação concluída')
-      setConcluirOpen(false)
-      setSolicitacaoToConcluir(null)
-      setSelectedContratoId('')
-      await fetchItems()
-    } catch (err) {
-      console.error(err)
-      toastError('Erro ao concluir solicitação')
     } finally {
       setSubmitting(false)
     }
@@ -397,7 +332,7 @@ export default function SolicitacoesContratoList() {
         {canWrite ? (
           <Button
             onClick={() => {
-              setDescricao('')
+              setNomeSolicitacao('')
               setSelectedClienteId('')
               setPendingAnexos([])
               setCreateOpen(true)
@@ -447,7 +382,7 @@ export default function SolicitacoesContratoList() {
                 return (
                   <tr key={item.id}>
                     <td className="px-4 py-3 align-top text-sm">
-                      <p className="font-medium text-gray-900">{item.descricao}</p>
+                      <p className="font-medium text-gray-900">{item.nome || item.descricao}</p>
                       <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">{item.cliente_nome || '-'}</td>
@@ -494,19 +429,6 @@ export default function SolicitacoesContratoList() {
                           </Link>
                         ) : null}
 
-                        {canManage && item.status === 'aberta' ? (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSolicitacaoToConcluir(item)
-                              setSelectedContratoId(item.contrato_id || '')
-                              setConcluirOpen(true)
-                            }}
-                          >
-                            <CheckCircle2 className="mr-2 h-4 w-4" />
-                            Concluir
-                          </Button>
-                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -537,25 +459,24 @@ export default function SolicitacoesContratoList() {
             </div>
 
             <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Textarea
-                value={descricao}
-                onChange={(event) => setDescricao(event.target.value)}
-                placeholder="Descreva o que precisa para abertura do contrato"
-                rows={5}
+              <Label>Nome</Label>
+              <Input
+                value={nomeSolicitacao}
+                onChange={(event) => setNomeSolicitacao(event.target.value)}
+                placeholder="Nome da solicitação/contrato"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Anexos</Label>
-              <Input type="file" multiple onChange={(event) => onAddFiles(event.target.files)} />
+              <Label>Proposta</Label>
+              <Input type="file" onChange={(event) => onAddFiles(event.target.files)} />
               {pendingAnexos.length ? (
                 <div className="space-y-2 rounded-md border p-3">
                   {pendingAnexos.map((item, idx) => (
                     <div key={`${item.file.name}_${idx}`} className="flex items-center justify-between gap-2 text-sm">
                       <div className="flex items-center gap-2">
                         <Paperclip className="h-4 w-4 text-muted-foreground" />
-                        <span>{item.nome}</span>
+                        <span>Proposta</span>
                       </div>
                       <Button
                         type="button"
@@ -578,50 +499,6 @@ export default function SolicitacoesContratoList() {
             </Button>
             <Button onClick={createSolicitacao} disabled={submitting}>
               {submitting ? 'Salvando...' : 'Criar solicitação'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={concluirOpen} onOpenChange={(open) => !submitting && setConcluirOpen(open)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Concluir solicitação</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {solicitacaoToConcluir ? (
-              <div className="rounded-md border bg-muted/30 p-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Solicitação selecionada</p>
-                <p className="mt-1 font-medium text-foreground">{solicitacaoToConcluir.descricao}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Solicitante: {solicitacaoToConcluir.solicitante_nome || '-'} · Criada em {formatDate(solicitacaoToConcluir.created_at)}
-                </p>
-              </div>
-            ) : null}
-
-            <div className="space-y-2">
-              <Label>Vincular contrato ativo (opcional)</Label>
-              <CommandSelect
-                value={selectedContratoId}
-                onValueChange={setSelectedContratoId}
-                options={contratosOptions}
-                placeholder="Selecione um contrato ativo"
-                searchPlaceholder="Buscar contrato ativo..."
-                emptyText="Nenhum contrato ativo encontrado"
-              />
-              <p className="text-xs text-muted-foreground">
-                Se não selecionar contrato, a solicitação será concluída sem vínculo.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConcluirOpen(false)} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button onClick={concluirSolicitacao} disabled={submitting}>
-              {submitting ? 'Concluindo...' : 'Concluir solicitação'}
             </Button>
           </DialogFooter>
         </DialogContent>

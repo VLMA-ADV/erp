@@ -10,3 +10,4 @@
 - Em totais de faturamento/revisão, nunca usar fallback com `||` para horas/valores; usar `nullish` para preservar `0` revisado/aprovado e evitar divergência entre telas.
 - Na RPC `get_revisao_fatura`, horas (`informadas/revisadas/aprovadas`) devem ser forçadas a zero para `origem_tipo <> 'timesheet'` para impedir vazamento de horas em itens de regra financeira.
 - Em faturamento/revisão, cálculo de `valor em aberto` deve usar precedência `valor_aprovado -> valor_revisado -> valor_informado`; usar apenas revisado/informado gera divergência após aprovação.
+- Em modais com `CommandSelect` dentro de containers com borda, evitar `overflow-hidden` para não cortar o dropdown; em listas com nomes longos, definir largura mínima e altura máxima no painel de seleção.

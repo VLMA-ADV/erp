@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, CircleDollarSign, Clock3, Eye, Landmark, Layers3, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
+import { ChevronRight, CircleDollarSign, Clock3, Eye, Landmark, Layers3, Loader2, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -1542,8 +1542,9 @@ export default function CasoForm({
                                 className="h-8 w-8"
                                 onClick={() => openAnexo(anexo.id)}
                                 disabled={openingAnexoId === anexo.id}
+                                title={openingAnexoId === anexo.id ? 'Abrindo anexo...' : 'Visualizar anexo'}
                               >
-                                <Eye className="h-4 w-4" />
+                                {openingAnexoId === anexo.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                               </Button>
                               {!isReadOnly && (
                                 <Button

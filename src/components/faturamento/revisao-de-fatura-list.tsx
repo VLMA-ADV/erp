@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 
 interface RevisaoItem {
   id: string
@@ -38,6 +39,9 @@ interface RevisaoItem {
   valorInformado: number | null
   valorRevisado: number | null
   valorAprovado: number | null
+  responsavelFluxoNome: string | null
+  responsavelRevisaoNome: string | null
+  responsavelAprovacaoNome: string | null
   timesheetDataLancamento: string
   timesheetHoras: number
   timesheetDescricao: string
@@ -105,6 +109,8 @@ interface ContratoTimesheetConfig {
 
 interface TimesheetRowDraft {
   id: string
+  casoId: string
+  contratoId: string
   dataLancamento: string
   profissional: string
   atividade: string
@@ -278,6 +284,8 @@ function parseSnapshotTimesheetRows(item: RevisaoItem): TimesheetRowDraft[] {
         const horasRevisadas = asNumber(row.horas_revisadas ?? row.horas)
         return {
           id: asString(row.id) || createDraftRowId(),
+          casoId: asString(row.caso_id) || item.casoId,
+          contratoId: asString(row.contrato_id) || item.contratoId,
           dataLancamento: normalizeDateInput(asString(row.data_lancamento)),
           profissional: asString(row.profissional),
           atividade: asString(row.atividade ?? row.descricao),
@@ -295,6 +303,8 @@ function parseSnapshotTimesheetRows(item: RevisaoItem): TimesheetRowDraft[] {
   return [
     {
       id: item.timesheetId || createDraftRowId(),
+      casoId: item.casoId,
+      contratoId: item.contratoId,
       dataLancamento: item.timesheetDataLancamento,
       profissional: item.timesheetProfissional,
       atividade: item.timesheetDescricao,
@@ -385,6 +395,9 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     valorInformado: asOptionalNumber(pickFirstDefined(data.valor_informado, data.snapshot_valor_informado, data.valor)),
     valorRevisado: asOptionalNumber(pickFirstDefined(data.valor_revisado, data.snapshot_valor_revisado, data.valor)),
     valorAprovado: asOptionalNumber(pickFirstDefined(data.valor_aprovado, data.snapshot_valor_aprovado, data.valor)),
+    responsavelFluxoNome: asString(data.responsavel_fluxo_nome) || null,
+    responsavelRevisaoNome: asString(data.responsavel_revisao_nome) || null,
+    responsavelAprovacaoNome: asString(data.responsavel_aprovacao_nome) || null,
     timesheetDataLancamento: normalizeDateInput(asString(data.timesheet_data_lancamento)),
     timesheetHoras: asNumber(pickFirstDefined(data.timesheet_horas, data.horas_informadas)),
     timesheetDescricao: asString(data.timesheet_descricao, ''),
@@ -483,6 +496,7 @@ function buildTree(items: RevisaoItem[]): ClienteGroup[] {
 
 export default function RevisaoDeFaturaList() {
   const { success, error: toastError } = useToast()
+  const { hasPermission } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('')
@@ -790,6 +804,13 @@ export default function RevisaoDeFaturaList() {
   )
 
   const getResponsavelAtualNome = (item: RevisaoItem) => {
+    if (item.status === 'em_revisao' && (item.responsavelFluxoNome || item.responsavelRevisaoNome)) {
+      return item.responsavelFluxoNome || item.responsavelRevisaoNome
+    }
+    if (item.status === 'em_aprovacao' && (item.responsavelFluxoNome || item.responsavelAprovacaoNome)) {
+      return item.responsavelFluxoNome || item.responsavelAprovacaoNome
+    }
+
     const snapshot = item.snapshot || {}
     const snapshotFluxo = asString(snapshot.responsavel_fluxo_nome)
     const snapshotRevisor = asString(snapshot.responsavel_revisao_nome)
@@ -940,8 +961,11 @@ export default function RevisaoDeFaturaList() {
   }
 
   const addTimesheetRow = (itemId: string) => {
+    const sourceItem = items.find((item) => item.id === itemId)
     const row: TimesheetRowDraft = {
       id: createDraftRowId(),
+      casoId: sourceItem?.casoId || '',
+      contratoId: sourceItem?.contratoId || '',
       dataLancamento: '',
       profissional: '',
       atividade: '',
@@ -1134,6 +1158,8 @@ export default function RevisaoDeFaturaList() {
           ? {
               timesheet_itens_revisao: timesheetRows.map((row) => ({
                 id: row.id,
+                caso_id: row.casoId || item.casoId,
+                contrato_id: row.contratoId || item.contratoId,
                 data_lancamento: row.dataLancamento || null,
                 profissional: row.profissional || '',
                 atividade: row.atividade || '',
@@ -1295,9 +1321,39 @@ export default function RevisaoDeFaturaList() {
 
   const selectedDraft = selectedItem ? drafts[selectedItem.id] : null
   const modalBusy = selectedItem ? savingItemId === selectedItem.id || movingItemId === selectedItem.id : false
+  const itemLocked = selectedItem ? ['aprovado', 'faturado', 'cancelado'].includes(selectedItem.status) : false
+  const editDisabled = modalBusy || itemLocked
   const isTimesheetMode = selectedItem ? selectedReviewMode === 'timesheet' || selectedItem.origemTipo === 'timesheet' : false
   const selectedTimesheetRows = selectedDraft?.timesheetRows || []
   const selectedValueRows = selectedDraft?.valueRows || []
+  const caseTransferMap = useMemo(() => {
+    const caseToContrato = new Map<string, string>()
+    const optionsMap = new Map<string, CommandSelectOption>()
+    for (const item of items) {
+      if (!item.casoId) continue
+      caseToContrato.set(item.casoId, item.contratoId)
+      if (optionsMap.has(item.casoId)) continue
+      const contratoLabel = item.contratoNumero ? `${item.contratoNumero} - ${item.contratoNome}` : item.contratoNome
+      const casoLabel = item.casoNumero ? `${item.casoNumero} - ${item.casoNome}` : item.casoNome
+      optionsMap.set(item.casoId, {
+        value: item.casoId,
+        label: casoLabel,
+        group: `${item.clienteNome} • ${contratoLabel}`,
+      })
+    }
+    return {
+      caseToContrato,
+      options: Array.from(optionsMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
+    }
+  }, [items])
+  const canManageReviewers = useMemo(
+    () =>
+      hasPermission('finance.faturamento.manage') ||
+      hasPermission('finance.faturamento.*') ||
+      hasPermission('finance.*') ||
+      hasPermission('*'),
+    [hasPermission],
+  )
   const groupedTimesheetRows = useMemo(() => {
     const sorted = [...selectedTimesheetRows].sort((a, b) => {
       const aDate = a.dataLancamento || ''
@@ -1644,16 +1700,18 @@ export default function RevisaoDeFaturaList() {
                                                   <td className="px-4 py-3 text-right text-xs">{formatMoney(getEffectiveItemValue(item))}</td>
                                                   <td className="px-4 py-3">
                                                     <div className="flex flex-wrap items-center justify-end gap-2">
-                                                      <Tooltip content="Configurar revisores/aprovadores">
-                                                        <Button
-                                                          size="icon"
-                                                          variant="ghost"
-                                                          onClick={() => setSelectedContratoConfigId(item.contratoId || null)}
-                                                          disabled={busy || !item.contratoId}
-                                                        >
-                                                          <Settings2 className="h-4 w-4" />
-                                                        </Button>
-                                                      </Tooltip>
+                                                      {canManageReviewers ? (
+                                                        <Tooltip content="Configurar revisores/aprovadores">
+                                                          <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={() => setSelectedContratoConfigId(item.contratoId || null)}
+                                                            disabled={busy || !item.contratoId}
+                                                          >
+                                                            <Settings2 className="h-4 w-4" />
+                                                          </Button>
+                                                        </Tooltip>
+                                                      ) : null}
                                                       <Tooltip content={item.status === 'em_aprovacao' ? 'Aprovar item' : 'Revisar item'}>
                                                         <Button
                                                           size="icon"
@@ -1682,16 +1740,18 @@ export default function RevisaoDeFaturaList() {
                                                 <td className="px-4 py-3 text-right text-xs">{formatMoney(caseMetrics.timesheetValue)}</td>
                                                 <td className="px-4 py-3">
                                                   <div className="flex flex-wrap items-center justify-end gap-2">
-                                                    <Tooltip content="Configurar revisores/aprovadores">
-                                                      <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        onClick={() => setSelectedContratoConfigId(baseItem.contratoId || null)}
-                                                        disabled={!baseItem.contratoId || timesheetBusy}
-                                                      >
-                                                        <Settings2 className="h-4 w-4" />
-                                                      </Button>
-                                                    </Tooltip>
+                                                    {canManageReviewers ? (
+                                                      <Tooltip content="Configurar revisores/aprovadores">
+                                                        <Button
+                                                          size="icon"
+                                                          variant="ghost"
+                                                          onClick={() => setSelectedContratoConfigId(baseItem.contratoId || null)}
+                                                          disabled={!baseItem.contratoId || timesheetBusy}
+                                                        >
+                                                          <Settings2 className="h-4 w-4" />
+                                                        </Button>
+                                                      </Tooltip>
+                                                    ) : null}
                                                     <Tooltip content={baseItem.status === 'em_aprovacao' ? 'Aprovar timesheet' : 'Revisar timesheet'}>
                                                       <Button
                                                         size="icon"
@@ -1798,6 +1858,11 @@ export default function RevisaoDeFaturaList() {
 
           {selectedClienteGroup && selectedItem && selectedDraft ? (
             <div className="space-y-4 border-t pt-3">
+              {itemLocked ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Item em status <strong>{formatStatus(selectedItem.status)}</strong>. Edição bloqueada.
+                </div>
+              ) : null}
               <div className="rounded-md border p-3 text-sm">
                 <p className="font-medium">{formatItemLabel(selectedItem)}</p>
                 <p className="mt-1 text-muted-foreground">
@@ -1808,7 +1873,7 @@ export default function RevisaoDeFaturaList() {
               {isTimesheetMode ? (
                 <>
                   <div className="flex items-center justify-end">
-                    <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={modalBusy}>
+                    <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={editDisabled}>
                       <Plus className="mr-2 h-4 w-4" />
                       Adicionar timesheet
                     </Button>
@@ -1816,7 +1881,7 @@ export default function RevisaoDeFaturaList() {
 
                   <div className="space-y-3">
                     {groupedTimesheetRows.map((group) => (
-                      <div key={group.key} className="overflow-hidden rounded-md border">
+                      <div key={group.key} className="overflow-visible rounded-md border">
                         <div className="border-b bg-muted/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           {group.label} • {group.rows.length} lançamento{group.rows.length > 1 ? 's' : ''}
                         </div>
@@ -1837,7 +1902,7 @@ export default function RevisaoDeFaturaList() {
                                           event.stopPropagation()
                                           setExpandedTimesheetRows((prev) => ({ ...prev, [row.id]: !rowExpanded }))
                                         }}
-                                        disabled={modalBusy}
+                                        disabled={editDisabled}
                                       >
                                         {rowExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                       </Button>
@@ -1850,7 +1915,7 @@ export default function RevisaoDeFaturaList() {
                                           event.stopPropagation()
                                           setEditingTimesheetItemId(row.id)
                                         }}
-                                        disabled={modalBusy}
+                                        disabled={editDisabled}
                                       >
                                         <SquarePen className="h-4 w-4" />
                                       </Button>
@@ -1863,7 +1928,7 @@ export default function RevisaoDeFaturaList() {
                                           event.stopPropagation()
                                           removeTimesheetRow(selectedItem.id, row.id)
                                         }}
-                                        disabled={modalBusy || selectedTimesheetRows.length <= 1}
+                                        disabled={editDisabled || selectedTimesheetRows.length <= 1}
                                       >
                                         <Trash2 className="h-4 w-4" />
                                       </Button>
@@ -1879,7 +1944,7 @@ export default function RevisaoDeFaturaList() {
                                       onChange={(event) =>
                                         updateTimesheetRow(selectedItem.id, row.id, { dataLancamento: normalizeDateInput(event.target.value) })
                                       }
-                                      disabled={modalBusy || !rowEditing}
+                                      disabled={editDisabled || !rowEditing}
                                       className="h-8"
                                     />
                                     <CommandSelect
@@ -1889,7 +1954,21 @@ export default function RevisaoDeFaturaList() {
                                       placeholder="Selecione o colaborador"
                                       searchPlaceholder="Buscar colaborador..."
                                       emptyText="Nenhum colaborador encontrado."
-                                      disabled={modalBusy || !rowEditing}
+                                      disabled={editDisabled || !rowEditing}
+                                    />
+                                    <CommandSelect
+                                      value={row.casoId}
+                                      onValueChange={(value) =>
+                                        updateTimesheetRow(selectedItem.id, row.id, {
+                                          casoId: value,
+                                          contratoId: caseTransferMap.caseToContrato.get(value) || row.contratoId,
+                                        })
+                                      }
+                                      options={caseTransferMap.options}
+                                      placeholder="Transferir para outro caso"
+                                      searchPlaceholder="Buscar caso de destino..."
+                                      emptyText="Nenhum caso encontrado."
+                                      disabled={editDisabled || !rowEditing}
                                     />
                                   </div>
                                   <div className="space-y-2">
@@ -1897,7 +1976,7 @@ export default function RevisaoDeFaturaList() {
                                     <Input
                                       value={row.horasRevisadas}
                                       onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { horasRevisadas: event.target.value })}
-                                      disabled={modalBusy || !rowEditing}
+                                      disabled={editDisabled || !rowEditing}
                                       className="h-8"
                                     />
                                   </div>
@@ -1908,7 +1987,7 @@ export default function RevisaoDeFaturaList() {
                                     <MoneyInput
                                       value={row.valorHora}
                                       onValueChange={(value) => updateTimesheetRow(selectedItem.id, row.id, { valorHora: value })}
-                                      disabled={modalBusy || !rowEditing}
+                                      disabled={editDisabled || !rowEditing}
                                     />
                                   </div>
                                 </div>
@@ -1919,7 +1998,7 @@ export default function RevisaoDeFaturaList() {
                                     <Textarea
                                       value={row.atividade}
                                       onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { atividade: event.target.value })}
-                                      disabled={modalBusy || !rowEditing}
+                                      disabled={editDisabled || !rowEditing}
                                       rows={3}
                                       className="resize-y"
                                     />
@@ -1954,7 +2033,7 @@ export default function RevisaoDeFaturaList() {
                   </div>
 
                   <div className="flex items-center justify-end">
-                    <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={modalBusy}>
+                    <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={editDisabled}>
                       <Plus className="mr-2 h-4 w-4" />
                       Adicionar item
                     </Button>
@@ -1984,7 +2063,7 @@ export default function RevisaoDeFaturaList() {
                                     updateValueRow(selectedItem.id, row.id, { referencia: normalizeDateFromDisplay(event.target.value) })
                                   }
                                   placeholder="DD/MM/AAAA"
-                                  disabled={modalBusy || !rowEditing}
+                                  disabled={editDisabled || !rowEditing}
                                   className="h-8"
                                 />
                               </td>
@@ -1992,7 +2071,7 @@ export default function RevisaoDeFaturaList() {
                                 <Input
                                   value={row.descricao}
                                   onChange={(event) => updateValueRow(selectedItem.id, row.id, { descricao: event.target.value })}
-                                  disabled={modalBusy || !rowEditing}
+                                  disabled={editDisabled || !rowEditing}
                                   className="h-8"
                                 />
                               </td>
@@ -2001,7 +2080,7 @@ export default function RevisaoDeFaturaList() {
                                 <MoneyInput
                                   value={row.valorRevisado}
                                   onValueChange={(value) => updateValueRow(selectedItem.id, row.id, { valorRevisado: value })}
-                                  disabled={modalBusy || !rowEditing}
+                                  disabled={editDisabled || !rowEditing}
                                 />
                               </td>
                               <td className="px-3 py-2 text-right">
@@ -2013,7 +2092,7 @@ export default function RevisaoDeFaturaList() {
                                       event.stopPropagation()
                                       setEditingTimesheetItemId(row.id)
                                     }}
-                                    disabled={modalBusy}
+                                    disabled={editDisabled}
                                   >
                                     <SquarePen className="h-4 w-4" />
                                   </Button>
@@ -2026,7 +2105,7 @@ export default function RevisaoDeFaturaList() {
                                       event.stopPropagation()
                                       removeValueRow(selectedItem.id, row.id)
                                     }}
-                                    disabled={modalBusy || selectedValueRows.length <= 1}
+                                    disabled={editDisabled || selectedValueRows.length <= 1}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -2049,7 +2128,7 @@ export default function RevisaoDeFaturaList() {
                     <Textarea
                       value={selectedDraft.observacao}
                       onChange={(event) => updateDraft(selectedItem.id, { observacao: event.target.value })}
-                      disabled={modalBusy}
+                      disabled={editDisabled}
                       rows={3}
                     />
                   </div>
@@ -2118,10 +2197,15 @@ export default function RevisaoDeFaturaList() {
 
           {selectedItem && selectedDraft ? (
             <div className="space-y-4">
+              {itemLocked ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Item em status <strong>{formatStatus(selectedItem.status)}</strong>. Edição bloqueada.
+                </div>
+              ) : null}
               {isTimesheetMode ? (
                 <>
                 <div className="flex items-center justify-end">
-                  <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={modalBusy}>
+                  <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={editDisabled}>
                     <Plus className="mr-2 h-4 w-4" />
                     Adicionar timesheet
                   </Button>
@@ -2129,7 +2213,7 @@ export default function RevisaoDeFaturaList() {
 
                 <div className="space-y-3">
                   {groupedTimesheetRows.map((group) => (
-                    <div key={group.key} className="overflow-hidden rounded-md border">
+                    <div key={group.key} className="overflow-visible rounded-md border">
                       <div className="border-b bg-muted/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         {group.label} • {group.rows.length} lançamento{group.rows.length > 1 ? 's' : ''}
                       </div>
@@ -2150,7 +2234,7 @@ export default function RevisaoDeFaturaList() {
                                         event.stopPropagation()
                                         setExpandedTimesheetRows((prev) => ({ ...prev, [row.id]: !rowExpanded }))
                                       }}
-                                      disabled={modalBusy}
+                                      disabled={editDisabled}
                                     >
                                       {rowExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                     </Button>
@@ -2163,7 +2247,7 @@ export default function RevisaoDeFaturaList() {
                                         event.stopPropagation()
                                         setEditingTimesheetItemId(row.id)
                                       }}
-                                      disabled={modalBusy}
+                                      disabled={editDisabled}
                                     >
                                       <SquarePen className="h-4 w-4" />
                                     </Button>
@@ -2176,7 +2260,7 @@ export default function RevisaoDeFaturaList() {
                                         event.stopPropagation()
                                         removeTimesheetRow(selectedItem.id, row.id)
                                       }}
-                                      disabled={modalBusy || selectedTimesheetRows.length <= 1}
+                                      disabled={editDisabled || selectedTimesheetRows.length <= 1}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -2192,7 +2276,7 @@ export default function RevisaoDeFaturaList() {
                                     onChange={(event) =>
                                       updateTimesheetRow(selectedItem.id, row.id, { dataLancamento: normalizeDateInput(event.target.value) })
                                     }
-                                    disabled={modalBusy || !rowEditing}
+                                    disabled={editDisabled || !rowEditing}
                                     className="h-8"
                                   />
                                   <CommandSelect
@@ -2202,7 +2286,21 @@ export default function RevisaoDeFaturaList() {
                                     placeholder="Selecione o colaborador"
                                     searchPlaceholder="Buscar colaborador..."
                                     emptyText="Nenhum colaborador encontrado."
-                                    disabled={modalBusy || !rowEditing}
+                                    disabled={editDisabled || !rowEditing}
+                                  />
+                                  <CommandSelect
+                                    value={row.casoId}
+                                    onValueChange={(value) =>
+                                      updateTimesheetRow(selectedItem.id, row.id, {
+                                        casoId: value,
+                                        contratoId: caseTransferMap.caseToContrato.get(value) || row.contratoId,
+                                      })
+                                    }
+                                    options={caseTransferMap.options}
+                                    placeholder="Transferir para outro caso"
+                                    searchPlaceholder="Buscar caso de destino..."
+                                    emptyText="Nenhum caso encontrado."
+                                    disabled={editDisabled || !rowEditing}
                                   />
                                 </div>
                                 <div className="space-y-2">
@@ -2210,7 +2308,7 @@ export default function RevisaoDeFaturaList() {
                                   <Input
                                     value={row.horasRevisadas}
                                     onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { horasRevisadas: event.target.value })}
-                                    disabled={modalBusy || !rowEditing}
+                                    disabled={editDisabled || !rowEditing}
                                     className="h-8"
                                   />
                                 </div>
@@ -2221,7 +2319,7 @@ export default function RevisaoDeFaturaList() {
                                   <MoneyInput
                                     value={row.valorHora}
                                     onValueChange={(value) => updateTimesheetRow(selectedItem.id, row.id, { valorHora: value })}
-                                    disabled={modalBusy || !rowEditing}
+                                    disabled={editDisabled || !rowEditing}
                                   />
                                 </div>
                               </div>
@@ -2232,7 +2330,7 @@ export default function RevisaoDeFaturaList() {
                                   <Textarea
                                     value={row.atividade}
                                     onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { atividade: event.target.value })}
-                                    disabled={modalBusy || !rowEditing}
+                                    disabled={editDisabled || !rowEditing}
                                     rows={3}
                                     className="resize-y"
                                   />
@@ -2272,7 +2370,7 @@ export default function RevisaoDeFaturaList() {
                 </div>
 
                 <div className="flex items-center justify-end">
-                  <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={modalBusy}>
+                  <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={editDisabled}>
                     <Plus className="mr-2 h-4 w-4" />
                     Adicionar item
                   </Button>
@@ -2302,7 +2400,7 @@ export default function RevisaoDeFaturaList() {
                                   updateValueRow(selectedItem.id, row.id, { referencia: normalizeDateFromDisplay(event.target.value) })
                                 }
                                 placeholder="DD/MM/AAAA"
-                                disabled={modalBusy || !rowEditing}
+                                disabled={editDisabled || !rowEditing}
                                 className="h-8"
                               />
                             </td>
@@ -2310,7 +2408,7 @@ export default function RevisaoDeFaturaList() {
                               <Input
                                 value={row.descricao}
                                 onChange={(event) => updateValueRow(selectedItem.id, row.id, { descricao: event.target.value })}
-                                disabled={modalBusy || !rowEditing}
+                                disabled={editDisabled || !rowEditing}
                                 className="h-8"
                               />
                             </td>
@@ -2319,7 +2417,7 @@ export default function RevisaoDeFaturaList() {
                               <MoneyInput
                                 value={row.valorRevisado}
                                 onValueChange={(value) => updateValueRow(selectedItem.id, row.id, { valorRevisado: value })}
-                                disabled={modalBusy || !rowEditing}
+                                disabled={editDisabled || !rowEditing}
                               />
                             </td>
                             <td className="px-3 py-2 text-right">
@@ -2331,7 +2429,7 @@ export default function RevisaoDeFaturaList() {
                                     event.stopPropagation()
                                     setEditingTimesheetItemId(row.id)
                                   }}
-                                  disabled={modalBusy}
+                                  disabled={editDisabled}
                                 >
                                   <SquarePen className="h-4 w-4" />
                                 </Button>
@@ -2344,7 +2442,7 @@ export default function RevisaoDeFaturaList() {
                                     event.stopPropagation()
                                     removeValueRow(selectedItem.id, row.id)
                                   }}
-                                  disabled={modalBusy || selectedValueRows.length <= 1}
+                                  disabled={editDisabled || selectedValueRows.length <= 1}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -2367,7 +2465,7 @@ export default function RevisaoDeFaturaList() {
                   <Textarea
                     value={selectedDraft.observacao}
                     onChange={(event) => updateDraft(selectedItem.id, { observacao: event.target.value })}
-                    disabled={modalBusy}
+                    disabled={editDisabled}
                     rows={3}
                   />
                 </div>

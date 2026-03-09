@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Paperclip,
   Pencil,
+  Loader2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -2496,16 +2497,17 @@ export default function ContratoForm({
                             <Paperclip className="h-5 w-5" />
                           </div>
                           <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="secondary"
-                              className="h-8 w-8"
-                              onClick={() => openAnexo(anexo.id, 'contrato')}
-                              disabled={openingAnexoId === anexo.id}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="h-8 w-8"
+                                onClick={() => openAnexo(anexo.id, 'contrato')}
+                                disabled={openingAnexoId === anexo.id}
+                                title={openingAnexoId === anexo.id ? 'Abrindo anexo...' : 'Visualizar anexo'}
+                              >
+                                {openingAnexoId === anexo.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                              </Button>
                             {!isReadOnly && (
                               <Button
                                 type="button"
@@ -2789,8 +2791,9 @@ export default function ContratoForm({
                                     className="h-8 w-8"
                                     onClick={() => openAnexo(anexo.id, 'caso')}
                                     disabled={openingAnexoId === anexo.id}
+                                    title={openingAnexoId === anexo.id ? 'Abrindo anexo...' : 'Visualizar anexo'}
                                   >
-                                    <Eye className="h-4 w-4" />
+                                    {openingAnexoId === anexo.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                                   </Button>
                                   {!isReadOnly && (
                                     <Button

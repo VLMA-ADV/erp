@@ -25,6 +25,7 @@ Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Con
 - [x] Alterar label do botão de edição do caso para `Atualizar caso`.
 - [x] Inserir campo de cliente na abertura de solicitação de contrato com validação obrigatória.
 - [x] Implementar criação idempotente de rascunho de contrato pré-vinculado ao cliente ao concluir pré-cadastro.
+- [x] Solicitação de contrato: popup com campos `Cliente`, `Nome`, `Proposta` e criação imediata de contrato em `rascunho`
 - [ ] Refatorar fluxo do Timesheet para seleção sequencial: cliente -> caso -> contrato automático.
 - [ ] Alterar input de duração do timesheet para minutos e garantir conversão/persistência consistente.
 - [ ] Criar catálogo de templates de descritivo com categoria e texto, carregado em `CommandSelect`.
@@ -236,4 +237,28 @@ Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar ->
 ## Sprint Atual - Correção Valor em Aberto na Revisão
 - [x] Frontend: usar valor efetivo por status (`aprovado > revisado > informado`) em todos os agregados/exibições
 - [x] Frontend: evitar persistência indevida de `0` ao avançar item sem edição explícita de valor
+- [x] Revisão: executar `npm run -s type-check`
+
+## Sprint Atual - Correções de UX/Permissão Faturamento
+- [x] Exibir responsável atual de revisão/aprovação diretamente na RPC de revisão de fatura
+- [x] Melhorar UX do `CommandSelect` para seleção de colaborador (dropdown mais largo/rolagem adequada)
+- [x] Bloquear edição de itens aprovados/faturados/cancelados no modal de revisão
+- [x] Permitir visualização de timesheets de outros usuários para perfis com `operations.timesheet.manage`
+- [x] Fluxo de faturamento: exibir regra financeira (em vez de cliente) e adicionar filtro por caso
+- [x] Revisão: executar `npm run -s type-check`
+
+## Sprint Atual - Solicitação -> Contrato (Proposta em Anexos)
+- [x] RPC `create_solicitacao_contrato`: ao criar rascunho, copiar anexo "Proposta" também para `contracts.contrato_anexos`
+- [x] Backfill: copiar anexos antigos de solicitação para contratos rascunho já vinculados sem anexo correspondente
+- [x] Publicar edge function `create-solicitacao-contrato` com fallback consistente de cópia de anexos
+
+## Sprint Atual - Ajustes Fluxo Faturamento + E2E
+- [x] Itens a faturar: seleção múltipla de clientes/contratos/casos para envio em lote ao fluxo
+- [x] Itens a faturar: abas/filtros por tipo de regra financeira (hora, mensalidade processo, mensalidade, projeto, projeto parcelado, êxito)
+- [ ] Revisão de fatura: permitir transferir timesheet para outro caso (com contrato coerente)
+- [x] Revisão de fatura: admin pode editar revisores/aprovadores diretamente na tela
+- [x] Revisão de fatura: reforçar bloqueio de edição para itens aprovados
+- [x] E2E: criar suíte contrato/timesheet/itens/revisão/aprovação por cada regra financeira
+- [x] E2E: criar cenário com múltiplas regras no mesmo caso
+- [x] E2E: validar visibilidade por perfil (itens ausentes e ações indevidas)
 - [x] Revisão: executar `npm run -s type-check`
