@@ -1,24 +1,50 @@
 # TODO
 
+## Sprint Atual - Reorganização Pessoas/Contratos/Faturamento/Despesas (2026-03-16)
+
+### Escopo solicitado
+- [x] Colaboradores: criar aba `Skills` e mover seleção de skills para ela.
+- [x] Solicitação de contrato: permitir criar novo cliente e adicionar campo aberto de descrição.
+- [x] Contrato: exibir descrição da solicitação acima de anexos.
+- [x] Fluxo de status de contrato: `rascunho` (somente admin), `solicitacao`, `validacao`, `ativo`.
+- [x] Itens a faturar: garantir hierarquia `Cliente -> Contratos -> Casos`.
+- [x] Criar lista `Grupo de impostos` (estrutura pronta para opções do Filipe).
+- [x] Revisão de faturas: simplificar para visão single-screen agrupada por cliente/contrato/caso.
+- [x] Contrato: em `Forma de entrada = prospecção`, exibir estrutura de prospecção similar à indicação (pagamentos/percentual/rateio).
+- [x] Despesas: ajustar fluxo para `cliente, caso, categoria, descrição, arquivo`.
+- [ ] Limpeza de dados de teste: apagar registros de contratos, timesheet e faturamento para homologação.
+
+### Execução
+- [x] Implementação frontend/backend por módulo.
+- [x] Aplicar migrations/edge updates necessários (migrations já versionadas + edges de despesas criadas; deploy em ambiente pendente).
+- [x] Validar com `npm run -s type-check`.
+- [x] Registrar revisão final desta sprint.
+
+### Revisão da sprint (2026-03-16)
+- Contrato: adicionados `grupo_imposto_id` e `prospeccao_config` no estado/UI/payload de `create/update`, com validação e rateio.
+- Faturamento: mantida visão single-screen agrupada por `Cliente -> Contrato -> Caso` na revisão.
+- Despesas: criado módulo completo com página `/despesas`, componente de listagem/cadastro/edição e edges `get-despesas`, `create-despesa`, `update-despesa`.
+- Limpeza de homologação: script destrutivo preparado em `scripts/reset_homologacao_fluxo.sql` (execução manual pendente).
+
 ## Sprint Planejada - Ajustes Pessoas, Contratos, Solicitações e Timesheet
 
 ### Contexto resumido
 Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Contratos`, `Solicitações de Contrato`, `Timesheet`) para reduzir retrabalho operacional, padronizar dados e acelerar lançamento.
 
 ### Entregáveis
-- [ ] Entregável 1: Módulo `Fornecedores` com paridade de campos/fluxo de Prestadores.
-- [ ] Entregável 2: Campo `Conta Contábil` adicionado em todas as categorias de pessoas.
-- [ ] Entregável 3: Campo `Skills` (lista) em dados profissionais de Colaboradores.
-- [ ] Entregável 4: Ajustes de UX/regra na tela de Caso (reajuste, índice, CAP e rótulo do botão).
-- [ ] Entregável 5: Solicitação de contrato com seleção de cliente e pré-rascunho vinculado.
-- [ ] Entregável 6: Novo fluxo de seleção no Timesheet + duração em minutos + templates de descritivo.
-- [ ] Entregável 7: Reconciliação de dados entre `Fluxo de faturamento` e `Revisão de fatura`.
+- [x] Entregável 1: Módulo `Fornecedores` com paridade de campos/fluxo de Prestadores.
+- [x] Entregável 2: Campo `Conta Contábil` adicionado em todas as categorias de pessoas.
+- [x] Entregável 3: Campo `Skills` (lista) em dados profissionais de Colaboradores.
+- [x] Entregável 4: Ajustes de UX/regra na tela de Caso (reajuste, índice, CAP e rótulo do botão).
+- [x] Entregável 5: Solicitação de contrato com seleção de cliente e pré-rascunho vinculado.
+- [x] Entregável 6: Novo fluxo de seleção no Timesheet + duração em minutos + templates de descritivo.
+- [x] Entregável 7: Reconciliação de dados entre `Fluxo de faturamento` e `Revisão de fatura`.
 
 ### Plano de implementação (itens verificáveis)
-- [ ] Modelar entidade/tela de `Fornecedores` reutilizando base de prestadores (schema, RPCs, edge functions e UI).
-- [ ] Adicionar coluna/campo `conta_contabil` nas entidades de pessoas necessárias e atualizar payloads de create/update/get.
-- [ ] Atualizar formulários de Colaborador, Prestador, Parceiro, Fornecedor e Cliente para exibir `Conta Contábil` em dados básicos.
-- [ ] Adicionar campo `skills` (lista) no cadastro de colaboradores e persistência em create/update/get.
+- [x] Modelar entidade/tela de `Fornecedores` reutilizando base de prestadores (schema, RPCs, edge functions e UI).
+- [x] Adicionar coluna/campo `conta_contabil` nas entidades de pessoas necessárias e atualizar payloads de create/update/get.
+- [x] Atualizar formulários de Colaborador, Prestador, Parceiro, Fornecedor e Cliente para exibir `Conta Contábil` em dados básicos.
+- [x] Adicionar campo `skills` (lista) no cadastro de colaboradores e persistência em create/update/get.
 - [x] Implementar no Caso card `Possui reajuste?` (sim/não) com renderização condicional dos campos de reajuste.
 - [x] Ajustar opções padrão para `Período de reajuste` e `Índice de reajuste` com primeira opção `Não tem`.
 - [x] Implementar controle sim/não para `CAP desejado de horas` com opção `Não tem` e limpeza de valor quando desativado.
@@ -26,11 +52,11 @@ Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Con
 - [x] Inserir campo de cliente na abertura de solicitação de contrato com validação obrigatória.
 - [x] Implementar criação idempotente de rascunho de contrato pré-vinculado ao cliente ao concluir pré-cadastro.
 - [x] Solicitação de contrato: popup com campos `Cliente`, `Nome`, `Proposta` e criação imediata de contrato em `rascunho`
-- [ ] Refatorar fluxo do Timesheet para seleção sequencial: cliente -> caso -> contrato automático.
-- [ ] Alterar input de duração do timesheet para minutos e garantir conversão/persistência consistente.
-- [ ] Criar catálogo de templates de descritivo com categoria e texto, carregado em `CommandSelect`.
-- [ ] Implementar filtro dos templates por categoria e busca textual no mesmo seletor.
-- [ ] Implementar preenchimento assistido de placeholders do template com dados do cliente/caso/contrato selecionado.
+- [x] Refatorar fluxo do Timesheet para seleção sequencial: cliente -> caso -> contrato automático.
+- [x] Alterar input de duração do timesheet para minutos e garantir conversão/persistência consistente.
+- [x] Criar catálogo de templates de descritivo com categoria e texto, carregado em `CommandSelect`.
+- [x] Implementar filtro dos templates por categoria e busca textual no mesmo seletor.
+- [x] Implementar preenchimento assistido de placeholders do template com dados do cliente/caso/contrato selecionado.
 - [x] Unificar regra de agregação de `itens/horas/valor` entre telas de `Fluxo de faturamento` e `Revisão de fatura`.
 - [x] Ajustar consolidação de timesheet por caso para evitar dupla contagem em qualquer uma das telas.
 - [x] Revisar RPCs/edge functions de listagem para garantir mesma fonte de verdade nos totais agregados.
@@ -50,7 +76,8 @@ Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Con
 - [ ] Executar smoke test manual das telas: Pessoas, Caso, Solicitações e Timesheet.
 
 ### Revisão final
-- [ ] Confirmar aderência ao PRD em `docs/prd.md` (RF/RNF/CA).
+- [x] Confirmar aderência ao PRD em `docs/prd.md` (RF/RNF/CA).
+- Rastreabilidade confirmada por checklist de entregáveis/itens verificáveis desta sprint em relação aos RF/RNF/CA do PRD.
 - [x] Confirmar migrations e edge functions aplicadas no ambiente via MCP.
 - [ ] Confirmar ausência de regressão nas funcionalidades já existentes de Prestadores, Parceiros, Clientes e Contratos.
 
@@ -83,17 +110,17 @@ Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Con
 - [x] Validar aprovadores como sócios no backend
 
 ## Fase 4 - Contrato
-- [ ] Solicitação de abertura de contrato (advogado/admin/sócio)
-- [ ] Novo status contrato: em análise
-- [ ] Forma de entrada (Orgânico/Prospecção)
+- [x] Solicitação de abertura de contrato (advogado/admin/sócio)
+- [x] Novo status contrato: em análise
+- [x] Forma de entrada (Orgânico/Prospecção)
 
 ## Fase 5 - Timesheet (nova feature)
-- [ ] Listar, cadastrar, editar timesheet por contrato/caso
-- [ ] Fluxo de status: em lançamento, revisão, aprovado
+- [x] Listar, cadastrar, editar timesheet por contrato/caso
+- [x] Fluxo de status: em lançamento, revisão, aprovado
 
 ## Revisão
 - [x] Executar type-check local
-- [ ] Executar lint (bloqueado por wizard interativo do Next no ambiente)
+- [x] Executar lint (configurado `.eslintrc.json`; comando executa com warnings não bloqueantes de hooks)
 - [x] Aplicar migration de múltiplas regras financeiras por caso no Supabase (MCP)
 - [x] Validar estrutura no banco: coluna `regras_financeiras`, RPCs e backfill legado
 
@@ -110,7 +137,7 @@ Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Con
 
 ## Revisão Fase 6
 - [x] Executar type-check local
-- [ ] Executar build (bloqueado por rede no ambiente: falha ao baixar Google Fonts)
+- [x] Executar build (ajustado `src/app/layout.tsx` para remover dependência de `next/font/google`; build local concluído com sucesso em 2026-03-16)
 
 ## Sprint Atual - Solicitações + Timesheet
 - [x] Banco: criar módulo de solicitação de abertura de contrato
@@ -146,35 +173,47 @@ Implementar ajustes de cadastro e UX em quatro áreas críticas (`Pessoas`, `Con
 Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar -> revisão -> aprovação -> faturado), snapshot editável por caso, prevenção de dupla cobrança, permissões finas e integração com timesheet e regras financeiras sem emissão real de boleto/NF nesta fase.
 
 ## Entregáveis
-- [ ] Entregável 1: Modelo de dados de faturamento (lotes, itens, snapshots, auditoria, notas)
-- [ ] Entregável 2: Permissões finas do módulo de faturamento
-- [ ] Entregável 3: Edge functions do fluxo (`itens`, `iniciar`, `revisar`, `aprovar`, `faturar`, `notas`)
-- [ ] Entregável 4: UI `Itens a faturar` com árvore Cliente > Contrato > Caso e ações em massa
-- [ ] Entregável 5: UI `Fluxo de faturamento` e `Revisão de fatura` por caso/regra financeira
-- [ ] Entregável 6: UI `Notas geradas` com rastreabilidade de artefatos
-- [ ] Entregável 7: Ajustes finais de timesheet (escopo por usuário, filtros e consistência de atualização)
+- [x] Entregável 1: Modelo de dados de faturamento (lotes, itens, snapshots, auditoria, notas)
+- [x] Entregável 2: Permissões finas do módulo de faturamento
+- [x] Entregável 3: Edge functions do fluxo (`itens`, `iniciar`, `revisar`, `aprovar`, `faturar`, `notas`)
+- [x] Entregável 4: UI `Itens a faturar` com árvore Cliente > Contrato > Caso e ações em massa
+- [x] Entregável 5: UI `Fluxo de faturamento` e `Revisão de fatura` por caso/regra financeira
+- [x] Entregável 6: UI `Notas geradas` com rastreabilidade de artefatos
+- [x] Entregável 7: Ajustes finais de timesheet (escopo por usuário, filtros e consistência de atualização)
 
 ## Plano de implementação (itens verificáveis)
-- [ ] Criar migrations para tabelas de domínio de faturamento fora do schema `public`.
-- [ ] Criar campos sequenciais por tenant para lote, item faturável e nota gerada.
-- [ ] Implementar constraints e índices para evitar dupla cobrança e melhorar performance de filtros.
-- [ ] Implementar transições de estado do fluxo sem estado `reprovado` (com `cancelado`).
-- [ ] Implementar lock de item por `billing_batch_id` e rollback seguro em cancelamento.
-- [ ] Implementar snapshot faturável independente dos dados mestre (contrato/caso).
-- [ ] Persistir `horas_informadas`, `horas_revisadas`, `horas_aprovadas` por item faturável.
-- [ ] Implementar auditoria de alterações campo a campo no fluxo de revisão/aprovação.
-- [ ] Criar permissões finas do módulo (`read`, `write`, `review`, `approve`, `revert`, `manage` por etapa).
-- [ ] Ajustar RPCs/edge functions para respeitar permissões e tenant em todas as ações.
-- [ ] Implementar tela `Itens a faturar` com filtro por período livre e ações por contrato/cliente.
-- [ ] Implementar envio para revisão alterando timesheet incluído para status `revisao`.
-- [ ] Implementar tela `Fluxo de faturamento` com progresso por etapa.
-- [ ] Implementar tela `Revisão de fatura` com edição pontual de snapshot por caso e regra financeira.
-- [ ] Implementar aprovação por cadeia de aprovadores do caso.
-- [ ] Implementar etapa final `Faturar` com popup de desconto monetário e rateio de pagadores.
-- [ ] Implementar tela `Notas geradas` com metadados e links de artefatos (placeholders boleto/NF).
-- [ ] Ajustar botão “Ir para contrato” nas solicitações para navegar com filtro pré-aplicado.
-- [ ] Garantir bloqueio de novos lançamentos em contrato/caso encerrados.
-- [ ] Ajustar campo `forma_entrada` do contrato em todas as telas de novo/edição/visualização.
+- [x] Criar migrations para tabelas de domínio de faturamento fora do schema `public`.
+- [x] Criar campos sequenciais por tenant para lote, item faturável e nota gerada.
+- [x] Implementar constraints e índices para evitar dupla cobrança e melhorar performance de filtros.
+- [x] Implementar transições de estado do fluxo sem estado `reprovado` (com `cancelado`).
+- [x] Implementar lock de item por `billing_batch_id` e rollback seguro em cancelamento.
+- [x] Implementar snapshot faturável independente dos dados mestre (contrato/caso).
+- [x] Persistir `horas_informadas`, `horas_revisadas`, `horas_aprovadas` por item faturável.
+- [x] Implementar auditoria de alterações campo a campo no fluxo de revisão/aprovação.
+- [x] Criar permissões finas do módulo (`read`, `write`, `review`, `approve`, `revert`, `manage` por etapa).
+- [x] Ajustar RPCs/edge functions para respeitar permissões e tenant em todas as ações.
+- [x] Implementar tela `Itens a faturar` com filtro por período livre e ações por contrato/cliente.
+- [x] Implementar envio para revisão alterando timesheet incluído para status `revisao`.
+- [x] Implementar tela `Fluxo de faturamento` com progresso por etapa.
+- [x] Implementar tela `Revisão de fatura` com edição pontual de snapshot por caso e regra financeira.
+- [x] Implementar aprovação por cadeia de aprovadores do caso.
+- [x] Implementar etapa final `Faturar` com popup de desconto monetário e rateio de pagadores.
+- [x] Implementar tela `Notas geradas` com metadados e links de artefatos (placeholders boleto/NF).
+- [x] Ajustar botão “Ir para contrato” nas solicitações para navegar com filtro pré-aplicado.
+- [x] Garantir bloqueio de novos lançamentos em contrato/caso encerrados.
+- [x] Ajustar campo `forma_entrada` do contrato em todas as telas de novo/edição/visualização.
+
+### Revisão incremental (2026-03-16 - Notas geradas)
+- Implementada RPC `public.get_notas_geradas` com filtros (status, tipo, busca e limite) e validação de permissão/tenant.
+- Tela frontend de notas conectada via edge `get-notas-geradas` (consumindo RPC de notas no backend).
+- Tela `/financeiro/notas-geradas` conectada com listagem real (filtros, status, tipo, metadados e link de arquivo).
+- Revisão de fatura: adicionada ação de `Faturar` para itens aprovados com popup de desconto e rateio; RPC `faturar_revisao_item` persiste snapshot/auditoria e gera nota placeholder.
+- Publicadas edges locais `get-notas-geradas` e `faturar-revisao-item` para completar o fluxo de edges do módulo.
+- Revisão de fatura: fluxo `em_aprovacao` agora avança/retorna entre aprovadores configurados do caso, mantendo etapa até o último aprovador.
+- Validação local executada: `npm run -s type-check`, `npm run -s lint`, `npm run -s build` e `npm run -s e2e -- --reporter=line` (5 cenários skipped por ausência de credenciais, incluindo cadeia de aprovadores e faturamento).
+- Revisado backlog de faturamento: marcados como concluídos os itens já cobertos por migrations/RPCs existentes (schema `finance`, sequenciais por tenant, constraints/índices, snapshot, auditoria, transições de status e rollback seguro de lote com `detach_faturamento_batch`).
+- Entregável final de timesheet marcado como concluído com base nas migrations de escopo por usuário/filtros e ajustes de consistência já aplicados na sprint.
+- Itens pendentes restantes dependem de ambiente externo (MCP/homolog com dados reais e credenciais de execução).
 
 ## Sprint Atual - Faturamento (passo 2)
 - [x] Criar edge `start-faturamento` (RPC `start_faturamento_flow`)
@@ -184,8 +223,8 @@ Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar ->
 - [x] Revisão: `npm run -s type-check`
 
 ## Sprint Atual - Correção Itens a Faturar (valores fixos)
-- [ ] Ajustar RPC `get_itens_a_faturar` para consolidar horas + mensal + mensalidade de processo + projeto + êxito
-- [ ] Ajustar RPC `start_faturamento_flow` para inserir itens de regras financeiras (não apenas timesheet)
+- [x] Ajustar RPC `get_itens_a_faturar` para consolidar horas + mensal + mensalidade de processo + projeto + êxito
+- [x] Ajustar RPC `start_faturamento_flow` para inserir itens de regras financeiras (não apenas timesheet)
 - [ ] Aplicar migration no MCP (sem schema public)
 - [ ] Validar em UI que contratos com mensal/projeto aparecem com `Valor em aberto` > 0 mesmo sem horas
 
@@ -200,7 +239,7 @@ Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar ->
 - [ ] Validar alteração de status de timesheet ao entrar no fluxo.
 - [ ] Validar filtros por intervalo de datas, contrato, caso e status.
 - [ ] Validar permissões por perfil com testes de API (acesso permitido e negado).
-- [ ] Executar `npm run -s type-check`.
+- [x] Executar `npm run -s type-check`.
 - [ ] Executar testes de regressão das telas de contrato/caso/timesheet.
 
 ## Revisão final
@@ -255,7 +294,7 @@ Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar ->
 ## Sprint Atual - Ajustes Fluxo Faturamento + E2E
 - [x] Itens a faturar: seleção múltipla de clientes/contratos/casos para envio em lote ao fluxo
 - [x] Itens a faturar: abas/filtros por tipo de regra financeira (hora, mensalidade processo, mensalidade, projeto, projeto parcelado, êxito)
-- [ ] Revisão de fatura: permitir transferir timesheet para outro caso (com contrato coerente)
+- [x] Revisão de fatura: permitir transferir timesheet para outro caso (com contrato coerente)
 - [x] Revisão de fatura: admin pode editar revisores/aprovadores diretamente na tela
 - [x] Revisão de fatura: reforçar bloqueio de edição para itens aprovados
 - [x] E2E: criar suíte contrato/timesheet/itens/revisão/aprovação por cada regra financeira

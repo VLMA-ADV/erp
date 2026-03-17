@@ -24,10 +24,16 @@ export default function ContratosList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [focusedContratoId, setFocusedContratoId] = useState('')
 
   useEffect(() => {
     const searchFromQuery = searchParams.get('search') || ''
+    const contratoIdFromQuery = searchParams.get('contrato_id') || ''
     setSearch(searchFromQuery)
+    setFocusedContratoId(contratoIdFromQuery)
+    if (contratoIdFromQuery) {
+      setExpanded((prev) => ({ ...prev, [contratoIdFromQuery]: true }))
+    }
   }, [searchParams])
 
   const fetchItems = async () => {
@@ -53,6 +59,9 @@ export default function ContratosList() {
       }
 
       let list = (data.data || []) as ContratoListItem[]
+      if (focusedContratoId) {
+        list = list.filter((c) => c.id === focusedContratoId)
+      }
       if (search.trim()) {
         const s = search.toLowerCase()
         list = list.filter((c) =>
@@ -79,7 +88,7 @@ export default function ContratosList() {
   useEffect(() => {
     if (canRead) fetchItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  }, [search, focusedContratoId])
 
   if (!canRead) {
     return (
@@ -91,9 +100,17 @@ export default function ContratosList() {
 
   const statusPill = (status: string) => {
     if (status === 'ativo') return 'bg-green-100 text-green-800'
-    if (status === 'em_analise') return 'bg-blue-100 text-blue-800'
+    if (status === 'validacao' || status === 'em_analise') return 'bg-blue-100 text-blue-800'
+    if (status === 'solicitacao') return 'bg-violet-100 text-violet-800'
     if (status === 'encerrado') return 'bg-red-100 text-red-800'
     return 'bg-yellow-100 text-yellow-800'
+  }
+
+  const formatContractStatus = (status: string) => {
+    if (status === 'em_analise') return 'validação'
+    if (status === 'validacao') return 'validação'
+    if (status === 'solicitacao') return 'solicitação'
+    return status
   }
 
   const caseStatusPill = (status: string) => {
@@ -164,7 +181,7 @@ export default function ContratosList() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.cliente_nome}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusPill(item.status)}`}>
-                          {item.status}
+                          {formatContractStatus(item.status)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.casos?.length || 0}</td>

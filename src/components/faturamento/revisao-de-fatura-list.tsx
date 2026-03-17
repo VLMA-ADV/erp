@@ -523,6 +523,10 @@ export default function RevisaoDeFaturaList() {
   const [expandedTimesheetRows, setExpandedTimesheetRows] = useState<Record<string, boolean>>({})
   const [savingItemId, setSavingItemId] = useState<string | null>(null)
   const [movingItemId, setMovingItemId] = useState<string | null>(null)
+  const [faturarItemId, setFaturarItemId] = useState<string | null>(null)
+  const [faturarDesconto, setFaturarDesconto] = useState('0')
+  const [faturarRateio, setFaturarRateio] = useState('[]')
+  const [faturandoItemId, setFaturandoItemId] = useState<string | null>(null)
   const [selectedContratoConfigId, setSelectedContratoConfigId] = useState<string | null>(null)
   const [savingContratoConfig, setSavingContratoConfig] = useState(false)
 
@@ -790,6 +794,7 @@ export default function RevisaoDeFaturaList() {
   }, [selectedClienteGroup])
 
   const selectedItem = useMemo(() => items.find((item) => item.id === selectedItemId) || null, [items, selectedItemId])
+  const faturarItem = useMemo(() => (faturarItemId ? items.find((item) => item.id === faturarItemId) || null : null), [items, faturarItemId])
   const activeClienteContract = useMemo(
     () => selectedClienteContracts.find((contract) => contract.key === selectedClienteContractTab) || null,
     [selectedClienteContracts, selectedClienteContractTab],
@@ -1280,6 +1285,183 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  const openFaturarModal = (item: RevisaoItem) => {
+    if (item.status !== 'aprovado') {
+      toastError('Somente itens aprovados podem ser faturados.')
+      return
+    }
+    setFaturarItemId(item.id)
+    setFaturarDesconto('0')
+    setFaturarRateio('[]')
+  }
+
+  const submitFaturamento = async () => {
+    if (!faturarItem) return
+    if (faturarItem.status !== 'aprovado') {
+      toastError('Item precisa estar aprovado para faturar.')
+      return
+    }
+
+    let rateioPagadores: unknown[] = []
+    const rawRateio = faturarRateio.trim()
+    if (rawRateio) {
+      try {
+        const parsed = JSON.parse(rawRateio)
+        if (!Array.isArray(parsed)) {
+          toastError('Rateio deve ser um JSON em formato de lista (array).')
+          return
+        }
+        rateioPagadores = parsed
+      } catch {
+        toastError('Rateio inválido. Use JSON válido (ex.: [{"pagador":"Cliente A","percentual":100}]).')
+        return
+      }
+    }
+
+    try {
+      setFaturandoItemId(faturarItem.id)
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      const desconto = Math.max(0, parseDecimalInput(faturarDesconto))
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/faturar-revisao-item`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          billing_item_id: faturarItem.id,
+          desconto_valor: desconto,
+          rateio_pagadores: rateioPagadores,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao faturar item')
+        return
+      }
+
+      success('Item faturado com sucesso.')
+      setFaturarItemId(null)
+      setSelectedItemId(null)
+      setSelectedReviewMode('default')
+      setEditingTimesheetItemId(null)
+      await loadItems()
+      if (payload?.data?.note_numero) {
+        success(`Nota placeholder gerada (#${payload.data.note_numero}).`)
+      }
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao faturar item')
+    } finally {
+      setFaturandoItemId(null)
+    }
+  }
+
+  const getAprovadoresOrdenados = (item: RevisaoItem) => {
+    const contratoConfig = contratoConfigMap.get(item.contratoId)
+    const caso = contratoConfig?.casos.find((entry) => entry.id === item.casoId)
+    return [...(caso?.timesheetConfig.aprovadores || [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((entry, idx) => ({
+        colaborador_id: entry.colaborador_id,
+        ordem: idx + 1,
+        nome: colaboradorMap.get(entry.colaborador_id) || entry.colaborador_id,
+      }))
+  }
+
+  const getAprovadorAtualIndex = (
+    item: RevisaoItem,
+    aprovadores: Array<{ colaborador_id: string; ordem: number; nome: string }>,
+  ) => {
+    if (aprovadores.length === 0) return -1
+
+    const snapshotOrderRaw = Number((item.snapshot || {}).aprovador_ordem_atual ?? 0)
+    if (Number.isFinite(snapshotOrderRaw) && snapshotOrderRaw > 0 && snapshotOrderRaw <= aprovadores.length) {
+      return snapshotOrderRaw - 1
+    }
+
+    const responsavelAtual = getResponsavelAtualNome(item)
+    if (responsavelAtual) {
+      const idxByName = aprovadores.findIndex((entry) => entry.nome === responsavelAtual)
+      if (idxByName >= 0) return idxByName
+    }
+
+    return 0
+  }
+
+  const updateAprovadorDaVez = async (
+    item: RevisaoItem,
+    targetIndex: number,
+    message: string,
+  ) => {
+    const aprovadores = getAprovadoresOrdenados(item)
+    if (targetIndex < 0 || targetIndex >= aprovadores.length) return false
+    const target = aprovadores[targetIndex]
+
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) return false
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-revisao-fatura-item`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        billing_item_id: item.id,
+        snapshot_patch: {
+          aprovador_ordem_atual: target.ordem,
+          responsavel_aprovacao_id: target.colaborador_id,
+          responsavel_aprovacao_nome: target.nome,
+          responsavel_fluxo_nome: target.nome,
+        },
+      }),
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      toastError(payload.error || 'Erro ao atualizar aprovador da vez')
+      return false
+    }
+
+    success(message)
+    await loadItems()
+    return true
+  }
+
+  const advanceToNextApprover = async (item: RevisaoItem) => {
+    if (item.status !== 'em_aprovacao') return false
+    const aprovadores = getAprovadoresOrdenados(item)
+    if (aprovadores.length <= 1) return false
+    const currentIndex = getAprovadorAtualIndex(item, aprovadores)
+    if (currentIndex < 0 || currentIndex >= aprovadores.length - 1) return false
+    return updateAprovadorDaVez(item, currentIndex + 1, 'Item avançado para próximo aprovador.')
+  }
+
+  const returnToPreviousApprover = async (item: RevisaoItem) => {
+    if (item.status !== 'em_aprovacao') return false
+    const aprovadores = getAprovadoresOrdenados(item)
+    if (aprovadores.length <= 1) return false
+    const currentIndex = getAprovadorAtualIndex(item, aprovadores)
+    if (currentIndex <= 0) return false
+    return updateAprovadorDaVez(item, currentIndex - 1, 'Item retornado para aprovador anterior.')
+  }
+
+  const handleReturnAction = async (item: RevisaoItem) => {
+    const handledInApprovalChain = await returnToPreviousApprover(item)
+    if (handledInApprovalChain) return
+    await moveStatus(item, 'retornar')
+  }
+
   const getAdvanceActionLabel = (item: RevisaoItem) => {
     const contratoConfig = contratoConfigMap.get(item.contratoId)
     const caso = contratoConfig?.casos.find((entry) => entry.id === item.casoId)
@@ -1313,6 +1495,8 @@ export default function RevisaoDeFaturaList() {
   const saveAndAdvanceItem = async (item: RevisaoItem) => {
     const saved = await saveItem(item)
     if (!saved) return
+    const handledInApprovalChain = await advanceToNextApprover(item)
+    if (handledInApprovalChain) return
     await moveStatus(item, 'avancar')
   }
 
@@ -1329,23 +1513,40 @@ export default function RevisaoDeFaturaList() {
   const caseTransferMap = useMemo(() => {
     const caseToContrato = new Map<string, string>()
     const optionsMap = new Map<string, CommandSelectOption>()
-    for (const item of items) {
-      if (!item.casoId) continue
-      caseToContrato.set(item.casoId, item.contratoId)
-      if (optionsMap.has(item.casoId)) continue
-      const contratoLabel = item.contratoNumero ? `${item.contratoNumero} - ${item.contratoNome}` : item.contratoNome
-      const casoLabel = item.casoNumero ? `${item.casoNumero} - ${item.casoNome}` : item.casoNome
-      optionsMap.set(item.casoId, {
-        value: item.casoId,
-        label: casoLabel,
-        group: `${item.clienteNome} • ${contratoLabel}`,
+    for (const contrato of contratoConfigMap.values()) {
+      if (!contrato.id) continue
+      const contratoLabel = contrato.numero ? `${contrato.numero} - ${contrato.nome}` : contrato.nome
+      for (const caso of contrato.casos || []) {
+        if (!caso.id) continue
+        caseToContrato.set(caso.id, contrato.id)
+        if (optionsMap.has(caso.id)) continue
+        const casoLabel = caso.numero ? `${caso.numero} - ${caso.nome}` : caso.nome
+        optionsMap.set(caso.id, {
+          value: caso.id,
+          label: casoLabel,
+          group: contratoLabel,
+        })
+      }
+    }
+
+    if (selectedItem?.casoId && selectedItem?.contratoId && !optionsMap.has(selectedItem.casoId)) {
+      caseToContrato.set(selectedItem.casoId, selectedItem.contratoId)
+      const casoLabel = selectedItem.casoNumero ? `${selectedItem.casoNumero} - ${selectedItem.casoNome}` : selectedItem.casoNome
+      const contratoLabel = selectedItem.contratoNumero
+        ? `${selectedItem.contratoNumero} - ${selectedItem.contratoNome}`
+        : selectedItem.contratoNome
+      optionsMap.set(selectedItem.casoId, {
+        value: selectedItem.casoId,
+        label: casoLabel || 'Caso atual',
+        group: contratoLabel || 'Contrato atual',
       })
     }
+
     return {
       caseToContrato,
       options: Array.from(optionsMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
     }
-  }, [items])
+  }, [contratoConfigMap, selectedItem])
   const canManageReviewers = useMemo(
     () =>
       hasPermission('finance.faturamento.manage') ||
@@ -1722,6 +1923,18 @@ export default function RevisaoDeFaturaList() {
                                                           {item.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
                                                         </Button>
                                                       </Tooltip>
+                                                      {item.status === 'aprovado' ? (
+                                                        <Tooltip content="Faturar item">
+                                                          <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={() => openFaturarModal(item)}
+                                                            disabled={busy}
+                                                          >
+                                                            <Save className="h-4 w-4" />
+                                                          </Button>
+                                                        </Tooltip>
+                                                      ) : null}
                                                     </div>
                                                   </td>
                                                 </tr>
@@ -1762,6 +1975,18 @@ export default function RevisaoDeFaturaList() {
                                                         {baseItem.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
                                                       </Button>
                                                     </Tooltip>
+                                                    {baseItem.status === 'aprovado' ? (
+                                                      <Tooltip content="Faturar timesheet">
+                                                        <Button
+                                                          size="icon"
+                                                          variant="ghost"
+                                                          onClick={() => openFaturarModal(baseItem)}
+                                                          disabled={timesheetBusy}
+                                                        >
+                                                          <Save className="h-4 w-4" />
+                                                        </Button>
+                                                      </Tooltip>
+                                                    ) : null}
                                                   </div>
                                                 </td>
                                               </tr>
@@ -2155,7 +2380,7 @@ export default function RevisaoDeFaturaList() {
               <>
                 <Button
                   variant="outline"
-                  onClick={() => void moveStatus(selectedItem, 'retornar')}
+                  onClick={() => void handleReturnAction(selectedItem)}
                   disabled={modalBusy || !canReturn(selectedItem.status)}
                 >
                   <Undo2 className="mr-2 h-4 w-4" />
@@ -2167,6 +2392,12 @@ export default function RevisaoDeFaturaList() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : null}
                     {getAdvanceActionLabel(selectedItem)}
+                  </Button>
+                ) : null}
+                {selectedItem.status === 'aprovado' ? (
+                  <Button onClick={() => openFaturarModal(selectedItem)} disabled={modalBusy}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Faturar
                   </Button>
                 ) : null}
               </>
@@ -2490,7 +2721,7 @@ export default function RevisaoDeFaturaList() {
               <>
                 <Button
                   variant="outline"
-                  onClick={() => void moveStatus(selectedItem, 'retornar')}
+                  onClick={() => void handleReturnAction(selectedItem)}
                   disabled={modalBusy || !canReturn(selectedItem.status)}
                 >
                   <Undo2 className="mr-2 h-4 w-4" />
@@ -2504,8 +2735,69 @@ export default function RevisaoDeFaturaList() {
                     {getAdvanceActionLabel(selectedItem)}
                   </Button>
                 ) : null}
+                {selectedItem.status === 'aprovado' ? (
+                  <Button onClick={() => openFaturarModal(selectedItem)} disabled={modalBusy}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Faturar
+                  </Button>
+                ) : null}
               </>
             ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!faturarItem}
+        onOpenChange={(open) => {
+          if (!open && !faturandoItemId) {
+            setFaturarItemId(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Faturar item</DialogTitle>
+            <DialogDescription>
+              {faturarItem
+                ? `${faturarItem.contratoNumero ? `${faturarItem.contratoNumero} - ` : ''}${faturarItem.contratoNome} • ${formatItemLabel(faturarItem)}`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          {faturarItem ? (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Desconto monetário</label>
+                <MoneyInput value={faturarDesconto} onValueChange={setFaturarDesconto} disabled={!!faturandoItemId} />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Rateio de pagadores (JSON array)</label>
+                <Textarea
+                  value={faturarRateio}
+                  onChange={(event) => setFaturarRateio(event.target.value)}
+                  rows={5}
+                  disabled={!!faturandoItemId}
+                  placeholder='[{"pagador":"Cliente principal","percentual":100}]'
+                />
+              </div>
+
+              <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                Valor aprovado/base: <strong>{formatMoney(getEffectiveItemValue(faturarItem))}</strong> • Valor faturado previsto:{' '}
+                <strong>{formatMoney(Math.max(0, getEffectiveItemValue(faturarItem) - parseDecimalInput(faturarDesconto)))}</strong>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFaturarItemId(null)} disabled={!!faturandoItemId}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void submitFaturamento()} disabled={!faturarItem || !!faturandoItemId}>
+              {faturandoItemId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Confirmar faturamento
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -546,9 +546,10 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Tabs defaultValue="dados-pessoais" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="dados-pessoais">Dados Pessoais</TabsTrigger>
           <TabsTrigger value="dados-profissionais">Dados Profissionais</TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="dados-bancarios">Dados Bancários</TabsTrigger>
           <TabsTrigger value="permissoes">Permissões</TabsTrigger>
         </TabsList>
@@ -907,36 +908,6 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     }
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="skills_select">Skills</Label>
-                  <div className="mt-1">
-                    <CommandSelect
-                      value=""
-                      onValueChange={(value) => addSkill(value)}
-                      options={skillOptions}
-                      placeholder="Selecione ou cadastre uma skill"
-                      searchPlaceholder="Buscar skill..."
-                      emptyText="Nenhuma skill encontrada."
-                      onCreateOption={(label) => addSkill(label)}
-                      createOptionLabel="Cadastrar skill"
-                    />
-                  </div>
-                  {profissional.skills.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {profissional.skills.map((skill) => (
-                        <button
-                          key={skill}
-                          type="button"
-                          className="rounded-full border px-3 py-1 text-sm"
-                          onClick={() => removeSkill(skill)}
-                          title="Remover skill"
-                        >
-                          {skill} x
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
 
               <div className="mt-6">
@@ -966,7 +937,50 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
           </Card>
         </TabsContent>
 
-        {/* Aba 3: Dados Bancários */}
+        {/* Aba 3: Skills */}
+        <TabsContent value="skills">
+          <Card>
+            <CardHeader>
+              <CardTitle>Skills</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label htmlFor="skills_select">Seleção de skills</Label>
+                <div className="mt-1">
+                  <CommandSelect
+                    value=""
+                    onValueChange={(value) => addSkill(value)}
+                    options={skillOptions}
+                    placeholder="Selecione ou cadastre uma skill"
+                    searchPlaceholder="Buscar skill..."
+                    emptyText="Nenhuma skill encontrada."
+                    onCreateOption={(label) => addSkill(label)}
+                    createOptionLabel="Cadastrar skill"
+                  />
+                </div>
+              </div>
+              {profissional.skills.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {profissional.skills.map((skill) => (
+                    <button
+                      key={skill}
+                      type="button"
+                      className="rounded-full border px-3 py-1 text-sm"
+                      onClick={() => removeSkill(skill)}
+                      title="Remover skill"
+                    >
+                      {skill} x
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhuma skill selecionada.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Aba 4: Dados Bancários */}
         <TabsContent value="dados-bancarios">
           <Card>
             <CardHeader>
@@ -1022,7 +1036,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
           </Card>
         </TabsContent>
 
-        {/* Aba 4: Permissões */}
+        {/* Aba 5: Permissões */}
         <TabsContent value="permissoes">
           <Card>
             <CardHeader>

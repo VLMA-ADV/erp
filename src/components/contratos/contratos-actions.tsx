@@ -17,7 +17,7 @@ export default function ContratosActions({
   onRefresh,
 }: {
   contratoId: string
-  status: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
+  status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   canWrite: boolean
   onRefresh: () => void
 }) {
@@ -26,10 +26,10 @@ export default function ContratosActions({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const { success, error: toastError } = useToast()
+  const isPreActiveStatus = status === 'solicitacao' || status === 'validacao' || status === 'em_analise'
+  const next = status === 'encerrado' ? 'ativo' : status === 'ativo' ? 'encerrado' : 'ativo'
 
   const toggleStatus = async () => {
-    const next = status === 'encerrado' ? 'ativo' : status === 'em_analise' ? 'ativo' : 'encerrado'
-
     try {
       setLoading(true)
       const supabase = createClient()
@@ -129,9 +129,9 @@ export default function ContratosActions({
             </Link>
           </Tooltip>
 
-          <Tooltip content={status === 'encerrado' || status === 'em_analise' ? 'Ativar contrato' : 'Encerrar contrato'}>
+          <Tooltip content={status === 'encerrado' || isPreActiveStatus ? 'Ativar contrato' : 'Encerrar contrato'}>
             <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(true)} disabled={loading}>
-              <Power className={`h-4 w-4 ${status === 'encerrado' || status === 'em_analise' ? 'text-green-600' : 'text-red-600'}`} />
+              <Power className={`h-4 w-4 ${status === 'encerrado' || isPreActiveStatus ? 'text-green-600' : 'text-red-600'}`} />
             </Button>
           </Tooltip>
 
@@ -153,8 +153,8 @@ export default function ContratosActions({
           <AlertDialog
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
-            title={status === 'encerrado' || status === 'em_analise' ? 'Ativar contrato?' : 'Encerrar contrato?'}
-            description={`Confirme para alterar o status para ${status === 'encerrado' || status === 'em_analise' ? 'ativo' : 'encerrado'}.`}
+            title={status === 'encerrado' || isPreActiveStatus ? 'Ativar contrato?' : 'Encerrar contrato?'}
+            description={`Confirme para alterar o status para ${status === 'encerrado' || isPreActiveStatus ? 'ativo' : 'encerrado'}.`}
             confirmLabel="Confirmar"
             cancelLabel="Cancelar"
             onConfirm={toggleStatus}

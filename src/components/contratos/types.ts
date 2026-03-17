@@ -6,7 +6,10 @@ export interface ContratoListItem {
   nome_contrato: string
   regime_fiscal: string | null
   forma_entrada?: 'organico' | 'prospeccao' | null
-  status: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
+  grupo_imposto_id?: string | null
+  grupo_imposto_nome?: string | null
+  prospeccao_config?: Record<string, any> | null
+  status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   created_at: string
   casos: CasoListItem[]
 }
@@ -30,6 +33,7 @@ export interface ContratoFormOptions {
   clientes: Array<{ id: string; nome: string }>
   prestadores?: Array<{ id: string; nome: string }>
   parceiros?: Array<{ id: string; nome: string }>
+  grupos_impostos?: Array<{ id: string; nome: string; descricao?: string | null }>
   servicos?: Array<{ id: string; nome: string }>
   produtos: Array<{ id: string; nome: string }>
   centros_custo: Array<{ id: string; nome: string }>
@@ -89,6 +93,8 @@ export interface ContratoPayload {
   nome_contrato: string
   regime_fiscal: string
   forma_entrada?: 'organico' | 'prospeccao' | ''
-  status?: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
+  grupo_imposto_id?: string | null
+  prospeccao_config?: Record<string, any>
+  status?: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   casos: CasoPayload[]
 }

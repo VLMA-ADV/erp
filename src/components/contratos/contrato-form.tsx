@@ -64,12 +64,26 @@ interface ChoiceOption {
   description?: string
 }
 
+interface ProspecaoRateioItem {
+  pagador_id: string
+  percentual?: number | null
+}
+
+interface ProspecaoConfig {
+  pagamento_ativo: boolean
+  modo: 'percentual' | 'valor'
+  valor: string
+  pagadores: ProspecaoRateioItem[]
+}
+
 interface ContratoFormState {
   cliente_id: string
   nome_contrato: string
   regime_fiscal: string
   forma_entrada: 'organico' | 'prospeccao' | ''
-  status: 'rascunho' | 'em_analise' | 'ativo' | 'encerrado'
+  grupo_imposto_id: string
+  prospeccao_config: ProspecaoConfig
+  status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   casos: CasoPayload[]
 }
 
@@ -195,6 +209,13 @@ const emptyState: ContratoFormState = {
   nome_contrato: '',
   regime_fiscal: '',
   forma_entrada: '',
+  grupo_imposto_id: '',
+  prospeccao_config: {
+    pagamento_ativo: false,
+    modo: 'percentual',
+    valor: '',
+    pagadores: [],
+  },
   status: 'rascunho',
   casos: [{ ...emptyCaso }],
 }
@@ -232,6 +253,48 @@ function formatDateBr(value: string) {
   const [y, m, d] = value.split('-')
   if (!y || !m || !d) return value
   return `${d}/${m}/${y}`
+}
+
+function normalizeContratoStatus(status?: string): ContratoFormState['status'] {
+  if (status === 'em_analise') return 'validacao'
+  if (status === 'rascunho' || status === 'solicitacao' || status === 'validacao' || status === 'ativo' || status === 'encerrado') {
+    return status
+  }
+  return 'rascunho'
+}
+
+function formatContratoStatus(status?: string) {
+  const normalized = normalizeContratoStatus(status)
+  if (normalized === 'solicitacao') return 'solicitação'
+  if (normalized === 'validacao') return 'validação'
+  return normalized
+}
+
+function normalizeProspecaoConfig(value: unknown): ProspecaoConfig {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {}
+  const rawPagadores = Array.isArray(raw.pagadores)
+    ? raw.pagadores
+    : Array.isArray(raw.rateio)
+      ? raw.rateio
+      : []
+
+  const pagadores: ProspecaoRateioItem[] = rawPagadores
+    .map((entry: any) => ({
+      pagador_id: String(entry?.pagador_id || entry?.id || entry?.entidade_id || '').trim(),
+      percentual: Number(entry?.percentual ?? entry?.porcentagem ?? 0) || 0,
+    }))
+    .filter((entry) => Boolean(entry.pagador_id))
+
+  const modo = raw.modo === 'valor' ? 'valor' : 'percentual'
+  const valor = String(raw.valor || '')
+  const pagamentoAtivo = Boolean(raw.pagamento_ativo ?? raw.ativo ?? raw.pagamento_indicacao_ativo) || pagadores.length > 0
+
+  return {
+    pagamento_ativo: pagamentoAtivo,
+    modo,
+    valor,
+    pagadores,
+  }
 }
 
 function createRuleId() {
@@ -306,6 +369,7 @@ export default function ContratoForm({
     clientes: [],
     prestadores: [],
     parceiros: [],
+    grupos_impostos: [],
     servicos: [],
     produtos: [],
     centros_custo: [],
@@ -337,10 +401,19 @@ export default function ContratoForm({
   const [anexoDialogCaseIndex, setAnexoDialogCaseIndex] = useState<number | null>(null)
   const [pendingCaseAnexos, setPendingCaseAnexos] = useState<Record<number, PendingAnexo[]>>({})
   const [selectedFinanceRuleByCase, setSelectedFinanceRuleByCase] = useState<Record<string, number>>({})
+  const [origemSolicitacaoDescricao, setOrigemSolicitacaoDescricao] = useState('')
 
   const clienteOptions = useMemo(
     () => (options.clientes || []).map((cliente) => ({ value: cliente.id, label: cliente.nome })),
     [options.clientes],
+  )
+  const grupoImpostoOptions = useMemo(
+    () =>
+      (options.grupos_impostos || []).map((item) => ({
+        value: item.id,
+        label: item.descricao ? `${item.nome} (${item.descricao})` : item.nome,
+      })),
+    [options.grupos_impostos],
   )
   const centroOptions = useMemo(
     () => (options.centros_custo || []).map((item) => ({ value: item.id, label: item.nome })),
@@ -403,6 +476,18 @@ export default function ContratoForm({
     ],
     [options.colaboradores, options.clientes, options.prestadores, options.parceiros],
   )
+  const prospeccaoPagadorOptions = useMemo(
+    () =>
+      indicacaoOptions.map((item) => ({
+        value: item.value,
+        label: item.label,
+      })),
+    [indicacaoOptions],
+  )
+  const grupoImpostoMap = useMemo(
+    () => new Map((options.grupos_impostos || []).map((item) => [item.id, item.nome])),
+    [options.grupos_impostos],
+  )
 
   const currentCaso = form.casos[selectedCaseIndex] || emptyCaso
   const currentCaseKey = String((currentCaso as any)?.id || `idx:${selectedCaseIndex}`)
@@ -463,6 +548,7 @@ export default function ContratoForm({
   const despesas = currentCaso.despesas_config || {}
   const timesheet = currentCaso.timesheet_config || {}
   const indicacao = currentCaso.indicacao_config || {}
+  const prospeccao = form.prospeccao_config || emptyState.prospeccao_config
   const despesasSelecionadas: string[] = despesas.despesas_reembolsaveis || []
   const despesasReembolsaveisEnabled =
     Boolean((despesas as any).reembolsavel_ativo) || (despesasSelecionadas.length > 0 && !despesasSelecionadas.includes('nao'))
@@ -490,6 +576,7 @@ export default function ContratoForm({
         regras.cap_desejado_horas !== undefined &&
         String(regras.cap_desejado_horas).trim() !== ''),
   )
+  const prospeccaoPagamentoEnabled = Boolean(prospeccao.pagamento_ativo)
 
   const composeCurrentFinanceRule = (base?: BillingRuleDraft): BillingRuleDraft => ({
     id: base?.id || createRuleId(),
@@ -572,6 +659,19 @@ export default function ContratoForm({
     if (!form.nome_contrato.trim()) return 'Nome do contrato é obrigatório'
     if (!form.forma_entrada) return 'Forma de entrada é obrigatória'
     if (!form.regime_fiscal) return 'Regime fiscal é obrigatório'
+    if (form.forma_entrada === 'prospeccao') {
+      const prospec = normalizeProspecaoConfig(form.prospeccao_config)
+      if (prospec.pagamento_ativo) {
+        if (!String(prospec.valor || '').trim()) {
+          return prospec.modo === 'valor'
+            ? 'Informe o valor da prospecção'
+            : 'Informe o percentual da prospecção'
+        }
+        if (!prospec.pagadores.length) return 'Informe os pagadores da prospecção'
+        const rateioError = validateRateio(prospec.pagadores, 'Rateio da prospecção')
+        if (rateioError) return rateioError
+      }
+    }
     return null
   }
 
@@ -720,6 +820,7 @@ export default function ContratoForm({
           clientes: [],
           prestadores: [],
           parceiros: [],
+          grupos_impostos: [],
           servicos: [],
           produtos: [],
           centros_custo: [],
@@ -796,7 +897,9 @@ export default function ContratoForm({
             nome_contrato: contrato.nome_contrato || '',
             regime_fiscal: contrato.regime_fiscal || '',
             forma_entrada: (contrato.forma_entrada || '') as 'organico' | 'prospeccao' | '',
-            status: (contrato.status || 'rascunho') as 'rascunho' | 'em_analise' | 'ativo' | 'encerrado',
+            grupo_imposto_id: String(contrato.grupo_imposto_id || ''),
+            prospeccao_config: normalizeProspecaoConfig((contrato as any).prospeccao_config),
+            status: normalizeContratoStatus(contrato.status || 'rascunho'),
             casos: casos.length
               ? casos.map((caso) => ({
                   ...emptyCaso,
@@ -841,9 +944,16 @@ export default function ContratoForm({
           setLoadedCaseIds(persistedCaseIds)
           setLoadedCaseStatusById(persistedCaseStatus)
           setExistingAnexos(contratoData.data?.anexos || [])
+          setOrigemSolicitacaoDescricao(String(contrato?.solicitacao_descricao || ''))
         } else {
           setLoadedCaseIds([])
           setLoadedCaseStatusById({})
+          setOrigemSolicitacaoDescricao('')
+          setForm((prev) => ({
+            ...prev,
+            grupo_imposto_id: '',
+            prospeccao_config: { ...emptyState.prospeccao_config },
+          }))
         }
       } catch (fetchError) {
         console.error(fetchError)
@@ -1074,6 +1184,16 @@ export default function ContratoForm({
     })
   }
 
+  const updateProspeccao = (field: keyof ProspecaoConfig, value: any) => {
+    setForm((prev) => ({
+      ...prev,
+      prospeccao_config: {
+        ...normalizeProspecaoConfig(prev.prospeccao_config),
+        [field]: value,
+      },
+    }))
+  }
+
   const setIndicacaoPeriodicidade = (periodicidade: string) => {
     updateCurrentIndicacao('periodicidade', periodicidade)
     if (periodicidade === 'mensal') {
@@ -1142,6 +1262,16 @@ export default function ContratoForm({
         percentual: item.percentual,
       })),
     })
+  }
+
+  const setProspeccaoRateio = (items: Array<{ id: string; percentual: number }>) => {
+    updateProspeccao(
+      'pagadores',
+      items.map((item) => ({
+        pagador_id: item.id,
+        percentual: item.percentual,
+      })),
+    )
   }
 
   const buildDefaultTabelaPrecoItens = (): TabelaPrecoItem[] =>
@@ -1304,6 +1434,8 @@ export default function ContratoForm({
     }
     return value
   }
+
+  const formatProspeccaoPagador = (value: string | undefined) => formatIndicacaoPagador(value)
 
   const periodicidadeIndicacaoOptions = useMemo(() => {
     const regra = normalizeRegraCobranca(currentFinanceRule?.regra_cobranca || currentCaso.regra_cobranca)
@@ -1573,6 +1705,11 @@ export default function ContratoForm({
           nome_contrato: form.nome_contrato,
           regime_fiscal: form.regime_fiscal,
           forma_entrada: form.forma_entrada || null,
+          grupo_imposto_id: form.grupo_imposto_id || null,
+          prospeccao_config:
+            form.forma_entrada === 'prospeccao'
+              ? normalizeProspecaoConfig(form.prospeccao_config)
+              : {},
           status: 'rascunho',
           casos: [],
         }),
@@ -1838,6 +1975,11 @@ export default function ContratoForm({
               nome_contrato: form.nome_contrato,
               regime_fiscal: form.regime_fiscal,
               forma_entrada: form.forma_entrada || null,
+              grupo_imposto_id: form.grupo_imposto_id || null,
+              prospeccao_config:
+                form.forma_entrada === 'prospeccao'
+                  ? normalizeProspecaoConfig(form.prospeccao_config)
+                  : {},
             }),
           })
           const updateData = await updateResp.json()
@@ -1894,6 +2036,11 @@ export default function ContratoForm({
           nome_contrato: form.nome_contrato,
           regime_fiscal: form.regime_fiscal,
           forma_entrada: form.forma_entrada || null,
+          grupo_imposto_id: form.grupo_imposto_id || null,
+          prospeccao_config:
+            form.forma_entrada === 'prospeccao'
+              ? normalizeProspecaoConfig(form.prospeccao_config)
+              : {},
         }),
       })
 
@@ -2009,14 +2156,14 @@ export default function ContratoForm({
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ id: contractTargetId, status: 'em_analise' }),
+          body: JSON.stringify({ id: contractTargetId, status: 'validacao' }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {
-          setError(statusData.error || 'Erro ao mover contrato para análise')
+          setError(statusData.error || 'Erro ao mover contrato para validação')
           return
         }
-        setForm((prev) => ({ ...prev, status: 'em_analise' }))
+        setForm((prev) => ({ ...prev, status: 'validacao' }))
       }
 
       const successMessage =
@@ -2155,7 +2302,7 @@ export default function ContratoForm({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Dados do contrato</CardTitle>
-                <Badge>{form.status}</Badge>
+                <Badge>{formatContratoStatus(form.status)}</Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2172,13 +2319,54 @@ export default function ContratoForm({
                   <p className="text-xs text-muted-foreground">Regime fiscal</p>
                   <p className="font-medium">{form.regime_fiscal || '-'}</p>
                 </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Grupo de impostos</p>
+                  <p className="font-medium">{grupoImpostoMap.get(form.grupo_imposto_id) || '-'}</p>
+                </div>
                 <div className="md:col-span-2">
                   <p className="text-xs text-muted-foreground">Nome do contrato</p>
                   <p className="font-medium">{form.nome_contrato || '-'}</p>
                 </div>
+                {form.forma_entrada === 'prospeccao' ? (
+                  <div className="md:col-span-2 rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Configuração de prospecção</p>
+                    <p className="mt-1 text-sm">
+                      Pagamento:{' '}
+                      <span className="font-medium">{prospeccaoPagamentoEnabled ? 'Sim' : 'Não'}</span>
+                    </p>
+                    {prospeccaoPagamentoEnabled ? (
+                      <>
+                        <p className="text-sm">
+                          Modo:{' '}
+                          <span className="font-medium">
+                            {prospeccao.modo === 'valor' ? 'Valor fixo' : 'Percentual'}
+                          </span>
+                        </p>
+                        <p className="text-sm">
+                          Valor:{' '}
+                          <span className="font-medium">{prospeccao.valor || '-'}</span>
+                        </p>
+                        <p className="text-sm">
+                          Rateio:{' '}
+                          <span className="font-medium">
+                            {(prospeccao.pagadores || [])
+                              .map((item) => `${formatProspeccaoPagador(item.pagador_id)} (${item.percentual ?? 0}%)`)
+                              .join(' | ') || '-'}
+                          </span>
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-2 rounded-md border p-3">
+                {origemSolicitacaoDescricao ? (
+                  <div className="mb-3 rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Descrição da solicitação</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{origemSolicitacaoDescricao}</p>
+                  </div>
+                ) : null}
                 <p className="font-medium">Anexos do contrato</p>
                 {existingAnexos.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sem anexos cadastrados.</p>
@@ -2421,7 +2609,7 @@ export default function ContratoForm({
           <CardHeader>
             <div className={`flex items-center ${isEdit ? 'justify-between' : 'justify-start'}`}>
               <CardTitle>Dados do contrato</CardTitle>
-              {isEdit ? <Badge>{form.status}</Badge> : null}
+              {isEdit ? <Badge>{formatContratoStatus(form.status)}</Badge> : null}
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
@@ -2451,7 +2639,16 @@ export default function ContratoForm({
               <Label>Forma de entrada</Label>
               <ChoiceCards
                 value={form.forma_entrada}
-                onChange={(value) => setForm((prev) => ({ ...prev, forma_entrada: value as 'organico' | 'prospeccao' }))}
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    forma_entrada: value as 'organico' | 'prospeccao',
+                    prospeccao_config:
+                      value === 'prospeccao'
+                        ? normalizeProspecaoConfig(prev.prospeccao_config)
+                        : { ...normalizeProspecaoConfig(prev.prospeccao_config), pagamento_ativo: false, pagadores: [] },
+                  }))
+                }
                 disabled={isReadOnly}
                 options={[
                   { value: 'organico', label: 'Orgânico' },
@@ -2476,14 +2673,107 @@ export default function ContratoForm({
               />
             </div>
 
+            <div className="space-y-2 md:col-span-2">
+              <Label>Grupo de impostos</Label>
+              <CommandSelect
+                value={form.grupo_imposto_id}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, grupo_imposto_id: value }))}
+                options={grupoImpostoOptions}
+                placeholder="Selecione o grupo de impostos"
+                searchPlaceholder="Buscar grupo..."
+                emptyText="Nenhum grupo de impostos encontrado."
+                disabled={isReadOnly}
+              />
+            </div>
+
+            {form.forma_entrada === 'prospeccao' ? (
+              <div className="space-y-3 rounded-md border bg-muted/20 p-4 md:col-span-2">
+                <p className="text-sm font-semibold">Configuração de prospecção</p>
+
+                <div className="space-y-2">
+                  <Label>Pagamento de prospecção</Label>
+                  <ChoiceCards
+                    value={prospeccaoPagamentoEnabled ? 'sim' : 'nao'}
+                    onChange={(value) => {
+                      if (value === 'nao') {
+                        updateProspeccao('pagamento_ativo', false)
+                        updateProspeccao('valor', '')
+                        updateProspeccao('pagadores', [])
+                        return
+                      }
+                      updateProspeccao('pagamento_ativo', true)
+                    }}
+                    options={[
+                      { value: 'nao', label: 'Não' },
+                      { value: 'sim', label: 'Sim' },
+                    ]}
+                    disabled={isReadOnly}
+                    columns={2}
+                  />
+                </div>
+
+                {prospeccaoPagamentoEnabled ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Modo</Label>
+                        <NativeSelect
+                          value={prospeccao.modo || 'percentual'}
+                          onChange={(e) => updateProspeccao('modo', e.target.value === 'valor' ? 'valor' : 'percentual')}
+                          disabled={isReadOnly}
+                        >
+                          <option value="percentual">Percentual</option>
+                          <option value="valor">Valor fixo</option>
+                        </NativeSelect>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{prospeccao.modo === 'valor' ? 'Valor' : 'Percentual'}</Label>
+                        {prospeccao.modo === 'valor' ? (
+                          <MoneyInput
+                            value={prospeccao.valor || ''}
+                            onValueChange={(value) => updateProspeccao('valor', value)}
+                            disabled={isReadOnly}
+                          />
+                        ) : (
+                          <Input
+                            value={prospeccao.valor || ''}
+                            onChange={(e) => updateProspeccao('valor', e.target.value)}
+                            placeholder="Ex: 10"
+                            disabled={isReadOnly}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <RateioSlider
+                      title="Rateio da prospecção"
+                      options={prospeccaoPagadorOptions}
+                      items={(prospeccao.pagadores || []).map((item) => ({
+                        id: item.pagador_id,
+                        percentual: item.percentual ?? 0,
+                      }))}
+                      onChange={setProspeccaoRateio}
+                      disabled={isReadOnly}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
             {isEdit ? (
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Input value={form.status} disabled />
+                <Input value={formatContratoStatus(form.status)} disabled />
               </div>
             ) : null}
 
             <div className="space-y-2 md:col-span-2">
+              {origemSolicitacaoDescricao ? (
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Descrição da solicitação</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{origemSolicitacaoDescricao}</p>
+                </div>
+              ) : null}
               <Label>Anexos</Label>
 
               {existingAnexos.length > 0 && (

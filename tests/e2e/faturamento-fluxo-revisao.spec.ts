@@ -274,5 +274,218 @@ test.describe('Faturamento - Itens, Revisão e Permissões', () => {
     await expect(page.getByText(/Item em status Aprovado/i)).toBeVisible()
     await expect(page.getByRole('button', { name: /Avançar/i })).toHaveCount(0)
   })
-})
 
+  test('revisão: em aprovação com múltiplos aprovadores avança para o próximo aprovador sem mudar status', async ({ page }) => {
+    await page.route('**/functions/v1/get-user-permissions**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          permissions: ['finance.faturamento.manage', 'finance.faturamento.approve'],
+        }),
+      })
+    })
+
+    await page.route('**/functions/v1/list-colaboradores**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { id: 'col-1', nome: 'Filipe', categoria: 'Sócio' },
+            { id: 'col-2', nome: 'Bruna Menegale Bogucheski', categoria: 'Sócio' },
+            { id: 'col-3', nome: 'Fernanda Silva', categoria: 'Sócio' },
+          ],
+        }),
+      })
+    })
+
+    await page.route('**/functions/v1/get-contratos**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: 'ctr-1',
+              numero: 10,
+              nome_contrato: 'Contrato A',
+              casos: [
+                {
+                  id: 'caso-1',
+                  numero: 1,
+                  nome: 'Caso A',
+                  timesheet_config: {
+                    revisores: [{ colaborador_id: 'col-1', ordem: 1 }],
+                    aprovadores: [
+                      { colaborador_id: 'col-2', ordem: 1 },
+                      { colaborador_id: 'col-3', ordem: 2 },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      })
+    })
+
+    await page.route('**/functions/v1/get-revisao-fatura**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              billing_item_id: 'bi-chain-1',
+              contrato_id: 'ctr-1',
+              caso_id: 'caso-1',
+              status: 'em_aprovacao',
+              origem_tipo: 'regra_financeira',
+              data_referencia: '2026-03-01',
+              cliente_nome: 'Cliente A',
+              contrato_nome: 'Contrato A',
+              contrato_numero: 10,
+              caso_nome: 'Caso A',
+              caso_numero: 1,
+              regra_nome: 'Mensalidade',
+              valor_informado: 500,
+              valor_revisado: 500,
+              valor_aprovado: 500,
+              responsavel_aprovacao_nome: 'Bruna Menegale Bogucheski',
+              snapshot: {
+                aprovador_ordem_atual: 1,
+                responsavel_aprovacao_nome: 'Bruna Menegale Bogucheski',
+              },
+            },
+          ],
+        }),
+      })
+    })
+
+    const updatePayloads: Array<Record<string, unknown>> = []
+    await page.route('**/functions/v1/update-revisao-fatura-item', async (route) => {
+      const payload = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+      updatePayloads.push(payload)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { ok: true } }),
+      })
+    })
+
+    let setStatusCalled = false
+    await page.route('**/functions/v1/set-revisao-fatura-status', async (route) => {
+      setStatusCalled = true
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { ok: true } }),
+      })
+    })
+
+    await page.goto('/financeiro/revisao-de-fatura')
+    await page.getByRole('button', { name: 'Cliente A' }).click()
+    await page.getByRole('button', { name: '10 - Contrato A' }).click()
+    await page.getByRole('button', { name: '1 - Caso A' }).click()
+
+    await page.locator('button:has(svg.lucide-check)').first().click()
+    await page.getByRole('button', { name: /Avançar para próximo aprovador/i }).click()
+
+    const movedInChain = updatePayloads.some((payload) => {
+      const snapshotPatch = (payload.snapshot_patch || {}) as Record<string, unknown>
+      return Number(snapshotPatch.aprovador_ordem_atual || 0) === 2
+    })
+
+    expect(movedInChain).toBeTruthy()
+    expect(setStatusCalled).toBeFalsy()
+  })
+
+  test('revisão: item aprovado permite faturar com payload de desconto/rateio', async ({ page }) => {
+    await page.route('**/functions/v1/get-user-permissions**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          permissions: ['finance.faturamento.manage', 'finance.faturamento.approve'],
+        }),
+      })
+    })
+
+    await page.route('**/functions/v1/list-colaboradores**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 'col-1', nome: 'Filipe', categoria: 'Sócio' }] }),
+      })
+    })
+
+    await page.route('**/functions/v1/get-contratos**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      })
+    })
+
+    await page.route('**/functions/v1/get-revisao-fatura**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              billing_item_id: 'bi-fat-1',
+              contrato_id: 'ctr-2',
+              caso_id: 'caso-2',
+              status: 'aprovado',
+              origem_tipo: 'regra_financeira',
+              data_referencia: '2026-03-01',
+              cliente_nome: 'Cliente C',
+              contrato_nome: 'Contrato C',
+              contrato_numero: 12,
+              caso_nome: 'Caso C',
+              caso_numero: 3,
+              regra_nome: 'Projeto',
+              valor_informado: 1000,
+              valor_aprovado: 1000,
+              snapshot: {},
+            },
+          ],
+        }),
+      })
+    })
+
+    let capturedFaturarPayload: Record<string, unknown> | null = null
+    await page.route('**/functions/v1/faturar-revisao-item', async (route) => {
+      capturedFaturarPayload = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            billing_item_id: 'bi-fat-1',
+            status: 'faturado',
+            note_numero: 123,
+          },
+        }),
+      })
+    })
+
+    await page.goto('/financeiro/revisao-de-fatura')
+    await page.getByRole('button', { name: 'Cliente C' }).click()
+    await page.getByRole('button', { name: '12 - Contrato C' }).click()
+    await page.getByRole('button', { name: '3 - Caso C' }).click()
+
+    await page.locator('button:has(svg.lucide-square-pen)').first().click()
+    await page.getByRole('button', { name: /^Faturar$/ }).click()
+    await expect(page.getByRole('dialog').getByText('Faturar item')).toBeVisible()
+
+    await page.getByRole('button', { name: /Confirmar faturamento/i }).click()
+
+    expect(capturedFaturarPayload).not.toBeNull()
+    expect(capturedFaturarPayload?.billing_item_id).toBe('bi-fat-1')
+    expect(Number(capturedFaturarPayload?.desconto_valor || 0)).toBe(0)
+    expect(Array.isArray(capturedFaturarPayload?.rateio_pagadores)).toBeTruthy()
+  })
+})

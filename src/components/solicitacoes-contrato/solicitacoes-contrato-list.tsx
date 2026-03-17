@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 
 interface SolicitacaoAnexo {
@@ -96,8 +97,10 @@ export default function SolicitacoesContratoList() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [nomeSolicitacao, setNomeSolicitacao] = useState('')
+  const [descricaoSolicitacao, setDescricaoSolicitacao] = useState('')
   const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
+  const [creatingCliente, setCreatingCliente] = useState(false)
 
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
@@ -198,6 +201,52 @@ export default function SolicitacoesContratoList() {
     setPendingAnexos([{ nome: 'Proposta', file }])
   }
 
+  const createClienteOnDemand = async (nomeCliente: string) => {
+    const nome = nomeCliente.trim()
+    if (!nome) return
+
+    try {
+      setCreatingCliente(true)
+      const session = await getSession()
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-cliente`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nome,
+          cliente_estrangeiro: true,
+          tipo: 'pessoa_juridica',
+        }),
+      })
+
+      const payload = await response.json()
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao criar cliente')
+        return
+      }
+
+      const clienteId = payload?.data?.cliente?.id as string | undefined
+      if (!clienteId) {
+        toastError('Cliente criado, mas não foi possível selecionar automaticamente')
+        await fetchClientes()
+        return
+      }
+
+      await fetchClientes()
+      setSelectedClienteId(clienteId)
+      success('Cliente criado e selecionado')
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao criar cliente')
+    } finally {
+      setCreatingCliente(false)
+    }
+  }
+
   const createSolicitacao = async () => {
     if (!nomeSolicitacao.trim()) {
       toastError('Nome é obrigatório')
@@ -206,6 +255,11 @@ export default function SolicitacoesContratoList() {
 
     if (pendingAnexos.length === 0) {
       toastError('Anexo de proposta é obrigatório')
+      return
+    }
+
+    if (!descricaoSolicitacao.trim()) {
+      toastError('Descrição é obrigatória')
       return
     }
 
@@ -237,7 +291,7 @@ export default function SolicitacoesContratoList() {
         },
         body: JSON.stringify({
           nome: nomeSolicitacao.trim(),
-          descricao: nomeSolicitacao.trim(),
+          descricao: descricaoSolicitacao.trim(),
           cliente_id: selectedClienteId,
           anexos: anexosPayload,
         }),
@@ -252,6 +306,7 @@ export default function SolicitacoesContratoList() {
       success('Solicitação criada com sucesso')
       setCreateOpen(false)
       setNomeSolicitacao('')
+      setDescricaoSolicitacao('')
       setSelectedClienteId('')
       setPendingAnexos([])
       await fetchItems()
@@ -331,8 +386,9 @@ export default function SolicitacoesContratoList() {
 
         {canWrite ? (
           <Button
-            onClick={() => {
+          onClick={() => {
               setNomeSolicitacao('')
+              setDescricaoSolicitacao('')
               setSelectedClienteId('')
               setPendingAnexos([])
               setCreateOpen(true)
@@ -383,6 +439,9 @@ export default function SolicitacoesContratoList() {
                   <tr key={item.id}>
                     <td className="px-4 py-3 align-top text-sm">
                       <p className="font-medium text-gray-900">{item.nome || item.descricao}</p>
+                      {item.descricao && item.descricao !== item.nome ? (
+                        <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.descricao}</p>
+                      ) : null}
                       <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">{item.cliente_nome || '-'}</td>
@@ -421,7 +480,7 @@ export default function SolicitacoesContratoList() {
                       <div className="flex justify-end gap-2">
                         {item.status === 'concluida' && item.contrato_id ? (
                           <Link
-                            href={`/contratos?search=${encodeURIComponent(
+                            href={`/contratos?contrato_id=${encodeURIComponent(item.contrato_id)}&search=${encodeURIComponent(
                               item.contrato_nome || String(item.contrato_numero || ''),
                             )}`}
                           >
@@ -455,6 +514,9 @@ export default function SolicitacoesContratoList() {
                 placeholder="Selecione o cliente"
                 searchPlaceholder="Buscar cliente..."
                 emptyText="Nenhum cliente encontrado"
+                onCreateOption={(value) => void createClienteOnDemand(value)}
+                createOptionLabel={creatingCliente ? 'Cadastrando' : 'Cadastrar cliente'}
+                disabled={creatingCliente}
               />
             </div>
 
@@ -468,7 +530,17 @@ export default function SolicitacoesContratoList() {
             </div>
 
             <div className="space-y-2">
-              <Label>Proposta</Label>
+              <Label>Descrição</Label>
+              <Textarea
+                value={descricaoSolicitacao}
+                onChange={(event) => setDescricaoSolicitacao(event.target.value)}
+                placeholder="Descreva a solicitação para o financeiro concluir o cadastro"
+                rows={4}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Anexo de proposta</Label>
               <Input type="file" onChange={(event) => onAddFiles(event.target.files)} />
               {pendingAnexos.length ? (
                 <div className="space-y-2 rounded-md border p-3">

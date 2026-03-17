@@ -145,7 +145,7 @@ export function CommandSelect({
                     }}
                   >
                     <span className="font-medium">{createOptionLabel}</span>
-                    <span className="ml-1 truncate">"{query.trim()}"</span>
+                    <span className="ml-1 truncate">&quot;{query.trim()}&quot;</span>
                   </CommandItem>
                 </CommandGroup>
               ) : null}
