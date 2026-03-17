@@ -1,5 +1,22 @@
 # TODO
 
+## Sprint Atual - Cliente/Contrato/Faturamento com Despesas (2026-03-17)
+
+### Escopo solicitado
+- [x] Cliente: adicionar campo `Potencial do cliente` (`baixo`, `medio`, `alto`) no cadastro/edição.
+- [x] Contrato: remover `Regime fiscal` da UI e payload.
+- [x] Contrato: remover `Configuração de prospecção` da UI e payload.
+- [x] Contrato: adicionar `Responsável da prospecção` (dropdown de colaboradores).
+- [x] Contrato: adicionar `Canal de prospecção` (texto aberto).
+- [x] Faturamento (`Itens a faturar`, `Fluxo`, `Revisão`): incluir `Despesas` no mesmo fluxo de revisão/aprovação.
+
+### Execução
+- [x] Atualizar frontend de clientes e contratos (tipos, formulário, payload).
+- [x] Atualizar edge functions de cliente para persistir/retornar `potencial_cliente`.
+- [x] Criar migration incremental com ajustes de schema e RPCs (contrato + faturamento + despesas).
+- [x] Validar com `npm run -s type-check`.
+- [ ] Aplicar migration no Supabase via MCP.
+
 ## Sprint Atual - Reorganização Pessoas/Contratos/Faturamento/Despesas (2026-03-16)
 
 ### Escopo solicitado
@@ -10,6 +27,11 @@
 - [x] Itens a faturar: garantir hierarquia `Cliente -> Contratos -> Casos`.
 - [x] Criar lista `Grupo de impostos` (estrutura pronta para opções do Filipe).
 - [x] Revisão de faturas: simplificar para visão single-screen agrupada por cliente/contrato/caso.
+- [x] Popups de revisão/aprovação: exibir linhas de etapa `Lançamento original`, `Revisão` e `Aprovação` para cada item.
+- [x] Popups de revisão: unificar em tabela única por item/etapa (`Inicial`, `Revisor n`, `Aprovador n`) com confirmação para avanço em massa no modal de cliente.
+- [x] Popups de revisão: restringir visibilidade para `etapa do usuário + anteriores`, travar edição de etapas fora da vez e permitir troca de responsável apenas para admin em etapas pendentes.
+- [x] Popup de revisão/aprovação: separar edição de `aprovado` de `revisado` para impedir sobrescrita de valor/hora revisados ao aprovar.
+- [x] Revisão de fatura: carregar responsáveis do contrato/caso usando fallback em `get-contrato` quando `get-contratos` não trouxer `timesheet_config`, mantendo dropdown pré-selecionado.
 - [x] Contrato: em `Forma de entrada = prospecção`, exibir estrutura de prospecção similar à indicação (pagamentos/percentual/rateio).
 - [x] Despesas: ajustar fluxo para `cliente, caso, categoria, descrição, arquivo`.
 - [ ] Limpeza de dados de teste: apagar registros de contratos, timesheet e faturamento para homologação.
@@ -301,3 +323,9 @@ Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar ->
 - [x] E2E: criar cenário com múltiplas regras no mesmo caso
 - [x] E2E: validar visibilidade por perfil (itens ausentes e ações indevidas)
 - [x] Revisão: executar `npm run -s type-check`
+
+## Sprint Atual - Ajustes Contrato/Caso (2026-03-17)
+- [x] Desabilitar `cap desejado` quando a regra de cobrança for `hora`.
+- [x] Espelhar no `cross selling` a mesma estrutura de indicação (periodicidade, método, valor, datas, parcelas e previsão).
+- [x] Aplicar os ajustes em ambas as telas: contrato (`contrato-form`) e caso (`caso-form`).
+- [x] Revisão: executar `npm run -s type-check`.

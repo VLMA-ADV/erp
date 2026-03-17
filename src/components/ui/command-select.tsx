@@ -22,6 +22,7 @@ interface CommandSelectProps {
   disabled?: boolean
   onCreateOption?: (label: string) => void
   createOptionLabel?: string
+  maxVisibleOptions?: number
 }
 
 export function CommandSelect({
@@ -34,10 +35,12 @@ export function CommandSelect({
   disabled,
   onCreateOption,
   createOptionLabel = 'Cadastrar',
+  maxVisibleOptions,
 }: CommandSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [panelWidth, setPanelWidth] = useState<number>(360)
+  const [openUpward, setOpenUpward] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -52,8 +55,13 @@ export function CommandSelect({
 
   useEffect(() => {
     if (!open) return
-    const triggerWidth = containerRef.current?.getBoundingClientRect().width ?? 0
+    const triggerRect = containerRef.current?.getBoundingClientRect()
+    const triggerWidth = triggerRect?.width ?? 0
+    const panelEstimatedHeight = 320
+    const spaceBelow = window.innerHeight - (triggerRect?.bottom ?? 0)
+    const spaceAbove = triggerRect?.top ?? 0
     setPanelWidth(Math.max(Math.round(triggerWidth), 360))
+    setOpenUpward(spaceBelow < panelEstimatedHeight && spaceAbove > spaceBelow)
   }, [open])
 
   const selected = useMemo(() => options.find((o) => o.value === value), [options, value])
@@ -86,6 +94,8 @@ export function CommandSelect({
     return !options.some((option) => option.label.trim().toLowerCase() === normalized)
   }, [onCreateOption, options, query])
 
+  const maxListHeight = maxVisibleOptions ? Math.max(120, maxVisibleOptions * 44) : undefined
+
   return (
     <div ref={containerRef} className="relative w-full min-w-0">
       <Button
@@ -103,7 +113,10 @@ export function CommandSelect({
 
       {open && (
         <div
-          className="absolute left-0 z-[80] mt-1 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+          className={cn(
+            'absolute left-0 z-[200] max-w-[calc(100vw-2rem)] overflow-visible rounded-md border bg-popover text-popover-foreground shadow-md',
+            openUpward ? 'bottom-full mb-1' : 'top-full mt-1',
+          )}
           style={{ width: panelWidth }}
         >
           <Command>
@@ -112,7 +125,7 @@ export function CommandSelect({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <CommandList className="max-h-72 overflow-y-auto overflow-x-hidden">
+            <CommandList className="overflow-y-auto overflow-x-hidden" style={maxListHeight ? { maxHeight: maxListHeight } : undefined}>
               {groupedOptions.length === 0 ? <CommandEmpty>{emptyText}</CommandEmpty> : null}
               {groupedOptions.map(([groupName, groupOptions]) => (
                 <CommandGroup key={groupName || '__default__'}>

@@ -133,6 +133,7 @@ function getRuleKind(item: RevisaoItem) {
 
 function getRuleTitle(item: RevisaoItem) {
   if (item.origem_tipo === 'timesheet') return 'Timesheet'
+  if (item.origem_tipo === 'despesa') return 'Despesa'
   const kind = getRuleKind(item)
   if (kind === 'mensalidade_processo') return 'Mensalidade de processo'
   if (kind === 'mensal') return 'Mensalidade'
@@ -145,6 +146,7 @@ function getRuleTitle(item: RevisaoItem) {
 
 function getRuleType(item: RevisaoItem) {
   if (item.origem_tipo === 'timesheet') return 'hora'
+  if (item.origem_tipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
@@ -407,6 +409,7 @@ export default function FluxoDeFaturamentoList() {
             <TabsTrigger value="projeto">Projeto</TabsTrigger>
             <TabsTrigger value="projeto_parcelado">Projeto parcelado</TabsTrigger>
             <TabsTrigger value="exito">Êxito</TabsTrigger>
+            <TabsTrigger value="despesa">Despesas</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="overflow-hidden rounded-md border bg-white">

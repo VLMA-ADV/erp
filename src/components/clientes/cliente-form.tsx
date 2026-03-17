@@ -29,7 +29,7 @@ type ClientePayload = {
   complemento: string
   cidade: string
   estado: string
-  regime_fiscal: string
+  potencial_cliente: 'baixo' | 'medio' | 'alto' | ''
   grupo_economico_id: string
   observacoes: string
   segmento_ids: string[]
@@ -54,7 +54,7 @@ const emptyPayload: ClientePayload = {
   complemento: '',
   cidade: '',
   estado: '',
-  regime_fiscal: '',
+  potencial_cliente: '',
   grupo_economico_id: '',
   observacoes: '',
   segmento_ids: [],
@@ -191,7 +191,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           complemento: cliente.complemento || '',
           cidade: cliente.cidade || '',
           estado: cliente.estado || '',
-          regime_fiscal: cliente.regime_fiscal || '',
+          potencial_cliente: (cliente.potencial_cliente || '') as ClientePayload['potencial_cliente'],
           grupo_economico_id: cliente.grupo_economico_id || '',
           observacoes: cliente.observacoes || '',
           segmento_ids: segmentoIds,
@@ -283,7 +283,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         complemento: form.complemento || null,
         cidade: form.cidade || null,
         estado: form.estado || null,
-        regime_fiscal: form.regime_fiscal || null,
+        potencial_cliente: form.potencial_cliente || null,
         grupo_economico_id: form.grupo_economico_id || null,
         observacoes: form.observacoes || null,
         segmento_ids: form.segmento_ids,
@@ -430,19 +430,28 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Regime fiscal</Label>
+                  <Label>Potencial do cliente</Label>
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                    {['Simples Nacional', 'Lucro Real', 'Lucro Presumido'].map((regime) => {
-                      const active = form.regime_fiscal === regime
+                    {[
+                      { value: 'baixo', label: 'Baixo' },
+                      { value: 'medio', label: 'Médio' },
+                      { value: 'alto', label: 'Alto' },
+                    ].map((item) => {
+                      const active = form.potencial_cliente === item.value
                       return (
                         <Button
-                          key={regime}
+                          key={item.value}
                           type="button"
                           variant={active ? 'default' : 'outline'}
                           className="justify-start"
-                          onClick={() => setForm({ ...form, regime_fiscal: regime })}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              potencial_cliente: item.value as ClientePayload['potencial_cliente'],
+                            })
+                          }
                         >
-                          {regime}
+                          {item.label}
                         </Button>
                       )
                     })}

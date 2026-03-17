@@ -66,6 +66,14 @@ const emptyCaso: CasoPayload = {
     regra_cobranca_texto: '',
     cross_sell_ativo: false,
     cross_sell_origem_colaborador_id: '',
+    cross_sell_periodicidade: 'mensal',
+    cross_sell_modo: 'percentual',
+    cross_sell_valor: '',
+    cross_sell_data_pagamento_unico: '',
+    cross_sell_usar_dia_vencimento: true,
+    cross_sell_dia_pagamento_mensal: '',
+    cross_sell_data_fim_pagamentos: '',
+    cross_sell_parcelas_pagamento: [],
   },
   centro_custo_rateio: [],
   pagadores_servico: [],
@@ -266,6 +274,9 @@ export default function CasoForm({
   const timesheet = form.timesheet_config || {}
   const indicacao = form.indicacao_config || {}
   const modoPreco = regras.modo_preco || (regras.tabela_preco_id || regras.tabela_preco_nome ? 'tabela' : 'valor_hora')
+  const crossSellEnabled = Boolean(regras.cross_sell_ativo)
+  const crossSellPeriodicidade = String(regras.cross_sell_periodicidade || 'mensal')
+  const crossSellModo = regras.cross_sell_modo === 'valor' ? 'valor' : 'percentual'
   const capMinEnabled = Boolean(
     regras.cap_min_enabled ??
       regras.cap_limites_enabled ??
@@ -691,6 +702,20 @@ export default function CasoForm({
   }, [form.periodo_reajuste, form.inicio_vigencia, form.data_ultimo_reajuste, manualReajusteDate])
 
   useEffect(() => {
+    if (form.regra_cobranca !== 'hora') return
+    const hasCapDesejado = Boolean(regras.cap_desejado_enabled) || String(regras.cap_desejado_horas || '').trim() !== ''
+    if (!hasCapDesejado) return
+    setForm((prev) => ({
+      ...prev,
+      regra_cobranca_config: {
+        ...(prev.regra_cobranca_config || {}),
+        cap_desejado_enabled: false,
+        cap_desejado_horas: '',
+      },
+    }))
+  }, [form.regra_cobranca, regras.cap_desejado_enabled, regras.cap_desejado_horas])
+
+  useEffect(() => {
     setForm((prev) => {
       const regras = { ...(prev.regra_cobranca_config || {}) }
       let changed = false
@@ -800,6 +825,10 @@ export default function CasoForm({
     }))
   }
 
+  const setCrossSell = (field: string, value: any) => {
+    setRegra(`cross_sell_${field}`, value)
+  }
+
   const setIndicacaoPeriodicidade = (periodicidade: string) => {
     setIndicacao('periodicidade', periodicidade)
     if (periodicidade === 'mensal') {
@@ -843,6 +872,50 @@ export default function CasoForm({
     setIndicacao('parcelas_pagamento', parcelas)
   }
 
+  const setCrossSellPeriodicidade = (periodicidade: string) => {
+    setCrossSell('periodicidade', periodicidade)
+    if (periodicidade === 'mensal') {
+      setCrossSell('usar_dia_vencimento', true)
+      setCrossSell('parcelas_pagamento', [])
+      if (!regras.cross_sell_data_fim_pagamentos) {
+        setCrossSell('data_fim_pagamentos', form.inicio_vigencia || form.data_inicio_faturamento || '')
+      }
+      return
+    }
+    if (periodicidade === 'parcelado') {
+      setCrossSell('data_pagamento_unico', '')
+      const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []
+      if (parcelas.length === 0) {
+        setCrossSell('parcelas_pagamento', [{ valor: '', data_pagamento: '' }])
+      }
+      return
+    }
+    setCrossSell('parcelas_pagamento', [])
+    setCrossSell('data_fim_pagamentos', '')
+    setCrossSell('dia_pagamento_mensal', '')
+    if (!String(regras.cross_sell_data_pagamento_unico || '').trim()) {
+      setCrossSell('data_pagamento_unico', form.inicio_vigencia || form.data_inicio_faturamento || '')
+    }
+  }
+
+  const addCrossSellParcela = () => {
+    const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []
+    setCrossSell('parcelas_pagamento', [...parcelas, { valor: '', data_pagamento: '' }])
+  }
+
+  const updateCrossSellParcela = (idx: number, field: 'valor' | 'data_pagamento', value: string) => {
+    const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? [...regras.cross_sell_parcelas_pagamento] : []
+    if (!parcelas[idx]) return
+    parcelas[idx] = { ...parcelas[idx], [field]: value }
+    setCrossSell('parcelas_pagamento', parcelas)
+  }
+
+  const removeCrossSellParcela = (idx: number) => {
+    const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? [...regras.cross_sell_parcelas_pagamento] : []
+    parcelas.splice(idx, 1)
+    setCrossSell('parcelas_pagamento', parcelas)
+  }
+
   const indicacaoPreview = useMemo(() => {
     if (!indicacaoPagamentoEnabled) return []
     const periodicidade = String(indicacao.periodicidade || '')
@@ -871,6 +944,34 @@ export default function CasoForm({
     const data = String(indicacao.data_pagamento_unico || '').trim()
     return [`Pagamento único em ${formatDateBr(data)}`]
   }, [indicacao, indicacaoPagamentoEnabled, form.pagamento_dia_mes])
+
+  const crossSellPreview = useMemo(() => {
+    if (!crossSellEnabled) return []
+    if (crossSellPeriodicidade === 'parcelado') {
+      const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []
+      if (!parcelas.length) return ['Nenhuma parcela configurada']
+      return parcelas.map((p: any, idx: number) => {
+        const valor = String(p?.valor || '').trim() || '0,00'
+        const data = formatDateBr(String(p?.data_pagamento || ''))
+        return `Parcela ${idx + 1}: ${valor} em ${data}`
+      })
+    }
+    if (crossSellPeriodicidade === 'mensal') {
+      const usaVencimento = Boolean(regras.cross_sell_usar_dia_vencimento)
+      const dia = usaVencimento
+        ? String(form.pagamento_dia_mes || '').trim()
+        : String(regras.cross_sell_dia_pagamento_mensal || '').trim()
+      const fim = String(regras.cross_sell_data_fim_pagamentos || '').trim()
+      const valor = String(regras.cross_sell_valor || '').trim()
+      const linhas = [
+        `Mensalidade ${crossSellModo === 'valor' ? `de ${valor || '0,00'}` : `de ${valor || '0'}%`} com pagamento todo dia ${dia || '-'}`,
+      ]
+      linhas.push(`Até ${formatDateBr(fim)}`)
+      return linhas
+    }
+    const data = String(regras.cross_sell_data_pagamento_unico || '').trim()
+    return [`Pagamento único em ${formatDateBr(data)}`]
+  }, [crossSellEnabled, crossSellPeriodicidade, crossSellModo, regras, form.pagamento_dia_mes])
 
   const setCentroRateio = (items: Array<{ id: string; percentual: number }>) => {
     setField(
@@ -1754,12 +1855,15 @@ export default function CasoForm({
                     setRegra('cap_desejado_enabled', true)
                     if (!String(regras.cap_desejado_horas || '').trim()) setRegra('cap_desejado_horas', '0')
                   }}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || form.regra_cobranca === 'hora'}
                   options={[
                     { value: 'nao', label: 'Não' },
                     { value: 'sim', label: 'Sim' },
                   ]}
                 />
+                {form.regra_cobranca === 'hora' ? (
+                  <p className="text-xs text-muted-foreground">Indisponível para regra de cobrança por hora.</p>
+                ) : null}
               </div>
               {capDesejadoEnabled ? (
                 <div className="space-y-2">
@@ -1770,7 +1874,7 @@ export default function CasoForm({
                     step="0.01"
                     value={String(regras.cap_desejado_horas || '')}
                     onChange={(e) => setRegra('cap_desejado_horas', e.target.value)}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || form.regra_cobranca === 'hora'}
                     placeholder="Ex: 120"
                   />
                 </div>
@@ -2195,11 +2299,31 @@ export default function CasoForm({
                 <div className="space-y-2">
                   <Label>Cross Sell de cobrança?</Label>
                   <ChoiceCards
-                    value={regras.cross_sell_ativo ? 'sim' : 'nao'}
+                    value={crossSellEnabled ? 'sim' : 'nao'}
                     onChange={(value) => {
                       const enabled = value === 'sim'
-                      setRegra('cross_sell_ativo', enabled)
-                      if (!enabled) setRegra('cross_sell_origem_colaborador_id', '')
+                      setCrossSell('ativo', enabled)
+                      if (!enabled) {
+                        setCrossSell('origem_colaborador_id', '')
+                        setCrossSell('periodicidade', 'mensal')
+                        setCrossSell('modo', 'percentual')
+                        setCrossSell('valor', '')
+                        setCrossSell('data_pagamento_unico', '')
+                        setCrossSell('usar_dia_vencimento', true)
+                        setCrossSell('dia_pagamento_mensal', '')
+                        setCrossSell('data_fim_pagamentos', '')
+                        setCrossSell('parcelas_pagamento', [])
+                        return
+                      }
+                      if (!String(regras.cross_sell_origem_colaborador_id || '').trim() && options.colaboradores?.[0]?.id) {
+                        setCrossSell('origem_colaborador_id', options.colaboradores[0].id)
+                      }
+                      if (!String(regras.cross_sell_periodicidade || '').trim()) {
+                        setCrossSellPeriodicidade(periodicidadeIndicacaoOptions[0]?.value || 'pontual')
+                      }
+                      if (!String(regras.cross_sell_modo || '').trim()) {
+                        setCrossSell('modo', 'percentual')
+                      }
                     }}
                     options={[
                       { value: 'nao', label: 'Não' },
@@ -2208,19 +2332,134 @@ export default function CasoForm({
                     disabled={isReadOnly}
                   />
                 </div>
-                {regras.cross_sell_ativo && (
-                  <div className="space-y-2">
-                    <Label>Origem do cross sell</Label>
-                    <CommandSelect
-                      value={String(regras.cross_sell_origem_colaborador_id || '')}
-                      onValueChange={(value) => setRegra('cross_sell_origem_colaborador_id', value)}
-                      options={colaboradorOptions}
-                      placeholder="Selecione..."
-                      searchPlaceholder="Buscar colaborador..."
-                      emptyText="Nenhum colaborador encontrado."
-                      disabled={isReadOnly}
-                    />
-                  </div>
+                {crossSellEnabled && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Origem do cross sell</Label>
+                      <CommandSelect
+                        value={String(regras.cross_sell_origem_colaborador_id || '')}
+                        onValueChange={(value) => setCrossSell('origem_colaborador_id', value)}
+                        options={colaboradorOptions}
+                        placeholder="Selecione..."
+                        searchPlaceholder="Buscar colaborador..."
+                        emptyText="Nenhum colaborador encontrado."
+                        disabled={isReadOnly}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Periodicidade do cross selling</Label>
+                      <NativeSelect
+                        value={crossSellPeriodicidade || periodicidadeIndicacaoOptions[0]?.value || 'pontual'}
+                        onChange={(e) => setCrossSellPeriodicidade(e.target.value)}
+                        disabled={isReadOnly}
+                      >
+                        {periodicidadeIndicacaoOptions.map((option) => (
+                          <option key={`cross-sell-${option.value}`} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Método</Label>
+                      <NativeSelect value={crossSellModo} onChange={(e) => setCrossSell('modo', e.target.value)} disabled={isReadOnly}>
+                        <option value="percentual">Percentual</option>
+                        <option value="valor">Valor</option>
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{crossSellModo === 'valor' ? 'Valor' : 'Percentual'}</Label>
+                      {crossSellModo === 'valor' ? (
+                        <MoneyInput value={regras.cross_sell_valor || ''} onValueChange={(value) => setCrossSell('valor', value)} disabled={isReadOnly} />
+                      ) : (
+                        <Input value={regras.cross_sell_valor || ''} onChange={(e) => setCrossSell('valor', e.target.value)} disabled={isReadOnly} />
+                      )}
+                    </div>
+                    {(crossSellPeriodicidade === 'pontual' || crossSellPeriodicidade === 'ao_final') && (
+                      <div className="space-y-2">
+                        <Label>Data do pagamento do cross selling</Label>
+                        <DatePicker value={regras.cross_sell_data_pagamento_unico || ''} onChange={(value) => setCrossSell('data_pagamento_unico', value)} disabled={isReadOnly} />
+                      </div>
+                    )}
+                    {crossSellPeriodicidade === 'mensal' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Usar dia de vencimento do caso?</Label>
+                          <ChoiceCards
+                            value={regras.cross_sell_usar_dia_vencimento ? 'sim' : 'nao'}
+                            onChange={(value) => setCrossSell('usar_dia_vencimento', value === 'sim')}
+                            disabled={isReadOnly}
+                            options={[
+                              { value: 'sim', label: 'Sim' },
+                              { value: 'nao', label: 'Não' },
+                            ]}
+                          />
+                        </div>
+                        {!regras.cross_sell_usar_dia_vencimento && (
+                          <div className="space-y-2">
+                            <Label>Dia do pagamento mensal</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={regras.cross_sell_dia_pagamento_mensal || ''}
+                              onChange={(e) => setCrossSell('dia_pagamento_mensal', e.target.value)}
+                              disabled={isReadOnly}
+                            />
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label>Data final dos pagamentos</Label>
+                          <DatePicker value={regras.cross_sell_data_fim_pagamentos || ''} onChange={(value) => setCrossSell('data_fim_pagamentos', value)} disabled={isReadOnly} />
+                        </div>
+                      </>
+                    )}
+                    {crossSellPeriodicidade === 'parcelado' && (
+                      <div className="space-y-2 md:col-span-2">
+                        <div className="flex items-center justify-between">
+                          <Label>Parcelas do cross selling</Label>
+                          {!isReadOnly && (
+                            <Button type="button" variant="outline" size="sm" onClick={addCrossSellParcela}>
+                              Adicionar parcela
+                            </Button>
+                          )}
+                        </div>
+                        {(Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []).map((parcela: any, idx: number) => (
+                          <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                            <MoneyInput
+                              value={parcela?.valor || ''}
+                              onValueChange={(value) => updateCrossSellParcela(idx, 'valor', value)}
+                              disabled={isReadOnly}
+                            />
+                            <DatePicker
+                              value={parcela?.data_pagamento || ''}
+                              onChange={(value) => updateCrossSellParcela(idx, 'data_pagamento', value)}
+                              disabled={isReadOnly}
+                            />
+                            {!isReadOnly && (
+                              <Button type="button" variant="outline" onClick={() => removeCrossSellParcela(idx)}>
+                                Remover
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Previsão de pagamento do cross selling</Label>
+                      <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                        {crossSellPreview.length ? (
+                          <ul className="space-y-1">
+                            {crossSellPreview.map((linha, idx) => (
+                              <li key={`${linha}-${idx}`}>{linha}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>Defina os dados para visualizar a previsão.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
                 <div className="space-y-2">
                   <Label>Pagamento da indicação</Label>

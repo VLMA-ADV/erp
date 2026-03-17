@@ -77,7 +77,7 @@ function formatDate(value: string | null | undefined) {
   return `${day}/${month}/${year}`
 }
 
-type RegraTabKey = 'todas' | 'hora' | 'mensalidade_processo' | 'mensalidade' | 'projeto' | 'projeto_parcelado' | 'exito'
+type RegraTabKey = 'todas' | 'hora' | 'mensalidade_processo' | 'mensalidade' | 'projeto' | 'projeto_parcelado' | 'exito' | 'despesa'
 
 const REGRA_TABS: Array<{ key: RegraTabKey; label: string }> = [
   { key: 'todas', label: 'Todas' },
@@ -87,6 +87,7 @@ const REGRA_TABS: Array<{ key: RegraTabKey; label: string }> = [
   { key: 'projeto', label: 'Projeto' },
   { key: 'projeto_parcelado', label: 'Projeto parcelado' },
   { key: 'exito', label: 'Êxito' },
+  { key: 'despesa', label: 'Despesas' },
 ]
 
 function normalizeRuleType(tipo: string | null | undefined) {
@@ -98,6 +99,7 @@ function normalizeRuleType(tipo: string | null | undefined) {
   if (normalized === 'projeto_parcela') return 'projeto_parcelado'
   if (normalized === 'projeto_parcelado') return 'projeto_parcelado'
   if (normalized === 'exito') return 'exito'
+  if (normalized === 'despesa') return 'despesa'
   return normalized
 }
 

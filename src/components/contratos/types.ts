@@ -4,11 +4,12 @@ export interface ContratoListItem {
   cliente_id: string
   cliente_nome: string
   nome_contrato: string
-  regime_fiscal: string | null
   forma_entrada?: 'organico' | 'prospeccao' | null
+  responsavel_prospeccao_id?: string | null
+  responsavel_prospeccao_nome?: string | null
+  canal_prospeccao?: string | null
   grupo_imposto_id?: string | null
   grupo_imposto_nome?: string | null
-  prospeccao_config?: Record<string, any> | null
   status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   created_at: string
   casos: CasoListItem[]
@@ -91,10 +92,10 @@ export interface CasoPayload {
 export interface ContratoPayload {
   cliente_id: string
   nome_contrato: string
-  regime_fiscal: string
   forma_entrada?: 'organico' | 'prospeccao' | ''
+  responsavel_prospeccao_id?: string | null
+  canal_prospeccao?: string | null
   grupo_imposto_id?: string | null
-  prospeccao_config?: Record<string, any>
   status?: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   casos: CasoPayload[]
 }

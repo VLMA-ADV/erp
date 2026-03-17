@@ -50,6 +50,11 @@ interface ContratoItem {
   casos?: Array<{ id: string; numero?: number; nome: string; status?: string }>
 }
 
+interface ClienteItem {
+  id: string
+  nome: string
+}
+
 interface FormState {
   id?: string
   cliente_id: string
@@ -116,6 +121,7 @@ export default function DespesasList() {
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<DespesaItem[]>([])
   const [contratos, setContratos] = useState<ContratoItem[]>([])
+  const [clientes, setClientes] = useState<ClienteItem[]>([])
 
   const [filterClienteId, setFilterClienteId] = useState('')
   const [filterCasoId, setFilterCasoId] = useState('')
@@ -135,12 +141,16 @@ export default function DespesasList() {
 
   const clienteOptions = useMemo(() => {
     const unique = new Map<string, string>()
+    for (const cliente of clientes) {
+      if (!cliente.id) continue
+      if (!unique.has(cliente.id)) unique.set(cliente.id, cliente.nome || 'Cliente sem nome')
+    }
     for (const contrato of contratos) {
       if (!contrato.cliente_id) continue
       if (!unique.has(contrato.cliente_id)) unique.set(contrato.cliente_id, contrato.cliente_nome || 'Cliente sem nome')
     }
     return Array.from(unique.entries()).map(([value, label]) => ({ value, label }))
-  }, [contratos])
+  }, [clientes, contratos])
 
   const casesByCliente = useMemo(() => {
     if (!form.cliente_id) return [] as Array<{ id: string; nome: string; numero?: number; contrato_id: string; contrato_nome: string; contrato_numero?: number }>
@@ -216,6 +226,56 @@ export default function DespesasList() {
     setContratos(contratosAtivos)
   }
 
+  const fetchClientes = async () => {
+    const session = await getSession()
+    if (!session) return
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-clientes?_ts=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (response.ok && Array.isArray(payload.data)) {
+      const normalized = (payload.data as Array<{ id?: string; nome?: string; ativo?: boolean }>)
+        .filter((item) => item?.ativo !== false)
+        .map((item) => ({
+          id: String(item.id || ''),
+          nome: String(item.nome || 'Cliente sem nome'),
+        }))
+        .filter((item) => item.id.length > 0)
+
+      setClientes(normalized)
+      return
+    }
+
+    // Fallback para perfis sem permissão de CRM: usa opções de contrato.
+    const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato-form-options?_ts=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+    const fallbackPayload = await fallbackResponse.json().catch(() => ({}))
+    const fallbackClientes = fallbackPayload?.data?.clientes
+    if (!fallbackResponse.ok || !Array.isArray(fallbackClientes)) return
+
+    const normalizedFallback = (fallbackClientes as Array<{ id?: string; nome?: string }>)
+      .map((item) => ({
+        id: String(item.id || ''),
+        nome: String(item.nome || 'Cliente sem nome'),
+      }))
+      .filter((item) => item.id.length > 0)
+
+    setClientes(normalizedFallback)
+  }
+
   const fetchDespesas = async () => {
     try {
       setLoading(true)
@@ -257,6 +317,7 @@ export default function DespesasList() {
 
   useEffect(() => {
     if (!canRead) return
+    void fetchClientes()
     void fetchContratos()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])

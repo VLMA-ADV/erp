@@ -152,6 +152,25 @@ interface ClienteReviewContractTab {
   items: ClienteReviewItemTab[]
 }
 
+interface StageLine {
+  key: string
+  label: string
+  stageType: 'inicial' | 'revisor' | 'aprovador'
+  stageOrder: number | null
+  item: string
+  caso: string
+  responsavelId: string | null
+  responsavelNome: string
+  responsavelEditable: boolean
+  completed: boolean
+  data: string
+  dataInput: string
+  descricao: string
+  tempo: string
+  valor: number | null
+  editable: boolean
+}
+
 function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback
 }
@@ -259,6 +278,141 @@ function normalizeDateFromDisplay(value: string) {
   return normalizeDateInput(trimmed) || trimmed
 }
 
+function formatNullableHours(value: number | null) {
+  if (value === null || value === undefined) return '-'
+  return formatHours(value)
+}
+
+function formatNullableMoney(value: number | null) {
+  if (value === null || value === undefined) return '-'
+  return formatMoney(value)
+}
+
+function StageLinesSummary({
+  lines,
+  activeLineKey,
+  disabled,
+  responsavelOptions,
+  savingResponsavelLineKey,
+  onActivateLine,
+  onUpdateLineField,
+  onUpdateResponsavel,
+}: {
+  lines: StageLine[]
+  activeLineKey: string | null
+  disabled: boolean
+  responsavelOptions: CommandSelectOption[]
+  savingResponsavelLineKey: string | null
+  onActivateLine: (lineKey: string) => void
+  onUpdateLineField: (line: StageLine, field: 'data' | 'descricao' | 'tempo' | 'valor', value: string) => void
+  onUpdateResponsavel: (line: StageLine, responsavelId: string) => void
+}) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-2 text-xs">
+      <div className="overflow-visible rounded-md border bg-white">
+        <table className="w-full table-fixed text-xs">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Item</th>
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Etapa</th>
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Caso</th>
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Responsável</th>
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Data</th>
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Descrição</th>
+              <th className="px-2 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Tempo</th>
+              <th className="px-2 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line) => (
+              <tr
+                key={line.key}
+                className={
+                  activeLineKey === line.key
+                    ? 'bg-primary/5'
+                    : line.editable && !disabled
+                      ? 'cursor-pointer hover:bg-muted/30'
+                      : ''
+                }
+                onClick={() => {
+                  if (!disabled) onActivateLine(line.key)
+                }}
+              >
+                <td className="px-2 py-1.5 text-[12px]">{line.item || '-'}</td>
+                <td className="px-2 py-1.5 text-[12px] font-medium">{line.label}</td>
+                <td className="px-2 py-1.5 text-[12px]">{line.caso || '-'}</td>
+                <td className="relative z-40 px-2 py-1.5 text-[12px]">
+                  {line.responsavelEditable && !disabled ? (
+                    <div className="min-w-[190px]">
+                      <CommandSelect
+                        value={line.responsavelId || ''}
+                        onValueChange={(value) => onUpdateResponsavel(line, value)}
+                        options={responsavelOptions}
+                        placeholder="Selecionar responsável"
+                        searchPlaceholder="Buscar colaborador..."
+                        emptyText="Nenhum colaborador encontrado."
+                        disabled={savingResponsavelLineKey === line.key}
+                        maxVisibleOptions={3}
+                      />
+                    </div>
+                  ) : (
+                    line.responsavelNome || '-'
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-[12px]">
+                  {line.editable && activeLineKey === line.key && !disabled ? (
+                    <Input
+                      type="date"
+                      value={line.dataInput}
+                      onChange={(event) => onUpdateLineField(line, 'data', event.target.value)}
+                      className="h-7 text-xs"
+                    />
+                  ) : (
+                    line.data || '-'
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-[12px]">
+                  {line.editable && activeLineKey === line.key && !disabled ? (
+                    <Input
+                      value={line.descricao || ''}
+                      onChange={(event) => onUpdateLineField(line, 'descricao', event.target.value)}
+                      className="h-7 text-xs"
+                    />
+                  ) : (
+                    line.descricao || '-'
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-right text-[12px]">
+                  {line.editable && activeLineKey === line.key && line.tempo !== '-' && !disabled ? (
+                    <Input
+                      value={line.tempo}
+                      onChange={(event) => onUpdateLineField(line, 'tempo', event.target.value)}
+                      className="h-7 text-right text-xs"
+                    />
+                  ) : (
+                    line.tempo || '-'
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-right text-[12px]">
+                  {line.editable && activeLineKey === line.key && !disabled ? (
+                    <MoneyInput
+                      value={String(line.valor ?? 0)}
+                      onValueChange={(value) => onUpdateLineField(line, 'valor', value)}
+                      disabled={disabled}
+                    />
+                  ) : (
+                    formatNullableMoney(line.valor)
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function createDraftRowId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -268,6 +422,35 @@ function createDraftRowId() {
 
 function toObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+}
+
+function parseFluxoResponsaveis(raw: unknown): FluxoResponsavel[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((entry, idx) => {
+      const obj = toObject(entry) || {}
+      const colaboradorId = asString(obj.colaborador_id || obj.id)
+      return {
+        colaborador_id: colaboradorId,
+        ordem: asNumber(obj.ordem, idx + 1),
+      }
+    })
+    .filter((entry) => entry.colaborador_id)
+    .sort((a, b) => a.ordem - b.ordem)
+    .map((entry, idx) => ({ ...entry, ordem: idx + 1 }))
+}
+
+function parseCasoTimesheetConfig(rawCaso: Record<string, unknown>) {
+  const rootRevisores = parseFluxoResponsaveis(rawCaso.revisores)
+  const rootAprovadores = parseFluxoResponsaveis(rawCaso.aprovadores)
+  const rawTimesheetConfig = toObject(rawCaso.timesheet_config) || {}
+  const nestedRevisores = parseFluxoResponsaveis(rawTimesheetConfig.revisores)
+  const nestedAprovadores = parseFluxoResponsaveis(rawTimesheetConfig.aprovadores)
+
+  return {
+    revisores: nestedRevisores.length > 0 ? nestedRevisores : rootRevisores,
+    aprovadores: nestedAprovadores.length > 0 ? nestedAprovadores : rootAprovadores,
+  }
 }
 
 function parseSnapshotTimesheetRows(item: RevisaoItem): TimesheetRowDraft[] {
@@ -325,6 +508,7 @@ function getRuleKind(item: RevisaoItem) {
 }
 
 function getRuleTitle(item: RevisaoItem) {
+  if (item.origemTipo === 'despesa') return 'Despesa'
   const kind = getRuleKind(item)
   if (kind === 'mensalidade_processo') return 'Mensalidade de processo'
   if (kind === 'mensal') return 'Mensalidade'
@@ -507,6 +691,9 @@ export default function RevisaoDeFaturaList() {
   const [colaboradorOptions, setColaboradorOptions] = useState<CommandSelectOption[]>([])
   const [colaboradorIdOptions, setColaboradorIdOptions] = useState<CommandSelectOption[]>([])
   const [colaboradorMap, setColaboradorMap] = useState<Map<string, string>>(new Map())
+  const [colaboradorEmailMap, setColaboradorEmailMap] = useState<Map<string, string>>(new Map())
+  const [currentUserEmail, setCurrentUserEmail] = useState('')
+  const [currentColaboradorId, setCurrentColaboradorId] = useState<string | null>(null)
   const [contratoConfigMap, setContratoConfigMap] = useState<Map<string, ContratoTimesheetConfig>>(new Map())
 
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
@@ -516,19 +703,36 @@ export default function RevisaoDeFaturaList() {
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedReviewMode, setSelectedReviewMode] = useState<'default' | 'timesheet'>('default')
+  const [activeStageLineKey, setActiveStageLineKey] = useState<string | null>(null)
   const [selectedClienteKey, setSelectedClienteKey] = useState<string | null>(null)
   const [selectedClienteContractTab, setSelectedClienteContractTab] = useState<string>('')
   const [selectedClienteItemTab, setSelectedClienteItemTab] = useState<string>('')
-  const [editingTimesheetItemId, setEditingTimesheetItemId] = useState<string | null>(null)
-  const [expandedTimesheetRows, setExpandedTimesheetRows] = useState<Record<string, boolean>>({})
+  const [, setEditingTimesheetItemId] = useState<string | null>(null)
+  const [, setExpandedTimesheetRows] = useState<Record<string, boolean>>({})
   const [savingItemId, setSavingItemId] = useState<string | null>(null)
   const [movingItemId, setMovingItemId] = useState<string | null>(null)
   const [faturarItemId, setFaturarItemId] = useState<string | null>(null)
   const [faturarDesconto, setFaturarDesconto] = useState('0')
   const [faturarRateio, setFaturarRateio] = useState('[]')
   const [faturandoItemId, setFaturandoItemId] = useState<string | null>(null)
+  const [confirmAdvanceAllOpen, setConfirmAdvanceAllOpen] = useState(false)
+  const [advancingAll, setAdvancingAll] = useState(false)
   const [selectedContratoConfigId, setSelectedContratoConfigId] = useState<string | null>(null)
   const [savingContratoConfig, setSavingContratoConfig] = useState(false)
+  const [savingResponsavelLineKey, setSavingResponsavelLineKey] = useState<string | null>(null)
+
+  const loadCurrentUser = async () => {
+    try {
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      setCurrentUserEmail((session?.user?.email || '').trim().toLowerCase())
+    } catch (err) {
+      console.error(err)
+      setCurrentUserEmail('')
+    }
+  }
 
   const loadItems = async () => {
     try {
@@ -581,18 +785,22 @@ export default function RevisaoDeFaturaList() {
           (acc, row) => acc + parseDecimalInput(row.horasRevisadas) * parseDecimalInput(row.valorHora),
           0,
         )
+        const horasDraft =
+          item.origemTipo === 'timesheet'
+            ? item.status === 'em_aprovacao'
+              ? String(resolveNumber(item.horasAprovadas, totalHorasRevisadas))
+              : String(totalHorasRevisadas)
+            : String(getEffectiveItemHours(item))
+        const valorDraft =
+          item.origemTipo === 'timesheet'
+            ? item.status === 'em_aprovacao'
+              ? String(resolveNumber(item.valorAprovado, totalValorRevisado))
+              : String(totalValorRevisado)
+            : String(getEffectiveItemValue(item))
 
         nextDrafts[item.id] = {
-          horas: String(
-            item.origemTipo === 'timesheet'
-              ? totalHorasRevisadas
-              : getEffectiveItemHours(item),
-          ),
-          valor: String(
-            item.origemTipo === 'timesheet'
-              ? totalValorRevisado
-              : getEffectiveItemValue(item),
-          ),
+          horas: horasDraft,
+          valor: valorDraft,
           observacao: '',
           timesheetRows,
           valueRows: parseSnapshotValueRows(item),
@@ -620,7 +828,7 @@ export default function RevisaoDeFaturaList() {
       } = await supabase.auth.getSession()
       if (!session) return
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-colaboradores`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-colaboradores?limit=1000`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -652,19 +860,24 @@ export default function RevisaoDeFaturaList() {
       setColaboradorOptions(options)
       setColaboradorIdOptions(idOptions)
       const map = new Map<string, string>()
+      const emailMap = new Map<string, string>()
       if (Array.isArray(payload.data)) {
         for (const entry of payload.data as Array<Record<string, unknown>>) {
           const id = asString(entry.id)
           const nome = asString(entry.nome)
           if (id && nome) map.set(id, nome)
+          const email = asString(entry.email).trim().toLowerCase()
+          if (id && email) emailMap.set(email, id)
         }
       }
       setColaboradorMap(map)
+      setColaboradorEmailMap(emailMap)
     } catch (err) {
       console.error(err)
       setColaboradorOptions([])
       setColaboradorIdOptions([])
       setColaboradorMap(new Map())
+      setColaboradorEmailMap(new Map())
     }
   }
 
@@ -690,32 +903,71 @@ export default function RevisaoDeFaturaList() {
         return
       }
 
+      const contratosRaw = payload.data as Array<Record<string, unknown>>
+      const detailCasesByContrato = new Map<string, Array<Record<string, unknown>>>()
+      const detailContratoIds = contratosRaw
+        .filter((rawContrato) => {
+          const rawCasos = Array.isArray(rawContrato.casos) ? (rawContrato.casos as unknown[]) : []
+          if (rawCasos.length === 0) return false
+          return rawCasos.some((rawCaso) => {
+            const caso = toObject(rawCaso) || {}
+            const timesheetConfig = toObject(caso.timesheet_config)
+            const hasNested = Boolean(timesheetConfig && (Array.isArray(timesheetConfig.revisores) || Array.isArray(timesheetConfig.aprovadores)))
+            const hasRoot = Array.isArray(caso.revisores) || Array.isArray(caso.aprovadores)
+            return !hasNested && !hasRoot
+          })
+        })
+        .map((rawContrato) => asString(rawContrato.id))
+        .filter(Boolean)
+
+      if (detailContratoIds.length > 0) {
+        await Promise.all(
+          detailContratoIds.map(async (contratoId) => {
+            try {
+              const detailResponse = await fetch(
+                `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato?id=${contratoId}&_ts=${Date.now()}`,
+                {
+                  method: 'GET',
+                  cache: 'no-store',
+                  headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                },
+              )
+              const detailPayload = await detailResponse.json().catch(() => ({}))
+              if (!detailResponse.ok) return
+              const detailData = toObject(detailPayload.data) || {}
+              const detailCasos = Array.isArray(detailData.casos) ? (detailData.casos as Array<Record<string, unknown>>) : []
+              if (detailCasos.length > 0) {
+                detailCasesByContrato.set(contratoId, detailCasos)
+              }
+            } catch (error) {
+              console.error(error)
+            }
+          }),
+        )
+      }
+
       const map = new Map<string, ContratoTimesheetConfig>()
-      for (const rawContrato of payload.data as Array<Record<string, unknown>>) {
+      for (const rawContrato of contratosRaw) {
         const contratoId = asString(rawContrato.id)
         if (!contratoId) continue
-        const rawCasos = Array.isArray(rawContrato.casos) ? (rawContrato.casos as Array<Record<string, unknown>>) : []
+        const baseCasos = Array.isArray(rawContrato.casos) ? (rawContrato.casos as Array<Record<string, unknown>>) : []
+        const rawCasos = detailCasesByContrato.get(contratoId) || baseCasos
         map.set(contratoId, {
           id: contratoId,
           numero: asOptionalNumber(rawContrato.numero),
           nome: asString(rawContrato.nome_contrato, 'Contrato sem nome'),
           casos: rawCasos.map((rawCaso) => {
-            const timesheetConfig = toObject(rawCaso.timesheet_config) || {}
-            const revisoresRaw = Array.isArray(timesheetConfig.revisores) ? (timesheetConfig.revisores as Array<Record<string, unknown>>) : []
-            const aprovadoresRaw = Array.isArray(timesheetConfig.aprovadores)
-              ? (timesheetConfig.aprovadores as Array<Record<string, unknown>>)
-              : []
+            const timesheetConfig = parseCasoTimesheetConfig(rawCaso)
             return {
               id: asString(rawCaso.id),
               numero: asOptionalNumber(rawCaso.numero),
               nome: asString(rawCaso.nome, 'Caso sem nome'),
               timesheetConfig: {
-                revisores: revisoresRaw
-                  .map((entry, idx) => ({ colaborador_id: asString(entry.colaborador_id), ordem: asNumber(entry.ordem, idx + 1) }))
-                  .filter((entry) => entry.colaborador_id),
-                aprovadores: aprovadoresRaw
-                  .map((entry, idx) => ({ colaborador_id: asString(entry.colaborador_id), ordem: asNumber(entry.ordem, idx + 1) }))
-                  .filter((entry) => entry.colaborador_id),
+                revisores: timesheetConfig.revisores,
+                aprovadores: timesheetConfig.aprovadores,
               },
             }
           }),
@@ -729,11 +981,20 @@ export default function RevisaoDeFaturaList() {
   }
 
   useEffect(() => {
+    void loadCurrentUser()
     void loadItems()
     void loadColaboradores()
     void loadContratoConfigs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!currentUserEmail) {
+      setCurrentColaboradorId(null)
+      return
+    }
+    setCurrentColaboradorId(colaboradorEmailMap.get(currentUserEmail) || null)
+  }, [currentUserEmail, colaboradorEmailMap])
 
   const tree = useMemo(() => buildTree(items), [items])
 
@@ -808,35 +1069,72 @@ export default function RevisaoDeFaturaList() {
     [contratoConfigMap, selectedContratoConfigId],
   )
 
-  const getResponsavelAtualNome = (item: RevisaoItem) => {
-    if (item.status === 'em_revisao' && (item.responsavelFluxoNome || item.responsavelRevisaoNome)) {
-      return item.responsavelFluxoNome || item.responsavelRevisaoNome
-    }
-    if (item.status === 'em_aprovacao' && (item.responsavelFluxoNome || item.responsavelAprovacaoNome)) {
-      return item.responsavelFluxoNome || item.responsavelAprovacaoNome
-    }
+  const getRevisoresOrdenados = (item: RevisaoItem) => {
+    const contratoConfig = contratoConfigMap.get(item.contratoId)
+    const caso = contratoConfig?.casos.find((entry) => entry.id === item.casoId)
+    return [...(caso?.timesheetConfig.revisores || [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((entry, idx) => ({
+        colaborador_id: entry.colaborador_id,
+        ordem: idx + 1,
+        nome: colaboradorMap.get(entry.colaborador_id) || entry.colaborador_id,
+      }))
+  }
 
+  const getResponsavelAtualNome = (item: RevisaoItem) => {
     const snapshot = item.snapshot || {}
     const snapshotFluxo = asString(snapshot.responsavel_fluxo_nome)
     const snapshotRevisor = asString(snapshot.responsavel_revisao_nome)
     const snapshotAprovador = asString(snapshot.responsavel_aprovacao_nome)
+    const snapshotRevisorId = asString(snapshot.responsavel_revisao_id)
+    const snapshotAprovadorId = asString(snapshot.responsavel_aprovacao_id)
+
+    const byId = (id: string) => (id ? colaboradorMap.get(id) || id : '')
 
     if (item.status === 'em_revisao' && (snapshotFluxo || snapshotRevisor)) return snapshotFluxo || snapshotRevisor
     if (item.status === 'em_aprovacao' && (snapshotFluxo || snapshotAprovador)) return snapshotFluxo || snapshotAprovador
+    if (item.status === 'em_revisao' && snapshotRevisorId) return byId(snapshotRevisorId)
+    if (item.status === 'em_aprovacao' && snapshotAprovadorId) return byId(snapshotAprovadorId)
 
-    const contratoConfig = contratoConfigMap.get(item.contratoId)
-    const caso = contratoConfig?.casos.find((entry) => entry.id === item.casoId)
-    if (!caso) return null
+    const revisores = getRevisoresOrdenados(item)
+    const aprovadores = getAprovadoresOrdenados(item)
+
     if (item.status === 'em_revisao') {
-      const revisor = [...(caso.timesheetConfig.revisores || [])].sort((a, b) => a.ordem - b.ordem)[0]
-      if (!revisor) return null
-      return colaboradorMap.get(revisor.colaborador_id) || revisor.colaborador_id
+      if (revisores.length === 0) return item.responsavelFluxoNome || item.responsavelRevisaoNome
+      const snapshotOrderRaw = Number(snapshot.revisor_ordem_atual ?? 0)
+      if (Number.isFinite(snapshotOrderRaw) && snapshotOrderRaw > 0 && snapshotOrderRaw <= revisores.length) {
+        return revisores[snapshotOrderRaw - 1]?.nome || null
+      }
+      if (snapshotRevisorId) {
+        const idx = revisores.findIndex((entry) => entry.colaborador_id === snapshotRevisorId)
+        if (idx >= 0) return revisores[idx]?.nome || null
+      }
+      if (snapshotRevisor || snapshotFluxo) {
+        const target = snapshotRevisor || snapshotFluxo
+        const idx = revisores.findIndex((entry) => entry.nome === target)
+        if (idx >= 0) return revisores[idx]?.nome || null
+      }
+      return revisores[0]?.nome || item.responsavelFluxoNome || item.responsavelRevisaoNome || null
     }
+
     if (item.status === 'em_aprovacao') {
-      const aprovador = [...(caso.timesheetConfig.aprovadores || [])].sort((a, b) => a.ordem - b.ordem)[0]
-      if (!aprovador) return null
-      return colaboradorMap.get(aprovador.colaborador_id) || aprovador.colaborador_id
+      if (aprovadores.length === 0) return item.responsavelFluxoNome || item.responsavelAprovacaoNome
+      const snapshotOrderRaw = Number(snapshot.aprovador_ordem_atual ?? 0)
+      if (Number.isFinite(snapshotOrderRaw) && snapshotOrderRaw > 0 && snapshotOrderRaw <= aprovadores.length) {
+        return aprovadores[snapshotOrderRaw - 1]?.nome || null
+      }
+      if (snapshotAprovadorId) {
+        const idx = aprovadores.findIndex((entry) => entry.colaborador_id === snapshotAprovadorId)
+        if (idx >= 0) return aprovadores[idx]?.nome || null
+      }
+      if (snapshotAprovador || snapshotFluxo) {
+        const target = snapshotAprovador || snapshotFluxo
+        const idx = aprovadores.findIndex((entry) => entry.nome === target)
+        if (idx >= 0) return aprovadores[idx]?.nome || null
+      }
+      return aprovadores[0]?.nome || item.responsavelFluxoNome || item.responsavelAprovacaoNome || null
     }
+
     return null
   }
 
@@ -1072,39 +1370,58 @@ export default function RevisaoDeFaturaList() {
     })
   }
 
+  const normalizeTimesheetConfigPayload = (timesheetConfig: { revisores: FluxoResponsavel[]; aprovadores: FluxoResponsavel[] }) => ({
+    revisores: [...(timesheetConfig.revisores || [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((entry, idx) => ({ colaborador_id: entry.colaborador_id, ordem: idx + 1 }))
+      .filter((entry) => entry.colaborador_id),
+    aprovadores: [...(timesheetConfig.aprovadores || [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((entry, idx) => ({ colaborador_id: entry.colaborador_id, ordem: idx + 1 }))
+      .filter((entry) => entry.colaborador_id),
+  })
+
+  const persistCasoTimesheetConfig = async (
+    casoId: string,
+    timesheetConfig: { revisores: FluxoResponsavel[]; aprovadores: FluxoResponsavel[] },
+  ) => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
+      return { ok: false, error: 'Sessão inválida.' }
+    }
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-caso`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: casoId,
+        timesheet_config: normalizeTimesheetConfigPayload(timesheetConfig),
+      }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: asString(result.error) || 'Erro ao salvar responsáveis do caso.',
+      }
+    }
+    return { ok: true, error: '' }
+  }
+
   const saveContratoConfig = async () => {
     if (!selectedContratoConfig) return
     try {
       setSavingContratoConfig(true)
-      const supabase = createClient()
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) return
 
       for (const caso of selectedContratoConfig.casos) {
-        const payload = {
-          id: caso.id,
-          timesheet_config: {
-            revisores: [...(caso.timesheetConfig.revisores || [])]
-              .sort((a, b) => a.ordem - b.ordem)
-              .map((entry, idx) => ({ colaborador_id: entry.colaborador_id, ordem: idx + 1 })),
-            aprovadores: [...(caso.timesheetConfig.aprovadores || [])]
-              .sort((a, b) => a.ordem - b.ordem)
-              .map((entry, idx) => ({ colaborador_id: entry.colaborador_id, ordem: idx + 1 })),
-          },
-        }
-
-        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-caso`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        })
-        const result = await response.json().catch(() => ({}))
-        if (!response.ok) {
+        const result = await persistCasoTimesheetConfig(caso.id, caso.timesheetConfig)
+        if (!result.ok) {
           toastError(result.error || `Erro ao salvar responsáveis do caso ${caso.nome}`)
           return
         }
@@ -1118,6 +1435,75 @@ export default function RevisaoDeFaturaList() {
       toastError('Erro ao salvar revisores/aprovadores')
     } finally {
       setSavingContratoConfig(false)
+    }
+  }
+
+  const updateStageLineResponsavel = async (line: StageLine, responsavelId: string) => {
+    if (!selectedItem || !canManageReviewers) return
+    if (line.stageType === 'inicial' || !line.stageOrder) return
+    if (!responsavelId) return
+    if (line.completed) {
+      toastError('Não é permitido alterar responsável de etapas já realizadas.')
+      return
+    }
+
+    const contratoConfig = contratoConfigMap.get(selectedItem.contratoId)
+    const caso = contratoConfig?.casos.find((entry) => entry.id === selectedItem.casoId)
+    if (!caso) {
+      toastError('Configuração do caso não encontrada para atualizar responsável.')
+      return
+    }
+
+    const revisoresOrdenados = [...(caso.timesheetConfig.revisores || [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((entry, idx) => ({ ...entry, ordem: idx + 1 }))
+    const aprovadoresOrdenados = [...(caso.timesheetConfig.aprovadores || [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((entry, idx) => ({ ...entry, ordem: idx + 1 }))
+    const targetField = line.stageType === 'revisor' ? 'revisores' : 'aprovadores'
+    const targetEntries = targetField === 'revisores' ? revisoresOrdenados : aprovadoresOrdenados
+    const targetIndex = line.stageOrder - 1
+    if (targetIndex < 0) return
+    const paddedEntries = [...targetEntries]
+    while (paddedEntries.length <= targetIndex) {
+      paddedEntries.push({ colaborador_id: '', ordem: paddedEntries.length + 1 })
+    }
+    if ((paddedEntries[targetIndex]?.colaborador_id || '') === responsavelId) return
+
+    const updatedEntries = paddedEntries.map((entry, idx) =>
+      idx === targetIndex
+        ? { ...entry, colaborador_id: responsavelId, ordem: idx + 1 }
+        : { ...entry, ordem: idx + 1 },
+    )
+    const nextTimesheetConfig = {
+      revisores: targetField === 'revisores' ? updatedEntries : revisoresOrdenados,
+      aprovadores: targetField === 'aprovadores' ? updatedEntries : aprovadoresOrdenados,
+    }
+
+    try {
+      setSavingResponsavelLineKey(line.key)
+      const result = await persistCasoTimesheetConfig(caso.id, nextTimesheetConfig)
+      if (!result.ok) {
+        toastError(result.error || 'Erro ao salvar responsável da etapa.')
+        return
+      }
+
+      setContratoConfigMap((prev) => {
+        const contrato = prev.get(selectedItem.contratoId)
+        if (!contrato) return prev
+        const nextCasos = contrato.casos.map((entry) =>
+          entry.id === caso.id ? { ...entry, timesheetConfig: nextTimesheetConfig } : entry,
+        )
+        const next = new Map(prev)
+        next.set(selectedItem.contratoId, { ...contrato, casos: nextCasos })
+        return next
+      })
+      success('Responsável da etapa atualizado com sucesso.')
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao atualizar responsável da etapa.')
+    } finally {
+      setSavingResponsavelLineKey(null)
     }
   }
 
@@ -1212,8 +1598,8 @@ export default function RevisaoDeFaturaList() {
             ? totalRevisadoRegra
             : getEffectiveItemValue(item)
       if (item.status === 'em_aprovacao') {
-        body.horas_aprovadas = targetHours
-        body.valor_aprovado = targetValue
+        body.horas_aprovadas = isTimesheetMode ? parseDecimalInput(draft.horas || String(totalHorasRevisadas)) : targetHours
+        body.valor_aprovado = parseDecimalInput(draft.valor || String(targetValue))
       } else {
         body.horas_revisadas = targetHours
         body.valor_revisado = targetValue
@@ -1246,9 +1632,16 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
-  const moveStatus = async (item: RevisaoItem, action: 'avancar' | 'retornar') => {
+  const moveStatus = async (
+    item: RevisaoItem,
+    action: 'avancar' | 'retornar',
+    options?: { notify?: boolean; reload?: boolean; setBusy?: boolean },
+  ) => {
+    const notify = options?.notify ?? true
+    const reload = options?.reload ?? true
+    const setBusy = options?.setBusy ?? true
     try {
-      setMovingItemId(item.id)
+      if (setBusy) setMovingItemId(item.id)
       const supabase = createClient()
       const {
         data: { session },
@@ -1269,19 +1662,19 @@ export default function RevisaoDeFaturaList() {
 
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        toastError(payload.error || 'Erro ao atualizar etapa do item')
+        if (notify) toastError(payload.error || 'Erro ao atualizar etapa do item')
         return false
       }
 
-      success(action === 'avancar' ? 'Item avançado para próxima etapa.' : 'Item retornado para etapa anterior.')
-      await loadItems()
+      if (notify) success(action === 'avancar' ? 'Item avançado para próxima etapa.' : 'Item retornado para etapa anterior.')
+      if (reload) await loadItems()
       return true
     } catch (err) {
       console.error(err)
-      toastError('Erro ao atualizar etapa do item')
+      if (notify) toastError('Erro ao atualizar etapa do item')
       return false
     } finally {
-      setMovingItemId(null)
+      if (setBusy) setMovingItemId(null)
     }
   }
 
@@ -1375,6 +1768,28 @@ export default function RevisaoDeFaturaList() {
       }))
   }
 
+  const getRevisorAtualIndex = (
+    item: RevisaoItem,
+    revisores: Array<{ colaborador_id: string; ordem: number; nome: string }>,
+  ) => {
+    if (revisores.length === 0) return -1
+    const snapshotOrderRaw = Number((item.snapshot || {}).revisor_ordem_atual ?? 0)
+    if (Number.isFinite(snapshotOrderRaw) && snapshotOrderRaw > 0 && snapshotOrderRaw <= revisores.length) {
+      return snapshotOrderRaw - 1
+    }
+    const snapshotRevisorId = asString((item.snapshot || {}).responsavel_revisao_id)
+    if (snapshotRevisorId) {
+      const idxById = revisores.findIndex((entry) => entry.colaborador_id === snapshotRevisorId)
+      if (idxById >= 0) return idxById
+    }
+    const responsavelAtual = getResponsavelAtualNome(item)
+    if (responsavelAtual) {
+      const idxByName = revisores.findIndex((entry) => entry.nome === responsavelAtual)
+      if (idxByName >= 0) return idxByName
+    }
+    return 0
+  }
+
   const getAprovadorAtualIndex = (
     item: RevisaoItem,
     aprovadores: Array<{ colaborador_id: string; ordem: number; nome: string }>,
@@ -1399,7 +1814,10 @@ export default function RevisaoDeFaturaList() {
     item: RevisaoItem,
     targetIndex: number,
     message: string,
+    options?: { notify?: boolean; reload?: boolean },
   ) => {
+    const notify = options?.notify ?? true
+    const reload = options?.reload ?? true
     const aprovadores = getAprovadoresOrdenados(item)
     if (targetIndex < 0 || targetIndex >= aprovadores.length) return false
     const target = aprovadores[targetIndex]
@@ -1429,22 +1847,22 @@ export default function RevisaoDeFaturaList() {
 
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-      toastError(payload.error || 'Erro ao atualizar aprovador da vez')
+      if (notify) toastError(payload.error || 'Erro ao atualizar aprovador da vez')
       return false
     }
 
-    success(message)
-    await loadItems()
+    if (notify) success(message)
+    if (reload) await loadItems()
     return true
   }
 
-  const advanceToNextApprover = async (item: RevisaoItem) => {
+  const advanceToNextApprover = async (item: RevisaoItem, options?: { notify?: boolean; reload?: boolean }) => {
     if (item.status !== 'em_aprovacao') return false
     const aprovadores = getAprovadoresOrdenados(item)
     if (aprovadores.length <= 1) return false
     const currentIndex = getAprovadorAtualIndex(item, aprovadores)
     if (currentIndex < 0 || currentIndex >= aprovadores.length - 1) return false
-    return updateAprovadorDaVez(item, currentIndex + 1, 'Item avançado para próximo aprovador.')
+    return updateAprovadorDaVez(item, currentIndex + 1, 'Item avançado para próximo aprovador.', options)
   }
 
   const returnToPreviousApprover = async (item: RevisaoItem) => {
@@ -1502,6 +1920,65 @@ export default function RevisaoDeFaturaList() {
 
   const canAdvance = (statusValue: string) => statusValue === 'em_revisao' || statusValue === 'em_aprovacao'
   const canReturn = (statusValue: string) => statusValue === 'em_aprovacao' || statusValue === 'aprovado'
+  const clienteAdvanceItems = useMemo(() => {
+    if (!selectedClienteGroup) return []
+    const map = new Map<string, RevisaoItem>()
+    for (const contratoGroup of selectedClienteGroup.contratos) {
+      for (const casoGroup of contratoGroup.casos) {
+        for (const item of casoGroup.itens) {
+          if (!map.has(item.id) && canAdvance(item.status)) map.set(item.id, item)
+        }
+      }
+    }
+    return Array.from(map.values())
+  }, [selectedClienteGroup])
+
+  const advanceAllClienteItems = async () => {
+    if (!selectedClienteGroup) return
+    if (clienteAdvanceItems.length === 0) {
+      toastError('Nenhum item elegível para avançar neste cliente.')
+      return
+    }
+
+    try {
+      setAdvancingAll(true)
+      let successCount = 0
+      let failCount = 0
+      const selectedId = selectedItem?.id || null
+
+      if (selectedItem && canAdvance(selectedItem.status)) {
+        const saved = await saveItem(selectedItem)
+        if (!saved) {
+          failCount += 1
+        }
+      }
+
+      for (const item of clienteAdvanceItems) {
+        if (item.id === selectedId && failCount > 0) continue
+        const advancedInChain = await advanceToNextApprover(item, { notify: false, reload: false })
+        const moved = advancedInChain || (await moveStatus(item, 'avancar', { notify: false, reload: false, setBusy: false }))
+        if (moved) {
+          successCount += 1
+        } else {
+          failCount += 1
+        }
+      }
+
+      await loadItems()
+      if (successCount > 0) {
+        success(`${successCount} item(ns) avançado(s) para a próxima etapa.`)
+      }
+      if (failCount > 0) {
+        toastError(`${failCount} item(ns) não puderam ser avançados.`)
+      }
+      setConfirmAdvanceAllOpen(false)
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao avançar itens em massa.')
+    } finally {
+      setAdvancingAll(false)
+    }
+  }
 
   const selectedDraft = selectedItem ? drafts[selectedItem.id] : null
   const modalBusy = selectedItem ? savingItemId === selectedItem.id || movingItemId === selectedItem.id : false
@@ -1555,27 +2032,6 @@ export default function RevisaoDeFaturaList() {
       hasPermission('*'),
     [hasPermission],
   )
-  const groupedTimesheetRows = useMemo(() => {
-    const sorted = [...selectedTimesheetRows].sort((a, b) => {
-      const aDate = a.dataLancamento || ''
-      const bDate = b.dataLancamento || ''
-      return bDate.localeCompare(aDate)
-    })
-
-    const groups = new Map<string, TimesheetRowDraft[]>()
-    for (const row of sorted) {
-      const key = row.dataLancamento || 'sem-data'
-      const current = groups.get(key) || []
-      current.push(row)
-      groups.set(key, current)
-    }
-
-    return Array.from(groups.entries()).map(([key, rows]) => ({
-      key,
-      label: key === 'sem-data' ? 'Sem data de lançamento' : formatDate(key),
-      rows,
-    }))
-  }, [selectedTimesheetRows])
   const totalHorasIniciais = selectedTimesheetRows.reduce((acc, row) => acc + parseDecimalInput(row.horasIniciais), 0)
   const totalHorasRevisadas = selectedTimesheetRows.reduce((acc, row) => acc + parseDecimalInput(row.horasRevisadas), 0)
   const valorInicialTimesheet = selectedTimesheetRows.reduce(
@@ -1588,6 +2044,416 @@ export default function RevisaoDeFaturaList() {
   )
   const valorOriginalRegras = selectedValueRows.reduce((acc, row) => acc + parseDecimalInput(row.valorOriginal), 0)
   const valorRevisadoRegras = selectedValueRows.reduce((acc, row) => acc + parseDecimalInput(row.valorRevisado), 0)
+  const stageLines = useMemo<StageLine[]>(() => {
+    if (!selectedItem) return []
+    const itemLabel = formatItemLabel(selectedItem)
+    const selectedCaseLabel = selectedItem.casoNumero ? `${selectedItem.casoNumero} - ${selectedItem.casoNome}` : selectedItem.casoNome
+    const caseLabelMap = new Map(caseTransferMap.options.map((option) => [option.value, option.label] as const))
+    const compact = (values: string[], fallback = '-') => {
+      const unique = Array.from(
+        new Set(
+          values
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      )
+      if (unique.length === 0) return fallback
+      if (unique.length === 1) return unique[0]
+      return `${unique[0]} +${unique.length - 1}`
+    }
+
+    const timesheetCases = selectedTimesheetRows.map((row) => caseLabelMap.get(row.casoId) || selectedCaseLabel)
+    const timesheetDates = selectedTimesheetRows.map((row) => (row.dataLancamento ? formatDate(row.dataLancamento) : ''))
+    const timesheetDataInput = selectedTimesheetRows[0]?.dataLancamento || ''
+    const timesheetDescriptions = selectedTimesheetRows.map((row) => row.atividade || '')
+    const timesheetCaso = compact(timesheetCases, selectedCaseLabel || '-')
+    const timesheetData = compact(timesheetDates, selectedItem.dataReferencia ? formatDate(selectedItem.dataReferencia) : '-')
+    const timesheetDescricao = compact(timesheetDescriptions, selectedItem.timesheetDescricao || 'Sem descrição')
+
+    const approvalHoursTimesheet =
+      selectedItem.status === 'em_aprovacao'
+        ? parseDecimalInput(selectedDraft?.horas || String(totalHorasRevisadas))
+        : selectedItem.horasAprovadas
+    const approvalValueTimesheet =
+      selectedItem.status === 'em_aprovacao'
+        ? parseDecimalInput(selectedDraft?.valor || String(valorSugerido))
+        : selectedItem.valorAprovado
+    const approvalValueRegra =
+      selectedItem.status === 'em_aprovacao'
+        ? parseDecimalInput(selectedDraft?.valor || String(valorRevisadoRegras))
+        : selectedItem.valorAprovado
+    const revisoresConfig = getRevisoresOrdenados(selectedItem)
+    const aprovadoresConfig = getAprovadoresOrdenados(selectedItem)
+    const revisores =
+      revisoresConfig.length > 0
+        ? revisoresConfig
+        : [{ colaborador_id: '', ordem: 1, nome: '' }]
+    const aprovadores =
+      aprovadoresConfig.length > 0
+        ? aprovadoresConfig
+        : [{ colaborador_id: '', ordem: 1, nome: '' }]
+    const reviewerOwnIndex = currentColaboradorId
+      ? revisores.findIndex((entry) => entry.colaborador_id === currentColaboradorId)
+      : -1
+    const approverOwnIndex = currentColaboradorId
+      ? aprovadores.findIndex((entry) => entry.colaborador_id === currentColaboradorId)
+      : -1
+    const reviewerCurrentIndex = Math.max(0, getRevisorAtualIndex(selectedItem, revisores))
+    const approverCurrentIndex = Math.max(0, getAprovadorAtualIndex(selectedItem, aprovadores))
+    const isLockedStatus = ['aprovado', 'faturado', 'cancelado'].includes(selectedItem.status)
+    const colaboradorIdByNome = new Map<string, string>()
+    for (const [id, nome] of colaboradorMap.entries()) {
+      if (!nome || colaboradorIdByNome.has(nome)) continue
+      colaboradorIdByNome.set(nome, id)
+    }
+    const responsavelAtualNome = getResponsavelAtualNome(selectedItem) || ''
+    const responsavelAtualId = responsavelAtualNome ? colaboradorIdByNome.get(responsavelAtualNome) || null : null
+
+    const isReviewLineCompleted = (index: number) => {
+      if (selectedItem.status === 'em_revisao') return index < reviewerCurrentIndex
+      return true
+    }
+
+    const isApprovalLineCompleted = (index: number) => {
+      if (selectedItem.status === 'em_aprovacao') return index < approverCurrentIndex
+      if (selectedItem.status === 'em_revisao') return false
+      return true
+    }
+
+    const canViewReviewLine = (index: number) => {
+      if (canManageReviewers) return true
+      if (approverOwnIndex >= 0) return true
+      if (reviewerOwnIndex >= 0) return index <= reviewerOwnIndex
+      if (selectedItem.status === 'em_revisao') return index <= reviewerCurrentIndex
+      return true
+    }
+
+    const canViewApprovalLine = (index: number) => {
+      if (selectedItem.status === 'em_revisao') return false
+      if (canManageReviewers) return true
+      if (approverOwnIndex >= 0) return index <= approverOwnIndex
+      if (reviewerOwnIndex >= 0) return false
+      if (selectedItem.status === 'em_aprovacao') return index <= approverCurrentIndex
+      return true
+    }
+
+    const canEditReviewLine = (index: number) => {
+      if (isLockedStatus || selectedItem.status !== 'em_revisao') return false
+      if (canManageReviewers && reviewerOwnIndex < 0) return index === reviewerCurrentIndex
+      return reviewerOwnIndex >= 0 && index === reviewerOwnIndex
+    }
+
+    const canEditApprovalLine = (index: number) => {
+      if (isLockedStatus || selectedItem.status !== 'em_aprovacao') return false
+      if (canManageReviewers && approverOwnIndex < 0) return index === approverCurrentIndex
+      return approverOwnIndex >= 0 && index === approverOwnIndex
+    }
+
+    const canEditResponsavel = (type: 'revisor' | 'aprovador', index: number, completed: boolean) =>
+      canManageReviewers &&
+      !isLockedStatus &&
+      !completed &&
+      (type === 'revisor' ? selectedItem.status === 'em_revisao' : selectedItem.status !== 'em_revisao')
+
+    const resolveLineResponsavel = (
+      type: 'revisor' | 'aprovador',
+      idx: number,
+      entry: { colaborador_id: string; ordem: number; nome: string },
+    ) => {
+      if (entry.colaborador_id || entry.nome) {
+        const id = entry.colaborador_id || null
+        const nome = entry.nome || (id ? colaboradorMap.get(id) || id : '-')
+        return { id, nome }
+      }
+      const isCurrentLine =
+        (type === 'revisor' && selectedItem.status === 'em_revisao' && idx === reviewerCurrentIndex) ||
+        (type === 'aprovador' && selectedItem.status === 'em_aprovacao' && idx === approverCurrentIndex)
+      if (isCurrentLine && responsavelAtualNome) {
+        return { id: responsavelAtualId, nome: responsavelAtualNome }
+      }
+      return { id: null, nome: '-' }
+    }
+
+    const baseInitialLine: StageLine = {
+      key: 'inicial',
+      label: 'Lançamento original',
+      stageType: 'inicial',
+      stageOrder: null,
+      item: itemLabel,
+      caso: isTimesheetMode ? timesheetCaso : selectedCaseLabel || '-',
+      responsavelId: null,
+      responsavelNome: '-',
+      responsavelEditable: false,
+      completed: true,
+      data: isTimesheetMode ? timesheetData : '-',
+      dataInput: isTimesheetMode ? timesheetDataInput : '',
+      descricao: isTimesheetMode ? timesheetDescricao : '-',
+      tempo: isTimesheetMode ? formatHours(totalHorasIniciais) : '-',
+      valor: isTimesheetMode ? valorInicialTimesheet : valorOriginalRegras,
+      editable: false,
+    }
+
+    if (isTimesheetMode) {
+      const reviewLines = revisores
+        .map((entry, idx): StageLine | null => {
+          if (!canViewReviewLine(idx)) return null
+          const completed = isReviewLineCompleted(idx)
+          const responsavel = resolveLineResponsavel('revisor', idx, entry)
+          return {
+            key: `revisao-${idx + 1}`,
+            label: `Revisor ${idx + 1}`,
+            stageType: 'revisor',
+            stageOrder: idx + 1,
+            item: itemLabel,
+            caso: timesheetCaso,
+            responsavelId: responsavel.id,
+            responsavelNome: responsavel.nome,
+            responsavelEditable: canEditResponsavel('revisor', idx, completed),
+            completed,
+            data: timesheetData,
+            dataInput: timesheetDataInput,
+            descricao: timesheetDescricao,
+            tempo: formatHours(totalHorasRevisadas),
+            valor: valorSugerido,
+            editable: canEditReviewLine(idx),
+          }
+        })
+        .filter((line): line is StageLine => line !== null)
+
+      const approvalLines = aprovadores
+        .map((entry, idx): StageLine | null => {
+          if (!canViewApprovalLine(idx)) return null
+          const completed = isApprovalLineCompleted(idx)
+          const responsavel = resolveLineResponsavel('aprovador', idx, entry)
+          return {
+            key: `aprovacao-${idx + 1}`,
+            label: `Aprovador ${idx + 1}`,
+            stageType: 'aprovador',
+            stageOrder: idx + 1,
+            item: itemLabel,
+            caso: timesheetCaso,
+            responsavelId: responsavel.id,
+            responsavelNome: responsavel.nome,
+            responsavelEditable: canEditResponsavel('aprovador', idx, completed),
+            completed,
+            data: timesheetData,
+            dataInput: timesheetDataInput,
+            descricao: timesheetDescricao,
+            tempo: formatNullableHours(approvalHoursTimesheet),
+            valor: approvalValueTimesheet,
+            editable: canEditApprovalLine(idx),
+          }
+        })
+        .filter((line): line is StageLine => line !== null)
+
+      return [baseInitialLine, ...reviewLines, ...approvalLines]
+    }
+
+    const regraDescricao = compact(
+      selectedValueRows.map((row) => row.descricao || ''),
+      getRuleTitle(selectedItem),
+    )
+    const regraDataInput = normalizeDateFromDisplay(selectedValueRows[0]?.referencia || selectedItem.dataReferencia || '')
+    const regraData = compact(
+      selectedValueRows.map((row) => formatDateDisplay(row.referencia || '')),
+      selectedItem.dataReferencia ? formatDate(selectedItem.dataReferencia) : '-',
+    )
+
+    const reviewLines = revisores
+      .map((entry, idx): StageLine | null => {
+        if (!canViewReviewLine(idx)) return null
+        const completed = isReviewLineCompleted(idx)
+        const responsavel = resolveLineResponsavel('revisor', idx, entry)
+        return {
+          key: `revisao-${idx + 1}`,
+          label: `Revisor ${idx + 1}`,
+          stageType: 'revisor',
+          stageOrder: idx + 1,
+          item: itemLabel,
+          caso: selectedCaseLabel || '-',
+          responsavelId: responsavel.id,
+          responsavelNome: responsavel.nome,
+          responsavelEditable: canEditResponsavel('revisor', idx, completed),
+          completed,
+          data: regraData,
+          dataInput: regraDataInput,
+          descricao: regraDescricao,
+          tempo: '-',
+          valor: valorRevisadoRegras,
+          editable: canEditReviewLine(idx),
+        }
+      })
+      .filter((line): line is StageLine => line !== null)
+
+    const approvalLines = aprovadores
+      .map((entry, idx): StageLine | null => {
+        if (!canViewApprovalLine(idx)) return null
+        const completed = isApprovalLineCompleted(idx)
+        const responsavel = resolveLineResponsavel('aprovador', idx, entry)
+        return {
+          key: `aprovacao-${idx + 1}`,
+          label: `Aprovador ${idx + 1}`,
+          stageType: 'aprovador',
+          stageOrder: idx + 1,
+          item: itemLabel,
+          caso: selectedCaseLabel || '-',
+          responsavelId: responsavel.id,
+          responsavelNome: responsavel.nome,
+          responsavelEditable: canEditResponsavel('aprovador', idx, completed),
+          completed,
+          data: regraData,
+          dataInput: regraDataInput,
+          descricao: regraDescricao,
+          tempo: '-',
+          valor: approvalValueRegra,
+          editable: canEditApprovalLine(idx),
+        }
+      })
+      .filter((line): line is StageLine => line !== null)
+
+    return [
+      {
+        ...baseInitialLine,
+        caso: selectedCaseLabel || '-',
+        data: regraData,
+        dataInput: regraDataInput,
+        descricao: regraDescricao,
+      },
+      ...reviewLines,
+      ...approvalLines,
+    ]
+  }, [
+    canManageReviewers,
+    caseTransferMap.options,
+    colaboradorMap,
+    currentColaboradorId,
+    getAprovadorAtualIndex,
+    getAprovadoresOrdenados,
+    getRevisorAtualIndex,
+    getRevisoresOrdenados,
+    isTimesheetMode,
+    selectedDraft,
+    selectedItem,
+    selectedTimesheetRows,
+    selectedValueRows,
+    totalHorasIniciais,
+    valorInicialTimesheet,
+    totalHorasRevisadas,
+    valorSugerido,
+    valorOriginalRegras,
+    valorRevisadoRegras,
+  ])
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setActiveStageLineKey(null)
+      return
+    }
+    setActiveStageLineKey((current) => {
+      if (current && stageLines.some((line) => line.key === current)) return current
+      const firstEditable = stageLines.find((line) => line.editable)
+      return firstEditable?.key || stageLines[0]?.key || null
+    })
+  }, [selectedItem, stageLines])
+
+  const hasEditableStageLine = stageLines.some((line) => line.editable)
+
+  const updateStageLineField = (
+    line: StageLine,
+    field: 'data' | 'descricao' | 'tempo' | 'valor',
+    value: string,
+  ) => {
+    if (!selectedItem || !line.editable) return
+
+    setDrafts((prev) => {
+      const current = prev[selectedItem.id]
+      if (!current) return prev
+
+      if (isTimesheetMode) {
+        if (selectedItem.status === 'em_aprovacao' && line.stageType === 'aprovador') {
+          if (field === 'tempo') {
+            return {
+              ...prev,
+              [selectedItem.id]: {
+                ...current,
+                horas: value,
+              },
+            }
+          }
+          if (field === 'valor') {
+            return {
+              ...prev,
+              [selectedItem.id]: {
+                ...current,
+                valor: value,
+              },
+            }
+          }
+        }
+
+        const nextRows = (current.timesheetRows || []).map((row, idx) => {
+          if (field === 'data') {
+            return { ...row, dataLancamento: normalizeDateInput(value) }
+          }
+          if (field === 'descricao') {
+            return { ...row, atividade: value }
+          }
+          if (field === 'tempo') {
+            return idx === 0 ? { ...row, horasRevisadas: value } : row
+          }
+          if (field === 'valor') {
+            const totalHours = (current.timesheetRows || []).reduce(
+              (acc, currentRow) => acc + parseDecimalInput(currentRow.horasRevisadas || currentRow.horasIniciais),
+              0,
+            )
+            const valorHora = totalHours > 0 ? parseDecimalInput(value) / totalHours : 0
+            return { ...row, valorHora: String(valorHora) }
+          }
+          return row
+        })
+
+        return {
+          ...prev,
+          [selectedItem.id]: {
+            ...current,
+            timesheetRows: nextRows,
+          },
+        }
+      }
+
+      const valueRows = current.valueRows || []
+      if (field === 'valor' && selectedItem.status === 'em_aprovacao' && line.stageType === 'aprovador') {
+        return {
+          ...prev,
+          [selectedItem.id]: {
+            ...current,
+            valor: value,
+          },
+        }
+      }
+      const nextValueRows = valueRows.map((row, idx) => {
+        if (idx !== 0) return row
+        if (field === 'data') {
+          return { ...row, referencia: normalizeDateInput(value) }
+        }
+        if (field === 'descricao') {
+          return { ...row, descricao: value }
+        }
+        if (field === 'valor') {
+          return { ...row, valorRevisado: value }
+        }
+        return row
+      })
+
+      return {
+        ...prev,
+        [selectedItem.id]: {
+          ...current,
+          valueRows: nextValueRows,
+        },
+      }
+    })
+  }
 
   const clienteFilterOptions = useMemo<CommandSelectOption[]>(() => {
     const names = Array.from(new Set(items.map((item) => item.clienteNome).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'))
@@ -2015,10 +2881,15 @@ export default function RevisaoDeFaturaList() {
             setSelectedClienteKey(null)
             setSelectedClienteContractTab('')
             setSelectedClienteItemTab('')
+            setSelectedItemId(null)
+            setSelectedReviewMode('default')
+            setEditingTimesheetItemId(null)
+            setExpandedTimesheetRows({})
+            setConfirmAdvanceAllOpen(false)
           }
         }}
       >
-        <DialogContent className="max-w-6xl">
+        <DialogContent className="w-[96vw] max-w-[1800px]">
           <DialogHeader>
             <DialogTitle>Revisão do cliente</DialogTitle>
             <DialogDescription>{selectedClienteGroup?.nome || ''}</DialogDescription>
@@ -2095,274 +2966,56 @@ export default function RevisaoDeFaturaList() {
                 </p>
               </div>
 
-              {isTimesheetMode ? (
-                <>
-                  <div className="flex items-center justify-end">
-                    <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={editDisabled}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Adicionar timesheet
-                    </Button>
-                  </div>
+              <div className="flex items-center justify-end gap-2">
+                {isTimesheetMode ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => addTimesheetRow(selectedItem.id)}
+                    disabled={editDisabled || !hasEditableStageLine}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Adicionar timesheet
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => addValueRow(selectedItem.id)}
+                    disabled={editDisabled || !hasEditableStageLine}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Adicionar item
+                  </Button>
+                )}
+              </div>
 
-                  <div className="space-y-3">
-                    {groupedTimesheetRows.map((group) => (
-                      <div key={group.key} className="overflow-visible rounded-md border">
-                        <div className="border-b bg-muted/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          {group.label} • {group.rows.length} lançamento{group.rows.length > 1 ? 's' : ''}
-                        </div>
-                        <ul className="divide-y">
-                          {group.rows.map((row) => {
-                            const rowEditing = editingTimesheetItemId === row.id
-                            const rowExpanded = !!expandedTimesheetRows[row.id]
-                            return (
-                              <li key={row.id} className={`p-3 ${rowEditing ? 'bg-primary/5' : ''}`}>
-                                <div className="mb-2 flex items-center justify-between">
-                                  <p className="text-xs font-medium uppercase text-muted-foreground">Timesheet</p>
-                                  <div className="flex items-center gap-1">
-                                    <Tooltip content={rowExpanded ? 'Ocultar atividade' : 'Mostrar atividade'}>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          setExpandedTimesheetRows((prev) => ({ ...prev, [row.id]: !rowExpanded }))
-                                        }}
-                                        disabled={editDisabled}
-                                      >
-                                        {rowExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                      </Button>
-                                    </Tooltip>
-                                    <Tooltip content="Editar linha">
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          setEditingTimesheetItemId(row.id)
-                                        }}
-                                        disabled={editDisabled}
-                                      >
-                                        <SquarePen className="h-4 w-4" />
-                                      </Button>
-                                    </Tooltip>
-                                    <Tooltip content="Excluir linha">
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          removeTimesheetRow(selectedItem.id, row.id)
-                                        }}
-                                        disabled={editDisabled || selectedTimesheetRows.length <= 1}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </Tooltip>
-                                  </div>
-                                </div>
+              <StageLinesSummary
+                lines={stageLines}
+                activeLineKey={activeStageLineKey}
+                disabled={editDisabled}
+                responsavelOptions={colaboradorIdOptions}
+                savingResponsavelLineKey={savingResponsavelLineKey}
+                onActivateLine={setActiveStageLineKey}
+                onUpdateLineField={updateStageLineField}
+                onUpdateResponsavel={(line, responsavelId) => void updateStageLineResponsavel(line, responsavelId)}
+              />
 
-                                <div className="grid gap-3 md:grid-cols-3">
-                                  <div className="space-y-2">
-                                    <Input
-                                      type="date"
-                                      value={row.dataLancamento}
-                                      onChange={(event) =>
-                                        updateTimesheetRow(selectedItem.id, row.id, { dataLancamento: normalizeDateInput(event.target.value) })
-                                      }
-                                      disabled={editDisabled || !rowEditing}
-                                      className="h-8"
-                                    />
-                                    <CommandSelect
-                                      value={row.profissional}
-                                      onValueChange={(value) => updateTimesheetRow(selectedItem.id, row.id, { profissional: value })}
-                                      options={colaboradorOptions}
-                                      placeholder="Selecione o colaborador"
-                                      searchPlaceholder="Buscar colaborador..."
-                                      emptyText="Nenhum colaborador encontrado."
-                                      disabled={editDisabled || !rowEditing}
-                                    />
-                                    <CommandSelect
-                                      value={row.casoId}
-                                      onValueChange={(value) =>
-                                        updateTimesheetRow(selectedItem.id, row.id, {
-                                          casoId: value,
-                                          contratoId: caseTransferMap.caseToContrato.get(value) || row.contratoId,
-                                        })
-                                      }
-                                      options={caseTransferMap.options}
-                                      placeholder="Transferir para outro caso"
-                                      searchPlaceholder="Buscar caso de destino..."
-                                      emptyText="Nenhum caso encontrado."
-                                      disabled={editDisabled || !rowEditing}
-                                    />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <div className="text-xs text-muted-foreground">Iniciais: {formatHours(parseDecimalInput(row.horasIniciais))}</div>
-                                    <Input
-                                      value={row.horasRevisadas}
-                                      onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { horasRevisadas: event.target.value })}
-                                      disabled={editDisabled || !rowEditing}
-                                      className="h-8"
-                                    />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <div className="text-xs text-muted-foreground">
-                                      Base: {formatMoney(parseDecimalInput(row.horasIniciais) * parseDecimalInput(row.valorHoraInicial))}
-                                    </div>
-                                    <MoneyInput
-                                      value={row.valorHora}
-                                      onValueChange={(value) => updateTimesheetRow(selectedItem.id, row.id, { valorHora: value })}
-                                      disabled={editDisabled || !rowEditing}
-                                    />
-                                  </div>
-                                </div>
+              <p className="text-xs text-muted-foreground">
+                Clique na linha de <strong>Revisor/Aprovador</strong> para editar os dados e depois use o botão de avanço.
+              </p>
 
-                                {rowExpanded ? (
-                                  <div className="mt-3">
-                                    <label className="mb-1 block text-xs font-medium uppercase text-gray-500">Atividade / descrição</label>
-                                    <Textarea
-                                      value={row.atividade}
-                                      onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { atividade: event.target.value })}
-                                      disabled={editDisabled || !rowEditing}
-                                      rows={3}
-                                      className="resize-y"
-                                    />
-                                  </div>
-                                ) : null}
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                    <div>
-                      Horas iniciais: <strong>{formatHours(totalHorasIniciais)}</strong> • Horas revisadas:{' '}
-                      <strong>{formatHours(totalHorasRevisadas)}</strong>
-                    </div>
-                    <div>
-                      Valor inicial (base): <strong>{formatMoney(valorInicialTimesheet)}</strong>
-                    </div>
-                    Valor sugerido (horas x valor/hora): <strong>{formatMoney(valorSugerido)}</strong>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                    <strong>{getRuleTitle(selectedItem)}</strong>
-                    <div className="text-muted-foreground">
-                      Ajuste os itens de valor abaixo. Se houver mais de uma parcela/período no snapshot, cada linha é revisada separadamente.
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end">
-                    <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={editDisabled}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Adicionar item
-                    </Button>
-                  </div>
-
-                  <div className="rounded-md border">
-                    <table className="w-full min-w-full table-fixed caption-bottom text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Referência</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Valor original</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Valor revisado</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedValueRows.map((row) => {
-                          const rowEditing = editingTimesheetItemId === row.id
-                          return (
-                            <tr key={row.id} className={rowEditing ? 'bg-primary/5' : ''}>
-                              <td className="px-3 py-2 text-sm">
-                                <Input
-                                  value={formatDateDisplay(row.referencia)}
-                                  onChange={(event) => updateValueRow(selectedItem.id, row.id, { referencia: event.target.value })}
-                                  onBlur={(event) =>
-                                    updateValueRow(selectedItem.id, row.id, { referencia: normalizeDateFromDisplay(event.target.value) })
-                                  }
-                                  placeholder="DD/MM/AAAA"
-                                  disabled={editDisabled || !rowEditing}
-                                  className="h-8"
-                                />
-                              </td>
-                              <td className="px-3 py-2 text-sm">
-                                <Input
-                                  value={row.descricao}
-                                  onChange={(event) => updateValueRow(selectedItem.id, row.id, { descricao: event.target.value })}
-                                  disabled={editDisabled || !rowEditing}
-                                  className="h-8"
-                                />
-                              </td>
-                              <td className="px-3 py-2 text-sm">{formatMoney(parseDecimalInput(row.valorOriginal))}</td>
-                              <td className="px-3 py-2 text-sm">
-                                <MoneyInput
-                                  value={row.valorRevisado}
-                                  onValueChange={(value) => updateValueRow(selectedItem.id, row.id, { valorRevisado: value })}
-                                  disabled={editDisabled || !rowEditing}
-                                />
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                <Tooltip content="Editar linha">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setEditingTimesheetItemId(row.id)
-                                    }}
-                                    disabled={editDisabled}
-                                  >
-                                    <SquarePen className="h-4 w-4" />
-                                  </Button>
-                                </Tooltip>
-                                <Tooltip content="Excluir linha">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      removeValueRow(selectedItem.id, row.id)
-                                    }}
-                                    disabled={editDisabled || selectedValueRows.length <= 1}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </Tooltip>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                    Valor original: <strong>{formatMoney(valorOriginalRegras)}</strong> • Valor revisado:{' '}
-                    <strong>{formatMoney(valorRevisadoRegras)}</strong>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Observação</label>
-                    <Textarea
-                      value={selectedDraft.observacao}
-                      onChange={(event) => updateDraft(selectedItem.id, { observacao: event.target.value })}
-                      disabled={editDisabled}
-                      rows={3}
-                    />
-                  </div>
-                </>
-              )}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Observação</label>
+                <Textarea
+                  value={selectedDraft.observacao}
+                  onChange={(event) => updateDraft(selectedItem.id, { observacao: event.target.value })}
+                  disabled={editDisabled || !hasEditableStageLine}
+                  rows={3}
+                />
+              </div>
             </div>
           ) : null}
 
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 z-20 -mx-6 border-t bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80">
             <Button
               variant="outline"
               onClick={() => {
@@ -2372,6 +3025,7 @@ export default function RevisaoDeFaturaList() {
                 setSelectedItemId(null)
                 setSelectedReviewMode('default')
                 setEditingTimesheetItemId(null)
+                setConfirmAdvanceAllOpen(false)
               }}
             >
               Fechar
@@ -2381,19 +3035,18 @@ export default function RevisaoDeFaturaList() {
                 <Button
                   variant="outline"
                   onClick={() => void handleReturnAction(selectedItem)}
-                  disabled={modalBusy || !canReturn(selectedItem.status)}
+                  disabled={modalBusy || !hasEditableStageLine || !canReturn(selectedItem.status)}
                 >
                   <Undo2 className="mr-2 h-4 w-4" />
                   Retornar
                 </Button>
-                {canAdvance(selectedItem.status) ? (
-                  <Button onClick={() => void saveAndAdvanceItem(selectedItem)} disabled={modalBusy}>
-                    {movingItemId === selectedItem.id || savingItemId === selectedItem.id ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    {getAdvanceActionLabel(selectedItem)}
-                  </Button>
-                ) : null}
+                <Button
+                  onClick={() => setConfirmAdvanceAllOpen(true)}
+                  disabled={modalBusy || !hasEditableStageLine || advancingAll || clienteAdvanceItems.length === 0}
+                >
+                  {advancingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Enviar para próxima etapa (todos)
+                </Button>
                 {selectedItem.status === 'aprovado' ? (
                   <Button onClick={() => openFaturarModal(selectedItem)} disabled={modalBusy}>
                     <Save className="mr-2 h-4 w-4" />
@@ -2402,6 +3055,34 @@ export default function RevisaoDeFaturaList() {
                 ) : null}
               </>
             ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmAdvanceAllOpen}
+        onOpenChange={(open) => {
+          if (!advancingAll) setConfirmAdvanceAllOpen(open)
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirmar avanço em massa</DialogTitle>
+            <DialogDescription>
+              Ao confirmar, todos os itens elegíveis deste cliente serão avançados para a próxima etapa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/20 p-3 text-sm">
+            Itens elegíveis para avanço: <strong>{clienteAdvanceItems.length}</strong>
+          </div>
+          <DialogFooter className="sticky bottom-0 z-20 -mx-6 border-t bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+            <Button variant="outline" onClick={() => setConfirmAdvanceAllOpen(false)} disabled={advancingAll}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void advanceAllClienteItems()} disabled={advancingAll || clienteAdvanceItems.length === 0}>
+              {advancingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirmar e avançar todos
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2416,7 +3097,7 @@ export default function RevisaoDeFaturaList() {
           }
         }}
       >
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="w-[96vw] max-w-[1700px]">
           <DialogHeader>
             <DialogTitle>Revisar item de faturamento</DialogTitle>
             <DialogDescription>
@@ -2436,267 +3117,53 @@ export default function RevisaoDeFaturaList() {
               {isTimesheetMode ? (
                 <>
                 <div className="flex items-center justify-end">
-                  <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={editDisabled}>
+                  <Button variant="outline" onClick={() => addTimesheetRow(selectedItem.id)} disabled={editDisabled || !hasEditableStageLine}>
                     <Plus className="mr-2 h-4 w-4" />
                     Adicionar timesheet
                   </Button>
                 </div>
 
-                <div className="space-y-3">
-                  {groupedTimesheetRows.map((group) => (
-                    <div key={group.key} className="overflow-visible rounded-md border">
-                      <div className="border-b bg-muted/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {group.label} • {group.rows.length} lançamento{group.rows.length > 1 ? 's' : ''}
-                      </div>
-                      <ul className="divide-y">
-                        {group.rows.map((row) => {
-                          const rowEditing = editingTimesheetItemId === row.id
-                          const rowExpanded = !!expandedTimesheetRows[row.id]
-                          return (
-                            <li key={row.id} className={`p-3 ${rowEditing ? 'bg-primary/5' : ''}`}>
-                              <div className="mb-2 flex items-center justify-between">
-                                <p className="text-xs font-medium uppercase text-muted-foreground">Timesheet</p>
-                                <div className="flex items-center gap-1">
-                                  <Tooltip content={rowExpanded ? 'Ocultar atividade' : 'Mostrar atividade'}>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        setExpandedTimesheetRows((prev) => ({ ...prev, [row.id]: !rowExpanded }))
-                                      }}
-                                      disabled={editDisabled}
-                                    >
-                                      {rowExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                    </Button>
-                                  </Tooltip>
-                                  <Tooltip content="Editar linha">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        setEditingTimesheetItemId(row.id)
-                                      }}
-                                      disabled={editDisabled}
-                                    >
-                                      <SquarePen className="h-4 w-4" />
-                                    </Button>
-                                  </Tooltip>
-                                  <Tooltip content="Excluir linha">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        removeTimesheetRow(selectedItem.id, row.id)
-                                      }}
-                                      disabled={editDisabled || selectedTimesheetRows.length <= 1}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </Tooltip>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 md:grid-cols-3">
-                                <div className="space-y-2">
-                                  <Input
-                                    type="date"
-                                    value={row.dataLancamento}
-                                    onChange={(event) =>
-                                      updateTimesheetRow(selectedItem.id, row.id, { dataLancamento: normalizeDateInput(event.target.value) })
-                                    }
-                                    disabled={editDisabled || !rowEditing}
-                                    className="h-8"
-                                  />
-                                  <CommandSelect
-                                    value={row.profissional}
-                                    onValueChange={(value) => updateTimesheetRow(selectedItem.id, row.id, { profissional: value })}
-                                    options={colaboradorOptions}
-                                    placeholder="Selecione o colaborador"
-                                    searchPlaceholder="Buscar colaborador..."
-                                    emptyText="Nenhum colaborador encontrado."
-                                    disabled={editDisabled || !rowEditing}
-                                  />
-                                  <CommandSelect
-                                    value={row.casoId}
-                                    onValueChange={(value) =>
-                                      updateTimesheetRow(selectedItem.id, row.id, {
-                                        casoId: value,
-                                        contratoId: caseTransferMap.caseToContrato.get(value) || row.contratoId,
-                                      })
-                                    }
-                                    options={caseTransferMap.options}
-                                    placeholder="Transferir para outro caso"
-                                    searchPlaceholder="Buscar caso de destino..."
-                                    emptyText="Nenhum caso encontrado."
-                                    disabled={editDisabled || !rowEditing}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <div className="text-xs text-muted-foreground">Iniciais: {formatHours(parseDecimalInput(row.horasIniciais))}</div>
-                                  <Input
-                                    value={row.horasRevisadas}
-                                    onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { horasRevisadas: event.target.value })}
-                                    disabled={editDisabled || !rowEditing}
-                                    className="h-8"
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <div className="text-xs text-muted-foreground">
-                                    Base: {formatMoney(parseDecimalInput(row.horasIniciais) * parseDecimalInput(row.valorHoraInicial))}
-                                  </div>
-                                  <MoneyInput
-                                    value={row.valorHora}
-                                    onValueChange={(value) => updateTimesheetRow(selectedItem.id, row.id, { valorHora: value })}
-                                    disabled={editDisabled || !rowEditing}
-                                  />
-                                </div>
-                              </div>
-
-                              {rowExpanded ? (
-                                <div className="mt-3">
-                                  <label className="mb-1 block text-xs font-medium uppercase text-gray-500">Atividade / descrição</label>
-                                  <Textarea
-                                    value={row.atividade}
-                                    onChange={(event) => updateTimesheetRow(selectedItem.id, row.id, { atividade: event.target.value })}
-                                    disabled={editDisabled || !rowEditing}
-                                    rows={3}
-                                    className="resize-y"
-                                  />
-                                </div>
-                              ) : null}
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                  <div>
-                    Horas iniciais: <strong>{formatHours(totalHorasIniciais)}</strong> • Horas revisadas:{' '}
-                    <strong>{formatHours(totalHorasRevisadas)}</strong>
-                  </div>
-                  <div>
-                    Valor inicial (base): <strong>{formatMoney(valorInicialTimesheet)}</strong>
-                  </div>
-                  Valor sugerido (horas x valor/hora): <strong>{formatMoney(valorSugerido)}</strong>
-                </div>
+                <StageLinesSummary
+                  lines={stageLines}
+                  activeLineKey={activeStageLineKey}
+                  disabled={editDisabled}
+                  responsavelOptions={colaboradorIdOptions}
+                  savingResponsavelLineKey={savingResponsavelLineKey}
+                  onActivateLine={setActiveStageLineKey}
+                  onUpdateLineField={updateStageLineField}
+                  onUpdateResponsavel={(line, responsavelId) => void updateStageLineResponsavel(line, responsavelId)}
+                />
 
                 <p className="text-xs text-muted-foreground">
-                  Use os ícones da coluna <strong>Ações</strong> para expandir a descrição e habilitar edição da linha. As{' '}
-                  <strong>horas iniciais</strong> são mantidas como referência e não podem ser alteradas.
+                  Clique na linha de <strong>Revisor/Aprovador</strong> para editar os dados e depois avançar.
                 </p>
                 </>
               ) : (
                 <>
-                <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                  <strong>{getRuleTitle(selectedItem)}</strong>
-                  <div className="text-muted-foreground">
-                    Ajuste os itens de valor abaixo. Se houver mais de uma parcela/período no snapshot, cada linha é revisada separadamente.
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-end">
-                  <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={editDisabled}>
+                  <Button variant="outline" onClick={() => addValueRow(selectedItem.id)} disabled={editDisabled || !hasEditableStageLine}>
                     <Plus className="mr-2 h-4 w-4" />
                     Adicionar item
                   </Button>
                 </div>
 
-                <div className="rounded-md border">
-                  <table className="w-full min-w-full table-fixed caption-bottom text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Referência</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Valor original</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Valor revisado</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedValueRows.map((row) => {
-                        const rowEditing = editingTimesheetItemId === row.id
-                        return (
-                          <tr key={row.id} className={rowEditing ? 'bg-primary/5' : ''}>
-                            <td className="px-3 py-2 text-sm">
-                              <Input
-                                value={formatDateDisplay(row.referencia)}
-                                onChange={(event) => updateValueRow(selectedItem.id, row.id, { referencia: event.target.value })}
-                                onBlur={(event) =>
-                                  updateValueRow(selectedItem.id, row.id, { referencia: normalizeDateFromDisplay(event.target.value) })
-                                }
-                                placeholder="DD/MM/AAAA"
-                                disabled={editDisabled || !rowEditing}
-                                className="h-8"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-sm">
-                              <Input
-                                value={row.descricao}
-                                onChange={(event) => updateValueRow(selectedItem.id, row.id, { descricao: event.target.value })}
-                                disabled={editDisabled || !rowEditing}
-                                className="h-8"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-sm">{formatMoney(parseDecimalInput(row.valorOriginal))}</td>
-                            <td className="px-3 py-2 text-sm">
-                              <MoneyInput
-                                value={row.valorRevisado}
-                                onValueChange={(value) => updateValueRow(selectedItem.id, row.id, { valorRevisado: value })}
-                                disabled={editDisabled || !rowEditing}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <Tooltip content="Editar linha">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    setEditingTimesheetItemId(row.id)
-                                  }}
-                                  disabled={editDisabled}
-                                >
-                                  <SquarePen className="h-4 w-4" />
-                                </Button>
-                              </Tooltip>
-                              <Tooltip content="Excluir linha">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    removeValueRow(selectedItem.id, row.id)
-                                  }}
-                                  disabled={editDisabled || selectedValueRows.length <= 1}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </Tooltip>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                  Valor original: <strong>{formatMoney(valorOriginalRegras)}</strong> • Valor revisado:{' '}
-                  <strong>{formatMoney(valorRevisadoRegras)}</strong>
-                </div>
+                <StageLinesSummary
+                  lines={stageLines}
+                  activeLineKey={activeStageLineKey}
+                  disabled={editDisabled}
+                  responsavelOptions={colaboradorIdOptions}
+                  savingResponsavelLineKey={savingResponsavelLineKey}
+                  onActivateLine={setActiveStageLineKey}
+                  onUpdateLineField={updateStageLineField}
+                  onUpdateResponsavel={(line, responsavelId) => void updateStageLineResponsavel(line, responsavelId)}
+                />
 
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Observação</label>
                   <Textarea
                     value={selectedDraft.observacao}
                     onChange={(event) => updateDraft(selectedItem.id, { observacao: event.target.value })}
-                    disabled={editDisabled}
+                    disabled={editDisabled || !hasEditableStageLine}
                     rows={3}
                   />
                 </div>
@@ -2722,13 +3189,13 @@ export default function RevisaoDeFaturaList() {
                 <Button
                   variant="outline"
                   onClick={() => void handleReturnAction(selectedItem)}
-                  disabled={modalBusy || !canReturn(selectedItem.status)}
+                  disabled={modalBusy || !hasEditableStageLine || !canReturn(selectedItem.status)}
                 >
                   <Undo2 className="mr-2 h-4 w-4" />
                   Retornar
                 </Button>
                 {canAdvance(selectedItem.status) ? (
-                  <Button onClick={() => void saveAndAdvanceItem(selectedItem)} disabled={modalBusy}>
+                  <Button onClick={() => void saveAndAdvanceItem(selectedItem)} disabled={modalBusy || !hasEditableStageLine}>
                     {movingItemId === selectedItem.id || savingItemId === selectedItem.id ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : null}

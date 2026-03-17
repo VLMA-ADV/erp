@@ -11,3 +11,9 @@
 - Na RPC `get_revisao_fatura`, horas (`informadas/revisadas/aprovadas`) devem ser forçadas a zero para `origem_tipo <> 'timesheet'` para impedir vazamento de horas em itens de regra financeira.
 - Em faturamento/revisão, cálculo de `valor em aberto` deve usar precedência `valor_aprovado -> valor_revisado -> valor_informado`; usar apenas revisado/informado gera divergência após aprovação.
 - Em modais com `CommandSelect` dentro de containers com borda, evitar `overflow-hidden` para não cortar o dropdown; em listas com nomes longos, definir largura mínima e altura máxima no painel de seleção.
+- Na tabela de etapas da revisão/aprovação, aplicar visibilidade por usuário (`sua etapa + etapas anteriores`) e bloquear edição fora da sua linha; troca de responsável só para admin e apenas em etapas não concluídas.
+- Em aprovação, o valor/hora aprovados devem usar estado dedicado e nunca sobrescrever `valor_revisado`/`horas_revisadas`; edição do aprovador deve persistir apenas em `*_aprovado`.
+- Em seletores dentro de modais longos, o dropdown deve abrir para cima automaticamente quando não houver espaço abaixo para manter os itens clicáveis.
+- Em revisão de faturamento, `get-contratos` pode não trazer `timesheet_config` dos casos; quando isso ocorrer, usar fallback em `get-contrato` para montar revisores/aprovadores e pré-seleção correta de responsável.
+- Antes de usar `operations.despesas.valor` em RPCs de faturamento, garantir migration de coluna (`ADD COLUMN IF NOT EXISTS valor`) porque ambientes antigos de despesas não possuem esse campo.
+- Em ajustes de regras financeiras no contrato, sempre validar também o fluxo de tela de caso (`caso-form`) para manter paridade funcional entre os dois pontos de edição.

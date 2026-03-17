@@ -79,10 +79,10 @@ interface ProspecaoConfig {
 interface ContratoFormState {
   cliente_id: string
   nome_contrato: string
-  regime_fiscal: string
   forma_entrada: 'organico' | 'prospeccao' | ''
+  responsavel_prospeccao_id: string
+  canal_prospeccao: string
   grupo_imposto_id: string
-  prospeccao_config: ProspecaoConfig
   status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   casos: CasoPayload[]
 }
@@ -161,6 +161,14 @@ const emptyCaso: CasoPayload = {
     cap_desejado_horas: '',
     cross_sell_ativo: false,
     cross_sell_origem_colaborador_id: '',
+    cross_sell_periodicidade: 'mensal',
+    cross_sell_modo: 'percentual',
+    cross_sell_valor: '',
+    cross_sell_data_pagamento_unico: '',
+    cross_sell_usar_dia_vencimento: true,
+    cross_sell_dia_pagamento_mensal: '',
+    cross_sell_data_fim_pagamentos: '',
+    cross_sell_parcelas_pagamento: [],
   },
   centro_custo_rateio: [],
   pagadores_servico: [],
@@ -207,15 +215,10 @@ function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
 const emptyState: ContratoFormState = {
   cliente_id: '',
   nome_contrato: '',
-  regime_fiscal: '',
   forma_entrada: '',
+  responsavel_prospeccao_id: '',
+  canal_prospeccao: '',
   grupo_imposto_id: '',
-  prospeccao_config: {
-    pagamento_ativo: false,
-    modo: 'percentual',
-    valor: '',
-    pagadores: [],
-  },
   status: 'rascunho',
   casos: [{ ...emptyCaso }],
 }
@@ -476,14 +479,6 @@ export default function ContratoForm({
     ],
     [options.colaboradores, options.clientes, options.prestadores, options.parceiros],
   )
-  const prospeccaoPagadorOptions = useMemo(
-    () =>
-      indicacaoOptions.map((item) => ({
-        value: item.value,
-        label: item.label,
-      })),
-    [indicacaoOptions],
-  )
   const grupoImpostoMap = useMemo(
     () => new Map((options.grupos_impostos || []).map((item) => [item.id, item.nome])),
     [options.grupos_impostos],
@@ -548,7 +543,6 @@ export default function ContratoForm({
   const despesas = currentCaso.despesas_config || {}
   const timesheet = currentCaso.timesheet_config || {}
   const indicacao = currentCaso.indicacao_config || {}
-  const prospeccao = form.prospeccao_config || emptyState.prospeccao_config
   const despesasSelecionadas: string[] = despesas.despesas_reembolsaveis || []
   const despesasReembolsaveisEnabled =
     Boolean((despesas as any).reembolsavel_ativo) || (despesasSelecionadas.length > 0 && !despesasSelecionadas.includes('nao'))
@@ -557,6 +551,9 @@ export default function ContratoForm({
   const indicacaoPagamentoEnabled =
     Boolean((indicacao as any).pagamento_indicacao_ativo) ||
     (Boolean(indicacao.pagamento_indicacao) && indicacao.pagamento_indicacao !== 'nao')
+  const crossSellEnabled = Boolean(regras.cross_sell_ativo)
+  const crossSellPeriodicidade = String(regras.cross_sell_periodicidade || 'mensal')
+  const crossSellModo = regras.cross_sell_modo === 'valor' ? 'valor' : 'percentual'
   const capMinEnabled = Boolean(
     regras.cap_min_enabled ??
       regras.cap_limites_enabled ??
@@ -576,7 +573,6 @@ export default function ContratoForm({
         regras.cap_desejado_horas !== undefined &&
         String(regras.cap_desejado_horas).trim() !== ''),
   )
-  const prospeccaoPagamentoEnabled = Boolean(prospeccao.pagamento_ativo)
 
   const composeCurrentFinanceRule = (base?: BillingRuleDraft): BillingRuleDraft => ({
     id: base?.id || createRuleId(),
@@ -658,20 +654,6 @@ export default function ContratoForm({
     if (!form.cliente_id) return 'Cliente é obrigatório'
     if (!form.nome_contrato.trim()) return 'Nome do contrato é obrigatório'
     if (!form.forma_entrada) return 'Forma de entrada é obrigatória'
-    if (!form.regime_fiscal) return 'Regime fiscal é obrigatório'
-    if (form.forma_entrada === 'prospeccao') {
-      const prospec = normalizeProspecaoConfig(form.prospeccao_config)
-      if (prospec.pagamento_ativo) {
-        if (!String(prospec.valor || '').trim()) {
-          return prospec.modo === 'valor'
-            ? 'Informe o valor da prospecção'
-            : 'Informe o percentual da prospecção'
-        }
-        if (!prospec.pagadores.length) return 'Informe os pagadores da prospecção'
-        const rateioError = validateRateio(prospec.pagadores, 'Rateio da prospecção')
-        if (rateioError) return rateioError
-      }
-    }
     return null
   }
 
@@ -895,10 +877,10 @@ export default function ContratoForm({
           setForm({
             cliente_id: contrato.cliente_id || '',
             nome_contrato: contrato.nome_contrato || '',
-            regime_fiscal: contrato.regime_fiscal || '',
             forma_entrada: (contrato.forma_entrada || '') as 'organico' | 'prospeccao' | '',
+            responsavel_prospeccao_id: String((contrato as any).responsavel_prospeccao_id || ''),
+            canal_prospeccao: String((contrato as any).canal_prospeccao || ''),
             grupo_imposto_id: String(contrato.grupo_imposto_id || ''),
-            prospeccao_config: normalizeProspecaoConfig((contrato as any).prospeccao_config),
             status: normalizeContratoStatus(contrato.status || 'rascunho'),
             casos: casos.length
               ? casos.map((caso) => ({
@@ -952,7 +934,8 @@ export default function ContratoForm({
           setForm((prev) => ({
             ...prev,
             grupo_imposto_id: '',
-            prospeccao_config: { ...emptyState.prospeccao_config },
+            responsavel_prospeccao_id: '',
+            canal_prospeccao: '',
           }))
         }
       } catch (fetchError) {
@@ -1033,6 +1016,37 @@ export default function ContratoForm({
     currentCaso.inicio_vigencia,
     currentCaso.data_ultimo_reajuste,
     currentCaso.data_proximo_reajuste,
+  ])
+
+  useEffect(() => {
+    if (currentCaso.regra_cobranca !== 'hora') return
+    const hasCapDesejado = Boolean(regras.cap_desejado_enabled) || String(regras.cap_desejado_horas || '').trim() !== ''
+    if (!hasCapDesejado) return
+
+    setForm((prev) => {
+      const next = [...prev.casos]
+      const current = next[selectedCaseIndex]
+      if (!current) return prev
+      const currentRegras = { ...(current.regra_cobranca_config || {}) }
+      const currentHasCapDesejado =
+        Boolean(currentRegras.cap_desejado_enabled) || String(currentRegras.cap_desejado_horas || '').trim() !== ''
+      if (!currentHasCapDesejado) return prev
+
+      next[selectedCaseIndex] = {
+        ...current,
+        regra_cobranca_config: {
+          ...currentRegras,
+          cap_desejado_enabled: false,
+          cap_desejado_horas: '',
+        },
+      }
+      return { ...prev, casos: next }
+    })
+  }, [
+    currentCaso.regra_cobranca,
+    regras.cap_desejado_enabled,
+    regras.cap_desejado_horas,
+    selectedCaseIndex,
   ])
 
   useEffect(() => {
@@ -1184,14 +1198,8 @@ export default function ContratoForm({
     })
   }
 
-  const updateProspeccao = (field: keyof ProspecaoConfig, value: any) => {
-    setForm((prev) => ({
-      ...prev,
-      prospeccao_config: {
-        ...normalizeProspecaoConfig(prev.prospeccao_config),
-        [field]: value,
-      },
-    }))
+  const updateCurrentCrossSell = (field: string, value: any) => {
+    updateCurrentRegra(`cross_sell_${field}`, value)
   }
 
   const setIndicacaoPeriodicidade = (periodicidade: string) => {
@@ -1237,6 +1245,50 @@ export default function ContratoForm({
     updateCurrentIndicacao('parcelas_pagamento', parcelas)
   }
 
+  const setCrossSellPeriodicidade = (periodicidade: string) => {
+    updateCurrentCrossSell('periodicidade', periodicidade)
+    if (periodicidade === 'mensal') {
+      updateCurrentCrossSell('usar_dia_vencimento', true)
+      updateCurrentCrossSell('parcelas_pagamento', [])
+      if (!regras.cross_sell_data_fim_pagamentos) {
+        updateCurrentCrossSell('data_fim_pagamentos', currentCaso.inicio_vigencia || currentCaso.data_inicio_faturamento || '')
+      }
+      return
+    }
+    if (periodicidade === 'parcelado') {
+      updateCurrentCrossSell('data_pagamento_unico', '')
+      const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []
+      if (parcelas.length === 0) {
+        updateCurrentCrossSell('parcelas_pagamento', [{ valor: '', data_pagamento: '' }])
+      }
+      return
+    }
+    updateCurrentCrossSell('parcelas_pagamento', [])
+    updateCurrentCrossSell('data_fim_pagamentos', '')
+    updateCurrentCrossSell('dia_pagamento_mensal', '')
+    if (!String(regras.cross_sell_data_pagamento_unico || '').trim()) {
+      updateCurrentCrossSell('data_pagamento_unico', currentCaso.inicio_vigencia || currentCaso.data_inicio_faturamento || '')
+    }
+  }
+
+  const addCrossSellParcela = () => {
+    const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []
+    updateCurrentCrossSell('parcelas_pagamento', [...parcelas, { valor: '', data_pagamento: '' }])
+  }
+
+  const updateCrossSellParcela = (idx: number, field: 'valor' | 'data_pagamento', value: string) => {
+    const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? [...regras.cross_sell_parcelas_pagamento] : []
+    if (!parcelas[idx]) return
+    parcelas[idx] = { ...parcelas[idx], [field]: value }
+    updateCurrentCrossSell('parcelas_pagamento', parcelas)
+  }
+
+  const removeCrossSellParcela = (idx: number) => {
+    const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? [...regras.cross_sell_parcelas_pagamento] : []
+    parcelas.splice(idx, 1)
+    updateCurrentCrossSell('parcelas_pagamento', parcelas)
+  }
+
   const setCentroRateio = (items: Array<{ id: string; percentual: number }>) => {
     updateCurrentCaso({
       centro_custo_rateio: items.map((item) => ({
@@ -1262,16 +1314,6 @@ export default function ContratoForm({
         percentual: item.percentual,
       })),
     })
-  }
-
-  const setProspeccaoRateio = (items: Array<{ id: string; percentual: number }>) => {
-    updateProspeccao(
-      'pagadores',
-      items.map((item) => ({
-        pagador_id: item.id,
-        percentual: item.percentual,
-      })),
-    )
   }
 
   const buildDefaultTabelaPrecoItens = (): TabelaPrecoItem[] =>
@@ -1435,8 +1477,6 @@ export default function ContratoForm({
     return value
   }
 
-  const formatProspeccaoPagador = (value: string | undefined) => formatIndicacaoPagador(value)
-
   const periodicidadeIndicacaoOptions = useMemo(() => {
     const regra = normalizeRegraCobranca(currentFinanceRule?.regra_cobranca || currentCaso.regra_cobranca)
     if (regra === 'mensal' || regra === 'mensalidade_processo') {
@@ -1486,6 +1526,34 @@ export default function ContratoForm({
     const data = String(indicacao.data_pagamento_unico || '').trim()
     return [`Pagamento único em ${formatDateBr(data)}`]
   }, [indicacao, indicacaoPagamentoEnabled, currentCaso.pagamento_dia_mes])
+
+  const crossSellPreview = useMemo(() => {
+    if (!crossSellEnabled) return []
+    if (crossSellPeriodicidade === 'parcelado') {
+      const parcelas = Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []
+      if (!parcelas.length) return ['Nenhuma parcela configurada']
+      return parcelas.map((p: any, idx: number) => {
+        const valor = String(p?.valor || '').trim() || '0,00'
+        const data = formatDateBr(String(p?.data_pagamento || ''))
+        return `Parcela ${idx + 1}: ${valor} em ${data}`
+      })
+    }
+    if (crossSellPeriodicidade === 'mensal') {
+      const usaVencimento = Boolean(regras.cross_sell_usar_dia_vencimento)
+      const dia = usaVencimento
+        ? String(currentCaso.pagamento_dia_mes || '').trim()
+        : String(regras.cross_sell_dia_pagamento_mensal || '').trim()
+      const fim = String(regras.cross_sell_data_fim_pagamentos || '').trim()
+      const valor = String(regras.cross_sell_valor || '').trim()
+      const linhas = [
+        `Mensalidade ${crossSellModo === 'valor' ? `de ${valor || '0,00'}` : `de ${valor || '0'}%`} com pagamento todo dia ${dia || '-'}`,
+      ]
+      linhas.push(`Até ${formatDateBr(fim)}`)
+      return linhas
+    }
+    const data = String(regras.cross_sell_data_pagamento_unico || '').trim()
+    return [`Pagamento único em ${formatDateBr(data)}`]
+  }, [crossSellEnabled, crossSellPeriodicidade, crossSellModo, regras, currentCaso.pagamento_dia_mes])
 
   const addCaso = () => {
     setForm((prev) => ({
@@ -1703,13 +1771,10 @@ export default function ContratoForm({
         body: JSON.stringify({
           cliente_id: form.cliente_id,
           nome_contrato: form.nome_contrato,
-          regime_fiscal: form.regime_fiscal,
           forma_entrada: form.forma_entrada || null,
+          responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
+          canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
           grupo_imposto_id: form.grupo_imposto_id || null,
-          prospeccao_config:
-            form.forma_entrada === 'prospeccao'
-              ? normalizeProspecaoConfig(form.prospeccao_config)
-              : {},
           status: 'rascunho',
           casos: [],
         }),
@@ -1973,13 +2038,10 @@ export default function ContratoForm({
               id: contratoId,
               cliente_id: form.cliente_id,
               nome_contrato: form.nome_contrato,
-              regime_fiscal: form.regime_fiscal,
               forma_entrada: form.forma_entrada || null,
+              responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
+              canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
               grupo_imposto_id: form.grupo_imposto_id || null,
-              prospeccao_config:
-                form.forma_entrada === 'prospeccao'
-                  ? normalizeProspecaoConfig(form.prospeccao_config)
-                  : {},
             }),
           })
           const updateData = await updateResp.json()
@@ -2034,13 +2096,10 @@ export default function ContratoForm({
           id: contractTargetId,
           cliente_id: form.cliente_id,
           nome_contrato: form.nome_contrato,
-          regime_fiscal: form.regime_fiscal,
           forma_entrada: form.forma_entrada || null,
+          responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
+          canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
           grupo_imposto_id: form.grupo_imposto_id || null,
-          prospeccao_config:
-            form.forma_entrada === 'prospeccao'
-              ? normalizeProspecaoConfig(form.prospeccao_config)
-              : {},
         }),
       })
 
@@ -2316,48 +2375,21 @@ export default function ContratoForm({
                   <p className="font-medium">{form.forma_entrada || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Regime fiscal</p>
-                  <p className="font-medium">{form.regime_fiscal || '-'}</p>
+                  <p className="text-xs text-muted-foreground">Responsável da prospecção</p>
+                  <p className="font-medium">{colaboradoresMap.get(form.responsavel_prospeccao_id) || '-'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Grupo de impostos</p>
                   <p className="font-medium">{grupoImpostoMap.get(form.grupo_imposto_id) || '-'}</p>
                 </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Canal de prospecção</p>
+                  <p className="font-medium">{form.canal_prospeccao || '-'}</p>
+                </div>
                 <div className="md:col-span-2">
                   <p className="text-xs text-muted-foreground">Nome do contrato</p>
                   <p className="font-medium">{form.nome_contrato || '-'}</p>
                 </div>
-                {form.forma_entrada === 'prospeccao' ? (
-                  <div className="md:col-span-2 rounded-md border bg-muted/30 p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Configuração de prospecção</p>
-                    <p className="mt-1 text-sm">
-                      Pagamento:{' '}
-                      <span className="font-medium">{prospeccaoPagamentoEnabled ? 'Sim' : 'Não'}</span>
-                    </p>
-                    {prospeccaoPagamentoEnabled ? (
-                      <>
-                        <p className="text-sm">
-                          Modo:{' '}
-                          <span className="font-medium">
-                            {prospeccao.modo === 'valor' ? 'Valor fixo' : 'Percentual'}
-                          </span>
-                        </p>
-                        <p className="text-sm">
-                          Valor:{' '}
-                          <span className="font-medium">{prospeccao.valor || '-'}</span>
-                        </p>
-                        <p className="text-sm">
-                          Rateio:{' '}
-                          <span className="font-medium">
-                            {(prospeccao.pagadores || [])
-                              .map((item) => `${formatProspeccaoPagador(item.pagador_id)} (${item.percentual ?? 0}%)`)
-                              .join(' | ') || '-'}
-                          </span>
-                        </p>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
 
               <div className="space-y-2 rounded-md border p-3">
@@ -2643,10 +2675,8 @@ export default function ContratoForm({
                   setForm((prev) => ({
                     ...prev,
                     forma_entrada: value as 'organico' | 'prospeccao',
-                    prospeccao_config:
-                      value === 'prospeccao'
-                        ? normalizeProspecaoConfig(prev.prospeccao_config)
-                        : { ...normalizeProspecaoConfig(prev.prospeccao_config), pagamento_ativo: false, pagadores: [] },
+                    responsavel_prospeccao_id: value === 'prospeccao' ? prev.responsavel_prospeccao_id : '',
+                    canal_prospeccao: value === 'prospeccao' ? prev.canal_prospeccao : '',
                   }))
                 }
                 disabled={isReadOnly}
@@ -2658,20 +2688,36 @@ export default function ContratoForm({
               />
             </div>
 
-            <div className="space-y-3 md:col-span-2">
-              <Label>Regime fiscal</Label>
-              <ChoiceCards
-                value={form.regime_fiscal}
-                onChange={(value) => setForm((prev) => ({ ...prev, regime_fiscal: value }))}
-                disabled={isReadOnly}
-                options={[
-                  { value: 'simples_nacional', label: 'Simples Nacional' },
-                  { value: 'lucro_real', label: 'Lucro Real' },
-                  { value: 'lucro_presumido', label: 'Lucro Presumido' },
-                ]}
-                columns={3}
-              />
-            </div>
+            {form.forma_entrada === 'prospeccao' ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Responsável da prospecção</Label>
+                  <CommandSelect
+                    value={form.responsavel_prospeccao_id}
+                    onValueChange={(value) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        responsavel_prospeccao_id: value,
+                      }))
+                    }
+                    options={colaboradorOptions}
+                    placeholder="Selecione o responsável"
+                    searchPlaceholder="Buscar colaborador..."
+                    emptyText="Nenhum colaborador encontrado."
+                    disabled={isReadOnly}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Canal de prospecção</Label>
+                  <Input
+                    value={form.canal_prospeccao}
+                    onChange={(e) => setForm((prev) => ({ ...prev, canal_prospeccao: e.target.value }))}
+                    placeholder="Ex.: indicação, evento, inbound, outbound..."
+                    disabled={isReadOnly}
+                  />
+                </div>
+              </>
+            ) : null}
 
             <div className="space-y-2 md:col-span-2">
               <Label>Grupo de impostos</Label>
@@ -2685,80 +2731,6 @@ export default function ContratoForm({
                 disabled={isReadOnly}
               />
             </div>
-
-            {form.forma_entrada === 'prospeccao' ? (
-              <div className="space-y-3 rounded-md border bg-muted/20 p-4 md:col-span-2">
-                <p className="text-sm font-semibold">Configuração de prospecção</p>
-
-                <div className="space-y-2">
-                  <Label>Pagamento de prospecção</Label>
-                  <ChoiceCards
-                    value={prospeccaoPagamentoEnabled ? 'sim' : 'nao'}
-                    onChange={(value) => {
-                      if (value === 'nao') {
-                        updateProspeccao('pagamento_ativo', false)
-                        updateProspeccao('valor', '')
-                        updateProspeccao('pagadores', [])
-                        return
-                      }
-                      updateProspeccao('pagamento_ativo', true)
-                    }}
-                    options={[
-                      { value: 'nao', label: 'Não' },
-                      { value: 'sim', label: 'Sim' },
-                    ]}
-                    disabled={isReadOnly}
-                    columns={2}
-                  />
-                </div>
-
-                {prospeccaoPagamentoEnabled ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Modo</Label>
-                        <NativeSelect
-                          value={prospeccao.modo || 'percentual'}
-                          onChange={(e) => updateProspeccao('modo', e.target.value === 'valor' ? 'valor' : 'percentual')}
-                          disabled={isReadOnly}
-                        >
-                          <option value="percentual">Percentual</option>
-                          <option value="valor">Valor fixo</option>
-                        </NativeSelect>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>{prospeccao.modo === 'valor' ? 'Valor' : 'Percentual'}</Label>
-                        {prospeccao.modo === 'valor' ? (
-                          <MoneyInput
-                            value={prospeccao.valor || ''}
-                            onValueChange={(value) => updateProspeccao('valor', value)}
-                            disabled={isReadOnly}
-                          />
-                        ) : (
-                          <Input
-                            value={prospeccao.valor || ''}
-                            onChange={(e) => updateProspeccao('valor', e.target.value)}
-                            placeholder="Ex: 10"
-                            disabled={isReadOnly}
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <RateioSlider
-                      title="Rateio da prospecção"
-                      options={prospeccaoPagadorOptions}
-                      items={(prospeccao.pagadores || []).map((item) => ({
-                        id: item.pagador_id,
-                        percentual: item.percentual ?? 0,
-                      }))}
-                      onChange={setProspeccaoRateio}
-                      disabled={isReadOnly}
-                    />
-                  </>
-                ) : null}
-              </div>
-            ) : null}
 
             {isEdit ? (
               <div className="space-y-2">
@@ -3403,12 +3375,15 @@ export default function ContratoForm({
                           updateCurrentRegra('cap_desejado_horas', '0')
                         }
                       }}
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || currentCaso.regra_cobranca === 'hora'}
                       options={[
                         { value: 'nao', label: 'Não' },
                         { value: 'sim', label: 'Sim' },
                       ]}
                     />
+                    {currentCaso.regra_cobranca === 'hora' ? (
+                      <p className="text-xs text-muted-foreground">Indisponível para regra de cobrança por hora.</p>
+                    ) : null}
                   </div>
                   {capDesejadoEnabled ? (
                     <div className="space-y-2">
@@ -3419,7 +3394,7 @@ export default function ContratoForm({
                         step="0.01"
                         value={String(regras.cap_desejado_horas || '')}
                         onChange={(e) => updateCurrentRegra('cap_desejado_horas', e.target.value)}
-                        disabled={isReadOnly}
+                        disabled={isReadOnly || currentCaso.regra_cobranca === 'hora'}
                         placeholder="Ex: 120"
                       />
                     </div>
@@ -3902,11 +3877,32 @@ export default function ContratoForm({
                     <div className="space-y-2">
                       <Label>Cross Sell de cobrança?</Label>
                       <ChoiceCards
-                        value={regras.cross_sell_ativo ? 'sim' : 'nao'}
+                        value={crossSellEnabled ? 'sim' : 'nao'}
                         onChange={(value) => {
                           const enabled = value === 'sim'
-                          updateCurrentRegra('cross_sell_ativo', enabled)
-                          if (!enabled) updateCurrentRegra('cross_sell_origem_colaborador_id', '')
+                          updateCurrentCrossSell('ativo', enabled)
+                          if (!enabled) {
+                            updateCurrentCrossSell('origem_colaborador_id', '')
+                            updateCurrentCrossSell('periodicidade', 'mensal')
+                            updateCurrentCrossSell('modo', 'percentual')
+                            updateCurrentCrossSell('valor', '')
+                            updateCurrentCrossSell('data_pagamento_unico', '')
+                            updateCurrentCrossSell('usar_dia_vencimento', true)
+                            updateCurrentCrossSell('dia_pagamento_mensal', '')
+                            updateCurrentCrossSell('data_fim_pagamentos', '')
+                            updateCurrentCrossSell('parcelas_pagamento', [])
+                            return
+                          }
+
+                          if (!String(regras.cross_sell_origem_colaborador_id || '').trim() && options.colaboradores?.[0]?.id) {
+                            updateCurrentCrossSell('origem_colaborador_id', options.colaboradores[0].id)
+                          }
+                          if (!String(regras.cross_sell_periodicidade || '').trim()) {
+                            setCrossSellPeriodicidade(periodicidadeIndicacaoOptions[0]?.value || 'pontual')
+                          }
+                          if (!String(regras.cross_sell_modo || '').trim()) {
+                            updateCurrentCrossSell('modo', 'percentual')
+                          }
                         }}
                         options={[
                           { value: 'nao', label: 'Não' },
@@ -3916,19 +3912,156 @@ export default function ContratoForm({
                         columns={2}
                       />
                     </div>
-                    {regras.cross_sell_ativo && (
-                      <div className="space-y-2">
-                        <Label>Origem do cross sell</Label>
-                        <CommandSelect
-                          value={String(regras.cross_sell_origem_colaborador_id || '')}
-                          onValueChange={(value) => updateCurrentRegra('cross_sell_origem_colaborador_id', value)}
-                          options={colaboradorOptions}
-                          placeholder="Selecione..."
-                          searchPlaceholder="Buscar colaborador..."
-                          emptyText="Nenhum colaborador encontrado."
-                          disabled={isReadOnly}
-                        />
-                      </div>
+                    {crossSellEnabled && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Origem do cross sell</Label>
+                          <CommandSelect
+                            value={String(regras.cross_sell_origem_colaborador_id || '')}
+                            onValueChange={(value) => updateCurrentCrossSell('origem_colaborador_id', value)}
+                            options={colaboradorOptions}
+                            placeholder="Selecione..."
+                            searchPlaceholder="Buscar colaborador..."
+                            emptyText="Nenhum colaborador encontrado."
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Periodicidade do cross selling</Label>
+                          <NativeSelect
+                            value={crossSellPeriodicidade || periodicidadeIndicacaoOptions[0]?.value || 'pontual'}
+                            disabled={isReadOnly}
+                            onChange={(e) => setCrossSellPeriodicidade(e.target.value)}
+                          >
+                            {periodicidadeIndicacaoOptions.map((option) => (
+                              <option key={`cross-sell-${option.value}`} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Método</Label>
+                          <NativeSelect
+                            value={crossSellModo}
+                            disabled={isReadOnly}
+                            onChange={(e) => updateCurrentCrossSell('modo', e.target.value)}
+                          >
+                            <option value="percentual">Percentual</option>
+                            <option value="valor">Valor</option>
+                          </NativeSelect>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{crossSellModo === 'valor' ? 'Valor' : 'Percentual'}</Label>
+                          {crossSellModo === 'valor' ? (
+                            <MoneyInput
+                              value={regras.cross_sell_valor || ''}
+                              onValueChange={(value) => updateCurrentCrossSell('valor', value)}
+                              disabled={isReadOnly}
+                            />
+                          ) : (
+                            <Input
+                              value={regras.cross_sell_valor || ''}
+                              disabled={isReadOnly}
+                              onChange={(e) => updateCurrentCrossSell('valor', e.target.value)}
+                            />
+                          )}
+                        </div>
+                        {(crossSellPeriodicidade === 'pontual' || crossSellPeriodicidade === 'ao_final') && (
+                          <div className="space-y-2">
+                            <Label>Data do pagamento do cross selling</Label>
+                            <DatePicker
+                              value={regras.cross_sell_data_pagamento_unico || ''}
+                              onChange={(value) => updateCurrentCrossSell('data_pagamento_unico', value)}
+                              disabled={isReadOnly}
+                            />
+                          </div>
+                        )}
+                        {crossSellPeriodicidade === 'mensal' && (
+                          <>
+                            <div className="space-y-2">
+                              <Label>Usar dia de vencimento do caso?</Label>
+                              <ChoiceCards
+                                value={regras.cross_sell_usar_dia_vencimento ? 'sim' : 'nao'}
+                                onChange={(value) => updateCurrentCrossSell('usar_dia_vencimento', value === 'sim')}
+                                disabled={isReadOnly}
+                                options={[
+                                  { value: 'sim', label: 'Sim' },
+                                  { value: 'nao', label: 'Não' },
+                                ]}
+                              />
+                            </div>
+                            {!regras.cross_sell_usar_dia_vencimento && (
+                              <div className="space-y-2">
+                                <Label>Dia do pagamento mensal</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={31}
+                                  value={regras.cross_sell_dia_pagamento_mensal || ''}
+                                  onChange={(e) => updateCurrentCrossSell('dia_pagamento_mensal', e.target.value)}
+                                  disabled={isReadOnly}
+                                />
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              <Label>Data final dos pagamentos</Label>
+                              <DatePicker
+                                value={regras.cross_sell_data_fim_pagamentos || ''}
+                                onChange={(value) => updateCurrentCrossSell('data_fim_pagamentos', value)}
+                                disabled={isReadOnly}
+                              />
+                            </div>
+                          </>
+                        )}
+                        {crossSellPeriodicidade === 'parcelado' && (
+                          <div className="space-y-2 md:col-span-2">
+                            <div className="flex items-center justify-between">
+                              <Label>Parcelas do cross selling</Label>
+                              {!isReadOnly && (
+                                <Button type="button" variant="outline" size="sm" onClick={addCrossSellParcela}>
+                                  Adicionar parcela
+                                </Button>
+                              )}
+                            </div>
+                            {(Array.isArray(regras.cross_sell_parcelas_pagamento) ? regras.cross_sell_parcelas_pagamento : []).map(
+                              (parcela: any, idx: number) => (
+                                <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                  <MoneyInput
+                                    value={parcela?.valor || ''}
+                                    onValueChange={(value) => updateCrossSellParcela(idx, 'valor', value)}
+                                    disabled={isReadOnly}
+                                  />
+                                  <DatePicker
+                                    value={parcela?.data_pagamento || ''}
+                                    onChange={(value) => updateCrossSellParcela(idx, 'data_pagamento', value)}
+                                    disabled={isReadOnly}
+                                  />
+                                  {!isReadOnly && (
+                                    <Button type="button" variant="outline" onClick={() => removeCrossSellParcela(idx)}>
+                                      Remover
+                                    </Button>
+                                  )}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
+                        <div className="space-y-2 md:col-span-2">
+                          <Label>Previsão de pagamento do cross selling</Label>
+                          <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                            {crossSellPreview.length ? (
+                              <ul className="space-y-1">
+                                {crossSellPreview.map((linha, idx) => (
+                                  <li key={`${linha}-${idx}`}>{linha}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>Defina os dados para visualizar a previsão.</p>
+                            )}
+                          </div>
+                        </div>
+                      </>
                     )}
                     <div className="space-y-2">
                       <Label>Pagamento da indicação</Label>
