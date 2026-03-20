@@ -48,6 +48,23 @@ interface ClienteAgrupado {
   contratos: ContratoAgrupado[]
 }
 
+interface DespesaFallbackItem {
+  id: string
+  cliente_id: string
+  cliente_nome: string
+  contrato_id: string
+  contrato_numero: number | null
+  contrato_nome: string
+  caso_id: string
+  caso_numero: number | null
+  caso_nome: string
+  data_lancamento: string
+  categoria: string
+  descricao: string
+  valor: number
+  status: string
+}
+
 function toDateInput(date: Date) {
   return date.toISOString().slice(0, 10)
 }
@@ -166,6 +183,151 @@ function filterTreeByRule(items: ClienteAgrupado[], regraTab: RegraTabKey): Clie
   return filteredClientes
 }
 
+function toNumber(value: number | string | null | undefined) {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function matchesDespesaSearch(item: DespesaFallbackItem, search: string) {
+  const term = search.trim().toLowerCase()
+  if (!term) return true
+  const haystack = [
+    item.cliente_nome,
+    item.contrato_nome,
+    item.caso_nome,
+    item.categoria,
+    item.descricao,
+    item.data_lancamento,
+    item.contrato_numero?.toString() || '',
+    item.caso_numero?.toString() || '',
+  ]
+    .join(' ')
+    .toLowerCase()
+  return haystack.includes(term)
+}
+
+function cloneTree(items: ClienteAgrupado[]) {
+  return (items || []).map((cliente) => ({
+    ...cliente,
+    contratos: (cliente.contratos || []).map((contrato) => ({
+      ...contrato,
+      casos: (contrato.casos || []).map((caso) => ({
+        ...caso,
+        extrato: Array.isArray(caso.extrato) ? caso.extrato.map((linha) => ({ ...linha })) : [],
+      })),
+    })),
+  }))
+}
+
+function mergeFallbackDespesas(
+  baseItems: ClienteAgrupado[],
+  despesas: DespesaFallbackItem[],
+  search: string,
+): ClienteAgrupado[] {
+  const merged = cloneTree(baseItems)
+
+  for (const despesa of despesas || []) {
+    if (!despesa?.id || !despesa.cliente_id || !despesa.contrato_id || !despesa.caso_id) continue
+    if ((despesa.status || '').toLowerCase() !== 'em_lancamento') continue
+    if (!matchesDespesaSearch(despesa, search)) continue
+
+    let cliente = merged.find((entry) => entry.cliente_id === despesa.cliente_id)
+    if (!cliente) {
+      cliente = {
+        cliente_id: despesa.cliente_id,
+        cliente_nome: despesa.cliente_nome || 'Cliente sem nome',
+        total_horas: '0.00',
+        total_valor: '0.00',
+        total_itens: 0,
+        contratos: [],
+      }
+      merged.push(cliente)
+    }
+
+    let contrato = (cliente.contratos || []).find((entry) => entry.contrato_id === despesa.contrato_id)
+    if (!contrato) {
+      contrato = {
+        contrato_id: despesa.contrato_id,
+        contrato_numero: despesa.contrato_numero ?? null,
+        contrato_nome: despesa.contrato_nome || 'Contrato sem nome',
+        total_horas: '0.00',
+        total_valor: '0.00',
+        total_itens: 0,
+        casos: [],
+      }
+      cliente.contratos.push(contrato)
+    }
+
+    let caso = (contrato.casos || []).find((entry) => entry.caso_id === despesa.caso_id)
+    if (!caso) {
+      caso = {
+        caso_id: despesa.caso_id,
+        caso_numero: despesa.caso_numero ?? null,
+        caso_nome: despesa.caso_nome || 'Caso sem nome',
+        total_horas: '0.00',
+        total_valor: '0.00',
+        total_itens: 0,
+        extrato: [],
+      }
+      contrato.casos.push(caso)
+    }
+
+    const extrato = Array.isArray(caso.extrato) ? caso.extrato : []
+    const alreadyExists = extrato.some((linha) => linha.tipo === 'despesa' && linha.origem_id === despesa.id)
+    if (alreadyExists) continue
+
+    extrato.push({
+      origem_id: despesa.id,
+      tipo: 'despesa',
+      descricao: `Despesa${despesa.categoria ? ` - ${despesa.categoria}` : ''}`,
+      data_referencia: despesa.data_lancamento || null,
+      horas: '0.00',
+      valor: toNumber(despesa.valor).toFixed(2),
+    })
+    caso.extrato = extrato
+  }
+
+  for (const cliente of merged) {
+    let clienteHoras = 0
+    let clienteValor = 0
+    let clienteItens = 0
+
+    for (const contrato of cliente.contratos || []) {
+      let contratoHoras = 0
+      let contratoValor = 0
+      let contratoItens = 0
+
+      for (const caso of contrato.casos || []) {
+        if (Array.isArray(caso.extrato) && caso.extrato.length > 0) {
+          const horasCaso = caso.extrato.reduce((acc, linha) => acc + toNumber(linha.horas), 0)
+          const valorCaso = caso.extrato.reduce((acc, linha) => acc + toNumber(linha.valor), 0)
+          caso.total_horas = horasCaso.toFixed(2)
+          caso.total_valor = valorCaso.toFixed(2)
+          caso.total_itens = caso.extrato.length
+        }
+
+        contratoHoras += toNumber(caso.total_horas)
+        contratoValor += toNumber(caso.total_valor)
+        contratoItens += Number(caso.total_itens || 0)
+      }
+
+      contrato.total_horas = contratoHoras.toFixed(2)
+      contrato.total_valor = contratoValor.toFixed(2)
+      contrato.total_itens = contratoItens
+
+      clienteHoras += contratoHoras
+      clienteValor += contratoValor
+      clienteItens += contratoItens
+    }
+
+    cliente.total_horas = clienteHoras.toFixed(2)
+    cliente.total_valor = clienteValor.toFixed(2)
+    cliente.total_itens = clienteItens
+  }
+
+  return merged
+}
+
 export default function ItensAFaturarList() {
   const today = new Date()
   const { success, error: toastError } = useToast()
@@ -217,12 +379,32 @@ export default function ItensAFaturarList() {
       }
 
       const data = (payload.data || []) as ClienteAgrupado[]
-      setItems(data)
+
+      const despesasParams = new URLSearchParams({
+        data_inicio: dateStart,
+        data_fim: dateEnd,
+        status: 'em_lancamento',
+      })
+      const despesasResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesas?${despesasParams.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+      const despesasPayload = await despesasResponse.json().catch(() => ({}))
+      const despesasData = Array.isArray(despesasPayload?.data) ? (despesasPayload.data as DespesaFallbackItem[]) : []
+
+      const mergedData = mergeFallbackDespesas(data, despesasData, search)
+      setItems(mergedData)
 
       const nextExpandedClientes: Record<string, boolean> = {}
       const nextExpandedContratos: Record<string, boolean> = {}
       const nextExpandedCasos: Record<string, boolean> = {}
-      for (const cliente of data) {
+      for (const cliente of mergedData) {
         nextExpandedClientes[cliente.cliente_id] = false
         for (const contrato of cliente.contratos || []) {
           nextExpandedContratos[contrato.contrato_id] = false
@@ -339,28 +521,31 @@ export default function ItensAFaturarList() {
       } = await supabase.auth.getSession()
       if (!session) return
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data_inicio: dateStart,
-          data_fim: dateEnd,
-          alvo_tipo: 'caso',
-          alvo_ids: selectedIds,
-          search: search.trim() || null,
-        }),
-      })
+      let created = 0
+      for (const caseId of selectedIds) {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            data_inicio: dateStart,
+            data_fim: dateEnd,
+            alvo_tipo: 'caso',
+            alvo_id: caseId,
+            search: search.trim() || null,
+          }),
+        })
 
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao enviar itens selecionados para revisão')
-        return
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          toastError(payload.error || 'Erro ao enviar itens selecionados para revisão')
+          return
+        }
+        created += Number(payload?.data?.itens_criados || 0)
       }
 
-      const created = Number(payload?.data?.itens_criados || 0)
       success(`Itens selecionados enviados para revisão (${created} itens).`)
       setSelectedCasos({})
       await loadItems()

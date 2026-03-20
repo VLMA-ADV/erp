@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Save, Send } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { CommandSelect, type CommandSelectOption } from '@/components/ui/command
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/components/ui/toast'
 
 interface RevisaoItem {
   id: string
@@ -80,10 +81,13 @@ interface ContratoEmRevisao {
 
 interface FluxoItemDetalhe {
   id: string
+  contratoId: string
+  casoId: string | null
   descricao: string
   referencia: string
   horas: number
   valor: number
+  status: RevisaoItem['status']
   statusLabel: string
   responsavelAtual: string
 }
@@ -113,6 +117,10 @@ function formatStatus(value: string) {
     default:
       return value || '-'
   }
+}
+
+function isDetalheFaturavel(detalhe: FluxoItemDetalhe) {
+  return detalhe.status === 'aprovado'
 }
 
 function getEffectiveHours(item: RevisaoItem) {
@@ -188,6 +196,7 @@ function getItemMetrics(item: RevisaoItem) {
 }
 
 export default function FluxoDeFaturamentoList() {
+  const { success, error: toastError } = useToast()
   const [loading, setLoading] = useState(true)
   const [loadingContratos, setLoadingContratos] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -197,6 +206,9 @@ export default function FluxoDeFaturamentoList() {
   const [contratosEmRevisao, setContratosEmRevisao] = useState<ContratoEmRevisao[]>([])
   const [casoOptions, setCasoOptions] = useState<CommandSelectOption[]>([])
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  const [selectedFaturamentoItems, setSelectedFaturamentoItems] = useState<Record<string, boolean>>({})
+  const [faturandoSelecionados, setFaturandoSelecionados] = useState(false)
+  const [faturandoItemId, setFaturandoItemId] = useState<string | null>(null)
 
   const loadContratosEmRevisao = async () => {
     try {
@@ -275,10 +287,13 @@ export default function FluxoDeFaturamentoList() {
         contract.itens += metrics.itens
         contract.detalhes.push({
           id: item.id,
+          contratoId,
+          casoId: item.caso_id || null,
           descricao: item.origem_tipo === 'timesheet' ? 'Timesheet' : getRuleTitle(item),
           referencia: asText(item.data_referencia),
           horas: metrics.horas,
           valor: metrics.valor,
+          status: item.status,
           statusLabel,
           responsavelAtual,
         })
@@ -302,6 +317,14 @@ export default function FluxoDeFaturamentoList() {
         const next: Record<string, boolean> = {}
         for (const entry of contratos) {
           next[entry.key] = previous[entry.key] ?? false
+        }
+        return next
+      })
+      setSelectedFaturamentoItems((previous) => {
+        const validIds = new Set(contratos.flatMap((entry) => entry.detalhes.map((detalhe) => detalhe.id)))
+        const next: Record<string, boolean> = {}
+        for (const [itemId, checked] of Object.entries(previous)) {
+          if (checked && validIds.has(itemId)) next[itemId] = true
         }
         return next
       })
@@ -338,6 +361,120 @@ export default function FluxoDeFaturamentoList() {
       { valor: 0, horas: 0, itens: 0 },
     )
   }, [contratosFiltradosPorRegra])
+
+  const detalhesVisiveis = useMemo(
+    () => contratosFiltradosPorRegra.flatMap((contrato) => contrato.detalhes),
+    [contratosFiltradosPorRegra],
+  )
+
+  const detalhePorId = useMemo(() => new Map(detalhesVisiveis.map((detalhe) => [detalhe.id, detalhe])), [detalhesVisiveis])
+
+  const faturamentoEligibleIds = useMemo(
+    () => detalhesVisiveis.filter((detalhe) => isDetalheFaturavel(detalhe)).map((detalhe) => detalhe.id),
+    [detalhesVisiveis],
+  )
+
+  const selectedFaturamentoItemIds = useMemo(
+    () => faturamentoEligibleIds.filter((itemId) => !!selectedFaturamentoItems[itemId]),
+    [faturamentoEligibleIds, selectedFaturamentoItems],
+  )
+
+  const toggleSelectionForItemIds = (itemIds: string[], checked: boolean) => {
+    if (itemIds.length === 0) return
+    setSelectedFaturamentoItems((previous) => {
+      const next = { ...previous }
+      for (const itemId of itemIds) {
+        if (checked) next[itemId] = true
+        else delete next[itemId]
+      }
+      return next
+    })
+  }
+
+  const faturarItemIds = async (itemIds: string[]) => {
+    if (itemIds.length === 0) {
+      toastError('Selecione ao menos um item aprovado para faturar.')
+      return
+    }
+
+    const selectedRows = itemIds
+      .map((itemId) => detalhePorId.get(itemId))
+      .filter((detalhe): detalhe is FluxoItemDetalhe => !!detalhe && isDetalheFaturavel(detalhe))
+
+    if (selectedRows.length === 0) {
+      toastError('Nenhuma linha selecionada está apta para faturamento.')
+      return
+    }
+
+    const groupsByCaso = new Map<string, FluxoItemDetalhe[]>()
+    for (const detalhe of selectedRows) {
+      const caseKey = detalhe.casoId || `sem-caso-${detalhe.id}`
+      const current = groupsByCaso.get(caseKey) || []
+      current.push(detalhe)
+      groupsByCaso.set(caseKey, current)
+    }
+
+    try {
+      setFaturandoSelecionados(true)
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      let billedItems = 0
+      let billedCases = 0
+      const errors: string[] = []
+
+      for (const [, groupItems] of groupsByCaso) {
+        let groupSucceeded = 0
+        for (const detalhe of groupItems) {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/faturar-revisao-item`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              billing_item_id: detalhe.id,
+              desconto_valor: 0,
+              rateio_pagadores: [],
+            }),
+          })
+
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            errors.push(payload.error || `Erro ao faturar item ${detalhe.descricao}`)
+            continue
+          }
+          billedItems += 1
+          groupSucceeded += 1
+        }
+        if (groupSucceeded > 0) billedCases += 1
+      }
+
+      if (billedItems > 0) {
+        success(`Faturamento concluído: ${billedItems} item(ns) em ${billedCases} caso(s).`)
+      }
+      if (errors.length > 0) {
+        toastError(errors[0] || 'Houve erro ao faturar alguns itens.')
+      }
+
+      setSelectedFaturamentoItems({})
+      await loadContratosEmRevisao()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao faturar itens selecionados.')
+    } finally {
+      setFaturandoSelecionados(false)
+      setFaturandoItemId(null)
+    }
+  }
+
+  const faturarSingleItem = async (itemId: string) => {
+    setFaturandoItemId(itemId)
+    await faturarItemIds([itemId])
+  }
 
   return (
     <div className="space-y-4">
@@ -398,6 +535,17 @@ export default function FluxoDeFaturamentoList() {
         <div className="text-sm font-semibold">{formatMoney(totals.valor)}</div>
       </div>
 
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          onClick={() => void faturarItemIds(selectedFaturamentoItemIds)}
+          disabled={loading || loadingContratos || faturandoSelecionados || selectedFaturamentoItemIds.length === 0}
+        >
+          {faturandoSelecionados ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+          Faturar selecionados ({selectedFaturamentoItemIds.length})
+        </Button>
+      </div>
+
       <div className="space-y-2">
         <h3 className="text-sm font-semibold uppercase text-muted-foreground">Regras financeiras no fluxo</h3>
         <Tabs value={regraTipoTab} defaultValue="all" onValueChange={setRegraTipoTab}>
@@ -416,6 +564,20 @@ export default function FluxoDeFaturamentoList() {
           <Table className="w-full min-w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="w-10 px-2 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={faturamentoEligibleIds.length > 0 && selectedFaturamentoItemIds.length === faturamentoEligibleIds.length}
+                    ref={(element) => {
+                      if (element) {
+                        element.indeterminate =
+                          selectedFaturamentoItemIds.length > 0 && selectedFaturamentoItemIds.length < faturamentoEligibleIds.length
+                      }
+                    }}
+                    onChange={(event) => toggleSelectionForItemIds(faturamentoEligibleIds, event.target.checked)}
+                    disabled={faturamentoEligibleIds.length === 0 || loading || loadingContratos || faturandoSelecionados}
+                  />
+                </th>
                 <th className="w-10 px-2 py-3" />
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Regra financeira</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Contrato</th>
@@ -430,81 +592,122 @@ export default function FluxoDeFaturamentoList() {
             <tbody className="divide-y divide-gray-100">
               {loadingContratos ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Carregando regras financeiras no fluxo...
                   </td>
                 </tr>
               ) : contratosFiltradosPorRegra.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Nenhuma regra financeira no fluxo.
                   </td>
                 </tr>
               ) : (
-                contratosFiltradosPorRegra.map((contrato) => (
-                  <Fragment key={contrato.key}>
-                    <tr>
-                      <td className="px-2 py-3">
-                        <button
-                          type="button"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
-                          onClick={() => {
-                            setExpandedRows((previous) => ({ ...previous, [contrato.key]: !previous[contrato.key] }))
-                          }}
-                          aria-label={expandedRows[contrato.key] ? 'Recolher detalhes' : 'Expandir detalhes'}
-                        >
-                          {expandedRows[contrato.key] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 font-medium">{contrato.regraFinanceira}</td>
-                      <td className="px-4 py-3 font-medium">
-                        {contrato.contratoNumero ? `${contrato.contratoNumero} - ` : ''}
-                        {contrato.contratoNome}
-                      </td>
-                      <td className="px-4 py-3">
-                        {contrato.casoNumero ? `${contrato.casoNumero} - ` : ''}
-                        {contrato.casoNome}
-                      </td>
-                      <td className="px-4 py-3">{contrato.statusLabel}</td>
-                      <td className="px-4 py-3">{contrato.responsavelAtual}</td>
-                      <td className="px-4 py-3">{contrato.itens}</td>
-                      <td className="px-4 py-3">{formatHours(contrato.horas)}</td>
-                      <td className="px-4 py-3 text-right">{formatMoney(contrato.valor)}</td>
-                    </tr>
-                    {expandedRows[contrato.key] ? (
+                contratosFiltradosPorRegra.map((contrato) => {
+                  const eligibleIds = contrato.detalhes.filter((detalhe) => isDetalheFaturavel(detalhe)).map((detalhe) => detalhe.id)
+                  const selectedCount = eligibleIds.filter((itemId) => !!selectedFaturamentoItems[itemId]).length
+
+                  return (
+                    <Fragment key={contrato.key}>
                       <tr>
-                        <td colSpan={9} className="bg-muted/20 px-4 py-3">
-                          <div className="rounded-md border bg-white">
-                            <Table className="w-full min-w-full">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Item</th>
-                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Referência</th>
-                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Responsável</th>
-                                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Horas</th>
-                                  <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {contrato.detalhes.map((detalhe) => (
-                                  <tr key={detalhe.id}>
-                                    <td className="px-3 py-2 text-sm">{detalhe.descricao}</td>
-                                    <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
-                                    <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
-                                    <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
-                                    <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
-                                    <td className="px-3 py-2 text-right text-sm">{formatMoney(detalhe.valor)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </Table>
-                          </div>
+                        <td className="px-2 py-3">
+                          <input
+                            type="checkbox"
+                            checked={eligibleIds.length > 0 && selectedCount === eligibleIds.length}
+                            ref={(element) => {
+                              if (element) {
+                                element.indeterminate = selectedCount > 0 && selectedCount < eligibleIds.length
+                              }
+                            }}
+                            onChange={(event) => toggleSelectionForItemIds(eligibleIds, event.target.checked)}
+                            disabled={eligibleIds.length === 0 || loading || loadingContratos || faturandoSelecionados}
+                          />
                         </td>
+                        <td className="px-2 py-3">
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
+                            onClick={() => {
+                              setExpandedRows((previous) => ({ ...previous, [contrato.key]: !previous[contrato.key] }))
+                            }}
+                            aria-label={expandedRows[contrato.key] ? 'Recolher detalhes' : 'Expandir detalhes'}
+                          >
+                            {expandedRows[contrato.key] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 font-medium">{contrato.regraFinanceira}</td>
+                        <td className="px-4 py-3 font-medium">
+                          {contrato.contratoNumero ? `${contrato.contratoNumero} - ` : ''}
+                          {contrato.contratoNome}
+                        </td>
+                        <td className="px-4 py-3">
+                          {contrato.casoNumero ? `${contrato.casoNumero} - ` : ''}
+                          {contrato.casoNome}
+                        </td>
+                        <td className="px-4 py-3">{contrato.statusLabel}</td>
+                        <td className="px-4 py-3">{contrato.responsavelAtual}</td>
+                        <td className="px-4 py-3">{contrato.itens}</td>
+                        <td className="px-4 py-3">{formatHours(contrato.horas)}</td>
+                        <td className="px-4 py-3 text-right">{formatMoney(contrato.valor)}</td>
                       </tr>
-                    ) : null}
-                  </Fragment>
-                ))
+                      {expandedRows[contrato.key] ? (
+                        <tr>
+                          <td colSpan={10} className="bg-muted/20 px-4 py-3">
+                            <div className="rounded-md border bg-white">
+                              <Table className="w-full min-w-full">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="w-10 px-3 py-2 text-left" />
+                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Item</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Referência</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Responsável</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Horas</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {contrato.detalhes.map((detalhe) => {
+                                    const canBill = isDetalheFaturavel(detalhe)
+                                    const busy = faturandoSelecionados || faturandoItemId === detalhe.id
+                                    return (
+                                      <tr key={detalhe.id}>
+                                        <td className="px-3 py-2">
+                                          <input
+                                            type="checkbox"
+                                            checked={!!selectedFaturamentoItems[detalhe.id]}
+                                            onChange={(event) => toggleSelectionForItemIds([detalhe.id], event.target.checked)}
+                                            disabled={!canBill || loading || loadingContratos || faturandoSelecionados}
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2 text-sm">{detalhe.descricao}</td>
+                                        <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
+                                        <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
+                                        <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
+                                        <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
+                                        <td className="px-3 py-2 text-right text-sm">{formatMoney(detalhe.valor)}</td>
+                                        <td className="px-3 py-2 text-right">
+                                          {canBill ? (
+                                            <Button size="icon" variant="ghost" onClick={() => void faturarSingleItem(detalhe.id)} disabled={busy}>
+                                              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                            </Button>
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground">-</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </Table>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  )
+                })
               )}
             </tbody>
           </Table>

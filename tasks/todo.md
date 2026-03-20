@@ -1,5 +1,76 @@
 # TODO
 
+## Sprint Atual - Aprofundamento da Documentação /docs (2026-03-18)
+
+### Escopo solicitado
+- [x] Aprofundar seção de `Banco de Dados` com modelagem real (schemas, tabelas-chave, constraints críticas).
+- [x] Aprofundar seção de `APIs` com catálogo de edges (método, permissão, RPC e finalidade).
+- [x] Aprofundar seção de `Processos de Negócio` com trilhas operacionais e guardrails do fluxo.
+
+### Execução
+- [x] Revisar migrations e edge functions atuais para refletir comportamento real do sistema.
+- [x] Atualizar página `src/app/docs/page.tsx` com tabelas e fluxos detalhados.
+- [x] Refatorar bloco de APIs para seções por domínio (sem tabela), com leitura automática de todas as edge functions.
+- [x] Expandir seções `Banco de Dados` e `Processos de Negócio` com visão de funcionamento, regras críticas e visão por perfil de usuário.
+- [x] Validar com `npm run -s type-check`.
+
+## Sprint Atual - Fallback de Despesas em Itens a Faturar (2026-03-18)
+
+### Escopo solicitado
+- [x] Garantir que despesas apareçam em `Itens a faturar` mesmo quando a RPC remota estiver sem consolidação de despesas.
+- [x] Manter despesas no mesmo agrupamento `Cliente -> Contrato -> Caso`, com extrato por item e suporte à aba `Despesas`.
+
+### Execução
+- [x] Integrar fallback de leitura via edge `get-despesas` dentro da tela de `itens-a-faturar`.
+- [x] Mesclar despesas elegíveis (`em_lancamento`, `revisao`, `aprovado`) ao extrato local sem duplicar linhas já vindas da RPC principal.
+- [x] Recalcular totais de caso/contrato/cliente após merge de despesas.
+- [x] Validar com `npm run -s type-check`.
+
+## Sprint Atual - Despesa no Start Faturamento (2026-03-18)
+
+### Escopo solicitado
+- [x] Corrigir envio de despesas para revisão/fluxo de faturamento no backend.
+
+### Execução
+- [x] Criar migration corretiva para garantir `operations.despesas.cliente_id` (coluna + backfill + índice + FK).
+- [x] Atualizar `create_despesa` para persistir `cliente_id` derivado do contrato.
+- [x] Atualizar `update_despesa` para sincronizar `cliente_id` com contrato existente.
+- [x] Validar com `npm run -s type-check`.
+- [x] Aplicar migration no ambiente remoto (`supabase db push`) após repair do histórico.
+
+## Sprint Atual - Valor Obrigatório em Despesas (2026-03-18)
+
+### Escopo solicitado
+- [x] Tornar `valor` obrigatório em despesas e refletir esse valor em Itens a faturar.
+
+### Execução
+- [x] Frontend `Despesas`: adicionar campo `Valor` no modal (cadastro/edição) e validação `> 0`.
+- [x] Frontend `Despesas`: incluir coluna `Valor` na listagem.
+- [x] Banco: atualizar RPCs `get_despesas`, `create_despesa`, `update_despesa` para retornar/persistir/validar `valor`.
+- [x] Aplicar migration `20260318171500_require_valor_in_despesas.sql` no ambiente remoto.
+- [x] Validar com `npm run -s type-check`.
+
+## Sprint Atual - Envio de Despesas em Lote (2026-03-19)
+
+### Escopo solicitado
+- [x] Corrigir envio de despesas selecionadas para revisão/fluxo quando houver variação de versão do RPC.
+
+### Execução
+- [x] `Itens a faturar`: remover fallback local que adicionava despesas fora da elegibilidade real da RPC.
+- [x] `Itens a faturar`: alterar envio em lote para executar por caso (`alvo_id`) com compatibilidade ampla.
+- [x] Validar com `npm run -s type-check`.
+
+## Sprint Atual - Visibilidade de Despesas em Ambiente Legado (2026-03-19)
+
+### Escopo solicitado
+- [x] Corrigir ausência de despesas em `Itens a faturar` quando a RPC remota não inclui despesas na consolidação.
+
+### Execução
+- [x] Reintegrar fallback de leitura de despesas (`get-despesas`) dentro de `Itens a faturar`.
+- [x] Mesclar despesas na árvore `Cliente -> Contrato -> Caso` com deduplicação por `origem_id`.
+- [x] Recalcular totais por caso/contrato/cliente após merge.
+- [x] Validar com `npm run -s type-check`.
+
 ## Sprint Atual - Cliente/Contrato/Faturamento com Despesas (2026-03-17)
 
 ### Escopo solicitado
@@ -328,4 +399,24 @@ Implementar módulo de faturamento fase 1 com fluxo completo (itens a faturar ->
 - [x] Desabilitar `cap desejado` quando a regra de cobrança for `hora`.
 - [x] Espelhar no `cross selling` a mesma estrutura de indicação (periodicidade, método, valor, datas, parcelas e previsão).
 - [x] Aplicar os ajustes em ambas as telas: contrato (`contrato-form`) e caso (`caso-form`).
+- [x] Revisão: executar `npm run -s type-check`.
+
+## Sprint Atual - Documentação Handover (2026-03-18)
+- [x] Criar página navegável de documentação técnica em `/docs`.
+- [x] Incluir seções de funcionamento, arquitetura, estrutura de pastas, banco, APIs e processos.
+- [x] Incluir checklist de handover e comandos de execução/deploy.
+- [x] Revisão: executar `npm run -s type-check`.
+
+## Sprint Atual - Faturamento Somente no Fluxo (2026-03-20)
+
+### Escopo solicitado
+- [x] Remover ações de faturamento da tela `Revisão de fatura`.
+- [x] Permitir faturamento por linha e em lote na tela `Fluxo de faturamento`.
+- [x] Garantir processamento em lote agrupado por caso.
+
+### Execução
+- [x] `Revisão de fatura`: remover botões de `Faturar` (massa, linha e modal) mantendo apenas revisão/aprovação.
+- [x] `Fluxo de faturamento`: adicionar seleção por linha e por grupo para itens com status `aprovado`.
+- [x] `Fluxo de faturamento`: adicionar ação `Faturar selecionados (N)` e faturamento por linha.
+- [x] `Fluxo de faturamento`: executar envio para edge `faturar-revisao-item` com agrupamento por `caso_id`.
 - [x] Revisão: executar `npm run -s type-check`.

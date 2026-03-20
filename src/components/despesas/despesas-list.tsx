@@ -12,6 +12,7 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MoneyInput } from '@/components/ui/money-input'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
@@ -31,6 +32,7 @@ interface DespesaItem {
   data_lancamento: string
   categoria: string
   descricao: string
+  valor: number
   status: DespesaStatus
   arquivo_nome: string
   mime_type: string | null
@@ -62,6 +64,7 @@ interface FormState {
   caso_id: string
   data_lancamento: string
   categoria: string
+  valor: string
   descricao: string
   arquivo: File | null
   arquivo_nome: string
@@ -73,6 +76,7 @@ const emptyForm: FormState = {
   caso_id: '',
   data_lancamento: '',
   categoria: '',
+  valor: '',
   descricao: '',
   arquivo: null,
   arquivo_nome: '',
@@ -98,6 +102,11 @@ function statusClassName(status: DespesaStatus) {
   if (status === 'revisao') return 'border-blue-200 bg-blue-50 text-blue-700'
   if (status === 'cancelado') return 'border-red-200 bg-red-50 text-red-700'
   return 'border-amber-200 bg-amber-50 text-amber-700'
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  const amount = Number(value || 0)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount)
 }
 
 const CATEGORIA_OPTIONS = [
@@ -216,14 +225,21 @@ export default function DespesasList() {
 
     const payload = await response.json().catch(() => ({}))
     if (!response.ok || !Array.isArray(payload.data)) return
-    const contratosAtivos = (payload.data as ContratoItem[])
-      .filter((item) => item.status === 'ativo')
+    const contratosDisponiveis = (payload.data as ContratoItem[])
+      .filter((item) => {
+        const status = String(item.status || '').toLowerCase()
+        return status !== 'encerrado' && status !== 'inativo' && status !== 'cancelado'
+      })
       .map((item) => ({
         ...item,
-        casos: (item.casos || []).filter((caso) => (caso.status || 'ativo') === 'ativo'),
+        casos: (item.casos || []).filter((caso) => {
+          const status = String(caso.status || '').toLowerCase()
+          return status !== 'encerrado' && status !== 'inativo' && status !== 'cancelado'
+        }),
       }))
       .filter((item) => (item.casos || []).length > 0)
-    setContratos(contratosAtivos)
+
+    setContratos(contratosDisponiveis)
   }
 
   const fetchClientes = async () => {
@@ -358,6 +374,7 @@ export default function DespesasList() {
       caso_id: item.caso_id,
       data_lancamento: item.data_lancamento,
       categoria: item.categoria || '',
+      valor: String(item.valor ?? ''),
       descricao: item.descricao || '',
       arquivo: null,
       arquivo_nome: item.arquivo_nome || '',
@@ -389,6 +406,11 @@ export default function DespesasList() {
       toastError('Categoria é obrigatória')
       return
     }
+    const valorNumeric = Number(form.valor || 0)
+    if (!Number.isFinite(valorNumeric) || valorNumeric <= 0) {
+      toastError('Valor da despesa é obrigatório e deve ser maior que zero')
+      return
+    }
     if (!form.id && !form.arquivo) {
       toastError('Arquivo é obrigatório')
       return
@@ -405,6 +427,7 @@ export default function DespesasList() {
         caso_id: form.caso_id,
         data_lancamento: form.data_lancamento || null,
         categoria: form.categoria.trim(),
+        valor: valorNumeric,
         descricao: form.descricao.trim(),
       }
 
@@ -536,6 +559,7 @@ export default function DespesasList() {
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Caso</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Categoria</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Arquivo</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
@@ -544,13 +568,13 @@ export default function DespesasList() {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Carregando despesas...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Nenhuma despesa encontrada.
                 </td>
               </tr>
@@ -570,6 +594,7 @@ export default function DespesasList() {
                   <td className="px-4 py-3 text-sm">
                     <p className="line-clamp-2">{item.descricao || '-'}</p>
                   </td>
+                  <td className="px-4 py-3 text-right text-sm">{formatMoney(item.valor)}</td>
                   <td className="px-4 py-3 text-sm">{item.arquivo_nome || '-'}</td>
                   <td className="px-4 py-3 text-sm">
                     <Badge className={statusClassName(item.status)}>{formatStatus(item.status)}</Badge>
@@ -655,6 +680,16 @@ export default function DespesasList() {
               <DatePicker
                 value={form.data_lancamento}
                 onChange={(value) => setForm((prev) => ({ ...prev, data_lancamento: value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Valor</Label>
+              <MoneyInput
+                value={form.valor}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, valor: value }))}
+                placeholder="0,00"
+                disabled={submitting}
               />
             </div>
 

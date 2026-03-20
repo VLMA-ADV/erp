@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
 import { Input } from '@/components/ui/input'
 import { MoneyInput } from '@/components/ui/money-input'
-import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -81,6 +80,8 @@ interface DraftFields {
   horas: string
   valor: string
   observacao: string
+  aprovacaoDataInput: string
+  aprovacaoDescricao: string
   timesheetRows: TimesheetRowDraft[]
   valueRows: ValueRowDraft[]
 }
@@ -197,12 +198,34 @@ function resolveNumber(primary: number | null | undefined, fallback?: number | n
   return primary ?? fallback ?? 0
 }
 
+function getSnapshotAprovadorOrdemAtual(item: RevisaoItem) {
+  const raw = Number(item.snapshot?.aprovador_ordem_atual ?? 0)
+  return Number.isFinite(raw) ? raw : 0
+}
+
+function shouldUseApprovedStageValues(item: RevisaoItem) {
+  if (item.status === 'aprovado' || item.status === 'faturado' || item.status === 'cancelado') return true
+  if (item.status !== 'em_aprovacao') return false
+  // Enquanto estiver no primeiro aprovador, o "último avaliado" ainda é a revisão.
+  return getSnapshotAprovadorOrdemAtual(item) > 1
+}
+
 function getEffectiveItemHours(item: RevisaoItem) {
-  return item.horasAprovadas ?? item.horasRevisadas ?? item.horasInformadas ?? 0
+  if (shouldUseApprovedStageValues(item) && item.horasAprovadas !== null && item.horasAprovadas !== undefined) {
+    return item.horasAprovadas
+  }
+  if (item.horasRevisadas !== null && item.horasRevisadas !== undefined) return item.horasRevisadas
+  if (item.horasInformadas !== null && item.horasInformadas !== undefined) return item.horasInformadas
+  return 0
 }
 
 function getEffectiveItemValue(item: RevisaoItem) {
-  return item.valorAprovado ?? item.valorRevisado ?? item.valorInformado ?? 0
+  if (shouldUseApprovedStageValues(item) && item.valorAprovado !== null && item.valorAprovado !== undefined) {
+    return item.valorAprovado
+  }
+  if (item.valorRevisado !== null && item.valorRevisado !== undefined) return item.valorRevisado
+  if (item.valorInformado !== null && item.valorInformado !== undefined) return item.valorInformado
+  return 0
 }
 
 function parseDecimalInput(value: string) {
@@ -222,6 +245,33 @@ function formatHours(value: number | null | undefined) {
   return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function sanitizeMinutesInput(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function minutesToHoursString(minutesInput: string) {
+  const sanitized = sanitizeMinutesInput(minutesInput)
+  if (!sanitized) return ''
+  const minutes = Number(sanitized)
+  if (!Number.isFinite(minutes) || minutes < 0) return ''
+  const hours = minutes / 60
+  return Number.isInteger(hours) ? String(hours) : hours.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+function hoursNumberToMinutesDisplay(value: number | null | undefined) {
+  const amount = Number(value || 0)
+  const minutes = Math.max(0, Math.round(amount * 60))
+  return String(minutes)
+}
+
+function hoursStringToMinutesDisplay(value: string) {
+  const normalized = value.replace(',', '.').trim()
+  if (!normalized) return ''
+  const parsed = Number(normalized)
+  if (!Number.isFinite(parsed) || parsed < 0) return ''
+  return hoursNumberToMinutesDisplay(parsed)
+}
+
 function formatStatus(status: string) {
   switch (status) {
     case 'em_revisao':
@@ -237,6 +287,14 @@ function formatStatus(status: string) {
     default:
       return status || '-'
   }
+}
+
+function canShowReviewActions(status: string) {
+  return status === 'em_revisao' || status === 'em_aprovacao'
+}
+
+function isReviewQueueStatus(status: string) {
+  return status === 'em_revisao' || status === 'em_aprovacao'
 }
 
 function formatDate(value: string) {
@@ -311,6 +369,16 @@ function StageLinesSummary({
     <div className="rounded-md border bg-muted/20 p-2 text-xs">
       <div className="overflow-visible rounded-md border bg-white">
         <table className="w-full table-fixed text-xs">
+          <colgroup>
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '16%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '19%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '8%' }} />
+          </colgroup>
           <thead className="bg-gray-50">
             <tr>
               <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Item</th>
@@ -319,7 +387,7 @@ function StageLinesSummary({
               <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Responsável</th>
               <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Data</th>
               <th className="px-2 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Descrição</th>
-              <th className="px-2 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Tempo</th>
+              <th className="px-2 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Tempo (min)</th>
               <th className="px-2 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Valor</th>
             </tr>
           </thead>
@@ -343,7 +411,7 @@ function StageLinesSummary({
                 <td className="px-2 py-1.5 text-[12px]">{line.caso || '-'}</td>
                 <td className="relative z-40 px-2 py-1.5 text-[12px]">
                   {line.responsavelEditable && !disabled ? (
-                    <div className="min-w-[190px]">
+                    <div className="w-full min-w-0 max-w-[220px]">
                       <CommandSelect
                         value={line.responsavelId || ''}
                         onValueChange={(value) => onUpdateResponsavel(line, value)}
@@ -353,6 +421,7 @@ function StageLinesSummary({
                         emptyText="Nenhum colaborador encontrado."
                         disabled={savingResponsavelLineKey === line.key}
                         maxVisibleOptions={3}
+                        panelMinWidth={220}
                       />
                     </div>
                   ) : (
@@ -385,9 +454,12 @@ function StageLinesSummary({
                 <td className="px-2 py-1.5 text-right text-[12px]">
                   {line.editable && activeLineKey === line.key && line.tempo !== '-' && !disabled ? (
                     <Input
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={line.tempo}
                       onChange={(event) => onUpdateLineField(line, 'tempo', event.target.value)}
                       className="h-7 text-right text-xs"
+                      placeholder="0"
                     />
                   ) : (
                     line.tempo || '-'
@@ -596,6 +668,11 @@ function formatItemLabel(item: RevisaoItem) {
   return `${base} • ${formatDate(item.dataReferencia)}`
 }
 
+function formatItemTabLabel(item: RevisaoItem, mode: 'default' | 'timesheet') {
+  if (mode === 'timesheet' || item.origemTipo === 'timesheet') return 'Timesheet'
+  return getRuleTitle(item)
+}
+
 function getSnapshotTimesheetTotals(item: RevisaoItem) {
   const rawRows = Array.isArray(item.snapshot?.timesheet_itens_revisao) ? (item.snapshot.timesheet_itens_revisao as unknown[]) : []
   if (rawRows.length === 0) return null
@@ -683,7 +760,6 @@ export default function RevisaoDeFaturaList() {
   const { hasPermission } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState('')
   const [cliente, setCliente] = useState('')
   const [contrato, setContrato] = useState('')
   const [caso, setCaso] = useState('')
@@ -711,10 +787,6 @@ export default function RevisaoDeFaturaList() {
   const [, setExpandedTimesheetRows] = useState<Record<string, boolean>>({})
   const [savingItemId, setSavingItemId] = useState<string | null>(null)
   const [movingItemId, setMovingItemId] = useState<string | null>(null)
-  const [faturarItemId, setFaturarItemId] = useState<string | null>(null)
-  const [faturarDesconto, setFaturarDesconto] = useState('0')
-  const [faturarRateio, setFaturarRateio] = useState('[]')
-  const [faturandoItemId, setFaturandoItemId] = useState<string | null>(null)
   const [confirmAdvanceAllOpen, setConfirmAdvanceAllOpen] = useState(false)
   const [advancingAll, setAdvancingAll] = useState(false)
   const [selectedContratoConfigId, setSelectedContratoConfigId] = useState<string | null>(null)
@@ -746,7 +818,6 @@ export default function RevisaoDeFaturaList() {
       if (!session) return
 
       const params = new URLSearchParams()
-      if (status) params.set('status', status)
       if (cliente.trim()) params.set('cliente', cliente.trim())
       if (contrato.trim()) params.set('contrato', contrato.trim())
       if (caso.trim()) params.set('caso', caso.trim())
@@ -772,7 +843,7 @@ export default function RevisaoDeFaturaList() {
       const parsed: RevisaoItem[] = Array.isArray(payload.data)
         ? payload.data
             .map((entry: unknown) => normalizeItem(entry))
-            .filter((entry: RevisaoItem | null): entry is RevisaoItem => entry !== null)
+            .filter((entry: RevisaoItem | null): entry is RevisaoItem => entry !== null && isReviewQueueStatus(entry.status))
         : []
 
       setItems(parsed)
@@ -802,6 +873,14 @@ export default function RevisaoDeFaturaList() {
           horas: horasDraft,
           valor: valorDraft,
           observacao: '',
+          aprovacaoDataInput:
+            item.origemTipo === 'timesheet'
+              ? normalizeDateInput(asString(item.snapshot?.timesheet_aprovacao_data_lancamento))
+              : normalizeDateFromDisplay(asString(item.snapshot?.aprovacao_referencia)),
+          aprovacaoDescricao:
+            item.origemTipo === 'timesheet'
+              ? asString(item.snapshot?.timesheet_aprovacao_descricao)
+              : asString(item.snapshot?.aprovacao_descricao),
           timesheetRows,
           valueRows: parseSnapshotValueRows(item),
         }
@@ -1030,7 +1109,7 @@ export default function RevisaoDeFaturaList() {
         for (const item of metrics.nonTimesheetItems) {
           items.push({
             key: `item-${item.id}`,
-            label: formatItemLabel(item),
+            label: formatItemTabLabel(item, 'default'),
             itemId: item.id,
             mode: 'default',
           })
@@ -1039,7 +1118,7 @@ export default function RevisaoDeFaturaList() {
           const anchor = metrics.timesheetAnchorItem
           items.push({
             key: `timesheet-${anchor.id}-${casoGroup.key}`,
-            label: `Timesheet • ${casoGroup.numero ? `${casoGroup.numero} - ` : ''}${casoGroup.nome}`,
+            label: formatItemTabLabel(anchor, 'timesheet'),
             itemId: anchor.id,
             mode: 'timesheet',
           })
@@ -1055,7 +1134,6 @@ export default function RevisaoDeFaturaList() {
   }, [selectedClienteGroup])
 
   const selectedItem = useMemo(() => items.find((item) => item.id === selectedItemId) || null, [items, selectedItemId])
-  const faturarItem = useMemo(() => (faturarItemId ? items.find((item) => item.id === faturarItemId) || null : null), [items, faturarItemId])
   const activeClienteContract = useMemo(
     () => selectedClienteContracts.find((contract) => contract.key === selectedClienteContractTab) || null,
     [selectedClienteContracts, selectedClienteContractTab],
@@ -1138,14 +1216,6 @@ export default function RevisaoDeFaturaList() {
     return null
   }
 
-  const getResponsavelDaVez = (item: RevisaoItem) => {
-    const nome = getResponsavelAtualNome(item)
-    if (!nome) return null
-    if (item.status === 'em_revisao') return `Revisor: ${nome}`
-    if (item.status === 'em_aprovacao') return `Aprovador: ${nome}`
-    return nome
-  }
-
   const summarizeStatusAndResponsavel = (groupItems: RevisaoItem[]) => {
     const statusSet = new Set<string>()
     const responsavelSet = new Set<string>()
@@ -1161,22 +1231,25 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
-  function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
-    const timesheetItems = casoGroup.itens.filter((entry) => entry.origemTipo === 'timesheet')
-    const nonTimesheetItems = casoGroup.itens.filter((entry) => entry.origemTipo !== 'timesheet')
-    const snapshotCarrier =
+function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
+  const timesheetItems = casoGroup.itens.filter((entry) => entry.origemTipo === 'timesheet')
+  const nonTimesheetItems = casoGroup.itens.filter((entry) => entry.origemTipo !== 'timesheet')
+  const snapshotCarrier =
       casoGroup.itens.find((entry) => {
         const raw = Array.isArray(entry.snapshot?.timesheet_itens_revisao) ? (entry.snapshot.timesheet_itens_revisao as unknown[]) : []
         return raw.length > 0
       }) || null
 
-    const snapshotTotals = snapshotCarrier ? getSnapshotTimesheetTotals(snapshotCarrier) : null
-    const fallbackTimesheetHours = timesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0)
-    const fallbackTimesheetValue = timesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0)
-    const timesheetHours = snapshotTotals ? snapshotTotals.hours : fallbackTimesheetHours
-    const timesheetValue = snapshotTotals ? snapshotTotals.value : fallbackTimesheetValue
-    const timesheetItemCount =
-      snapshotTotals?.count ?? (timesheetItems.length > 0 ? timesheetItems.length : snapshotCarrier || casoGroup.itens.length > 0 ? 1 : 0)
+  const hasConcreteTimesheetItems = timesheetItems.length > 0
+  const snapshotTotals = !hasConcreteTimesheetItems && snapshotCarrier ? getSnapshotTimesheetTotals(snapshotCarrier) : null
+  const fallbackTimesheetHours = timesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0)
+  const fallbackTimesheetValue = timesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0)
+  const timesheetHours = hasConcreteTimesheetItems ? fallbackTimesheetHours : snapshotTotals ? snapshotTotals.hours : 0
+  const timesheetValue = hasConcreteTimesheetItems ? fallbackTimesheetValue : snapshotTotals ? snapshotTotals.value : 0
+  const timesheetItemCount =
+    hasConcreteTimesheetItems
+      ? timesheetItems.length
+      : snapshotTotals?.count ?? (snapshotCarrier || casoGroup.itens.length > 0 ? 1 : 0)
 
     const nonTimesheetHours = nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0)
     const nonTimesheetValue = nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0)
@@ -1201,6 +1274,8 @@ export default function RevisaoDeFaturaList() {
         horas: prev[itemId]?.horas || '0',
         valor: prev[itemId]?.valor || '0',
         observacao: prev[itemId]?.observacao || '',
+        aprovacaoDataInput: prev[itemId]?.aprovacaoDataInput || '',
+        aprovacaoDescricao: prev[itemId]?.aprovacaoDescricao || '',
         timesheetRows: prev[itemId]?.timesheetRows || [],
         valueRows: prev[itemId]?.valueRows || [],
         ...patch,
@@ -1530,6 +1605,8 @@ export default function RevisaoDeFaturaList() {
         horas: '0',
         valor: '0',
         observacao: '',
+        aprovacaoDataInput: '',
+        aprovacaoDescricao: '',
         timesheetRows: [],
         valueRows: [],
       }
@@ -1544,6 +1621,14 @@ export default function RevisaoDeFaturaList() {
       const totalRevisadoRegra = valueRows.reduce((acc, row) => acc + parseDecimalInput(row.valorRevisado), 0)
       const firstRow = timesheetRows[0]
       const isTimesheetMode = (selectedItemId === item.id && selectedReviewMode === 'timesheet') || item.origemTipo === 'timesheet'
+      if (isTimesheetMode) {
+        const horasRaw = (draft.horas || '').trim()
+        const horas = parseDecimalInput(horasRaw)
+        if (!horasRaw || horas <= 0) {
+          toastError('Informe o tempo em minutos para salvar e avançar o item.')
+          return false
+        }
+      }
       const snapshotPatch =
         isTimesheetMode
           ? {
@@ -1564,6 +1649,22 @@ export default function RevisaoDeFaturaList() {
               timesheet_descricao: firstRow?.atividade || '',
               timesheet_profissional: firstRow?.profissional || '',
               timesheet_valor_hora: parseDecimalInput(firstRow?.valorHora || '0'),
+              timesheet_data_lancamento_inicial:
+                asString(item.snapshot?.timesheet_data_lancamento_inicial) ||
+                item.timesheetDataLancamento ||
+                firstRow?.dataLancamento ||
+                null,
+              timesheet_descricao_inicial:
+                asString(item.snapshot?.timesheet_descricao_inicial) ||
+                item.timesheetDescricao ||
+                firstRow?.atividade ||
+                '',
+              ...(item.status === 'em_aprovacao'
+                ? {
+                    timesheet_aprovacao_data_lancamento: normalizeDateInput(draft.aprovacaoDataInput || '') || null,
+                    timesheet_aprovacao_descricao: draft.aprovacaoDescricao || '',
+                  }
+                : {}),
             }
           : {
               valor_itens_revisao: valueRows.map((row) => ({
@@ -1573,6 +1674,17 @@ export default function RevisaoDeFaturaList() {
                 valor_original: parseDecimalInput(row.valorOriginal),
                 valor_revisado: parseDecimalInput(row.valorRevisado),
               })),
+              referencia_inicial:
+                normalizeDateFromDisplay(asString(item.snapshot?.referencia_inicial)) ||
+                normalizeDateFromDisplay(item.dataReferencia || '') ||
+                null,
+              descricao_inicial: asString(item.snapshot?.descricao_inicial) || getRuleTitle(item),
+              ...(item.status === 'em_aprovacao'
+                ? {
+                    aprovacao_referencia: normalizeDateInput(draft.aprovacaoDataInput || '') || null,
+                    aprovacao_descricao: draft.aprovacaoDescricao || '',
+                  }
+                : {}),
             }
 
       const supabase = createClient()
@@ -1675,84 +1787,6 @@ export default function RevisaoDeFaturaList() {
       return false
     } finally {
       if (setBusy) setMovingItemId(null)
-    }
-  }
-
-  const openFaturarModal = (item: RevisaoItem) => {
-    if (item.status !== 'aprovado') {
-      toastError('Somente itens aprovados podem ser faturados.')
-      return
-    }
-    setFaturarItemId(item.id)
-    setFaturarDesconto('0')
-    setFaturarRateio('[]')
-  }
-
-  const submitFaturamento = async () => {
-    if (!faturarItem) return
-    if (faturarItem.status !== 'aprovado') {
-      toastError('Item precisa estar aprovado para faturar.')
-      return
-    }
-
-    let rateioPagadores: unknown[] = []
-    const rawRateio = faturarRateio.trim()
-    if (rawRateio) {
-      try {
-        const parsed = JSON.parse(rawRateio)
-        if (!Array.isArray(parsed)) {
-          toastError('Rateio deve ser um JSON em formato de lista (array).')
-          return
-        }
-        rateioPagadores = parsed
-      } catch {
-        toastError('Rateio inválido. Use JSON válido (ex.: [{"pagador":"Cliente A","percentual":100}]).')
-        return
-      }
-    }
-
-    try {
-      setFaturandoItemId(faturarItem.id)
-      const supabase = createClient()
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) return
-
-      const desconto = Math.max(0, parseDecimalInput(faturarDesconto))
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/faturar-revisao-item`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          billing_item_id: faturarItem.id,
-          desconto_valor: desconto,
-          rateio_pagadores: rateioPagadores,
-        }),
-      })
-
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao faturar item')
-        return
-      }
-
-      success('Item faturado com sucesso.')
-      setFaturarItemId(null)
-      setSelectedItemId(null)
-      setSelectedReviewMode('default')
-      setEditingTimesheetItemId(null)
-      await loadItems()
-      if (payload?.data?.note_numero) {
-        success(`Nota placeholder gerada (#${payload.data.note_numero}).`)
-      }
-    } catch (err) {
-      console.error(err)
-      toastError('Erro ao faturar item')
-    } finally {
-      setFaturandoItemId(null)
     }
   }
 
@@ -1911,6 +1945,10 @@ export default function RevisaoDeFaturaList() {
   }
 
   const saveAndAdvanceItem = async (item: RevisaoItem) => {
+    if (item.id === selectedItem?.id && hasInvalidEditableTempo) {
+      toastError('Informe o tempo em minutos para avançar o item.')
+      return
+    }
     const saved = await saveItem(item)
     if (!saved) return
     const handledInApprovalChain = await advanceToNextApprover(item)
@@ -2069,6 +2107,31 @@ export default function RevisaoDeFaturaList() {
     const timesheetCaso = compact(timesheetCases, selectedCaseLabel || '-')
     const timesheetData = compact(timesheetDates, selectedItem.dataReferencia ? formatDate(selectedItem.dataReferencia) : '-')
     const timesheetDescricao = compact(timesheetDescriptions, selectedItem.timesheetDescricao || 'Sem descrição')
+    const initialTimesheetDataInput =
+      normalizeDateInput(asString(selectedItem.snapshot?.timesheet_data_lancamento_inicial)) ||
+      selectedItem.timesheetDataLancamento ||
+      timesheetDataInput
+    const initialTimesheetData = initialTimesheetDataInput ? formatDate(initialTimesheetDataInput) : '-'
+    const initialTimesheetDescricao =
+      asString(selectedItem.snapshot?.timesheet_descricao_inicial) ||
+      selectedItem.timesheetDescricao ||
+      'Sem descrição'
+    const reviewTimesheetDataInput = timesheetDataInput
+    const reviewTimesheetData = timesheetData
+    const reviewTimesheetDescricao = timesheetDescricao
+    const approvalTimesheetDataInput =
+      selectedItem.status === 'em_aprovacao'
+        ? normalizeDateInput(selectedDraft?.aprovacaoDataInput || '') ||
+          normalizeDateInput(asString(selectedItem.snapshot?.timesheet_aprovacao_data_lancamento)) ||
+          reviewTimesheetDataInput
+        : normalizeDateInput(asString(selectedItem.snapshot?.timesheet_aprovacao_data_lancamento)) || reviewTimesheetDataInput
+    const approvalTimesheetData = approvalTimesheetDataInput ? formatDate(approvalTimesheetDataInput) : '-'
+    const approvalTimesheetDescricao =
+      selectedItem.status === 'em_aprovacao'
+        ? (selectedDraft?.aprovacaoDescricao || '').trim() || asString(selectedItem.snapshot?.timesheet_aprovacao_descricao) || reviewTimesheetDescricao
+        : asString(selectedItem.snapshot?.timesheet_aprovacao_descricao) || reviewTimesheetDescricao
+    const draftTempoRaw = (selectedDraft?.horas || '').trim()
+    const draftValorRaw = (selectedDraft?.valor || '').trim()
 
     const approvalHoursTimesheet =
       selectedItem.status === 'em_aprovacao'
@@ -2082,6 +2145,30 @@ export default function RevisaoDeFaturaList() {
       selectedItem.status === 'em_aprovacao'
         ? parseDecimalInput(selectedDraft?.valor || String(valorRevisadoRegras))
         : selectedItem.valorAprovado
+    const reviewTempoDisplay =
+      selectedItem.status === 'em_revisao'
+        ? draftTempoRaw === ''
+          ? ''
+          : hoursStringToMinutesDisplay(draftTempoRaw)
+        : hoursNumberToMinutesDisplay(totalHorasRevisadas)
+    const approvalTempoDisplay =
+      selectedItem.status === 'em_aprovacao'
+        ? draftTempoRaw === ''
+          ? ''
+          : hoursStringToMinutesDisplay(draftTempoRaw)
+        : hoursNumberToMinutesDisplay(approvalHoursTimesheet)
+    const reviewValueDisplay =
+      selectedItem.status === 'em_revisao' && draftValorRaw !== '' ? parseDecimalInput(draftValorRaw) : valorSugerido
+    const approvalValueDisplayTimesheet =
+      selectedItem.status === 'em_aprovacao' && draftValorRaw !== ''
+        ? parseDecimalInput(draftValorRaw)
+        : approvalValueTimesheet
+    const reviewValueDisplayRegra =
+      selectedItem.status === 'em_revisao' && draftValorRaw !== '' ? parseDecimalInput(draftValorRaw) : valorRevisadoRegras
+    const approvalValueDisplayRegra =
+      selectedItem.status === 'em_aprovacao' && draftValorRaw !== ''
+        ? parseDecimalInput(draftValorRaw)
+        : approvalValueRegra
     const revisoresConfig = getRevisoresOrdenados(selectedItem)
     const aprovadoresConfig = getAprovadoresOrdenados(selectedItem)
     const revisores =
@@ -2185,10 +2272,10 @@ export default function RevisaoDeFaturaList() {
       responsavelNome: '-',
       responsavelEditable: false,
       completed: true,
-      data: isTimesheetMode ? timesheetData : '-',
-      dataInput: isTimesheetMode ? timesheetDataInput : '',
-      descricao: isTimesheetMode ? timesheetDescricao : '-',
-      tempo: isTimesheetMode ? formatHours(totalHorasIniciais) : '-',
+      data: isTimesheetMode ? initialTimesheetData : '-',
+      dataInput: isTimesheetMode ? initialTimesheetDataInput : '',
+      descricao: isTimesheetMode ? initialTimesheetDescricao : '-',
+      tempo: isTimesheetMode ? hoursNumberToMinutesDisplay(totalHorasIniciais) : '-',
       valor: isTimesheetMode ? valorInicialTimesheet : valorOriginalRegras,
       editable: false,
     }
@@ -2204,17 +2291,17 @@ export default function RevisaoDeFaturaList() {
             label: `Revisor ${idx + 1}`,
             stageType: 'revisor',
             stageOrder: idx + 1,
-            item: itemLabel,
+            item: 'Revisão',
             caso: timesheetCaso,
             responsavelId: responsavel.id,
             responsavelNome: responsavel.nome,
             responsavelEditable: canEditResponsavel('revisor', idx, completed),
             completed,
-            data: timesheetData,
-            dataInput: timesheetDataInput,
-            descricao: timesheetDescricao,
-            tempo: formatHours(totalHorasRevisadas),
-            valor: valorSugerido,
+            data: reviewTimesheetData,
+            dataInput: reviewTimesheetDataInput,
+            descricao: reviewTimesheetDescricao,
+            tempo: reviewTempoDisplay,
+            valor: reviewValueDisplay,
             editable: canEditReviewLine(idx),
           }
         })
@@ -2230,17 +2317,17 @@ export default function RevisaoDeFaturaList() {
             label: `Aprovador ${idx + 1}`,
             stageType: 'aprovador',
             stageOrder: idx + 1,
-            item: itemLabel,
+            item: 'Aprovação',
             caso: timesheetCaso,
             responsavelId: responsavel.id,
             responsavelNome: responsavel.nome,
             responsavelEditable: canEditResponsavel('aprovador', idx, completed),
             completed,
-            data: timesheetData,
-            dataInput: timesheetDataInput,
-            descricao: timesheetDescricao,
-            tempo: formatNullableHours(approvalHoursTimesheet),
-            valor: approvalValueTimesheet,
+            data: approvalTimesheetData,
+            dataInput: approvalTimesheetDataInput,
+            descricao: approvalTimesheetDescricao,
+            tempo: approvalTempoDisplay,
+            valor: approvalValueDisplayTimesheet,
             editable: canEditApprovalLine(idx),
           }
         })
@@ -2258,6 +2345,28 @@ export default function RevisaoDeFaturaList() {
       selectedValueRows.map((row) => formatDateDisplay(row.referencia || '')),
       selectedItem.dataReferencia ? formatDate(selectedItem.dataReferencia) : '-',
     )
+    const initialRegraDataInput =
+      normalizeDateFromDisplay(asString(selectedItem.snapshot?.referencia_inicial)) ||
+      normalizeDateFromDisplay(selectedItem.dataReferencia || '') ||
+      regraDataInput
+    const initialRegraData = initialRegraDataInput ? formatDateDisplay(initialRegraDataInput) : '-'
+    const initialRegraDescricao =
+      asString(selectedItem.snapshot?.descricao_inicial) ||
+      getRuleTitle(selectedItem)
+    const reviewRegraDataInput = regraDataInput
+    const reviewRegraData = regraData
+    const reviewRegraDescricao = regraDescricao
+    const approvalRegraDataInput =
+      selectedItem.status === 'em_aprovacao'
+        ? normalizeDateInput(selectedDraft?.aprovacaoDataInput || '') ||
+          normalizeDateFromDisplay(asString(selectedItem.snapshot?.aprovacao_referencia)) ||
+          reviewRegraDataInput
+        : normalizeDateFromDisplay(asString(selectedItem.snapshot?.aprovacao_referencia)) || reviewRegraDataInput
+    const approvalRegraData = approvalRegraDataInput ? formatDateDisplay(approvalRegraDataInput) : '-'
+    const approvalRegraDescricao =
+      selectedItem.status === 'em_aprovacao'
+        ? (selectedDraft?.aprovacaoDescricao || '').trim() || asString(selectedItem.snapshot?.aprovacao_descricao) || reviewRegraDescricao
+        : asString(selectedItem.snapshot?.aprovacao_descricao) || reviewRegraDescricao
 
     const reviewLines = revisores
       .map((entry, idx): StageLine | null => {
@@ -2269,17 +2378,17 @@ export default function RevisaoDeFaturaList() {
           label: `Revisor ${idx + 1}`,
           stageType: 'revisor',
           stageOrder: idx + 1,
-          item: itemLabel,
+          item: 'Revisão',
           caso: selectedCaseLabel || '-',
           responsavelId: responsavel.id,
           responsavelNome: responsavel.nome,
           responsavelEditable: canEditResponsavel('revisor', idx, completed),
           completed,
-          data: regraData,
-          dataInput: regraDataInput,
-          descricao: regraDescricao,
+          data: reviewRegraData,
+          dataInput: reviewRegraDataInput,
+          descricao: reviewRegraDescricao,
           tempo: '-',
-          valor: valorRevisadoRegras,
+          valor: reviewValueDisplayRegra,
           editable: canEditReviewLine(idx),
         }
       })
@@ -2295,17 +2404,17 @@ export default function RevisaoDeFaturaList() {
           label: `Aprovador ${idx + 1}`,
           stageType: 'aprovador',
           stageOrder: idx + 1,
-          item: itemLabel,
+          item: 'Aprovação',
           caso: selectedCaseLabel || '-',
           responsavelId: responsavel.id,
           responsavelNome: responsavel.nome,
           responsavelEditable: canEditResponsavel('aprovador', idx, completed),
           completed,
-          data: regraData,
-          dataInput: regraDataInput,
-          descricao: regraDescricao,
+          data: approvalRegraData,
+          dataInput: approvalRegraDataInput,
+          descricao: approvalRegraDescricao,
           tempo: '-',
-          valor: approvalValueRegra,
+          valor: approvalValueDisplayRegra,
           editable: canEditApprovalLine(idx),
         }
       })
@@ -2315,9 +2424,9 @@ export default function RevisaoDeFaturaList() {
       {
         ...baseInitialLine,
         caso: selectedCaseLabel || '-',
-        data: regraData,
-        dataInput: regraDataInput,
-        descricao: regraDescricao,
+        data: initialRegraData,
+        dataInput: initialRegraDataInput,
+        descricao: initialRegraDescricao,
       },
       ...reviewLines,
       ...approvalLines,
@@ -2357,6 +2466,15 @@ export default function RevisaoDeFaturaList() {
   }, [selectedItem, stageLines])
 
   const hasEditableStageLine = stageLines.some((line) => line.editable)
+  const hasInvalidEditableTempo = useMemo(() => {
+    if (!selectedItem || !isTimesheetMode) return false
+    const editableTempoLine = stageLines.find((line) => line.editable && line.tempo !== '-')
+    if (!editableTempoLine) return false
+    const horasRaw = (selectedDraft?.horas || '').trim()
+    if (!horasRaw) return true
+    const horas = parseDecimalInput(horasRaw)
+    return !Number.isFinite(horas) || horas <= 0
+  }, [selectedDraft, selectedItem, isTimesheetMode, stageLines])
 
   const updateStageLineField = (
     line: StageLine,
@@ -2371,12 +2489,31 @@ export default function RevisaoDeFaturaList() {
 
       if (isTimesheetMode) {
         if (selectedItem.status === 'em_aprovacao' && line.stageType === 'aprovador') {
-          if (field === 'tempo') {
+          if (field === 'data') {
             return {
               ...prev,
               [selectedItem.id]: {
                 ...current,
-                horas: value,
+                aprovacaoDataInput: normalizeDateInput(value),
+              },
+            }
+          }
+          if (field === 'descricao') {
+            return {
+              ...prev,
+              [selectedItem.id]: {
+                ...current,
+                aprovacaoDescricao: value,
+              },
+            }
+          }
+          if (field === 'tempo') {
+            const minutos = sanitizeMinutesInput(value)
+            return {
+              ...prev,
+              [selectedItem.id]: {
+                ...current,
+                horas: minutesToHoursString(minutos),
               },
             }
           }
@@ -2399,7 +2536,9 @@ export default function RevisaoDeFaturaList() {
             return { ...row, atividade: value }
           }
           if (field === 'tempo') {
-            return idx === 0 ? { ...row, horasRevisadas: value } : row
+            const minutos = sanitizeMinutesInput(value)
+            const horas = minutesToHoursString(minutos)
+            return idx === 0 ? { ...row, horasRevisadas: horas } : row
           }
           if (field === 'valor') {
             const totalHours = (current.timesheetRows || []).reduce(
@@ -2416,6 +2555,8 @@ export default function RevisaoDeFaturaList() {
           ...prev,
           [selectedItem.id]: {
             ...current,
+            horas: field === 'tempo' ? minutesToHoursString(sanitizeMinutesInput(value)) : current.horas,
+            valor: field === 'valor' ? value : current.valor,
             timesheetRows: nextRows,
           },
         }
@@ -2429,6 +2570,26 @@ export default function RevisaoDeFaturaList() {
             ...current,
             valor: value,
           },
+        }
+      }
+      if (selectedItem.status === 'em_aprovacao' && line.stageType === 'aprovador') {
+        if (field === 'data') {
+          return {
+            ...prev,
+            [selectedItem.id]: {
+              ...current,
+              aprovacaoDataInput: normalizeDateInput(value),
+            },
+          }
+        }
+        if (field === 'descricao') {
+          return {
+            ...prev,
+            [selectedItem.id]: {
+              ...current,
+              aprovacaoDescricao: value,
+            },
+          }
         }
       }
       const nextValueRows = valueRows.map((row, idx) => {
@@ -2449,6 +2610,7 @@ export default function RevisaoDeFaturaList() {
         ...prev,
         [selectedItem.id]: {
           ...current,
+          valor: field === 'valor' ? value : current.valor,
           valueRows: nextValueRows,
         },
       }
@@ -2505,18 +2667,7 @@ export default function RevisaoDeFaturaList() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-5">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Status</label>
-          <NativeSelect value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">Todos</option>
-            <option value="em_revisao">Em revisão</option>
-            <option value="em_aprovacao">Em aprovação</option>
-            <option value="aprovado">Aprovado</option>
-            <option value="faturado">Faturado</option>
-            <option value="cancelado">Cancelado</option>
-          </NativeSelect>
-        </div>
+      <div className="grid gap-3 md:grid-cols-4">
         <div className="space-y-1">
           <label className="text-sm font-medium">Cliente</label>
           <CommandSelect
@@ -2576,6 +2727,12 @@ export default function RevisaoDeFaturaList() {
         <div className="font-semibold">{formatMoney(totals.valor)}</div>
       </div>
 
+      <div className="flex justify-end">
+        <Button onClick={() => void loadItems()} disabled={loading}>
+          {loading ? 'Atualizando...' : 'Atualizar lista'}
+        </Button>
+      </div>
+
       <div className="overflow-hidden rounded-md border bg-white">
         <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
@@ -2604,7 +2761,7 @@ export default function RevisaoDeFaturaList() {
               </tr>
             ) : (
               tree.map((clienteGroup) => {
-                const clienteExpanded = expandedClientes[clienteGroup.key]
+                const clienteExpanded = expandedClientes[clienteGroup.key] ?? true
                 const clienteItems = clienteGroup.contratos.flatMap((contratoGroup) => contratoGroup.casos.flatMap((casoGroup) => casoGroup.itens))
                 const clienteSummary = summarizeStatusAndResponsavel(clienteItems)
                 const clienteMetrics = clienteGroup.contratos.reduce(
@@ -2667,7 +2824,7 @@ export default function RevisaoDeFaturaList() {
 
                     {clienteExpanded &&
                       clienteGroup.contratos.map((contratoGroup) => {
-                        const contratoExpanded = expandedContratos[contratoGroup.key]
+                        const contratoExpanded = expandedContratos[contratoGroup.key] ?? true
                         const contratoItems = contratoGroup.casos.flatMap((casoGroup) => casoGroup.itens)
                         const contratoSummary = summarizeStatusAndResponsavel(contratoItems)
                         const contratoMetrics = contratoGroup.casos.reduce(
@@ -2709,7 +2866,7 @@ export default function RevisaoDeFaturaList() {
 
                             {contratoExpanded &&
                               contratoGroup.casos.map((casoGroup) => {
-                                const casoExpanded = expandedCasos[casoGroup.key]
+                                const casoExpanded = expandedCasos[casoGroup.key] ?? true
                                 const caseMetrics = getCaseDisplayMetrics(casoGroup)
                                 const casoSummary = summarizeStatusAndResponsavel(casoGroup.itens)
 
@@ -2751,6 +2908,7 @@ export default function RevisaoDeFaturaList() {
                                           <>
                                             {caseMetrics.nonTimesheetItems.map((item) => {
                                               const busy = savingItemId === item.id || movingItemId === item.id
+                                              const showActions = canShowReviewActions(item.status)
 
                                               return (
                                                 <tr key={item.id} className="bg-muted/5">
@@ -2766,42 +2924,34 @@ export default function RevisaoDeFaturaList() {
                                                   <td className="px-4 py-3 text-xs">{getResponsavelAtualNome(item) || '-'}</td>
                                                   <td className="px-4 py-3 text-right text-xs">{formatMoney(getEffectiveItemValue(item))}</td>
                                                   <td className="px-4 py-3">
-                                                    <div className="flex flex-wrap items-center justify-end gap-2">
-                                                      {canManageReviewers ? (
-                                                        <Tooltip content="Configurar revisores/aprovadores">
+                                                    {showActions ? (
+                                                      <div className="flex flex-wrap items-center justify-end gap-2">
+                                                        {canManageReviewers ? (
+                                                          <Tooltip content="Configurar revisores/aprovadores">
+                                                            <Button
+                                                              size="icon"
+                                                              variant="ghost"
+                                                              onClick={() => setSelectedContratoConfigId(item.contratoId || null)}
+                                                              disabled={busy || !item.contratoId}
+                                                            >
+                                                              <Settings2 className="h-4 w-4" />
+                                                            </Button>
+                                                          </Tooltip>
+                                                        ) : null}
+                                                        <Tooltip content={item.status === 'em_aprovacao' ? 'Aprovar item' : 'Revisar item'}>
                                                           <Button
                                                             size="icon"
                                                             variant="ghost"
-                                                            onClick={() => setSelectedContratoConfigId(item.contratoId || null)}
-                                                            disabled={busy || !item.contratoId}
-                                                          >
-                                                            <Settings2 className="h-4 w-4" />
-                                                          </Button>
-                                                        </Tooltip>
-                                                      ) : null}
-                                                      <Tooltip content={item.status === 'em_aprovacao' ? 'Aprovar item' : 'Revisar item'}>
-                                                        <Button
-                                                          size="icon"
-                                                          variant="ghost"
-                                                          onClick={() => openReviewModal(item.id)}
-                                                          disabled={busy}
-                                                        >
-                                                          {item.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
-                                                        </Button>
-                                                      </Tooltip>
-                                                      {item.status === 'aprovado' ? (
-                                                        <Tooltip content="Faturar item">
-                                                          <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            onClick={() => openFaturarModal(item)}
+                                                            onClick={() => openReviewModal(item.id)}
                                                             disabled={busy}
                                                           >
-                                                            <Save className="h-4 w-4" />
+                                                            {item.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
                                                           </Button>
                                                         </Tooltip>
-                                                      ) : null}
-                                                    </div>
+                                                      </div>
+                                                    ) : (
+                                                      <div className="text-right text-xs text-muted-foreground">-</div>
+                                                    )}
                                                   </td>
                                                 </tr>
                                               )
@@ -2818,42 +2968,34 @@ export default function RevisaoDeFaturaList() {
                                                 <td className="px-4 py-3 text-xs">{getResponsavelAtualNome(baseItem) || '-'}</td>
                                                 <td className="px-4 py-3 text-right text-xs">{formatMoney(caseMetrics.timesheetValue)}</td>
                                                 <td className="px-4 py-3">
-                                                  <div className="flex flex-wrap items-center justify-end gap-2">
-                                                    {canManageReviewers ? (
-                                                      <Tooltip content="Configurar revisores/aprovadores">
+                                                  {canShowReviewActions(baseItem.status) ? (
+                                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                                      {canManageReviewers ? (
+                                                        <Tooltip content="Configurar revisores/aprovadores">
+                                                          <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={() => setSelectedContratoConfigId(baseItem.contratoId || null)}
+                                                            disabled={!baseItem.contratoId || timesheetBusy}
+                                                          >
+                                                            <Settings2 className="h-4 w-4" />
+                                                          </Button>
+                                                        </Tooltip>
+                                                      ) : null}
+                                                      <Tooltip content={baseItem.status === 'em_aprovacao' ? 'Aprovar timesheet' : 'Revisar timesheet'}>
                                                         <Button
                                                           size="icon"
                                                           variant="ghost"
-                                                          onClick={() => setSelectedContratoConfigId(baseItem.contratoId || null)}
-                                                          disabled={!baseItem.contratoId || timesheetBusy}
-                                                        >
-                                                          <Settings2 className="h-4 w-4" />
-                                                        </Button>
-                                                      </Tooltip>
-                                                    ) : null}
-                                                    <Tooltip content={baseItem.status === 'em_aprovacao' ? 'Aprovar timesheet' : 'Revisar timesheet'}>
-                                                      <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        onClick={() => openReviewModal(baseItem.id, 'timesheet')}
-                                                        disabled={timesheetBusy}
-                                                      >
-                                                        {baseItem.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
-                                                      </Button>
-                                                    </Tooltip>
-                                                    {baseItem.status === 'aprovado' ? (
-                                                      <Tooltip content="Faturar timesheet">
-                                                        <Button
-                                                          size="icon"
-                                                          variant="ghost"
-                                                          onClick={() => openFaturarModal(baseItem)}
+                                                          onClick={() => openReviewModal(baseItem.id, 'timesheet')}
                                                           disabled={timesheetBusy}
                                                         >
-                                                          <Save className="h-4 w-4" />
+                                                          {baseItem.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
                                                         </Button>
                                                       </Tooltip>
-                                                    ) : null}
-                                                  </div>
+                                                    </div>
+                                                  ) : (
+                                                    <div className="text-right text-xs text-muted-foreground">-</div>
+                                                  )}
                                                 </td>
                                               </tr>
                                             ) : null}
@@ -2954,18 +3096,6 @@ export default function RevisaoDeFaturaList() {
 
           {selectedClienteGroup && selectedItem && selectedDraft ? (
             <div className="space-y-4 border-t pt-3">
-              {itemLocked ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Item em status <strong>{formatStatus(selectedItem.status)}</strong>. Edição bloqueada.
-                </div>
-              ) : null}
-              <div className="rounded-md border p-3 text-sm">
-                <p className="font-medium">{formatItemLabel(selectedItem)}</p>
-                <p className="mt-1 text-muted-foreground">
-                  {`${formatStatus(selectedItem.status)} • ${getResponsavelDaVez(selectedItem) || 'Sem responsável definido'}`}
-                </p>
-              </div>
-
               <div className="flex items-center justify-end gap-2">
                 {isTimesheetMode ? (
                   <Button
@@ -3015,7 +3145,7 @@ export default function RevisaoDeFaturaList() {
             </div>
           ) : null}
 
-          <DialogFooter className="sticky bottom-0 z-20 -mx-6 border-t bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+          <DialogFooter className="sticky bottom-0 z-30 -mx-6 border-t bg-white px-6 py-4 shadow-[0_-4px_12px_rgba(15,23,42,0.06)] sm:justify-between sm:space-x-0">
             <Button
               variant="outline"
               onClick={() => {
@@ -3031,7 +3161,7 @@ export default function RevisaoDeFaturaList() {
               Fechar
             </Button>
             {selectedItem ? (
-              <>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
                   variant="outline"
                   onClick={() => void handleReturnAction(selectedItem)}
@@ -3040,20 +3170,19 @@ export default function RevisaoDeFaturaList() {
                   <Undo2 className="mr-2 h-4 w-4" />
                   Retornar
                 </Button>
-                <Button
-                  onClick={() => setConfirmAdvanceAllOpen(true)}
-                  disabled={modalBusy || !hasEditableStageLine || advancingAll || clienteAdvanceItems.length === 0}
-                >
-                  {advancingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Enviar para próxima etapa (todos)
-                </Button>
-                {selectedItem.status === 'aprovado' ? (
-                  <Button onClick={() => openFaturarModal(selectedItem)} disabled={modalBusy}>
-                    <Save className="mr-2 h-4 w-4" />
-                    Faturar
+                {canAdvance(selectedItem.status) ? (
+                  <Button
+                    onClick={() => setConfirmAdvanceAllOpen(true)}
+                    disabled={
+                      modalBusy || !hasEditableStageLine || hasInvalidEditableTempo || advancingAll || clienteAdvanceItems.length === 0
+                    }
+                    className="min-w-[240px] bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-primary/70 disabled:text-primary-foreground"
+                  >
+                    {advancingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Enviar para próxima etapa (todos)
                   </Button>
                 ) : null}
-              </>
+              </div>
             ) : null}
           </DialogFooter>
         </DialogContent>
@@ -3075,7 +3204,7 @@ export default function RevisaoDeFaturaList() {
           <div className="rounded-md border bg-muted/20 p-3 text-sm">
             Itens elegíveis para avanço: <strong>{clienteAdvanceItems.length}</strong>
           </div>
-          <DialogFooter className="sticky bottom-0 z-20 -mx-6 border-t bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+          <DialogFooter className="sticky bottom-0 z-30 -mx-6 border-t bg-white px-6 py-4 shadow-[0_-4px_12px_rgba(15,23,42,0.06)]">
             <Button variant="outline" onClick={() => setConfirmAdvanceAllOpen(false)} disabled={advancingAll}>
               Cancelar
             </Button>
@@ -3109,11 +3238,6 @@ export default function RevisaoDeFaturaList() {
 
           {selectedItem && selectedDraft ? (
             <div className="space-y-4">
-              {itemLocked ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Item em status <strong>{formatStatus(selectedItem.status)}</strong>. Edição bloqueada.
-                </div>
-              ) : null}
               {isTimesheetMode ? (
                 <>
                 <div className="flex items-center justify-end">
@@ -3195,76 +3319,18 @@ export default function RevisaoDeFaturaList() {
                   Retornar
                 </Button>
                 {canAdvance(selectedItem.status) ? (
-                  <Button onClick={() => void saveAndAdvanceItem(selectedItem)} disabled={modalBusy || !hasEditableStageLine}>
+                  <Button
+                    onClick={() => void saveAndAdvanceItem(selectedItem)}
+                    disabled={modalBusy || !hasEditableStageLine || hasInvalidEditableTempo}
+                  >
                     {movingItemId === selectedItem.id || savingItemId === selectedItem.id ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : null}
                     {getAdvanceActionLabel(selectedItem)}
                   </Button>
                 ) : null}
-                {selectedItem.status === 'aprovado' ? (
-                  <Button onClick={() => openFaturarModal(selectedItem)} disabled={modalBusy}>
-                    <Save className="mr-2 h-4 w-4" />
-                    Faturar
-                  </Button>
-                ) : null}
               </>
             ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!faturarItem}
-        onOpenChange={(open) => {
-          if (!open && !faturandoItemId) {
-            setFaturarItemId(null)
-          }
-        }}
-      >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Faturar item</DialogTitle>
-            <DialogDescription>
-              {faturarItem
-                ? `${faturarItem.contratoNumero ? `${faturarItem.contratoNumero} - ` : ''}${faturarItem.contratoNome} • ${formatItemLabel(faturarItem)}`
-                : ''}
-            </DialogDescription>
-          </DialogHeader>
-
-          {faturarItem ? (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Desconto monetário</label>
-                <MoneyInput value={faturarDesconto} onValueChange={setFaturarDesconto} disabled={!!faturandoItemId} />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Rateio de pagadores (JSON array)</label>
-                <Textarea
-                  value={faturarRateio}
-                  onChange={(event) => setFaturarRateio(event.target.value)}
-                  rows={5}
-                  disabled={!!faturandoItemId}
-                  placeholder='[{"pagador":"Cliente principal","percentual":100}]'
-                />
-              </div>
-
-              <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                Valor aprovado/base: <strong>{formatMoney(getEffectiveItemValue(faturarItem))}</strong> • Valor faturado previsto:{' '}
-                <strong>{formatMoney(Math.max(0, getEffectiveItemValue(faturarItem) - parseDecimalInput(faturarDesconto)))}</strong>
-              </div>
-            </div>
-          ) : null}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFaturarItemId(null)} disabled={!!faturandoItemId}>
-              Cancelar
-            </Button>
-            <Button onClick={() => void submitFaturamento()} disabled={!faturarItem || !!faturandoItemId}>
-              {faturandoItemId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Confirmar faturamento
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

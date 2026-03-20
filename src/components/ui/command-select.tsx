@@ -23,6 +23,7 @@ interface CommandSelectProps {
   onCreateOption?: (label: string) => void
   createOptionLabel?: string
   maxVisibleOptions?: number
+  panelMinWidth?: number
 }
 
 export function CommandSelect({
@@ -36,6 +37,7 @@ export function CommandSelect({
   onCreateOption,
   createOptionLabel = 'Cadastrar',
   maxVisibleOptions,
+  panelMinWidth = 360,
 }: CommandSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -60,9 +62,9 @@ export function CommandSelect({
     const panelEstimatedHeight = 320
     const spaceBelow = window.innerHeight - (triggerRect?.bottom ?? 0)
     const spaceAbove = triggerRect?.top ?? 0
-    setPanelWidth(Math.max(Math.round(triggerWidth), 360))
+    setPanelWidth(Math.max(Math.round(triggerWidth), panelMinWidth))
     setOpenUpward(spaceBelow < panelEstimatedHeight && spaceAbove > spaceBelow)
-  }, [open])
+  }, [open, panelMinWidth])
 
   const selected = useMemo(() => options.find((o) => o.value === value), [options, value])
 

@@ -17,3 +17,12 @@
 - Em revisão de faturamento, `get-contratos` pode não trazer `timesheet_config` dos casos; quando isso ocorrer, usar fallback em `get-contrato` para montar revisores/aprovadores e pré-seleção correta de responsável.
 - Antes de usar `operations.despesas.valor` em RPCs de faturamento, garantir migration de coluna (`ADD COLUMN IF NOT EXISTS valor`) porque ambientes antigos de despesas não possuem esse campo.
 - Em ajustes de regras financeiras no contrato, sempre validar também o fluxo de tela de caso (`caso-form`) para manter paridade funcional entre os dois pontos de edição.
+- Quando o ambiente remoto estiver com drift de migrations em faturamento, usar fallback no frontend (merge de `get-despesas` em `itens-a-faturar`) para evitar sumiço de despesas na árvore enquanto a RPC consolidada não é aplicada.
+- No fluxo de faturamento de despesas, garantir que `operations.despesas.cliente_id` esteja preenchido (backfill + create/update), pois as RPCs de elegibilidade usam esse vínculo e podem retornar “Nenhum item elegível” mesmo com despesa lançada.
+- Em módulo de despesas, sempre expor e validar `valor` no frontend e nas RPCs (`get/create/update`), pois sem isso o item entra no faturamento com `R$ 0,00` e quebra a expectativa do fluxo.
+- Em `itens-a-faturar`, evitar fallback local que injeta itens fora da elegibilidade oficial do backend; para compatibilidade entre versões de RPC, preferir envio por caso com `alvo_id` (sequencial) no lote selecionado.
+- Em ambientes legados onde `get_itens_a_faturar` ainda não consolida despesas, manter fallback de leitura via `get-despesas` para visibilidade operacional, com deduplicação por `origem_id` e recálculo de totais no frontend.
+- Regra de domínio: `Revisão de fatura` encerra no status aprovado; qualquer ação de faturar (linha ou lote) deve existir apenas em `Fluxo de faturamento` para evitar inconsistência de status e UX duplicada.
+- Em ajustes de fluxo, remover apenas o botão principal não é suficiente: revisar toda a tabela hierárquica (cliente/contrato/caso/linha) para eliminar checkboxes residuais de seleção em massa.
+- Em `Revisão de fatura`, linhas com status final (`aprovado`, `faturado`, `cancelado`) devem exibir ações como `-` para evitar edição/configuração após encerramento da etapa.
+- Quando a tela possui regra de domínio fixa por etapa (ex.: revisão só com `em_revisao`/`em_aprovacao`), aplicar filtro local obrigatório no parse para blindar contra retornos amplos da API compartilhada.
