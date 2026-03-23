@@ -33,6 +33,8 @@ export default function ColaboradorFormComplete() {
     password: '',
     cpf: '',
     data_nascimento: '',
+    data_entrada: '',
+    data_saida: '',
     categoria: 'estagiario',
     oab: '',
     conta_contabil: '',
@@ -322,6 +324,10 @@ export default function ColaboradorFormComplete() {
         return 'Percentual adicional deve estar entre 0% e 20%'
       }
     }
+
+    if (dadosPessoais.data_entrada && dadosPessoais.data_saida && dadosPessoais.data_saida < dadosPessoais.data_entrada) {
+      return 'Data de saída não pode ser anterior à data de entrada'
+    }
     
     return null
   }
@@ -364,6 +370,8 @@ export default function ColaboradorFormComplete() {
         conta_contabil: dadosPessoais.conta_contabil || null,
         skills: profissional.skills,
         data_nascimento: dadosPessoais.data_nascimento || null,
+        data_entrada: dadosPessoais.data_entrada || null,
+        data_saida: dadosPessoais.data_saida || null,
         beneficios,
         role_ids: roleIds,
       }
@@ -487,6 +495,30 @@ export default function ColaboradorFormComplete() {
                     name="data_nascimento"
                     type="date"
                     value={dadosPessoais.data_nascimento}
+                    onChange={handleDadosPessoaisChange}
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="data_entrada">Data de Entrada</Label>
+                  <Input
+                    id="data_entrada"
+                    name="data_entrada"
+                    type="date"
+                    value={dadosPessoais.data_entrada}
+                    onChange={handleDadosPessoaisChange}
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="data_saida">Data de Saída</Label>
+                  <Input
+                    id="data_saida"
+                    name="data_saida"
+                    type="date"
+                    value={dadosPessoais.data_saida}
                     onChange={handleDadosPessoaisChange}
                     className="mt-1"
                   />

@@ -1,5 +1,34 @@
 # TODO
 
+## Sprint Atual - CRM Kanban + Datas de Entrada/Saída de Colaborador (2026-03-23)
+
+### Escopo solicitado
+- [x] Colaborador: criar campos `data_entrada` e `data_saida` no cadastro/edição/visualização.
+- [x] CRM: criar novo módulo em formato Kanban com etapas:
+  - [x] Prospecção
+  - [x] Proposta solicitada
+  - [x] Proposta enviada
+  - [x] Conversão (atalho para solicitar contrato)
+  - [x] Negada
+  - [x] Suspensa
+- [x] CRM: implementar card com campos:
+  - [x] Cliente (com opção de criar novo cliente)
+  - [x] Serviço (lista de serviços)
+  - [x] Produto (lista de produtos)
+  - [x] Valor
+  - [x] Responsável interno
+  - [x] Observações
+  - [x] Anexos (nome + arquivo)
+
+### Execução
+- [x] Criar migration com estrutura do CRM (tabelas, índices, permissões e RPCs).
+- [x] Criar edge functions do CRM para listar, criar, atualizar, mover etapa e conversão.
+- [x] Criar rota `/crm` com página Kanban e integração completa dos campos.
+- [x] Adicionar item de menu/breadcrumb para módulo CRM.
+- [x] Atualizar funções de colaborador para suportar `data_entrada` e `data_saida`.
+- [x] Atualizar formulários e visualização de colaborador com os novos campos.
+- [x] Validar com `npm run -s type-check`.
+
 ## Sprint Atual - Aprofundamento da Documentação /docs (2026-03-18)
 
 ### Escopo solicitado

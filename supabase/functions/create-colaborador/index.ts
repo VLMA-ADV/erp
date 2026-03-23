@@ -107,6 +107,8 @@ Deno.serve(async (req) => {
       password,
       nome,
       data_nascimento,
+      data_entrada,
+      data_saida,
       categoria,
       cpf,
       oab,
@@ -157,6 +159,16 @@ Deno.serve(async (req) => {
     if (categoria === "advogado" && !oab) {
       return new Response(
         JSON.stringify({ error: "OAB is required for advogado category" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (data_entrada && data_saida && new Date(data_saida) < new Date(data_entrada)) {
+      return new Response(
+        JSON.stringify({ error: "Data de saída não pode ser anterior à data de entrada" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -342,6 +354,8 @@ Deno.serve(async (req) => {
       email,
       cpf: cpfClean,
       data_nascimento: data_nascimento || null,
+      data_entrada: data_entrada || null,
+      data_saida: data_saida || null,
       categoria,
       oab: categoria === "advogado" ? oab : null,
       whatsapp: whatsapp || null,

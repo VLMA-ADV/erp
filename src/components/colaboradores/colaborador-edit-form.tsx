@@ -37,6 +37,8 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
     email: '',
     cpf: '',
     data_nascimento: '',
+    data_entrada: '',
+    data_saida: '',
     categoria: 'estagiario',
     oab: '',
     conta_contabil: '',
@@ -134,6 +136,8 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
           email: colaborador.email || '',
           cpf: colaborador.cpf || '',
           data_nascimento: colaborador.data_nascimento || '',
+          data_entrada: colaborador.data_entrada || '',
+          data_saida: colaborador.data_saida || '',
           categoria: colaborador.categoria || 'estagiario',
           oab: colaborador.oab || '',
           conta_contabil: colaborador.conta_contabil || '',
@@ -454,6 +458,10 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         return 'Percentual adicional deve estar entre 0% e 20%'
       }
     }
+
+    if (dadosPessoais.data_entrada && dadosPessoais.data_saida && dadosPessoais.data_saida < dadosPessoais.data_entrada) {
+      return 'Data de saída não pode ser anterior à data de entrada'
+    }
     
     return null
   }
@@ -497,6 +505,8 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         conta_contabil: dadosPessoais.conta_contabil || null,
         skills: profissional.skills,
         data_nascimento: dadosPessoais.data_nascimento || null,
+        data_entrada: dadosPessoais.data_entrada || null,
+        data_saida: dadosPessoais.data_saida || null,
         beneficios,
         role_ids: roleIds,
         permission_ids: colaboradorPermissionIds, // Incluir permission_ids para atualização
@@ -611,6 +621,30 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     name="data_nascimento"
                     type="date"
                     value={dadosPessoais.data_nascimento}
+                    onChange={handleDadosPessoaisChange}
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="data_entrada">Data de Entrada</Label>
+                  <Input
+                    id="data_entrada"
+                    name="data_entrada"
+                    type="date"
+                    value={dadosPessoais.data_entrada}
+                    onChange={handleDadosPessoaisChange}
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="data_saida">Data de Saída</Label>
+                  <Input
+                    id="data_saida"
+                    name="data_saida"
+                    type="date"
+                    value={dadosPessoais.data_saida}
                     onChange={handleDadosPessoaisChange}
                     className="mt-1"
                   />

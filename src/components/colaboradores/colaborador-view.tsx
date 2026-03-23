@@ -182,6 +182,22 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                     </p>
                   </div>
                 )}
+                {colaborador.data_entrada && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Data de Entrada</p>
+                    <p className="text-sm">
+                      {new Date(colaborador.data_entrada).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                )}
+                {colaborador.data_saida && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Data de Saída</p>
+                    <p className="text-sm">
+                      {new Date(colaborador.data_saida).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-medium text-gray-500">Categoria</p>
                   <p className="text-sm capitalize">{colaborador.categoria}</p>

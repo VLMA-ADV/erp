@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { FilePlus2, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -79,6 +80,9 @@ function formatBytes(value?: number | null) {
 }
 
 export default function SolicitacoesContratoList() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
 
@@ -86,8 +90,6 @@ export default function SolicitacoesContratoList() {
     hasPermission('contracts.solicitacoes.read') || hasPermission('contracts.solicitacoes.*') || hasPermission('contracts.*')
   const canWrite =
     hasPermission('contracts.solicitacoes.write') || hasPermission('contracts.solicitacoes.*') || hasPermission('contracts.*')
-  const canManage =
-    hasPermission('contracts.solicitacoes.manage') || hasPermission('contracts.solicitacoes.*') || hasPermission('contracts.*')
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -101,6 +103,8 @@ export default function SolicitacoesContratoList() {
   const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [creatingCliente, setCreatingCliente] = useState(false)
+  const [crmCardIdPrefill, setCrmCardIdPrefill] = useState('')
+  const [lastCrmPrefillToken, setLastCrmPrefillToken] = useState('')
 
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
@@ -193,6 +197,38 @@ export default function SolicitacoesContratoList() {
     void fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
+
+  useEffect(() => {
+    if (!canWrite) return
+    if (searchParams.get('from_crm') !== '1') return
+
+    const token = [
+      searchParams.get('crm_card_id') || '',
+      searchParams.get('cliente_id') || '',
+      searchParams.get('nome') || '',
+      searchParams.get('descricao') || '',
+    ].join('|')
+
+    if (!token || token === lastCrmPrefillToken) return
+
+    setNomeSolicitacao(searchParams.get('nome') || '')
+    setDescricaoSolicitacao(searchParams.get('descricao') || '')
+    setSelectedClienteId(searchParams.get('cliente_id') || '')
+    setPendingAnexos([])
+    setCrmCardIdPrefill(searchParams.get('crm_card_id') || '')
+    setCreateOpen(true)
+    setLastCrmPrefillToken(token)
+
+    router.replace(pathname, { scroll: false })
+  }, [canWrite, lastCrmPrefillToken, pathname, router, searchParams])
+
+  const resetCreateForm = () => {
+    setNomeSolicitacao('')
+    setDescricaoSolicitacao('')
+    setSelectedClienteId('')
+    setPendingAnexos([])
+    setCrmCardIdPrefill('')
+  }
 
   const onAddFiles = (files: FileList | null) => {
     if (!files) return
@@ -303,12 +339,29 @@ export default function SolicitacoesContratoList() {
         return
       }
 
+      const solicitacaoId = typeof payload?.data?.id === 'string' ? (payload.data.id as string) : ''
+
+      if (crmCardIdPrefill && solicitacaoId) {
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-crm-pipeline-card`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              id: crmCardIdPrefill,
+              converted_solicitacao_id: solicitacaoId,
+            }),
+          })
+        } catch (crmError) {
+          console.warn('Não foi possível vincular a solicitação ao card do CRM:', crmError)
+        }
+      }
+
       success('Solicitação criada com sucesso')
       setCreateOpen(false)
-      setNomeSolicitacao('')
-      setDescricaoSolicitacao('')
-      setSelectedClienteId('')
-      setPendingAnexos([])
+      resetCreateForm()
       await fetchItems()
     } catch (err) {
       console.error(err)
@@ -386,11 +439,8 @@ export default function SolicitacoesContratoList() {
 
         {canWrite ? (
           <Button
-          onClick={() => {
-              setNomeSolicitacao('')
-              setDescricaoSolicitacao('')
-              setSelectedClienteId('')
-              setPendingAnexos([])
+            onClick={() => {
+              resetCreateForm()
               setCreateOpen(true)
             }}
           >

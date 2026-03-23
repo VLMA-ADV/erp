@@ -132,6 +132,16 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (updateData.data_entrada && updateData.data_saida && new Date(updateData.data_saida) < new Date(updateData.data_entrada)) {
+      return new Response(
+        JSON.stringify({ error: "Data de saída não pode ser anterior à data de entrada" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Get current colaborador data for audit - usar função RPC
     const { data: colaboradorData, error: colaboradorError } = await supabase
       .rpc('get_colaborador', { 
@@ -188,7 +198,7 @@ Deno.serve(async (req) => {
     
     // Campos permitidos para atualização
     const allowedFields = [
-      'nome', 'email', 'cpf', 'data_nascimento', 'categoria', 'oab', 'whatsapp',
+      'nome', 'email', 'cpf', 'data_nascimento', 'data_entrada', 'data_saida', 'categoria', 'oab', 'whatsapp',
       'rua', 'numero', 'complemento', 'cidade', 'estado',
       'cargo_id', 'area_id', 'adicional', 'percentual_adicional', 'salario',
       'conta_contabil', 'skills',
@@ -199,7 +209,7 @@ Deno.serve(async (req) => {
       // Incluir campo se estiver definido (mesmo que seja string vazia ou null)
       if (updateData.hasOwnProperty(field)) {
         // Converter strings vazias para null para campos opcionais
-        if (updateData[field] === '' && ['rua', 'numero', 'complemento', 'cidade', 'estado', 'oab', 'whatsapp', 'conta_contabil', 'banco', 'agencia', 'conta_com_digito', 'chave_pix'].includes(field)) {
+        if (updateData[field] === '' && ['rua', 'numero', 'complemento', 'cidade', 'estado', 'oab', 'whatsapp', 'conta_contabil', 'banco', 'agencia', 'conta_com_digito', 'chave_pix', 'data_entrada', 'data_saida'].includes(field)) {
           fieldsToUpdate[field] = null;
         } else {
           fieldsToUpdate[field] = updateData[field];

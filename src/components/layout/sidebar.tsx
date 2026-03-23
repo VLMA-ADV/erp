@@ -20,6 +20,11 @@ const menuItems = [
     permission: 'contracts.contratos.read',
   },
   {
+    label: 'CRM',
+    href: '/crm',
+    permission: 'crm.pipeline.read',
+  },
+  {
     label: 'Solicitações de Contrato',
     href: '/solicitacoes-contrato',
     permission: 'contracts.solicitacoes.read',
