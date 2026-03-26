@@ -67,10 +67,12 @@ export interface CasoPayload {
   data_inicio_faturamento: string
   pagamento_dia_mes: string
   inicio_vigencia: string
+  possui_reajuste?: boolean
   periodo_reajuste: string
   data_proximo_reajuste: string
   data_ultimo_reajuste: string
   indice_reajuste: string
+  possui_cap_horas?: boolean
   regra_cobranca:
     | 'hora'
     | 'hora_com_cap'

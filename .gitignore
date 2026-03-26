@@ -41,3 +41,13 @@ next-env.d.ts
 # supabase edge functions (não devem ser compilados pelo Next.js)
 supabase/functions/
 supabase/migrations/
+.mcp.json
+
+.cursor/
+
+# playwright output
+/test-results/
+/playwright-report/
+
+# local task notes
+/tasks/

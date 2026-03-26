@@ -306,7 +306,7 @@ export default function ColaboradorFormComplete() {
       return 'CPF inválido'
     }
     
-    if (dadosPessoais.categoria === 'advogado' && dadosPessoais.oab && !validateOAB(dadosPessoais.oab)) {
+    if ((dadosPessoais.categoria === 'advogado' || dadosPessoais.categoria === 'socio') && dadosPessoais.oab && !validateOAB(dadosPessoais.oab)) {
       return 'OAB deve estar no formato: OAB/SP 123456'
     }
     
@@ -548,7 +548,7 @@ export default function ColaboradorFormComplete() {
                   </div>
                 </div>
 
-                {dadosPessoais.categoria === 'advogado' && (
+                {(dadosPessoais.categoria === 'advogado' || dadosPessoais.categoria === 'socio') && (
                   <div>
                     <Label htmlFor="oab">OAB *</Label>
                     <Input

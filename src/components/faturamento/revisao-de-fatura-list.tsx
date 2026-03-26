@@ -1240,16 +1240,13 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
         return raw.length > 0
       }) || null
 
-  const hasConcreteTimesheetItems = timesheetItems.length > 0
-  const snapshotTotals = !hasConcreteTimesheetItems && snapshotCarrier ? getSnapshotTimesheetTotals(snapshotCarrier) : null
+  // RF-018: sempre preferir snapshot quando disponível (alinhado com fluxo-de-faturamento-list)
+  const snapshotTotals = snapshotCarrier ? getSnapshotTimesheetTotals(snapshotCarrier) : null
   const fallbackTimesheetHours = timesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0)
   const fallbackTimesheetValue = timesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0)
-  const timesheetHours = hasConcreteTimesheetItems ? fallbackTimesheetHours : snapshotTotals ? snapshotTotals.hours : 0
-  const timesheetValue = hasConcreteTimesheetItems ? fallbackTimesheetValue : snapshotTotals ? snapshotTotals.value : 0
-  const timesheetItemCount =
-    hasConcreteTimesheetItems
-      ? timesheetItems.length
-      : snapshotTotals?.count ?? (snapshotCarrier || casoGroup.itens.length > 0 ? 1 : 0)
+  const timesheetHours = snapshotTotals ? snapshotTotals.hours : fallbackTimesheetHours
+  const timesheetValue = snapshotTotals ? snapshotTotals.value : fallbackTimesheetValue
+  const timesheetItemCount = snapshotTotals?.count ?? timesheetItems.length
 
     const nonTimesheetHours = nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0)
     const nonTimesheetValue = nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0)

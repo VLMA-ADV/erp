@@ -1962,7 +1962,9 @@ export default function ContratoForm({
       })
       const data = await resp.json()
       if (!resp.ok) {
-        setError(data.error || 'Erro ao remover anexo')
+        const msg = data.error || 'Erro ao remover anexo'
+        setError(msg)
+        toastError(msg)
         return
       }
       if (tipo === 'contrato') {
@@ -2200,6 +2202,14 @@ export default function ContratoForm({
           updatedCases += 1
         } else {
           createdCases += 1
+          // Atualiza form.casos com o ID retornado para evitar duplicatas em salvamentos subsequentes
+          if (persistedId) {
+            setForm((prev) => {
+              const next = [...prev.casos]
+              next[caseIndex] = { ...next[caseIndex], id: String(persistedId) } as any
+              return { ...prev, casos: next }
+            })
+          }
         }
       }
 
@@ -2754,11 +2764,14 @@ export default function ContratoForm({
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
                     {existingAnexos.map((anexo) => (
                       <div key={anexo.id} className="w-full max-w-[140px]">
-                        <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/20 p-2">
+                        <div
+                          className="group relative aspect-square overflow-hidden rounded-md border bg-muted/20 p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          tabIndex={0}
+                        >
                           <div className="flex h-full items-center justify-center text-muted-foreground">
                             <Paperclip className="h-5 w-5" />
                           </div>
-                          <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                          <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex group-focus-within:flex">
                               <Button
                                 type="button"
                                 size="icon"
@@ -2778,6 +2791,8 @@ export default function ContratoForm({
                                 className="h-8 w-8"
                                 onClick={() => removeExistingAnexo(anexo.id, 'contrato')}
                                 disabled={removingAnexoId === anexo.id}
+                                title="Remover anexo"
+                                aria-label="Remover anexo"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -2823,11 +2838,14 @@ export default function ContratoForm({
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
                     {pendingAnexos.map((anexo, idx) => (
                       <div key={idx} className="w-full max-w-[140px]">
-                        <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30 p-2">
+                        <div
+                          className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30 p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          tabIndex={0}
+                        >
                           <div className="flex h-full items-center justify-center text-muted-foreground">
                             <Paperclip className="h-5 w-5" />
                           </div>
-                          <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                          <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex group-focus-within:flex">
                             <Button
                               type="button"
                               size="icon"
@@ -2844,6 +2862,8 @@ export default function ContratoForm({
                                 variant="destructive"
                                 className="h-8 w-8"
                                 onClick={() => removePendingAnexo(idx)}
+                                title="Remover anexo pendente"
+                                aria-label="Remover anexo pendente"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -3041,11 +3061,14 @@ export default function ContratoForm({
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
                           {(((currentCaso as any)?.anexos || []) as any[]).map((anexo: any) => (
                             <div key={anexo.id} className="w-full max-w-[140px]">
-                              <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/20 p-2">
+                              <div
+                                className="group relative aspect-square overflow-hidden rounded-md border bg-muted/20 p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                tabIndex={0}
+                              >
                                 <div className="flex h-full items-center justify-center text-muted-foreground">
                                   <Paperclip className="h-5 w-5" />
                                 </div>
-                                <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                                <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex group-focus-within:flex">
                                   <Button
                                     type="button"
                                     size="icon"
@@ -3065,6 +3088,8 @@ export default function ContratoForm({
                                       className="h-8 w-8"
                                       onClick={() => removeExistingAnexo(anexo.id, 'caso', selectedCaseIndex)}
                                       disabled={removingAnexoId === anexo.id}
+                                      title="Remover anexo"
+                                      aria-label="Remover anexo"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -3115,11 +3140,14 @@ export default function ContratoForm({
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
                           {(pendingCaseAnexos[selectedCaseIndex] || []).map((anexo, idx) => (
                             <div key={`${selectedCaseIndex}-${idx}`} className="w-full max-w-[140px]">
-                              <div className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30 p-2">
+                              <div
+                                className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30 p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                tabIndex={0}
+                              >
                                 <div className="flex h-full items-center justify-center text-muted-foreground">
                                   <Paperclip className="h-5 w-5" />
                                 </div>
-                                <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex">
+                                <div className="absolute inset-0 hidden items-center justify-center gap-2 bg-black/35 text-white shadow-lg group-hover:flex group-focus-within:flex">
                                   <Button
                                     type="button"
                                     size="icon"
@@ -3136,6 +3164,8 @@ export default function ContratoForm({
                                       variant="destructive"
                                       className="h-8 w-8"
                                       onClick={() => removePendingCaseAnexo(selectedCaseIndex, idx)}
+                                      title="Remover anexo pendente"
+                                      aria-label="Remover anexo pendente"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>

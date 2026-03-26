@@ -99,6 +99,25 @@ Deno.serve(async (req) => {
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "10");
 
+    // Buscar total real de registros para paginação correta
+    let totalCount = 0;
+    try {
+      let countQuery = supabase
+        .schema('people')
+        .from('colaboradores')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantUser.tenant_id);
+
+      if (search) {
+        countQuery = countQuery.ilike('nome', `%${search}%`);
+      }
+
+      const { count } = await countQuery;
+      totalCount = count ?? 0;
+    } catch (countError) {
+      console.error("Count query error:", countError);
+    }
+
     // Build query - usar função RPC
     const { data, error: queryError } = await supabase
       .rpc('list_colaboradores', {
@@ -130,7 +149,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("Returning", transformedData?.length || 0, "colaboradores");
+    // Usar total real se a query de count funcionou, senão estimar pelo tamanho da página
+    const total = totalCount > 0 ? totalCount : transformedData.length;
+
+    console.log("Returning", transformedData?.length || 0, "colaboradores (total:", total, ")");
 
     return new Response(
       JSON.stringify({
@@ -138,8 +160,8 @@ Deno.serve(async (req) => {
         pagination: {
           page,
           limit,
-          total: transformedData.length, // Por enquanto, usar o count da página atual
-          totalPages: Math.ceil(transformedData.length / limit),
+          total,
+          totalPages: Math.ceil(total / limit),
         },
       }),
       {

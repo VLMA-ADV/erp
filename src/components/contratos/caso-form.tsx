@@ -32,6 +32,7 @@ const emptyCaso: CasoPayload = {
   data_inicio_faturamento: '',
   pagamento_dia_mes: '',
   inicio_vigencia: '',
+  possui_reajuste: true,
   periodo_reajuste: 'nao_tem',
   data_proximo_reajuste: '',
   data_ultimo_reajuste: '',
@@ -287,7 +288,8 @@ export default function CasoForm({
       regras.cap_limites_enabled ??
       (regras.cap_max !== null && regras.cap_max !== undefined && String(regras.cap_max).trim() !== ''),
   )
-  const reajusteEnabled = (form.periodo_reajuste || 'nao_tem') !== 'nao_tem'
+  const possuiReajuste = form.possui_reajuste !== false
+  const reajusteEnabled = possuiReajuste && (form.periodo_reajuste || 'nao_tem') !== 'nao_tem'
   const capDesejadoEnabled = Boolean(
     regras.cap_desejado_enabled ??
       (regras.cap_desejado_horas !== null &&
@@ -594,6 +596,7 @@ export default function CasoForm({
           const loadedForm: CasoPayload = {
             ...emptyCaso,
             nome: caso.nome || '',
+            servico_id: caso.servico_id || '',
             produto_id: caso.produto_id || '',
             responsavel_id: caso.responsavel_id || '',
             moeda: caso.moeda || 'real',
@@ -601,6 +604,7 @@ export default function CasoForm({
             data_inicio_faturamento: caso.data_inicio_faturamento || '',
             pagamento_dia_mes: caso.pagamento_dia_mes ? String(caso.pagamento_dia_mes) : '',
             inicio_vigencia: caso.inicio_vigencia || '',
+            possui_reajuste: caso.possui_reajuste !== false,
             periodo_reajuste: caso.periodo_reajuste || '',
             data_proximo_reajuste: caso.data_proximo_reajuste || '',
             data_ultimo_reajuste: caso.data_ultimo_reajuste || '',
@@ -1271,6 +1275,8 @@ export default function CasoForm({
       })()
       const payload = {
         ...form,
+        possui_reajuste: possuiReajuste,
+        possui_cap_horas: capDesejadoEnabled,
         regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
         data_ultimo_reajuste: form.data_ultimo_reajuste || form.data_inicio_faturamento,
         regras_financeiras: preparedRules.map((rule) => ({
@@ -1381,7 +1387,9 @@ export default function CasoForm({
       })
       const data = await resp.json()
       if (!resp.ok) {
-        setError(data.error || 'Erro ao remover anexo')
+        const msg = data.error || 'Erro ao remover anexo'
+        setError(msg)
+        toastError(msg)
         return
       }
 
@@ -1776,6 +1784,28 @@ export default function CasoForm({
                 <Label>Início da vigência</Label>
                 <DatePicker value={form.inicio_vigencia} onChange={(value) => setField('inicio_vigencia', value)} disabled={isReadOnly} />
               </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Possui reajuste?</Label>
+                <ChoiceCards
+                  value={possuiReajuste ? 'sim' : 'nao'}
+                  onChange={(value) => {
+                    const sim = value === 'sim'
+                    setField('possui_reajuste', sim)
+                    if (!sim) {
+                      setField('periodo_reajuste', 'nao_tem')
+                      setField('indice_reajuste', 'nao_tem')
+                      setField('data_proximo_reajuste', '')
+                      setField('data_ultimo_reajuste', '')
+                    }
+                  }}
+                  disabled={isReadOnly}
+                  options={[
+                    { value: 'nao', label: 'Não' },
+                    { value: 'sim', label: 'Sim' },
+                  ]}
+                />
+              </div>
+              {possuiReajuste && (
               <div className="space-y-2">
                 <Label>Período reajuste</Label>
                 <NativeSelect
@@ -1802,6 +1832,7 @@ export default function CasoForm({
                   <option value="anual">Anual</option>
                 </NativeSelect>
               </div>
+              )}
               {reajusteEnabled ? (
                 <>
                   <div className="space-y-2">

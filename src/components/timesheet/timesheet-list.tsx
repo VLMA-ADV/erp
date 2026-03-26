@@ -29,6 +29,7 @@ interface TimesheetItem {
   caso_nome: string
   data_lancamento: string
   horas: string
+  duracao_minutos?: number | null
   descricao: string
   status: TimesheetStatus
   created_by: string
@@ -296,7 +297,7 @@ export default function TimesheetList() {
       contrato_id: item.contrato_id,
       caso_id: item.caso_id,
       data_lancamento: item.data_lancamento,
-      minutos: toMinutes(item.horas),
+      minutos: item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas),
       descricao: item.descricao || '',
     })
     setTemplateCategoria('')
@@ -334,6 +335,7 @@ export default function TimesheetList() {
           caso_id: form.caso_id,
           data_lancamento: form.data_lancamento,
           horas: toHoursFromMinutes(form.minutos),
+          duracao_minutos: minutos,
           descricao: form.descricao,
         }),
       })
@@ -462,7 +464,7 @@ export default function TimesheetList() {
                       <p className="text-muted-foreground">{item.caso_numero || '-'} - {item.caso_nome}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{item.descricao || '-'}</p>
                     </td>
-                    <td className="px-4 py-3 text-sm">{toMinutes(item.horas)}</td>
+                    <td className="px-4 py-3 text-sm">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
                     <td className="px-4 py-3 text-sm">
                       <Badge className={statusClassName}>{item.status}</Badge>
                     </td>
