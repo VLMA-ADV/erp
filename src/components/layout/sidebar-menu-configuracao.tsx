@@ -67,11 +67,7 @@ export default function SidebarMenuConfiguracao({
 
   // Verificar se há pelo menos um item visível
   // Para usuários socio/administrativo, mostrar todos os itens
-  const hasVisibleItems = configuracaoMenuItems.some((item) =>
-    hasPermission(item.permission) || 
-    hasPermission('config.*') ||
-    hasPermission('*')
-  )
+  const hasVisibleItems = configuracaoMenuItems.some((item) => hasPermission(item.permission))
 
   if (!hasVisibleItems) {
     return null
@@ -111,10 +107,7 @@ export default function SidebarMenuConfiguracao({
       {isOpen && (
         <div className="ml-4 mt-1 space-y-1">
           {configuracaoMenuItems.map((item) => {
-            // Mostrar item se tiver permissão específica, permissão genérica de config, ou acesso total
-            if (!hasPermission(item.permission) && 
-                !hasPermission('config.*') && 
-                !hasPermission('*')) {
+            if (!hasPermission(item.permission)) {
               return null
             }
 

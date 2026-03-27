@@ -26,8 +26,8 @@ export default function CargosList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
 
-  const canWrite = hasPermission('config.cargos.write') || hasPermission('config.cargos.*')
-  const canRead = hasPermission('config.cargos.read') || hasPermission('config.cargos.*')
+  const canWrite = hasPermission('config.cargos.write')
+  const canRead = hasPermission('config.cargos.read')
 
   useEffect(() => {
     if (canRead) {

@@ -213,6 +213,18 @@ stateDiagram-v2
 
 **Nota:** A revisão de timesheet ocorre durante a revisão do faturamento, não há revisão separada antes.
 
+#### 2.1.1. Correspondência com o modelo persistido no ERP (fonte canônica)
+
+O sistema em produção persiste o campo `status` do timesheet com os valores **`em_lancamento`**, **`revisao`** e **`aprovado`** (API/RPC/UI). O diagrama acima permanece como **visão de domínio**; o alinhamento formal doc ↔ código está em `references/adr/ADR-005-estados-timesheet-doc-vs-persistido.md` e em `references/SPEC.md` (RF-029).
+
+| Conceito / estado (documentação §2) | Valor `status` no ERP |
+|-------------------------------------|------------------------|
+| Rascunho (lançamento em edição) | `em_lancamento` |
+| Enviado (transição antes da aprovação) | Sem valor dedicado na UI; fluxo conduz a `aprovado` ou `revisao` conforme RPC |
+| Aprovado | `aprovado` |
+| Em revisão de faturamento | `revisao` (afinamento operacional; detalhes na RPC) |
+| Faturado | Campo/regra de **faturamento** (`faturado`), não um quarto valor de enum na lista de Timesheet |
+
 ### 2.2. Lançamento de Horas
 
 **Pré-condições:**
@@ -1345,41 +1357,41 @@ Permissões finais: [criar_timesheet, visualizar_contratos, gerar_relatorios]
 
 ### 7.3. Verificação de Permissões
 
+#### 7.3.0. Fonte de verdade no ERP-VLMA (RBAC)
+
+| Camada | O que o sistema usa |
+|--------|---------------------|
+| Edge Functions (repo) | JWT + RPC `get_user_permissions` → conjunto de `permission_key`; checagem por chave (com curingas documentados no frontend em `permission-keys.ts`) |
+| Categoria (`§7.0`) | **Perfil típico** para política e configuração de cargos; **não** um ramo alternativo `if (categoria)` duplicado em cada função HTTP analisada |
+| Vínculos (revisor, responsável, etc.) | Podem ser aplicados **dentro das RPCs** de negócio (ex.: faturamento), além do RBAC |
+
+Decisão formal: **`references/adr/ADR-007-categorias-colaborador-vs-rbac-permission-key.md`** (O-4).
+
 **Pré-condições:**
 - Colaborador deve estar autenticado
 - Ação deve ser identificada
 
 **Processo:**
 1. Sistema identifica ação solicitada
-2. Sistema verifica categoria do colaborador:
-   - **Sócio/Administrativo**: Acesso geral (pula para passo 5)
-   - **Advogado**: Verifica regras de acesso de advogado
-   - **Estagiário**: Verifica regras de acesso de estagiário
-3. Sistema busca permissões do colaborador:
-   - Verifica cargo e features
-   - Verifica customizações
-   - Calcula permissões efetivas
-4. Sistema verifica vinculação (para advogado/estagiário):
-   - Advogado: Verifica se é revisor/responsável
-   - Estagiário: Verifica se é responsável ou dono do dado
-5. Sistema verifica se ação é permitida
-6. Se permitido: executa ação
-7. Se não permitido: retorna erro de permissão
+2. Sistema resolve **permissões efetivas** do colaborador (cargo + customizações, §7.1–7.2), materializadas em `permission_key` via `get_user_permissions`
+3. Sistema verifica se a ação é permitida por **RBAC** (e por regras de vínculo na RPC, quando existirem)
+4. Se permitido: executa ação
+5. Se não permitido: retorna erro de permissão
+
+**Nota sobre §7.0:** Os fluxos narrativos “por categoria” abaixo (**Fluxo de Verificação por Categoria**) permanecem como **modelo conceitual** útil para QA e configuração de roles (o que um advogado *tipicamente* recebe). A implementação HTTP versionada neste repositório não replica esse pseudocódigo como segunda árvore de decisão paralela às `permission_key`.
 
 **Validações:**
 - Colaborador deve estar autenticado
 - Ação deve ser válida
-- Categoria do colaborador deve ser válida
-- Vinculação deve ser verificada (se aplicável)
+- `permission_key` efetivas devem cobrir a operação (ou a RPC nega)
+- Vinculação deve ser verificada na RPC quando a regra de negócio exigir
 
 **Regras de Negócio:**
-- Verificação ocorre em cada requisição
-- Categoria do colaborador tem prioridade sobre permissões customizadas
-- Sócio e Administrativo têm acesso geral (não precisam verificar vinculação)
-- Advogado precisa estar vinculado (revisor/responsável) para acessar certos dados
-- Estagiário precisa estar vinculado (responsável/dono) para acessar dados
-- Permissões são cacheadas para performance
-- Log de tentativas de acesso negado é mantido
+- Verificação ocorre em cada requisição (servidor)
+- **Permissões efetivas** (lista de chaves) são o critério de autorização nas Edge Functions; a **categoria** orienta a **política** de quais chaves um papel costuma receber, sem substituir o RBAC em tempo de execução
+- Advogado / estagiário podem depender de **vínculos** para certas operações, conforme implementado nas RPCs (além das chaves)
+- Permissões podem ser cacheadas no cliente para UX; o servidor permanece autoritativo
+- Log de tentativas de acesso negado é mantido (quando habilitado)
 
 **Fluxo de Verificação por Categoria:**
 
@@ -1463,6 +1475,20 @@ Permissões finais: [criar_timesheet, visualizar_contratos, gerar_relatorios]
 - Despesa criada com status "pendente"
 - Vinculada ao caso
 - Pronta para inclusão em faturamento
+
+### 8.1.1. Modelo ERP-VLMA (implementação vigente vs §8.1–8.4)
+
+O texto das seções **8.1 a 8.4** descreve um fluxo conceitual completo (incluindo tipo **reembolsável / não reembolsável** e ciclo **pendente → pago**). O **ERP-VLMA** na rota de Despesas (`/despesas`, Edge Functions `get-despesas` / `create-despesa` / `update-despesa`) opera com **outro conjunto normativo**, para evitar ambiguidade:
+
+| Aspecto | Documentação conceitual (§8) | ERP-VLMA (lista / formulário atuais) |
+|--------|------------------------------|--------------------------------------|
+| Caso | Obrigatório só para reembolsável; proibido para não reembolsável (§8.2) | **Caso sempre obrigatório** (fluxo cliente → contrato → caso) |
+| Tipo `reembolsavel` / `nao_reembolsavel` | Explícito em modelo de dados amplo | **Não há** seletor de tipo na UI; trata-se de **despesa de caso** no fluxo operacional |
+| Status | `pendente`, `pago`, etc. | **`em_lancamento`**, **`revisao`**, **`aprovado`**, **`cancelado`** |
+| Inclusão em faturamento (§8.3) | Reembolsável e `pendente` | Em linha com “itens a faturar”: tipicamente **`em_lancamento`** e `caso_id` presente (detalhe na RPC de faturamento) |
+| Pagamento §8.4 (`pago`) | Atualização de status após pagamento | **Não** mapeado 1:1 para o enum da lista; pode existir em outro módulo ou evolução futura |
+
+**Decisão de produto registrada em** `references/adr/ADR-006-despesas-reembolso-doc-vs-implementado.md`: a variante **§8.2 (despesa interna sem caso)** **não está implementada** na tela atual; **RF-030** e `references/CONTRACTS.md` fecham o contrato para integradores.
 
 ### 8.2. Criação de Despesas Não Reembolsáveis
 

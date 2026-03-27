@@ -232,7 +232,8 @@ export default function CasoForm({
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
-  const canWrite = hasPermission('contracts.casos.write') || hasPermission('contracts.contratos.write') || hasPermission('contracts.*')
+  const canWrite =
+    hasPermission('contracts.casos.write') || hasPermission('contracts.contratos.write')
 
   const [substep, setSubstep] = useState<CaseSubstepKey>('basico')
   const [loading, setLoading] = useState(false)
@@ -2932,7 +2933,7 @@ export default function CasoForm({
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-2">
+      <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t bg-background py-4">
         <Button variant="outline" onClick={() => router.back()} disabled={loading}>Cancelar</Button>
         {!isReadOnly && (
           <Button onClick={submit} disabled={loading}>

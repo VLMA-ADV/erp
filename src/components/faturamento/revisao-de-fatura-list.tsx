@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Check, ChevronDown, ChevronRight, Eye, Loader2, Plus, Save, Settings2, SquarePen, Trash2, Undo2 } from 'lucide-react'
+import { ArrowRightLeft, Check, ChevronDown, ChevronRight, Eye, Loader2, Plus, Save, Settings2, SquarePen, Trash2, Undo2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -792,6 +792,9 @@ export default function RevisaoDeFaturaList() {
   const [selectedContratoConfigId, setSelectedContratoConfigId] = useState<string | null>(null)
   const [savingContratoConfig, setSavingContratoConfig] = useState(false)
   const [savingResponsavelLineKey, setSavingResponsavelLineKey] = useState<string | null>(null)
+  const [transferItemId, setTransferItemId] = useState<string | null>(null)
+  const [transferCasoId, setTransferCasoId] = useState('')
+  const [transferring, setTransferring] = useState(false)
 
   const loadCurrentUser = async () => {
     try {
@@ -1289,6 +1292,60 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
 
   const openClienteReviewModal = (clienteKey: string) => {
     setSelectedClienteKey(clienteKey)
+  }
+
+  const transferCasoOptions = useMemo<CommandSelectOption[]>(() => {
+    const seen = new Set<string>()
+    const options: CommandSelectOption[] = []
+    for (const item of items) {
+      if (!item.casoId || seen.has(item.casoId)) continue
+      seen.add(item.casoId)
+      options.push({
+        value: item.casoId,
+        label: item.casoNumero ? `${item.casoNumero} - ${item.casoNome}` : item.casoNome,
+        group: item.clienteNome,
+      })
+    }
+    return options
+  }, [items])
+
+  const handleTransferCaso = async () => {
+    if (!transferItemId || !transferCasoId) return
+    setTransferring(true)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-faturamento-item`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: transferItemId,
+            caso_id: transferCasoId,
+          }),
+        },
+      )
+      const data = await resp.json()
+      if (!resp.ok) {
+        toastError(data.error || 'Erro ao transferir caso')
+        return
+      }
+      success('Caso transferido com sucesso')
+      setTransferItemId(null)
+      setTransferCasoId('')
+      void loadItems()
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao transferir caso')
+    } finally {
+      setTransferring(false)
+    }
   }
 
   useEffect(() => {
@@ -2060,11 +2117,7 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
     }
   }, [contratoConfigMap, selectedItem])
   const canManageReviewers = useMemo(
-    () =>
-      hasPermission('finance.faturamento.manage') ||
-      hasPermission('finance.faturamento.*') ||
-      hasPermission('finance.*') ||
-      hasPermission('*'),
+    () => hasPermission('finance.faturamento.manage'),
     [hasPermission],
   )
   const totalHorasIniciais = selectedTimesheetRows.reduce((acc, row) => acc + parseDecimalInput(row.horasIniciais), 0)
@@ -2935,6 +2988,19 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
                                                             </Button>
                                                           </Tooltip>
                                                         ) : null}
+                                                        <Tooltip content="Transferir caso">
+                                                          <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={() => {
+                                                              setTransferItemId(item.id)
+                                                              setTransferCasoId('')
+                                                            }}
+                                                            disabled={busy}
+                                                          >
+                                                            <ArrowRightLeft className="h-4 w-4" />
+                                                          </Button>
+                                                        </Tooltip>
                                                         <Tooltip content={item.status === 'em_aprovacao' ? 'Aprovar item' : 'Revisar item'}>
                                                           <Button
                                                             size="icon"
@@ -3492,6 +3558,34 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
             <Button onClick={() => void saveContratoConfig()} disabled={savingContratoConfig}>
               {savingContratoConfig ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Salvar responsáveis
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!transferItemId} onOpenChange={(open) => { if (!open) { setTransferItemId(null); setTransferCasoId('') } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transferir para outro caso</DialogTitle>
+            <DialogDescription>Selecione o caso de destino para reatribuir este lançamento.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <CommandSelect
+              value={transferCasoId}
+              onValueChange={setTransferCasoId}
+              options={transferCasoOptions}
+              placeholder="Selecione o caso de destino"
+              searchPlaceholder="Buscar caso..."
+              emptyText="Nenhum caso encontrado."
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTransferItemId(null); setTransferCasoId('') }} disabled={transferring}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void handleTransferCaso()} disabled={transferring || !transferCasoId}>
+              {transferring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+              Transferir
             </Button>
           </DialogFooter>
         </DialogContent>

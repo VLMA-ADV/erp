@@ -20,9 +20,7 @@ export default function CategoriasPrestadoresParceirosTable({
   onEdit: (item: CategoriaPrestadorParceiroItem) => void
 }) {
   const { hasPermission } = usePermissionsContext()
-  const canEdit =
-    hasPermission('config.categorias_prestadores_parceiros.write') ||
-    hasPermission('config.categorias_prestadores_parceiros.*')
+  const canEdit = hasPermission('config.categorias_prestadores_parceiros.write')
 
   if (loading) {
     return (

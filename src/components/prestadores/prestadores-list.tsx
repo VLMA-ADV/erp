@@ -36,12 +36,7 @@ export default function PrestadoresList({
   toggleEndpoint?: string
 }) {
   const { hasPermission } = usePermissionsContext()
-  const canRead =
-    permissionPrefixes.some((prefix) =>
-      hasPermission(`${prefix}.read`) || hasPermission(`${prefix}.*`)
-    ) ||
-    hasPermission('people.*') ||
-    hasPermission('*')
+  const canRead = permissionPrefixes.some((prefix) => hasPermission(`${prefix}.read`))
 
   const [items, setItems] = useState<PrestadorListItem[]>([])
   const [loading, setLoading] = useState(true)

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { Eye, Pencil, Paperclip, Power } from 'lucide-react'
+import { Eye, Pencil, Paperclip, Power, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -26,7 +26,41 @@ export default function CasosActions({
   const [anexoOpen, setAnexoOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const { success, error: toastError } = useToast()
+
+  const deleteCaso = async () => {
+    try {
+      setLoading(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-caso`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: casoId }),
+      })
+
+      const data = await resp.json()
+      if (!resp.ok) {
+        toastError(data.error || 'Erro ao excluir caso')
+        return
+      }
+
+      success('Caso excluído com sucesso')
+      onRefresh()
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao excluir caso')
+    } finally {
+      setLoading(false)
+      setDeleteOpen(false)
+    }
+  }
 
   const toggleStatus = async () => {
     const next = status === 'inativo' ? 'ativo' : 'inativo'
@@ -90,6 +124,11 @@ export default function CasosActions({
               <Power className={`h-4 w-4 ${status === 'inativo' ? 'text-green-600' : 'text-red-600'}`} />
             </Button>
           </Tooltip>
+          <Tooltip content="Excluir caso">
+            <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)} disabled={loading}>
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </Tooltip>
           <AnexoModal
             open={anexoOpen}
             onOpenChange={setAnexoOpen}
@@ -105,6 +144,16 @@ export default function CasosActions({
             confirmLabel="Confirmar"
             cancelLabel="Cancelar"
             onConfirm={toggleStatus}
+            loading={loading}
+          />
+          <AlertDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="Excluir caso?"
+            description="Esta ação é irreversível. O caso e todos os seus dados serão removidos permanentemente."
+            confirmLabel="Sim, excluir"
+            cancelLabel="Cancelar"
+            onConfirm={deleteCaso}
             loading={loading}
           />
         </>

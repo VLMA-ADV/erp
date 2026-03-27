@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, Edit3, GripVertical, MoveRight, Plus, UserRound } from 'lucide-react'
+import { Download, Edit3, GripVertical, MoveRight, Plus, UserPlus, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -138,16 +138,11 @@ export default function CrmPipeline() {
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
 
+  /** `write` não implica `read` na semântica de `isPermissionSatisfied`; manter as duas chaves. Curingas cobrem ambas via hook. */
   const canRead =
-    hasPermission('crm.pipeline.read') ||
-    hasPermission('crm.pipeline.write') ||
-    hasPermission('crm.pipeline.*') ||
-    hasPermission('crm.*')
+    hasPermission('crm.pipeline.read') || hasPermission('crm.pipeline.write')
 
-  const canWrite =
-    hasPermission('crm.pipeline.write') ||
-    hasPermission('crm.pipeline.*') ||
-    hasPermission('crm.*')
+  const canWrite = hasPermission('crm.pipeline.write')
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -624,9 +619,14 @@ export default function CrmPipeline() {
             Atualizar
           </Button>
           {canWrite ? (
-            <Button onClick={() => handleOpenCreate('prospeccao')}>
-              <Plus className="mr-2 h-4 w-4" /> Novo card
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => router.push('/pessoas/clientes/novo')}>
+                <UserPlus className="mr-2 h-4 w-4" /> Novo cliente
+              </Button>
+              <Button onClick={() => handleOpenCreate('prospeccao')}>
+                <Plus className="mr-2 h-4 w-4" /> Novo card
+              </Button>
+            </>
           ) : null}
         </div>
       </div>

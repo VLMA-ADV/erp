@@ -102,12 +102,7 @@ export default function PrestadorForm({
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
 
-  const canWrite =
-    permissionPrefixes.some((prefix) =>
-      hasPermission(`${prefix}.write`) || hasPermission(`${prefix}.*`)
-    ) ||
-    hasPermission('people.*') ||
-    hasPermission('*')
+  const canWrite = permissionPrefixes.some((prefix) => hasPermission(`${prefix}.write`))
 
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!prestadorId)

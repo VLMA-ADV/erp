@@ -23,8 +23,8 @@ export default function ServicosProdutosList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingServicoProduto, setEditingServicoProduto] = useState<ServicoProduto | null>(null)
 
-  const canWrite = hasPermission('config.produtos.write') || hasPermission('config.produtos.*')
-  const canRead = hasPermission('config.produtos.read') || hasPermission('config.produtos.*')
+  const canWrite = hasPermission('config.produtos.write')
+  const canRead = hasPermission('config.produtos.read')
 
   const fetchServicosProdutos = async () => {
     try {

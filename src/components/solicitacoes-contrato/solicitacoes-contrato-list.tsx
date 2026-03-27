@@ -87,9 +87,9 @@ export default function SolicitacoesContratoList() {
   const { success, error: toastError } = useToast()
 
   const canRead =
-    hasPermission('contracts.solicitacoes.read') || hasPermission('contracts.solicitacoes.*') || hasPermission('contracts.*')
+    hasPermission('contracts.solicitacoes.read')
   const canWrite =
-    hasPermission('contracts.solicitacoes.write') || hasPermission('contracts.solicitacoes.*') || hasPermission('contracts.*')
+    hasPermission('contracts.solicitacoes.write')
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -143,6 +143,15 @@ export default function SolicitacoesContratoList() {
     return session
   }
 
+  const getFunctionsHeaders = (accessToken: string) => {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    return {
+      Authorization: `Bearer ${accessToken}`,
+      ...(anonKey ? { apikey: anonKey } : {}),
+      'Content-Type': 'application/json',
+    }
+  }
+
   const fetchClientes = async () => {
     const session = await getSession()
     if (!session) return
@@ -151,8 +160,7 @@ export default function SolicitacoesContratoList() {
       method: 'GET',
       cache: 'no-store',
       headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
+        ...getFunctionsHeaders(session.access_token),
       },
     })
 
@@ -171,8 +179,7 @@ export default function SolicitacoesContratoList() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-solicitacoes-contrato`, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+          ...getFunctionsHeaders(session.access_token),
         },
       })
 
@@ -249,8 +256,7 @@ export default function SolicitacoesContratoList() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-cliente`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+          ...getFunctionsHeaders(session.access_token),
         },
         body: JSON.stringify({
           nome,
@@ -289,11 +295,6 @@ export default function SolicitacoesContratoList() {
       return
     }
 
-    if (pendingAnexos.length === 0) {
-      toastError('Anexo de proposta é obrigatório')
-      return
-    }
-
     if (!descricaoSolicitacao.trim()) {
       toastError('Descrição é obrigatória')
       return
@@ -309,33 +310,41 @@ export default function SolicitacoesContratoList() {
       const session = await getSession()
       if (!session) return
 
-      const anexosPayload = await Promise.all(
-        pendingAnexos.map(async (item) => ({
-          nome: 'Proposta',
-          arquivo_nome: item.file.name,
-          mime_type: item.file.type || 'application/octet-stream',
-          tamanho_bytes: item.file.size,
-          arquivo_base64: await fileToBase64(item.file),
-        })),
-      )
+      const anexosPayload =
+        pendingAnexos.length === 0
+          ? []
+          : await Promise.all(
+              pendingAnexos.map(async (item) => ({
+                nome: 'Proposta',
+                arquivo_nome: item.file.name,
+                mime_type: item.file.type || 'application/octet-stream',
+                tamanho_bytes: item.file.size,
+                arquivo_base64: await fileToBase64(item.file),
+              })),
+            )
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-solicitacao-contrato`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+          ...getFunctionsHeaders(session.access_token),
         },
         body: JSON.stringify({
           nome: nomeSolicitacao.trim(),
           descricao: descricaoSolicitacao.trim(),
           cliente_id: selectedClienteId,
-          anexos: anexosPayload,
+          anexos: anexosPayload.length ? anexosPayload : undefined,
         }),
       })
 
-      const payload = await response.json()
+      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        toastError(payload.error || 'Erro ao criar solicitação')
+        const errMsg =
+          typeof payload?.error === 'string' && payload.error.trim().length > 0
+            ? payload.error
+            : `Erro ao criar solicitação (HTTP ${response.status})`
+        const details =
+          typeof payload?.details === 'string' && payload.details.trim().length > 0 ? ` — ${payload.details}` : ''
+        toastError(`${errMsg}${details}`)
         return
       }
 
@@ -346,8 +355,7 @@ export default function SolicitacoesContratoList() {
           await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-crm-pipeline-card`, {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
+              ...getFunctionsHeaders(session.access_token),
             },
             body: JSON.stringify({
               id: crmCardIdPrefill,
@@ -365,7 +373,7 @@ export default function SolicitacoesContratoList() {
       await fetchItems()
     } catch (err) {
       console.error(err)
-      toastError('Erro ao criar solicitação')
+      toastError(err instanceof Error ? `Erro ao criar solicitação — ${err.message}` : 'Erro ao criar solicitação')
     } finally {
       setSubmitting(false)
     }
@@ -382,8 +390,7 @@ export default function SolicitacoesContratoList() {
         {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+            ...getFunctionsHeaders(session.access_token),
           },
         },
       )

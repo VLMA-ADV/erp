@@ -19,6 +19,23 @@ import { TIMESHEET_TEMPLATES } from './timesheet-templates'
 
 type TimesheetStatus = 'em_lancamento' | 'revisao' | 'aprovado'
 
+const TIMESHEET_STATUS_LABEL: Record<TimesheetStatus, string> = {
+  em_lancamento: 'Em lançamento',
+  revisao: 'Em revisão (faturamento)',
+  aprovado: 'Aprovado',
+}
+
+function timesheetStatusLabel(status: string): string {
+  if (status === 'em_lancamento' || status === 'revisao' || status === 'aprovado') {
+    return TIMESHEET_STATUS_LABEL[status]
+  }
+  return status || '—'
+}
+
+function canEditTimesheetInList(status: string) {
+  return status === 'em_lancamento' || status === 'aprovado'
+}
+
 interface TimesheetItem {
   id: string
   contrato_id: string
@@ -93,8 +110,8 @@ export default function TimesheetList() {
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
 
-  const canRead = hasPermission('operations.timesheet.read') || hasPermission('operations.timesheet.*') || hasPermission('operations.*')
-  const canWrite = hasPermission('operations.timesheet.write') || hasPermission('operations.timesheet.*') || hasPermission('operations.*')
+  const canRead = hasPermission('operations.timesheet.read')
+  const canWrite = hasPermission('operations.timesheet.write')
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -117,6 +134,15 @@ export default function TimesheetList() {
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     return session
+  }
+
+  const getFunctionsHeaders = (accessToken: string) => {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    return {
+      Authorization: `Bearer ${accessToken}`,
+      ...(anonKey ? { apikey: anonKey } : {}),
+      'Content-Type': 'application/json',
+    }
   }
 
   const contratoOptions = useMemo(
@@ -202,8 +228,7 @@ export default function TimesheetList() {
       method: 'GET',
       cache: 'no-store',
       headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
+        ...getFunctionsHeaders(session.access_token),
       },
     })
 
@@ -234,8 +259,7 @@ export default function TimesheetList() {
           method: 'GET',
           cache: 'no-store',
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+            ...getFunctionsHeaders(session.access_token),
           },
         },
       )
@@ -326,8 +350,7 @@ export default function TimesheetList() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${endpoint}`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+          ...getFunctionsHeaders(session.access_token),
         },
         body: JSON.stringify({
           id: form.id,
@@ -455,6 +478,7 @@ export default function TimesheetList() {
                     : item.status === 'revisao'
                       ? 'border-yellow-200 bg-yellow-100 text-yellow-700'
                       : 'border-blue-200 bg-blue-100 text-blue-700'
+                const showEdit = canWrite && canEditTimesheetInList(item.status)
 
                 return (
                   <tr key={item.id}>
@@ -466,12 +490,12 @@ export default function TimesheetList() {
                     </td>
                     <td className="px-4 py-3 text-sm">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
                     <td className="px-4 py-3 text-sm">
-                      <Badge className={statusClassName}>{item.status}</Badge>
+                      <Badge className={statusClassName}>{timesheetStatusLabel(item.status)}</Badge>
                     </td>
                     <td className="px-4 py-3 text-sm">{item.created_by_nome || '-'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {canWrite && item.status === 'em_lancamento' ? (
+                        {showEdit ? (
                           <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
                             <Edit className="h-4 w-4" />
                           </Button>

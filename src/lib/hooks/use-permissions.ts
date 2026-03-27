@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isPermissionSatisfied } from '@/lib/permissions/permission-keys'
 
 const CACHE_KEY_PREFIX = 'permissions_cache_'
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos em milissegundos
@@ -13,11 +14,36 @@ interface CacheData {
 }
 
 /**
+ * Leitura síncrona do cache de permissões no localStorage.
+ * Escaneia todas as chaves com o prefixo e retorna as permissões válidas
+ * sem precisar do userId (que só está disponível via getSession, assíncrono).
+ * Isso evita o flash de "Sem permissão" no primeiro render.
+ */
+function syncReadCachedPermissions(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const now = Date.now()
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(CACHE_KEY_PREFIX)) continue
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const data = JSON.parse(raw) as CacheData
+      if (Array.isArray(data.permissions) && now - data.timestamp < CACHE_TTL_MS) {
+        return data.permissions
+      }
+    }
+  } catch {
+    // localStorage não disponível ou dado inválido
+  }
+  return []
+}
+
+/**
  * Hook para gerenciar permissões do usuário com cache localStorage
  * Cache é invalidado após 5 minutos ou quando a página é recarregada
  */
 export function usePermissions() {
-  const [permissions, setPermissions] = useState<string[]>([])
+  const [permissions, setPermissions] = useState<string[]>(() => syncReadCachedPermissions())
   const [loading, setLoading] = useState(true)
   const isLoadingRef = useRef(false)
 
@@ -253,7 +279,7 @@ export function usePermissions() {
   }, [getCachedPermissions, fetchPermissions])
 
   const hasPermission = useCallback((permission: string) => {
-    return permissions.includes(permission)
+    return isPermissionSatisfied(permissions, permission)
   }, [permissions])
 
   // Expor função para invalidar cache manualmente

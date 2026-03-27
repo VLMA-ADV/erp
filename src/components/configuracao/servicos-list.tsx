@@ -23,8 +23,8 @@ export default function ServicosList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingServico, setEditingServico] = useState<Servico | null>(null)
 
-  const canWrite = hasPermission('config.servicos.write') || hasPermission('config.servicos.*')
-  const canRead = hasPermission('config.servicos.read') || hasPermission('config.servicos.*')
+  const canWrite = hasPermission('config.servicos.write')
+  const canRead = hasPermission('config.servicos.read')
 
   const fetchServicos = async () => {
     try {

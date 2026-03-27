@@ -19,12 +19,7 @@ export default function PrestadoresPageClient({
 }) {
   const { hasPermission } = usePermissionsContext()
 
-  const canCreate =
-    permissionPrefixes.some((prefix) =>
-      hasPermission(`${prefix}.write`) || hasPermission(`${prefix}.*`)
-    ) ||
-    hasPermission('people.*') ||
-    hasPermission('*')
+  const canCreate = permissionPrefixes.some((prefix) => hasPermission(`${prefix}.write`))
 
   return (
     <div className="mb-6 flex items-center justify-between">

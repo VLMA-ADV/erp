@@ -41,7 +41,7 @@ const menuItems = [
   },
   {
     label: 'PDI',
-    href: '/pdi',
+    href: '/avaliacoes-pdi',
     permission: 'people.pdi.read',
   },
   {

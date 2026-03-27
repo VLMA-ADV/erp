@@ -18,7 +18,7 @@ export default function ParceirosTable({
 }) {
   const { hasPermission } = usePermissionsContext()
   const canEdit =
-    hasPermission('people.parceiros.write') || hasPermission('people.parceiros.*')
+    hasPermission('people.parceiros.write')
 
   if (loading) {
     return (

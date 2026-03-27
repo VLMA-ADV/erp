@@ -38,9 +38,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# supabase edge functions (não devem ser compilados pelo Next.js)
-supabase/functions/
-supabase/migrations/
+# Supabase: Edge Functions e migrations devem ser versionados (fonte CONTRACTS.md).
 .mcp.json
 
 .cursor/
@@ -51,3 +49,7 @@ supabase/migrations/
 
 # local task notes
 /tasks/
+
+# artefatos locais de deploy / debug
+.mcp-deploy-*.json
+.tmp-*.txt

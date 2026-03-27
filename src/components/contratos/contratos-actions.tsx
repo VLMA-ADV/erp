@@ -62,7 +62,7 @@ export default function ContratosActions({
     }
   }
 
-  const deleteDraft = async () => {
+  const deleteContrato = async () => {
     try {
       setLoading(true)
       const supabase = createClient()
@@ -80,15 +80,15 @@ export default function ContratosActions({
 
       const data = await resp.json()
       if (!resp.ok) {
-        toastError(data.error || 'Erro ao excluir rascunho')
+        toastError(data.error || 'Erro ao excluir contrato')
         return
       }
 
-      success('Rascunho excluído')
+      success('Contrato excluído com sucesso')
       onRefresh()
     } catch (e) {
       console.error(e)
-      toastError('Erro ao excluir rascunho')
+      toastError('Erro ao excluir contrato')
     } finally {
       setLoading(false)
       setDeleteOpen(false)
@@ -135,13 +135,11 @@ export default function ContratosActions({
             </Button>
           </Tooltip>
 
-          {status === 'rascunho' && (
-            <Tooltip content="Excluir rascunho">
-              <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)} disabled={loading}>
-                <Trash2 className="h-4 w-4 text-red-600" />
-              </Button>
-            </Tooltip>
-          )}
+          <Tooltip content="Excluir contrato">
+            <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)} disabled={loading}>
+              <Trash2 className="h-4 w-4 text-red-600" />
+            </Button>
+          </Tooltip>
 
           <AnexoModal
             open={anexoOpen}
@@ -163,11 +161,11 @@ export default function ContratosActions({
           <AlertDialog
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
-            title="Excluir contrato rascunho?"
-            description="Essa ação remove o contrato rascunho e os dados vinculados."
-            confirmLabel="Excluir"
-            cancelLabel="Cancelar"
-            onConfirm={deleteDraft}
+            title="Excluir contrato?"
+            description="Essa ação remove o contrato e todos os dados vinculados (casos, anexos). Deseja continuar?"
+            confirmLabel="Sim, excluir"
+            cancelLabel="Não, cancelar"
+            onConfirm={deleteContrato}
             loading={loading}
           />
         </>

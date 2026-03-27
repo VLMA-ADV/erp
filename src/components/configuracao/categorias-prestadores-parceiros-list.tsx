@@ -18,8 +18,8 @@ export default function CategoriasPrestadoresParceirosList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CategoriaPrestadorParceiroItem | null>(null)
 
-  const canWrite = hasPermission('config.categorias_prestadores_parceiros.write') || hasPermission('config.categorias_prestadores_parceiros.*')
-  const canRead = hasPermission('config.categorias_prestadores_parceiros.read') || hasPermission('config.categorias_prestadores_parceiros.*')
+  const canWrite = hasPermission('config.categorias_prestadores_parceiros.write')
+  const canRead = hasPermission('config.categorias_prestadores_parceiros.read')
 
   const fetchItems = async () => {
     try {

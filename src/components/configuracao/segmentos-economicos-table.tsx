@@ -25,7 +25,7 @@ export default function SegmentosEconomicosTable({
 }: SegmentosEconomicosTableProps) {
   const { hasPermission } = usePermissionsContext()
 
-  const canEdit = hasPermission('config.segmentos.write') || hasPermission('config.segmentos.*')
+  const canEdit = hasPermission('config.segmentos.write')
   const hasAnyAction = canEdit
 
   if (loading) {

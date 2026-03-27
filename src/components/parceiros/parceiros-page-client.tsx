@@ -8,7 +8,7 @@ export default function ParceirosPageClient() {
   const { hasPermission } = usePermissionsContext()
 
   const canCreate =
-    hasPermission('people.parceiros.write') || hasPermission('people.parceiros.*')
+    hasPermission('people.parceiros.write')
 
   return (
     <div className="mb-6 flex items-center justify-between">

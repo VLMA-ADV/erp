@@ -8,7 +8,7 @@ export default function ClientesPageClient() {
   const { hasPermission } = usePermissionsContext()
 
   const canCreate =
-    hasPermission('crm.clientes.write') || hasPermission('crm.clientes.*')
+    hasPermission('crm.clientes.write')
 
   return (
     <div className="mb-6 flex items-center justify-between">

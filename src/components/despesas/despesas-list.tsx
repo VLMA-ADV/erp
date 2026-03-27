@@ -89,19 +89,20 @@ function formatDate(value: string) {
   return `${day}/${month}/${year}`
 }
 
-function formatStatus(status: DespesaStatus) {
+function formatStatus(status: string) {
   if (status === 'em_lancamento') return 'Em lançamento'
   if (status === 'revisao') return 'Revisão'
   if (status === 'aprovado') return 'Aprovado'
   if (status === 'cancelado') return 'Cancelado'
-  return status
+  return status ? String(status) : '—'
 }
 
-function statusClassName(status: DespesaStatus) {
+function statusClassName(status: string) {
   if (status === 'aprovado') return 'border-green-200 bg-green-50 text-green-700'
   if (status === 'revisao') return 'border-blue-200 bg-blue-50 text-blue-700'
   if (status === 'cancelado') return 'border-red-200 bg-red-50 text-red-700'
-  return 'border-amber-200 bg-amber-50 text-amber-700'
+  if (status === 'em_lancamento') return 'border-amber-200 bg-amber-50 text-amber-700'
+  return 'border-slate-200 bg-slate-50 text-slate-700'
 }
 
 function formatMoney(value: number | string | null | undefined) {
@@ -122,8 +123,8 @@ export default function DespesasList() {
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
 
-  const canRead = hasPermission('operations.despesas.read') || hasPermission('operations.despesas.*') || hasPermission('operations.*')
-  const canWrite = hasPermission('operations.despesas.write') || hasPermission('operations.despesas.*') || hasPermission('operations.*')
+  const canRead = hasPermission('operations.despesas.read')
+  const canWrite = hasPermission('operations.despesas.write')
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -146,6 +147,15 @@ export default function DespesasList() {
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     return session
+  }
+
+  const getFunctionsHeaders = (accessToken: string) => {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    return {
+      Authorization: `Bearer ${accessToken}`,
+      ...(anonKey ? { apikey: anonKey } : {}),
+      'Content-Type': 'application/json',
+    }
   }
 
   const clienteOptions = useMemo(() => {
@@ -217,10 +227,7 @@ export default function DespesasList() {
     const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos?_ts=${Date.now()}`, {
       method: 'GET',
       cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: getFunctionsHeaders(session.access_token),
     })
 
     const payload = await response.json().catch(() => ({}))
@@ -249,10 +256,7 @@ export default function DespesasList() {
     const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-clientes?_ts=${Date.now()}`, {
       method: 'GET',
       cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: getFunctionsHeaders(session.access_token),
     })
 
     const payload = await response.json().catch(() => ({}))
@@ -273,10 +277,7 @@ export default function DespesasList() {
     const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato-form-options?_ts=${Date.now()}`, {
       method: 'GET',
       cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: getFunctionsHeaders(session.access_token),
     })
     const fallbackPayload = await fallbackResponse.json().catch(() => ({}))
     const fallbackClientes = fallbackPayload?.data?.clientes
@@ -310,10 +311,7 @@ export default function DespesasList() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesas?${params.toString()}`, {
         method: 'GET',
         cache: 'no-store',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: getFunctionsHeaders(session.access_token),
       })
 
       const payload = await response.json().catch(() => ({}))
@@ -441,10 +439,7 @@ export default function DespesasList() {
       const endpoint = form.id ? 'update-despesa' : 'create-despesa'
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${endpoint}`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: getFunctionsHeaders(session.access_token),
         body: JSON.stringify(payload),
       })
 

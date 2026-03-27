@@ -17,7 +17,7 @@ interface ServicosTableProps {
 
 export default function ServicosTable({ servicos, loading, onEdit }: ServicosTableProps) {
   const { hasPermission } = usePermissionsContext()
-  const canEdit = hasPermission('config.servicos.write') || hasPermission('config.servicos.*')
+  const canEdit = hasPermission('config.servicos.write')
 
   if (loading) {
     return (

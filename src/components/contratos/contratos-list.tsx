@@ -16,11 +16,12 @@ import { Table } from '@/components/ui/table'
 export default function ContratosList() {
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissionsContext()
-  const canRead = hasPermission('contracts.contratos.read') || hasPermission('contracts.contratos.*') || hasPermission('contracts.*')
-  const canWrite = hasPermission('contracts.contratos.write') || hasPermission('contracts.contratos.*') || hasPermission('contracts.*')
+  const canRead = hasPermission('contracts.contratos.read')
+  const canWrite = hasPermission('contracts.contratos.write')
 
   const [items, setItems] = useState<ContratoListItem[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -149,109 +150,142 @@ export default function ContratosList() {
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-md border p-8 text-center text-gray-500">Nenhum contrato encontrado</div>
-      ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <Table className="w-full min-w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="w-10 px-3 py-3" />
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contrato</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Casos</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map((item) => {
-                const isOpen = !!expanded[item.id]
+      ) : (() => {
+        // Group contracts by client
+        const groups = items.reduce<Record<string, { clienteNome: string; contratos: ContratoListItem[] }>>((acc, item) => {
+          const key = item.cliente_nome || 'Sem cliente'
+          if (!acc[key]) acc[key] = { clienteNome: key, contratos: [] }
+          acc[key].contratos.push(item)
+          return acc
+        }, {})
+        const clienteKeys = Object.keys(groups).sort()
 
-                return (
-                  <Fragment key={item.id}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-3 py-4">
-                        <button
-                          className="rounded p-1 hover:bg-gray-100"
-                          onClick={() => setExpanded((prev) => ({ ...prev, [item.id]: !isOpen }))}
-                        >
-                          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.numero || '-'} - {item.nome_contrato}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.cliente_nome}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusPill(item.status)}`}>
-                          {formatContractStatus(item.status)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.casos?.length || 0}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <ContratosActions
-                          contratoId={item.id}
-                          status={item.status}
-                          canWrite={canWrite}
-                          onRefresh={fetchItems}
-                        />
-                      </td>
-                    </tr>
-
-                    {isOpen && (
-                      <tr className="bg-gray-50/40">
-                        <td colSpan={6} className="px-6 py-4">
-                          <div className="rounded-md border bg-white overflow-hidden">
-                            <Table className="w-full min-w-full">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Caso</th>
-                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produto</th>
-                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Responsável</th>
-                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {item.casos?.length ? (
-                                  item.casos.map((caso) => (
-                                    <tr key={caso.id}>
-                                      <td className="px-4 py-3 text-sm text-gray-900">{caso.numero || '-'} - {caso.nome}</td>
-                                      <td className="px-4 py-3 text-sm text-gray-700">{caso.produto_nome || '-'}</td>
-                                      <td className="px-4 py-3 text-sm text-gray-700">{caso.responsavel_nome || '-'}</td>
-                                      <td className="px-4 py-3 text-sm">
-                                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${caseStatusPill(caso.status || 'rascunho')}`}>
-                                          {caso.status || 'rascunho'}
-                                        </span>
-                                      </td>
-                                      <td className="px-4 py-3 text-right">
-                                        <CasosActions
-                                          contratoId={item.id}
-                                          casoId={caso.id}
-                                          status={caso.status || 'ativo'}
-                                          canWrite={canWrite}
-                                          onRefresh={fetchItems}
-                                        />
-                                      </td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  <tr>
-                                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
-                                      Nenhum caso cadastrado para este contrato
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </Table>
-                          </div>
+        return (
+          <div className="rounded-md border overflow-x-auto">
+            <Table className="w-full min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="w-10 px-3 py-3" />
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contrato</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Casos</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {clienteKeys.map((clienteKey) => {
+                  const group = groups[clienteKey]
+                  const isClientOpen = expandedClients[clienteKey] !== false // open by default
+                  return (
+                    <Fragment key={clienteKey}>
+                      {/* Client header row */}
+                      <tr className="bg-blue-50 hover:bg-blue-100">
+                        <td className="px-3 py-3">
+                          <button
+                            className="rounded p-1 hover:bg-blue-200"
+                            onClick={() => setExpandedClients((prev) => ({ ...prev, [clienteKey]: !isClientOpen }))}
+                          >
+                            {isClientOpen ? <ChevronDown className="h-4 w-4 text-blue-700" /> : <ChevronRight className="h-4 w-4 text-blue-700" />}
+                          </button>
+                        </td>
+                        <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-blue-900">
+                          {group.clienteNome}
+                          <span className="ml-2 text-xs font-normal text-blue-600">({group.contratos.length} contrato{group.contratos.length !== 1 ? 's' : ''})</span>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </Table>
-        </div>
-      )}
+
+                      {/* Contract rows for this client */}
+                      {isClientOpen && group.contratos.map((item) => {
+                        const isOpen = !!expanded[item.id]
+                        return (
+                          <Fragment key={item.id}>
+                            <tr className="hover:bg-gray-50">
+                              <td className="px-3 py-4 pl-8">
+                                <button
+                                  className="rounded p-1 hover:bg-gray-100"
+                                  onClick={() => setExpanded((prev) => ({ ...prev, [item.id]: !isOpen }))}
+                                >
+                                  {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                </button>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.numero || '-'} - {item.nome_contrato}</td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusPill(item.status)}`}>
+                                  {formatContractStatus(item.status)}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.casos?.length || 0}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <ContratosActions
+                                  contratoId={item.id}
+                                  status={item.status}
+                                  canWrite={canWrite}
+                                  onRefresh={fetchItems}
+                                />
+                              </td>
+                            </tr>
+
+                            {isOpen && (
+                              <tr className="bg-gray-50/40">
+                                <td colSpan={5} className="px-6 py-4 pl-12">
+                                  <div className="rounded-md border bg-white overflow-hidden">
+                                    <Table className="w-full min-w-full">
+                                      <thead className="bg-gray-50">
+                                        <tr>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Caso</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produto</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Responsável</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {item.casos?.length ? (
+                                          item.casos.map((caso) => (
+                                            <tr key={caso.id}>
+                                              <td className="px-4 py-3 text-sm text-gray-900">{caso.numero || '-'} - {caso.nome}</td>
+                                              <td className="px-4 py-3 text-sm text-gray-700">{caso.produto_nome || '-'}</td>
+                                              <td className="px-4 py-3 text-sm text-gray-700">{caso.responsavel_nome || '-'}</td>
+                                              <td className="px-4 py-3 text-sm">
+                                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${caseStatusPill(caso.status || 'rascunho')}`}>
+                                                  {caso.status || 'rascunho'}
+                                                </span>
+                                              </td>
+                                              <td className="px-4 py-3 text-right">
+                                                <CasosActions
+                                                  contratoId={item.id}
+                                                  casoId={caso.id}
+                                                  status={caso.status || 'ativo'}
+                                                  canWrite={canWrite}
+                                                  onRefresh={fetchItems}
+                                                />
+                                              </td>
+                                            </tr>
+                                          ))
+                                        ) : (
+                                          <tr>
+                                            <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                                              Nenhum caso cadastrado para este contrato
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </tbody>
+                                    </Table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        )
+                      })}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </Table>
+          </div>
+        )
+      })()}
     </div>
   )
 }

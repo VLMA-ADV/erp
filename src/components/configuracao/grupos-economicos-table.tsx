@@ -25,7 +25,7 @@ export default function GruposEconomicosTable({
 }: GruposEconomicosTableProps) {
   const { hasPermission } = usePermissionsContext()
 
-  const canEdit = hasPermission('config.grupos.write') || hasPermission('config.grupos.*')
+  const canEdit = hasPermission('config.grupos.write')
   const hasAnyAction = canEdit
 
   if (loading) {

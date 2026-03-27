@@ -19,7 +19,7 @@ export interface ClienteListItem {
 
 export default function ClientesList() {
   const { hasPermission } = usePermissionsContext()
-  const canRead = hasPermission('crm.clientes.read') || hasPermission('crm.clientes.*')
+  const canRead = hasPermission('crm.clientes.read')
 
   const [items, setItems] = useState<ClienteListItem[]>([])
   const [loading, setLoading] = useState(true)

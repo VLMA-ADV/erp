@@ -45,8 +45,8 @@ export default function RolesList() {
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [viewingRole, setViewingRole] = useState<Role | null>(null)
 
-  const canWrite = hasPermission('config.roles.write') || hasPermission('config.roles.*')
-  const canRead = hasPermission('config.roles.read') || hasPermission('config.roles.*')
+  const canWrite = hasPermission('config.roles.write')
+  const canRead = hasPermission('config.roles.read')
 
   useEffect(() => {
     if (canRead) {

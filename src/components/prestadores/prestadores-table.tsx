@@ -27,12 +27,7 @@ export default function PrestadoresTable({
   toggleEndpoint?: string
 }) {
   const { hasPermission } = usePermissionsContext()
-  const canEdit =
-    permissionPrefixes.some((prefix) =>
-      hasPermission(`${prefix}.write`) || hasPermission(`${prefix}.*`)
-    ) ||
-    hasPermission('people.*') ||
-    hasPermission('*')
+  const canEdit = permissionPrefixes.some((prefix) => hasPermission(`${prefix}.write`))
 
   if (loading) {
     return (

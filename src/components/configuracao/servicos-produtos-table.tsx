@@ -17,7 +17,7 @@ interface ServicosProdutosTableProps {
 
 export default function ServicosProdutosTable({ servicosProdutos, loading, onEdit }: ServicosProdutosTableProps) {
   const { hasPermission } = usePermissionsContext()
-  const canEdit = hasPermission('config.produtos.write') || hasPermission('config.produtos.*')
+  const canEdit = hasPermission('config.produtos.write')
 
   if (loading) {
     return (

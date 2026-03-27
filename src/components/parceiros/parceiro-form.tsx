@@ -71,7 +71,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
   const { hasPermission } = usePermissionsContext()
 
   const canWrite =
-    hasPermission('people.parceiros.write') || hasPermission('people.parceiros.*')
+    hasPermission('people.parceiros.write')
 
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!parceiroId)

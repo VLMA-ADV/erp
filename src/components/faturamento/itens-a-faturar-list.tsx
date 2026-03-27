@@ -344,6 +344,15 @@ export default function ItensAFaturarList() {
   const [regraTab, setRegraTab] = useState<RegraTabKey>('todas')
   const [selectedCasos, setSelectedCasos] = useState<Record<string, boolean>>({})
 
+  const getFunctionsHeaders = (accessToken: string) => {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    return {
+      Authorization: `Bearer ${accessToken}`,
+      ...(anonKey ? { apikey: anonKey } : {}),
+      'Content-Type': 'application/json',
+    }
+  }
+
   const loadItems = async () => {
     try {
       setLoading(true)
@@ -365,8 +374,7 @@ export default function ItensAFaturarList() {
         {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+            ...getFunctionsHeaders(session.access_token),
           },
         },
       )
@@ -390,8 +398,7 @@ export default function ItensAFaturarList() {
         {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+            ...getFunctionsHeaders(session.access_token),
           },
         },
       )
@@ -472,8 +479,7 @@ export default function ItensAFaturarList() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+          ...getFunctionsHeaders(session.access_token),
         },
         body: JSON.stringify({
           data_inicio: dateStart,
@@ -526,8 +532,7 @@ export default function ItensAFaturarList() {
         const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+            ...getFunctionsHeaders(session.access_token),
           },
           body: JSON.stringify({
             data_inicio: dateStart,
@@ -662,7 +667,7 @@ export default function ItensAFaturarList() {
             ) : filteredTree.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Nenhum item encontrado para o período informado.
+                  Nenhum item pendente de faturamento para o período informado. O período pode já ter sido faturado ou não há lançamentos abertos.
                 </td>
               </tr>
             ) : (

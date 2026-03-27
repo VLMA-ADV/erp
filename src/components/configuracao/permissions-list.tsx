@@ -18,7 +18,7 @@ export default function PermissionsList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const canRead = hasPermission('config.permissions.read') || hasPermission('config.permissions.*')
+  const canRead = hasPermission('config.permissions.read')
 
   useEffect(() => {
     if (canRead) {

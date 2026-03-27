@@ -28,7 +28,7 @@ export default function CargosTable({
 }: CargosTableProps) {
   const { hasPermission } = usePermissionsContext()
 
-  const canEdit = hasPermission('config.cargos.write') || hasPermission('config.cargos.*')
+  const canEdit = hasPermission('config.cargos.write')
   const hasAnyAction = canEdit
 
   if (loading) {

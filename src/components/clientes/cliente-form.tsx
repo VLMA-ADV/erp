@@ -11,8 +11,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { Plus, Trash2 } from 'lucide-react'
 import { fetchCEPData } from '@/lib/utils/validation'
 import { maskCEP, maskCPF, maskCNPJ, maskPhone, onlyDigits } from '@/lib/utils/masks'
+
+type ResponsavelFinanceiro = {
+  nome: string
+  email: string
+  whatsapp: string
+}
 
 type GrupoEconomico = { id: string; nome: string }
 type Segmento = { id: string; nome: string; ativo: boolean }
@@ -37,9 +44,7 @@ type ClientePayload = {
   resp_int_email: string
   resp_int_whatsapp: string
   resp_int_data_nascimento: string
-  resp_fin_nome: string
-  resp_fin_email: string
-  resp_fin_whatsapp: string
+  responsaveis_financeiros: ResponsavelFinanceiro[]
 }
 
 const emptyPayload: ClientePayload = {
@@ -62,16 +67,14 @@ const emptyPayload: ClientePayload = {
   resp_int_email: '',
   resp_int_whatsapp: '',
   resp_int_data_nascimento: '',
-  resp_fin_nome: '',
-  resp_fin_email: '',
-  resp_fin_whatsapp: '',
+  responsaveis_financeiros: [{ nome: '', email: '', whatsapp: '' }],
 }
 
 export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
 
-  const canWrite = hasPermission('crm.clientes.write') || hasPermission('crm.clientes.*')
+  const canWrite = hasPermission('crm.clientes.write')
 
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!clienteId)
@@ -167,7 +170,12 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         const cliente = data.data?.cliente || {}
         const segmentoIds = (data.data?.segmento_ids || []) as string[]
         const ri = (data.data?.responsaveis_internos || [])[0] || {}
-        const rf = (data.data?.responsaveis_financeiros || [])[0] || {}
+        const rfs: ResponsavelFinanceiro[] = (data.data?.responsaveis_financeiros || []).map((rf: any) => ({
+          nome: rf.nome || '',
+          email: rf.email || '',
+          whatsapp: maskPhone(rf.whatsapp || ''),
+        }))
+        if (rfs.length === 0) rfs.push({ nome: '', email: '', whatsapp: '' })
         const clienteEstrangeiro = !!cliente.cliente_estrangeiro
 
         const tipoCliente = (cliente.tipo || '') as ClientePayload['tipo']
@@ -199,9 +207,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           resp_int_email: ri.email || '',
           resp_int_whatsapp: maskPhone(ri.whatsapp || ''),
           resp_int_data_nascimento: ri.data_nascimento || '',
-          resp_fin_nome: rf.nome || '',
-          resp_fin_email: rf.email || '',
-          resp_fin_whatsapp: maskPhone(rf.whatsapp || ''),
+          responsaveis_financeiros: rfs,
         })
       } catch (e) {
         console.error(e)
@@ -291,9 +297,16 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         resp_int_email: form.resp_int_email || null,
         resp_int_whatsapp: onlyDigits(form.resp_int_whatsapp) || null,
         resp_int_data_nascimento: form.resp_int_data_nascimento || null,
-        resp_fin_nome: form.resp_fin_nome || null,
-        resp_fin_email: form.resp_fin_email || null,
-        resp_fin_whatsapp: onlyDigits(form.resp_fin_whatsapp) || null,
+        resp_fin_nome: form.responsaveis_financeiros[0]?.nome || null,
+        resp_fin_email: form.responsaveis_financeiros[0]?.email || null,
+        resp_fin_whatsapp: onlyDigits(form.responsaveis_financeiros[0]?.whatsapp || '') || null,
+        responsaveis_financeiros: form.responsaveis_financeiros
+          .filter((rf) => rf.nome || rf.email || rf.whatsapp)
+          .map((rf) => ({
+            nome: rf.nome || null,
+            email: rf.email || null,
+            whatsapp: onlyDigits(rf.whatsapp) || null,
+          })),
       }
       if (isEdit) body.id = clienteId
 
@@ -657,29 +670,86 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Responsável financeiro (opcional)</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Responsáveis financeiros (opcional)</CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        responsaveis_financeiros: [
+                          ...prev.responsaveis_financeiros,
+                          { nome: '', email: '', whatsapp: '' },
+                        ],
+                      }))
+                    }
+                  >
+                    <Plus className="mr-1 h-4 w-4" /> Adicionar
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="rf_nome">Nome</Label>
-                    <Input id="rf_nome" value={form.resp_fin_nome} onChange={(e) => setForm({ ...form, resp_fin_nome: e.target.value })} />
+                {form.responsaveis_financeiros.map((rf, idx) => (
+                  <div key={idx} className="rounded-md border p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm font-medium text-slate-600">Responsável {idx + 1}</span>
+                      {form.responsaveis_financeiros.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              responsaveis_financeiros: prev.responsaveis_financeiros.filter((_, i) => i !== idx),
+                            }))
+                          }
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Nome</Label>
+                        <Input
+                          value={rf.nome}
+                          onChange={(e) => {
+                            const updated = [...form.responsaveis_financeiros]
+                            updated[idx] = { ...updated[idx], nome: e.target.value }
+                            setForm({ ...form, responsaveis_financeiros: updated })
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>E-mail</Label>
+                        <Input
+                          value={rf.email}
+                          onChange={(e) => {
+                            const updated = [...form.responsaveis_financeiros]
+                            updated[idx] = { ...updated[idx], email: e.target.value }
+                            setForm({ ...form, responsaveis_financeiros: updated })
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>WhatsApp</Label>
+                        <Input
+                          value={rf.whatsapp}
+                          maxLength={15}
+                          onChange={(e) => {
+                            const updated = [...form.responsaveis_financeiros]
+                            updated[idx] = { ...updated[idx], whatsapp: maskPhone(e.target.value) }
+                            setForm({ ...form, responsaveis_financeiros: updated })
+                          }}
+                          placeholder="(00) 00000-0000"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="rf_email">E-mail</Label>
-                    <Input id="rf_email" value={form.resp_fin_email} onChange={(e) => setForm({ ...form, resp_fin_email: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="rf_whats">WhatsApp</Label>
-                    <Input
-                      id="rf_whats"
-                      value={form.resp_fin_whatsapp}
-                      maxLength={15}
-                      onChange={(e) => setForm({ ...form, resp_fin_whatsapp: maskPhone(e.target.value) })}
-                      placeholder="(00) 00000-0000"
-                    />
-                  </div>
-                </div>
+                ))}
               </CardContent>
             </Card>
           </div>

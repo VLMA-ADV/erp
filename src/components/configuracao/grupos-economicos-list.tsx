@@ -24,8 +24,8 @@ export default function GruposEconomicosList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingGrupo, setEditingGrupo] = useState<GrupoEconomico | null>(null)
 
-  const canWrite = hasPermission('config.grupos.write') || hasPermission('config.grupos.*')
-  const canRead = hasPermission('config.grupos.read') || hasPermission('config.grupos.*')
+  const canWrite = hasPermission('config.grupos.write')
+  const canRead = hasPermission('config.grupos.read')
 
   useEffect(() => {
     if (canRead) {

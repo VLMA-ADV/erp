@@ -26,7 +26,7 @@ export default function AreasTable({
 }: AreasTableProps) {
   const { hasPermission } = usePermissionsContext()
 
-  const canEdit = hasPermission('config.centro_custo.write') || hasPermission('config.centro_custo.*')
+  const canEdit = hasPermission('config.centro_custo.write')
   const hasAnyAction = canEdit
 
   if (loading) {

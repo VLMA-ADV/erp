@@ -24,8 +24,8 @@ export default function SegmentosEconomicosList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingSegmento, setEditingSegmento] = useState<SegmentoEconomico | null>(null)
 
-  const canWrite = hasPermission('config.segmentos.write') || hasPermission('config.segmentos.*')
-  const canRead = hasPermission('config.segmentos.read') || hasPermission('config.segmentos.*')
+  const canWrite = hasPermission('config.segmentos.write')
+  const canRead = hasPermission('config.segmentos.read')
 
   useEffect(() => {
     if (canRead) {

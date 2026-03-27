@@ -350,10 +350,7 @@ export default function ContratoForm({
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
 
-  const canWrite =
-    hasPermission('contracts.contratos.write') ||
-    hasPermission('contracts.contratos.*') ||
-    hasPermission('contracts.*')
+  const canWrite = hasPermission('contracts.contratos.write')
   const isEdit = !!contratoId
   const isReadOnly = viewOnly || !canWrite
 
@@ -2691,8 +2688,8 @@ export default function ContratoForm({
                 }
                 disabled={isReadOnly}
                 options={[
-                  { value: 'organico', label: 'Orgânico' },
-                  { value: 'prospeccao', label: 'Prospecção' },
+                  { value: 'organico', label: 'Cliente demandou' },
+                  { value: 'prospeccao', label: 'Provocamos a demanda' },
                 ]}
                 columns={2}
               />
@@ -2719,12 +2716,18 @@ export default function ContratoForm({
                 </div>
                 <div className="space-y-2">
                   <Label>Canal de prospecção</Label>
-                  <Input
+                  <NativeSelect
                     value={form.canal_prospeccao}
                     onChange={(e) => setForm((prev) => ({ ...prev, canal_prospeccao: e.target.value }))}
-                    placeholder="Ex.: indicação, evento, inbound, outbound..."
                     disabled={isReadOnly}
-                  />
+                  >
+                    <option value="">Selecione o canal...</option>
+                    <option value="internet">Internet</option>
+                    <option value="campanha">Campanha</option>
+                    <option value="site">Site</option>
+                    <option value="telefone">Telefone</option>
+                    <option value="indicacao">Indicação</option>
+                  </NativeSelect>
                 </div>
               </>
             ) : null}

@@ -5,19 +5,9 @@ import { Button } from '@/components/ui/button'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 
 export default function ColaboradoresPageClient() {
-  const { hasPermission, permissions, loading } = usePermissionsContext()
+  const { hasPermission } = usePermissionsContext()
 
-  // Verificar se o usuário tem permissão para criar colaboradores
-  const canCreate = hasPermission('people.colaboradores.write') || 
-                    hasPermission('people.colaboradores.*')
-
-  // Debug
-  if (!loading) {
-    console.log('ColaboradoresPageClient - Permissions:', permissions)
-    console.log('ColaboradoresPageClient - canCreate:', canCreate)
-    console.log('ColaboradoresPageClient - has people.colaboradores.write:', hasPermission('people.colaboradores.write'))
-    console.log('ColaboradoresPageClient - has people.colaboradores.*:', hasPermission('people.colaboradores.*'))
-  }
+  const canCreate = hasPermission('people.colaboradores.write')
 
   return (
     <div className="mb-6 flex items-center justify-between">

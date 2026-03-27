@@ -43,13 +43,10 @@ export default function ColaboradoresTable({
   const { hasPermission, permissions, loading: permissionsLoading } = usePermissionsContext()
 
   // Verificar permissões corretamente
-  const canEdit = hasPermission('people.colaboradores.write') || 
-                  hasPermission('people.colaboradores.*')
-  const canViewPDI = hasPermission('people.colaboradores.view_pdi') ||
-                     hasPermission('people.pdi.read') ||
-                     hasPermission('people.pdi.*')
-  const canView = hasPermission('people.colaboradores.read') ||
-                  hasPermission('people.colaboradores.*')
+  const canEdit = hasPermission('people.colaboradores.write')
+  const canViewPDI =
+    hasPermission('people.colaboradores.view_pdi') || hasPermission('people.pdi.read')
+  const canView = hasPermission('people.colaboradores.read')
   
   // A coluna "Ações" só deve aparecer se o usuário tiver permissões além de apenas visualizar
   // Se só tiver permissão de visualizar, não mostra a coluna de ações

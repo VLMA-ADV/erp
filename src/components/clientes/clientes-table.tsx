@@ -17,7 +17,7 @@ export default function ClientesTable({
   onRefresh: () => void
 }) {
   const { hasPermission } = usePermissionsContext()
-  const canEdit = hasPermission('crm.clientes.write') || hasPermission('crm.clientes.*')
+  const canEdit = hasPermission('crm.clientes.write')
 
   if (loading) {
     return (

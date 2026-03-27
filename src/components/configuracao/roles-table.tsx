@@ -28,8 +28,8 @@ export default function RolesTable({
 }: RolesTableProps) {
   const { hasPermission } = usePermissionsContext()
 
-  const canEdit = hasPermission('config.roles.write') || hasPermission('config.roles.*')
-  const canView = hasPermission('config.roles.read') || hasPermission('config.roles.*')
+  const canEdit = hasPermission('config.roles.write')
+  const canView = hasPermission('config.roles.read')
   const hasAnyAction = canEdit || canView
 
   if (loading) {

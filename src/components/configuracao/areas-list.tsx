@@ -25,8 +25,8 @@ export default function AreasList() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingArea, setEditingArea] = useState<Area | null>(null)
 
-  const canWrite = hasPermission('config.centro_custo.write') || hasPermission('config.centro_custo.*')
-  const canRead = hasPermission('config.centro_custo.read') || hasPermission('config.centro_custo.*')
+  const canWrite = hasPermission('config.centro_custo.write')
+  const canRead = hasPermission('config.centro_custo.read')
 
   useEffect(() => {
     if (canRead) {

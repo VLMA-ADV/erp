@@ -19,7 +19,7 @@ export interface ParceiroListItem {
 export default function ParceirosList() {
   const { hasPermission } = usePermissionsContext()
   const canRead =
-    hasPermission('people.parceiros.read') || hasPermission('people.parceiros.*')
+    hasPermission('people.parceiros.read')
 
   const [items, setItems] = useState<ParceiroListItem[]>([])
   const [loading, setLoading] = useState(true)
