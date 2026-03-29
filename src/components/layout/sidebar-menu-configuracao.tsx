@@ -55,6 +55,11 @@ const configuracaoMenuItems = [
     href: '/configuracao/permissoes',
     permission: 'config.permissions.read',
   },
+  {
+    label: 'Usuários',
+    href: '/configuracao/usuarios',
+    permission: 'config.usuarios.read',
+  },
 ]
 
 export default function SidebarMenuConfiguracao({

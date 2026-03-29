@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { isPermissionSatisfied } from '@/lib/permissions/permission-keys'
 
 const CACHE_KEY_PREFIX = 'permissions_cache_'
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos em milissegundos
+const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutos em milissegundos
 
 interface CacheData {
   permissions: string[]
