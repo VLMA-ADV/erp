@@ -2578,35 +2578,69 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
           }
         }
 
-        const nextRows = (current.timesheetRows || []).map((row, idx) => {
-          if (field === 'data') {
-            return { ...row, dataLancamento: normalizeDateInput(value) }
-          }
-          if (field === 'descricao') {
-            return { ...row, atividade: value }
-          }
-          if (field === 'tempo') {
-            const minutos = sanitizeMinutesInput(value)
-            const horas = minutesToHoursString(minutos)
-            return idx === 0 ? { ...row, horasRevisadas: horas } : row
-          }
-          if (field === 'valor') {
-            const totalHours = (current.timesheetRows || []).reduce(
+        const rows = current.timesheetRows || []
+        let nextRows = rows.map((row) => ({ ...row }))
+
+        if (field === 'tempo') {
+          const minutos = sanitizeMinutesInput(value)
+          const newTotalHoursStr = minutesToHoursString(minutos)
+          const newTotalHours = parseDecimalInput(newTotalHoursStr)
+          if (rows.length === 0) {
+            nextRows = rows
+          } else if (rows.length === 1) {
+            nextRows = [{ ...rows[0]!, horasRevisadas: newTotalHoursStr }]
+          } else {
+            const oldTotal = rows.reduce(
               (acc, currentRow) => acc + parseDecimalInput(currentRow.horasRevisadas || currentRow.horasIniciais),
               0,
             )
-            const valorHora = totalHours > 0 ? parseDecimalInput(value) / totalHours : 0
-            return { ...row, valorHora: String(valorHora) }
+            if (oldTotal <= 0) {
+              const each = newTotalHours / rows.length
+              nextRows = rows.map((r) => ({
+                ...r,
+                horasRevisadas: String(each),
+              }))
+            } else {
+              nextRows = rows.map((r) => {
+                const oldH = parseDecimalInput(r.horasRevisadas || r.horasIniciais)
+                const h = (oldH / oldTotal) * newTotalHours
+                const str = Number.isInteger(h) ? String(h) : h.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
+                return { ...r, horasRevisadas: str }
+              })
+            }
           }
-          return row
-        })
+        } else {
+          nextRows = rows.map((row, idx) => {
+            if (field === 'data') {
+              return { ...row, dataLancamento: normalizeDateInput(value) }
+            }
+            if (field === 'descricao') {
+              return { ...row, atividade: value }
+            }
+            if (field === 'valor') {
+              const totalHours = rows.reduce(
+                (acc, currentRow) => acc + parseDecimalInput(currentRow.horasRevisadas || currentRow.horasIniciais),
+                0,
+              )
+              const valorHora = totalHours > 0 ? parseDecimalInput(value) / totalHours : 0
+              return { ...row, valorHora: String(valorHora) }
+            }
+            return row
+          })
+        }
+
+        const newTotalValor = nextRows.reduce((acc, row) => {
+          const h = parseDecimalInput(row.horasRevisadas || row.horasIniciais)
+          const vh = parseDecimalInput(row.valorHora)
+          return acc + h * vh
+        }, 0)
 
         return {
           ...prev,
           [selectedItem.id]: {
             ...current,
             horas: field === 'tempo' ? minutesToHoursString(sanitizeMinutesInput(value)) : current.horas,
-            valor: field === 'valor' ? value : current.valor,
+            valor: field === 'tempo' ? String(newTotalValor) : field === 'valor' ? value : current.valor,
             timesheetRows: nextRows,
           },
         }
@@ -3045,6 +3079,19 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
                                                           </Button>
                                                         </Tooltip>
                                                       ) : null}
+                                                      <Tooltip content="Transferir caso">
+                                                        <Button
+                                                          size="icon"
+                                                          variant="ghost"
+                                                          onClick={() => {
+                                                            setTransferItemId(baseItem.id)
+                                                            setTransferCasoId('')
+                                                          }}
+                                                          disabled={timesheetBusy}
+                                                        >
+                                                          <ArrowRightLeft className="h-4 w-4" />
+                                                        </Button>
+                                                      </Tooltip>
                                                       <Tooltip content={baseItem.status === 'em_aprovacao' ? 'Aprovar timesheet' : 'Revisar timesheet'}>
                                                         <Button
                                                           size="icon"

@@ -42,8 +42,8 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    if (!body.id) {
-      return new Response(JSON.stringify({ error: "ID do caso é obrigatório" }), {
+    if (!body.contrato_id) {
+      return new Response(JSON.stringify({ error: "ID do contrato é obrigatório" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -75,17 +75,17 @@ Deno.serve(async (req) => {
       p.permission_key === "*"
     );
     if (!hasPermission) {
-      return new Response(JSON.stringify({ error: "Você não tem permissão para editar casos" }), {
+      return new Response(JSON.stringify({ error: "Você não tem permissão para criar casos" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { id, ...payload } = body;
-    const sanitizedPayload = sanitizeCasoPayload(payload);
-    const { data, error } = await supabase.rpc("update_caso", {
+    const { contrato_id, ...rawPayload } = body;
+    const sanitizedPayload = sanitizeCasoPayload(rawPayload);
+    const { data, error } = await supabase.rpc("create_caso", {
       p_user_id: user.id,
-      p_caso_id: id,
+      p_contrato_id: contrato_id,
       p_payload: sanitizedPayload,
     });
 
@@ -96,8 +96,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (tenantUser?.tenant_id) {
-      const flagErr = await syncCasoPossuiFlags(supabase, tenantUser.tenant_id, id, body);
+    const casoId = data?.id ? String(data.id) : null;
+    if (casoId && tenantUser?.tenant_id) {
+      const flagErr = await syncCasoPossuiFlags(supabase, tenantUser.tenant_id, casoId, body);
       if (flagErr) {
         return new Response(JSON.stringify({ error: flagErr.message, details: flagErr.message }), {
           status: 500,
@@ -106,15 +107,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (tenantUser?.tenant_id) {
+    if (tenantUser?.tenant_id && casoId) {
       await createAuditLog({
         supabase,
         tenantId: tenantUser.tenant_id,
         tipoEntidade: "contracts.casos",
-        entidadeId: id,
-        acao: "update",
+        entidadeId: casoId,
+        acao: "create",
         userId: user.id,
-        dadosNovos: { id, ...sanitizedPayload },
+        dadosNovos: { contrato_id, ...sanitizedPayload },
         ipAddress: getIpAddress(req),
         userAgent: getUserAgent(req),
       });
@@ -125,10 +126,9 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
-

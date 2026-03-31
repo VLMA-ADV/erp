@@ -16,13 +16,13 @@ const faturamentoMenuItems = [
     permission: 'finance.faturamento.read',
   },
   {
-    label: 'Fluxo de faturamento',
-    href: '/financeiro/fluxo-de-faturamento',
+    label: 'Revisão de fatura',
+    href: '/financeiro/revisao-de-fatura',
     permission: 'finance.faturamento.read',
   },
   {
-    label: 'Revisão de fatura',
-    href: '/financeiro/revisao-de-fatura',
+    label: 'Fluxo de faturamento',
+    href: '/financeiro/fluxo-de-faturamento',
     permission: 'finance.faturamento.read',
   },
   {

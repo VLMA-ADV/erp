@@ -308,7 +308,10 @@ export default function SolicitacoesContratoList() {
     try {
       setSubmitting(true)
       const session = await getSession()
-      if (!session) return
+      if (!session) {
+        toastError('Sessão expirada. Faça login novamente.')
+        return
+      }
 
       const anexosPayload =
         pendingAnexos.length === 0
@@ -623,10 +626,10 @@ export default function SolicitacoesContratoList() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={submitting}>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={submitting}>
               Cancelar
             </Button>
-            <Button onClick={createSolicitacao} disabled={submitting}>
+            <Button type="button" onClick={() => void createSolicitacao()} disabled={submitting}>
               {submitting ? 'Salvando...' : 'Criar solicitação'}
             </Button>
           </DialogFooter>

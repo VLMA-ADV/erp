@@ -2279,15 +2279,15 @@ export default function ContratoForm({
       })
       const data = await resp.json()
       if (!resp.ok) {
-        toastError(data.error || 'Erro ao excluir rascunho')
+        toastError(data.error || 'Erro ao excluir contrato')
         return
       }
-      success('Rascunho excluído com sucesso')
+      success('Contrato excluído com sucesso')
       router.push('/contratos')
       router.refresh()
     } catch (err) {
       console.error(err)
-      toastError('Erro ao excluir rascunho')
+      toastError('Erro ao excluir contrato')
     } finally {
       setDeleteDraftLoading(false)
       setDeleteDraftOpen(false)
@@ -4824,9 +4824,9 @@ export default function ContratoForm({
             Voltar
           </Button>
         )}
-        {isEdit && form.status === 'rascunho' && !isReadOnly ? (
+        {isEdit && !isReadOnly ? (
           <Button variant="outline" onClick={() => setDeleteDraftOpen(true)} disabled={loading || deleteDraftLoading}>
-            Excluir rascunho
+            Excluir contrato
           </Button>
         ) : null}
         <Button variant="outline" onClick={() => router.push('/contratos')} disabled={loading}>
@@ -4847,8 +4847,8 @@ export default function ContratoForm({
       <AlertDialog
         open={deleteDraftOpen}
         onOpenChange={setDeleteDraftOpen}
-        title="Excluir contrato em rascunho?"
-        description="Essa ação remove o contrato rascunho e os dados vinculados."
+        title="Excluir contrato definitivamente?"
+        description="Essa ação remove o contrato e os dados vinculados. Contratos com faturamento emitido não podem ser excluídos."
         confirmLabel="Excluir"
         cancelLabel="Cancelar"
         onConfirm={deleteDraft}

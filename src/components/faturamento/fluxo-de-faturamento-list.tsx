@@ -1,11 +1,28 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Save, Send } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Loader2,
+  Save,
+  Send,
+  Undo2,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -15,6 +32,7 @@ interface RevisaoItem {
   id: string
   contrato_id: string
   caso_id: string
+  cliente_nome?: string | null
   contrato_numero: number | null
   contrato_nome: string
   caso_numero?: number | null
@@ -33,6 +51,37 @@ interface RevisaoItem {
   valor_revisado: number | null
   valor_aprovado?: number | null
   valor_informado: number | null
+}
+
+interface CasoGroupFluxo {
+  key: string
+  casoId: string
+  numero: number | null
+  nome: string
+  totalHoras: number
+  totalValor: number
+  itemCount: number
+  itens: RevisaoItem[]
+}
+
+interface ContratoGroupFluxo {
+  key: string
+  contratoId: string
+  numero: number | null
+  nome: string
+  totalHoras: number
+  totalValor: number
+  itemCount: number
+  casos: CasoGroupFluxo[]
+}
+
+interface ClienteGroupFluxo {
+  key: string
+  nome: string
+  totalHoras: number
+  totalValor: number
+  itemCount: number
+  contratos: ContratoGroupFluxo[]
 }
 
 function toObject(value: unknown): Record<string, unknown> | null {
@@ -60,23 +109,66 @@ function getSnapshotTimesheetTotals(item: RevisaoItem) {
   return {
     hours,
     value,
+    count: rawRows.length,
   }
 }
 
-interface ContratoEmRevisao {
-  key: string
-  contratoNumero: number | null
-  contratoNome: string
-  casoNumero: number | null
-  casoNome: string
-  regraFinanceira: string
-  regraTipo: string
-  itens: number
-  horas: number
-  valor: number
-  statusLabel: string
-  responsavelAtual: string
-  detalhes: FluxoItemDetalhe[]
+function getAprovadorOrdemAtual(item: RevisaoItem) {
+  const raw = Number(item.snapshot?.aprovador_ordem_atual ?? 0)
+  return Number.isFinite(raw) ? raw : 0
+}
+
+function shouldUseApprovedStageValues(item: RevisaoItem) {
+  if (item.status === 'aprovado' || item.status === 'faturado' || item.status === 'cancelado') return true
+  if (item.status !== 'em_aprovacao') return false
+  return getAprovadorOrdemAtual(item) > 1
+}
+
+function getEffectiveHours(item: RevisaoItem) {
+  if (shouldUseApprovedStageValues(item) && item.horas_aprovadas !== null && item.horas_aprovadas !== undefined) {
+    return Number(item.horas_aprovadas)
+  }
+  if (item.horas_revisadas !== null && item.horas_revisadas !== undefined) return Number(item.horas_revisadas)
+  if (item.horas_informadas !== null && item.horas_informadas !== undefined) return Number(item.horas_informadas)
+  return 0
+}
+
+function getEffectiveValue(item: RevisaoItem) {
+  if (shouldUseApprovedStageValues(item) && item.valor_aprovado !== null && item.valor_aprovado !== undefined) {
+    return Number(item.valor_aprovado)
+  }
+  if (item.valor_revisado !== null && item.valor_revisado !== undefined) return Number(item.valor_revisado)
+  if (item.valor_informado !== null && item.valor_informado !== undefined) return Number(item.valor_informado)
+  return 0
+}
+
+function getCasoDisplayMetrics(casoItens: RevisaoItem[]) {
+  const timesheetItems = casoItens.filter((entry) => entry.origem_tipo === 'timesheet')
+  const nonTimesheetItems = casoItens.filter((entry) => entry.origem_tipo !== 'timesheet')
+  const snapshotCarrier =
+    casoItens.find((entry) => {
+      const raw = Array.isArray(entry.snapshot?.timesheet_itens_revisao)
+        ? (entry.snapshot?.timesheet_itens_revisao as unknown[])
+        : []
+      return raw.length > 0
+    }) || null
+
+  const snapshotTotals = snapshotCarrier ? getSnapshotTimesheetTotals(snapshotCarrier) : null
+  const fallbackTimesheetHours = timesheetItems.reduce((acc, item) => acc + getEffectiveHours(item), 0)
+  const fallbackTimesheetValue = timesheetItems.reduce((acc, item) => acc + getEffectiveValue(item), 0)
+  const timesheetHours = snapshotTotals ? snapshotTotals.hours : fallbackTimesheetHours
+  const timesheetValue = snapshotTotals ? snapshotTotals.value : fallbackTimesheetValue
+  const timesheetItemCount = snapshotTotals?.count ?? timesheetItems.length
+
+  const nonTimesheetHours = nonTimesheetItems.reduce((acc, item) => acc + getEffectiveHours(item), 0)
+  const nonTimesheetValue = nonTimesheetItems.reduce((acc, item) => acc + getEffectiveValue(item), 0)
+  const hasTimesheetLine = Boolean(snapshotCarrier || timesheetItems.length > 0 || casoItens.length > 0)
+
+  return {
+    totalHoras: nonTimesheetHours + (hasTimesheetLine ? timesheetHours : 0),
+    totalValor: nonTimesheetValue + (hasTimesheetLine ? timesheetValue : 0),
+    itemCount: nonTimesheetItems.length + (hasTimesheetLine ? 1 : 0),
+  }
 }
 
 interface FluxoItemDetalhe {
@@ -121,14 +213,6 @@ function formatStatus(value: string) {
 
 function isDetalheFaturavel(detalhe: FluxoItemDetalhe) {
   return detalhe.status === 'aprovado'
-}
-
-function getEffectiveHours(item: RevisaoItem) {
-  return Number(item.horas_aprovadas ?? item.horas_revisadas ?? item.horas_informadas ?? 0)
-}
-
-function getEffectiveValue(item: RevisaoItem) {
-  return Number(item.valor_aprovado ?? item.valor_revisado ?? item.valor_informado ?? 0)
 }
 
 function asText(value: unknown) {
@@ -195,20 +279,184 @@ function getItemMetrics(item: RevisaoItem) {
   }
 }
 
+function summarizeStatusAndResponsavel(groupItems: RevisaoItem[]) {
+  const statusSet = new Set<string>()
+  const responsavelSet = new Set<string>()
+  for (const item of groupItems) {
+    statusSet.add(formatStatus(item.status))
+    const responsavel = resolveResponsavelAtual(item)
+    if (responsavel && responsavel !== '-') responsavelSet.add(responsavel)
+  }
+  return {
+    status: statusSet.size === 0 ? '-' : statusSet.size === 1 ? Array.from(statusSet)[0]! : 'Múltiplos',
+    responsavel:
+      responsavelSet.size === 0 ? '-' : responsavelSet.size === 1 ? Array.from(responsavelSet)[0]! : 'Múltiplos',
+  }
+}
+
+function buildTreeFluxo(items: RevisaoItem[]): ClienteGroupFluxo[] {
+  const clientes = new Map<string, ClienteGroupFluxo>()
+
+  for (const item of items) {
+    const contratoId = item.contrato_id
+    if (!contratoId) continue
+
+    const clienteNome = asText(item.cliente_nome).trim() || 'Cliente sem nome'
+    const clienteKey = clienteNome
+
+    if (!clientes.has(clienteKey)) {
+      clientes.set(clienteKey, {
+        key: clienteKey,
+        nome: clienteNome,
+        totalHoras: 0,
+        totalValor: 0,
+        itemCount: 0,
+        contratos: [],
+      })
+    }
+
+    const cliente = clientes.get(clienteKey)!
+
+    const contratoKey = `${clienteKey}::${item.contrato_numero ?? 'sem-numero'}-${item.contrato_nome || 'contrato'}`
+    let contrato = cliente.contratos.find((entry) => entry.key === contratoKey)
+    if (!contrato) {
+      contrato = {
+        key: contratoKey,
+        contratoId,
+        nome: item.contrato_nome || 'Contrato sem nome',
+        numero: item.contrato_numero ?? null,
+        totalHoras: 0,
+        totalValor: 0,
+        itemCount: 0,
+        casos: [],
+      }
+      cliente.contratos.push(contrato)
+    }
+
+    const casoId = item.caso_id || 'sem-caso'
+    const casoNome = asText(item.caso_nome).trim() || 'Caso sem nome'
+    const casoNumero = Number(item.caso_numero ?? 0) || null
+    const casoKey = `${contratoKey}::${casoId}-${casoNome}`
+
+    let caso = contrato.casos.find((entry) => entry.key === casoKey)
+    if (!caso) {
+      caso = {
+        key: casoKey,
+        casoId: item.caso_id || '',
+        nome: casoNome,
+        numero: casoNumero,
+        totalHoras: 0,
+        totalValor: 0,
+        itemCount: 0,
+        itens: [],
+      }
+      contrato.casos.push(caso)
+    }
+
+    caso.itens.push(item)
+  }
+
+  for (const cliente of clientes.values()) {
+    cliente.totalHoras = 0
+    cliente.totalValor = 0
+    cliente.itemCount = 0
+    for (const contrato of cliente.contratos) {
+      contrato.totalHoras = 0
+      contrato.totalValor = 0
+      contrato.itemCount = 0
+      for (const caso of contrato.casos) {
+        const m = getCasoDisplayMetrics(caso.itens)
+        caso.totalHoras = m.totalHoras
+        caso.totalValor = m.totalValor
+        caso.itemCount = m.itemCount
+        contrato.totalHoras += m.totalHoras
+        contrato.totalValor += m.totalValor
+        contrato.itemCount += m.itemCount
+      }
+      cliente.totalHoras += contrato.totalHoras
+      cliente.totalValor += contrato.totalValor
+      cliente.itemCount += contrato.itemCount
+    }
+  }
+
+  for (const cliente of clientes.values()) {
+    cliente.contratos.sort((a, b) => {
+      const n = (a.numero ?? 0) - (b.numero ?? 0)
+      if (n !== 0) return n
+      return a.nome.localeCompare(b.nome, 'pt-BR')
+    })
+    for (const contrato of cliente.contratos) {
+      contrato.casos.sort((a, b) => {
+        const n = (a.numero ?? 0) - (b.numero ?? 0)
+        if (n !== 0) return n
+        return a.nome.localeCompare(b.nome, 'pt-BR')
+      })
+    }
+  }
+
+  return Array.from(clientes.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
+function itemToDetalhe(item: RevisaoItem): FluxoItemDetalhe {
+  const metrics = getItemMetrics(item)
+  const contratoId = item.contrato_id
+  return {
+    id: item.id,
+    contratoId,
+    casoId: item.caso_id || null,
+    descricao: item.origem_tipo === 'timesheet' ? 'Timesheet' : getRuleTitle(item),
+    referencia: asText(item.data_referencia),
+    horas: metrics.horas,
+    valor: metrics.valor,
+    status: item.status,
+    statusLabel: formatStatus(item.status),
+    responsavelAtual: resolveResponsavelAtual(item),
+  }
+}
+
+function parseTimesheetRowsForDialog(item: RevisaoItem) {
+  const raw = Array.isArray(item.snapshot?.timesheet_itens_revisao)
+    ? (item.snapshot?.timesheet_itens_revisao as unknown[])
+    : []
+  return raw
+    .map((entry) => {
+      const row = toObject(entry)
+      if (!row) return null
+      return {
+        data: asText(row.data_lancamento),
+        profissional: asText(row.profissional),
+        atividade: asText(row.atividade ?? row.descricao),
+        horasInformadas: Number(row.horas_iniciais ?? row.horas_informadas ?? row.horas ?? 0),
+        horasRevisadas: Number(row.horas_revisadas ?? row.horas ?? 0),
+        valorHora: Number(row.valor_hora ?? 0),
+      }
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null)
+}
+
 export default function FluxoDeFaturamentoList() {
   const { success, error: toastError } = useToast()
   const [loading, setLoading] = useState(true)
   const [loadingContratos, setLoadingContratos] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [rawItems, setRawItems] = useState<RevisaoItem[]>([])
   const [status, setStatus] = useState('')
   const [caso, setCaso] = useState('')
   const [regraTipoTab, setRegraTipoTab] = useState('all')
-  const [contratosEmRevisao, setContratosEmRevisao] = useState<ContratoEmRevisao[]>([])
   const [casoOptions, setCasoOptions] = useState<CommandSelectOption[]>([])
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
+  const [expandedContratos, setExpandedContratos] = useState<Record<string, boolean>>({})
+  const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
   const [selectedFaturamentoItems, setSelectedFaturamentoItems] = useState<Record<string, boolean>>({})
   const [faturandoSelecionados, setFaturandoSelecionados] = useState(false)
   const [faturandoItemId, setFaturandoItemId] = useState<string | null>(null)
+
+  const [resumoCasoKey, setResumoCasoKey] = useState<string | null>(null)
+  const [devolvendo, setDevolvendo] = useState(false)
+
+  const [transferItemId, setTransferItemId] = useState<string | null>(null)
+  const [transferCasoId, setTransferCasoId] = useState('')
+  const [transferring, setTransferring] = useState(false)
 
   const loadContratosEmRevisao = async () => {
     try {
@@ -238,12 +486,9 @@ export default function FluxoDeFaturamentoList() {
       }
 
       const itens = (payload.data || []) as RevisaoItem[]
-      const grouped = new Map<string, ContratoEmRevisao>()
       const nextCaseOptionsMap = new Map<string, CommandSelectOption>()
 
       for (const item of itens) {
-        const contratoId = item.contrato_id
-        if (!contratoId) continue
         const casoNumero = Number(item.caso_numero ?? 0) || null
         const casoNome = asText(item.caso_nome).trim() || 'Caso sem nome'
         const caseFilterLabel = `${casoNumero ? `${casoNumero} - ` : ''}${casoNome}`
@@ -253,81 +498,9 @@ export default function FluxoDeFaturamentoList() {
             label: caseFilterLabel,
           })
         }
-        const statusLabel = formatStatus(item.status)
-        const responsavelAtual = resolveResponsavelAtual(item)
-        const metrics = getItemMetrics(item)
-
-        const ruleLabel = getRuleTitle(item)
-        const ruleType = getRuleType(item)
-        const groupKey = `${contratoId}::${item.caso_id || 'sem-caso'}::${ruleLabel}::${item.status}::${responsavelAtual}`
-
-        if (!grouped.has(groupKey)) {
-          grouped.set(groupKey, {
-            key: groupKey,
-            contratoNumero: item.contrato_numero ?? null,
-            contratoNome: item.contrato_nome || 'Contrato sem nome',
-            casoNumero,
-            casoNome,
-            regraFinanceira: ruleLabel,
-            regraTipo: ruleType,
-            itens: 0,
-            horas: 0,
-            valor: 0,
-            statusLabel,
-            responsavelAtual,
-            detalhes: [],
-          })
-        }
-
-        const contract = grouped.get(groupKey)
-        if (!contract) continue
-
-        contract.horas += metrics.horas
-        contract.valor += metrics.valor
-        contract.itens += metrics.itens
-        contract.detalhes.push({
-          id: item.id,
-          contratoId,
-          casoId: item.caso_id || null,
-          descricao: item.origem_tipo === 'timesheet' ? 'Timesheet' : getRuleTitle(item),
-          referencia: asText(item.data_referencia),
-          horas: metrics.horas,
-          valor: metrics.valor,
-          status: item.status,
-          statusLabel,
-          responsavelAtual,
-        })
       }
 
-      const contratos = Array.from(grouped.values())
-        .map((contrato) => ({
-          ...contrato,
-          detalhes: contrato.detalhes.sort((a, b) => (a.referencia || '').localeCompare(b.referencia || '', 'pt-BR')),
-        }))
-        .sort((a, b) => {
-          const contratoOrder = a.contratoNome.localeCompare(b.contratoNome, 'pt-BR')
-          if (contratoOrder !== 0) return contratoOrder
-          const casoOrder = a.casoNome.localeCompare(b.casoNome, 'pt-BR')
-          if (casoOrder !== 0) return casoOrder
-          return a.regraFinanceira.localeCompare(b.regraFinanceira, 'pt-BR')
-        })
-
-      setContratosEmRevisao(contratos)
-      setExpandedRows((previous) => {
-        const next: Record<string, boolean> = {}
-        for (const entry of contratos) {
-          next[entry.key] = previous[entry.key] ?? false
-        }
-        return next
-      })
-      setSelectedFaturamentoItems((previous) => {
-        const validIds = new Set(contratos.flatMap((entry) => entry.detalhes.map((detalhe) => detalhe.id)))
-        const next: Record<string, boolean> = {}
-        for (const [itemId, checked] of Object.entries(previous)) {
-          if (checked && validIds.has(itemId)) next[itemId] = true
-        }
-        return next
-      })
+      setRawItems(itens)
       setCasoOptions(
         Array.from(nextCaseOptionsMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
       )
@@ -345,39 +518,105 @@ export default function FluxoDeFaturamentoList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, caso])
 
-  const contratosFiltradosPorRegra = useMemo(() => {
-    if (regraTipoTab === 'all') return contratosEmRevisao
-    return contratosEmRevisao.filter((entry) => entry.regraTipo === regraTipoTab)
-  }, [contratosEmRevisao, regraTipoTab])
+  const itensPorRegra = useMemo(() => {
+    if (regraTipoTab === 'all') return rawItems
+    return rawItems.filter((item) => getRuleType(item) === regraTipoTab)
+  }, [rawItems, regraTipoTab])
 
-  const totals = useMemo(() => {
-    return contratosFiltradosPorRegra.reduce(
-      (acc, contrato) => {
-        acc.valor += contrato.valor
-        acc.horas += contrato.horas
-        acc.itens += contrato.itens
-        return acc
-      },
-      { valor: 0, horas: 0, itens: 0 },
-    )
-  }, [contratosFiltradosPorRegra])
+  const tree = useMemo(() => buildTreeFluxo(itensPorRegra), [itensPorRegra])
 
-  const detalhesVisiveis = useMemo(
-    () => contratosFiltradosPorRegra.flatMap((contrato) => contrato.detalhes),
-    [contratosFiltradosPorRegra],
-  )
+  const flatDetalhes = useMemo(() => itensPorRegra.map(itemToDetalhe), [itensPorRegra])
 
-  const detalhePorId = useMemo(() => new Map(detalhesVisiveis.map((detalhe) => [detalhe.id, detalhe])), [detalhesVisiveis])
+  const detalhePorId = useMemo(() => new Map(flatDetalhes.map((detalhe) => [detalhe.id, detalhe])), [flatDetalhes])
 
   const faturamentoEligibleIds = useMemo(
-    () => detalhesVisiveis.filter((detalhe) => isDetalheFaturavel(detalhe)).map((detalhe) => detalhe.id),
-    [detalhesVisiveis],
+    () => flatDetalhes.filter((detalhe) => isDetalheFaturavel(detalhe)).map((detalhe) => detalhe.id),
+    [flatDetalhes],
   )
 
   const selectedFaturamentoItemIds = useMemo(
     () => faturamentoEligibleIds.filter((itemId) => !!selectedFaturamentoItems[itemId]),
     [faturamentoEligibleIds, selectedFaturamentoItems],
   )
+
+  useEffect(() => {
+    setExpandedClientes((previous) => {
+      const next: Record<string, boolean> = {}
+      for (const cliente of tree) {
+        next[cliente.key] = previous[cliente.key] ?? true
+      }
+      return next
+    })
+    setExpandedContratos((previous) => {
+      const next: Record<string, boolean> = {}
+      for (const cliente of tree) {
+        for (const contrato of cliente.contratos) {
+          next[contrato.key] = previous[contrato.key] ?? true
+        }
+      }
+      return next
+    })
+    setExpandedCasos((previous) => {
+      const next: Record<string, boolean> = {}
+      for (const cliente of tree) {
+        for (const contrato of cliente.contratos) {
+          for (const casoG of contrato.casos) {
+            next[casoG.key] = previous[casoG.key] ?? true
+          }
+        }
+      }
+      return next
+    })
+    setSelectedFaturamentoItems((previous) => {
+      const validIds = new Set(flatDetalhes.map((detalhe) => detalhe.id))
+      const next: Record<string, boolean> = {}
+      for (const [itemId, checked] of Object.entries(previous)) {
+        if (checked && validIds.has(itemId)) next[itemId] = true
+      }
+      return next
+    })
+  }, [tree, flatDetalhes])
+
+  const totals = useMemo(() => {
+    return itensPorRegra.reduce(
+      (acc, item) => {
+        const m = getItemMetrics(item)
+        acc.valor += m.valor
+        acc.horas += m.horas
+        acc.itens += m.itens
+        return acc
+      },
+      { valor: 0, horas: 0, itens: 0 },
+    )
+  }, [itensPorRegra])
+
+  const transferCasoOptions = useMemo<CommandSelectOption[]>(() => {
+    const seen = new Set<string>()
+    const options: CommandSelectOption[] = []
+    for (const item of rawItems) {
+      if (!item.caso_id || seen.has(item.caso_id)) continue
+      seen.add(item.caso_id)
+      const casoNum = Number(item.caso_numero ?? 0) || null
+      const label = casoNum ? `${casoNum} - ${asText(item.caso_nome)}` : asText(item.caso_nome) || item.caso_id
+      options.push({
+        value: item.caso_id,
+        label,
+        group: asText(item.cliente_nome).trim() || 'Cliente sem nome',
+      })
+    }
+    return options
+  }, [rawItems])
+
+  const resumoCasoGroup = useMemo(() => {
+    if (!resumoCasoKey) return null
+    for (const cliente of tree) {
+      for (const contrato of cliente.contratos) {
+        const casoG = contrato.casos.find((c) => c.key === resumoCasoKey)
+        if (casoG) return { cliente, contrato, caso: casoG }
+      }
+    }
+    return null
+  }, [tree, resumoCasoKey])
 
   const toggleSelectionForItemIds = (itemIds: string[], checked: boolean) => {
     if (itemIds.length === 0) return
@@ -390,6 +629,18 @@ export default function FluxoDeFaturamentoList() {
       return next
     })
   }
+
+  const collectEligibleIdsUnderCaso = (casoG: CasoGroupFluxo) =>
+    casoG.itens
+      .map(itemToDetalhe)
+      .filter((detalhe) => isDetalheFaturavel(detalhe))
+      .map((d) => d.id)
+
+  const collectEligibleIdsUnderContrato = (contrato: ContratoGroupFluxo) =>
+    contrato.casos.flatMap((c) => collectEligibleIdsUnderCaso(c))
+
+  const collectEligibleIdsUnderCliente = (cliente: ClienteGroupFluxo) =>
+    cliente.contratos.flatMap((c) => collectEligibleIdsUnderContrato(c))
 
   const faturarItemIds = async (itemIds: string[]) => {
     if (itemIds.length === 0) {
@@ -476,6 +727,104 @@ export default function FluxoDeFaturamentoList() {
     await faturarItemIds([itemId])
   }
 
+  const handleTransferCaso = async () => {
+    if (!transferItemId || !transferCasoId) return
+    setTransferring(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-faturamento-item`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: transferItemId,
+          caso_id: transferCasoId,
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) {
+        toastError(data.error || 'Erro ao transferir caso')
+        return
+      }
+      success('Caso transferido com sucesso')
+      setTransferItemId(null)
+      setTransferCasoId('')
+      await loadContratosEmRevisao()
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao transferir caso')
+    } finally {
+      setTransferring(false)
+    }
+  }
+
+  const devolverCasoParaRevisao = async () => {
+    if (!resumoCasoGroup) return
+    const { caso: casoG } = resumoCasoGroup
+    const alvos = casoG.itens.filter((it) => it.status === 'em_aprovacao' || it.status === 'aprovado')
+    if (alvos.length === 0) {
+      toastError('Não há itens para devolver a partir deste caso.')
+      return
+    }
+
+    setDevolvendo(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      for (const alvo of alvos) {
+        const steps = alvo.status === 'aprovado' ? 2 : 1
+        for (let i = 0; i < steps; i++) {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-revisao-fatura-status`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              billing_item_id: alvo.id,
+              action: 'retornar',
+            }),
+          })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            toastError(payload.error || 'Erro ao devolver item para revisão')
+            return
+          }
+        }
+      }
+
+      success('Itens devolvidos para revisão.')
+      setResumoCasoKey(null)
+      await loadContratosEmRevisao()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao devolver para revisão')
+    } finally {
+      setDevolvendo(false)
+    }
+  }
+
+  const grupoRuleCount = useMemo(() => {
+    let n = 0
+    for (const cliente of tree) {
+      for (const contrato of cliente.contratos) {
+        n += contrato.casos.length
+      }
+    }
+    return n
+  }, [tree])
+
   return (
     <div className="space-y-4">
       {error ? (
@@ -523,7 +872,7 @@ export default function FluxoDeFaturamentoList() {
       <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
         <div className="text-sm text-muted-foreground">
           <span className="mr-4">
-            Regras: <strong className="text-foreground">{contratosFiltradosPorRegra.length}</strong>
+            Casos (aba): <strong className="text-foreground">{grupoRuleCount}</strong>
           </span>
           <span className="mr-4">
             Itens: <strong className="text-foreground">{totals.itens}</strong>
@@ -547,7 +896,7 @@ export default function FluxoDeFaturamentoList() {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Regras financeiras no fluxo</h3>
+        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Fluxo por cliente → contrato → caso</h3>
         <Tabs value={regraTipoTab} defaultValue="all" onValueChange={setRegraTipoTab}>
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="all">Todas</TabsTrigger>
@@ -567,11 +916,15 @@ export default function FluxoDeFaturamentoList() {
                 <th className="w-10 px-2 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={faturamentoEligibleIds.length > 0 && selectedFaturamentoItemIds.length === faturamentoEligibleIds.length}
+                    checked={
+                      faturamentoEligibleIds.length > 0 &&
+                      selectedFaturamentoItemIds.length === faturamentoEligibleIds.length
+                    }
                     ref={(element) => {
                       if (element) {
                         element.indeterminate =
-                          selectedFaturamentoItemIds.length > 0 && selectedFaturamentoItemIds.length < faturamentoEligibleIds.length
+                          selectedFaturamentoItemIds.length > 0 &&
+                          selectedFaturamentoItemIds.length < faturamentoEligibleIds.length
                       }
                     }}
                     onChange={(event) => toggleSelectionForItemIds(faturamentoEligibleIds, event.target.checked)}
@@ -579,132 +932,341 @@ export default function FluxoDeFaturamentoList() {
                   />
                 </th>
                 <th className="w-10 px-2 py-3" />
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Regra financeira</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Contrato</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Caso</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente / Contrato / Caso</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Responsável atual</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Itens</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Horas</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loadingContratos ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Carregando regras financeiras no fluxo...
+                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Carregando fluxo de faturamento...
                   </td>
                 </tr>
-              ) : contratosFiltradosPorRegra.length === 0 ? (
+              ) : tree.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Nenhuma regra financeira no fluxo.
+                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Nenhum item no fluxo para os filtros informados.
                   </td>
                 </tr>
               ) : (
-                contratosFiltradosPorRegra.map((contrato) => {
-                  const eligibleIds = contrato.detalhes.filter((detalhe) => isDetalheFaturavel(detalhe)).map((detalhe) => detalhe.id)
-                  const selectedCount = eligibleIds.filter((itemId) => !!selectedFaturamentoItems[itemId]).length
+                tree.map((cliente) => {
+                  const clienteExpanded = expandedClientes[cliente.key] ?? true
+                  const clienteItems = cliente.contratos.flatMap((co) => co.casos.flatMap((ca) => ca.itens))
+                  const clienteSummary = summarizeStatusAndResponsavel(clienteItems)
+                  const eligibleCliente = collectEligibleIdsUnderCliente(cliente)
+                  const selectedCliente = eligibleCliente.filter((id) => !!selectedFaturamentoItems[id]).length
 
                   return (
-                    <Fragment key={contrato.key}>
-                      <tr>
+                    <Fragment key={cliente.key}>
+                      <tr className="bg-muted/10">
                         <td className="px-2 py-3">
                           <input
                             type="checkbox"
-                            checked={eligibleIds.length > 0 && selectedCount === eligibleIds.length}
+                            checked={eligibleCliente.length > 0 && selectedCliente === eligibleCliente.length}
                             ref={(element) => {
                               if (element) {
-                                element.indeterminate = selectedCount > 0 && selectedCount < eligibleIds.length
+                                element.indeterminate =
+                                  selectedCliente > 0 && selectedCliente < eligibleCliente.length
                               }
                             }}
-                            onChange={(event) => toggleSelectionForItemIds(eligibleIds, event.target.checked)}
-                            disabled={eligibleIds.length === 0 || loading || loadingContratos || faturandoSelecionados}
+                            onChange={(event) => toggleSelectionForItemIds(eligibleCliente, event.target.checked)}
+                            disabled={
+                              eligibleCliente.length === 0 || loading || loadingContratos || faturandoSelecionados
+                            }
                           />
                         </td>
                         <td className="px-2 py-3">
                           <button
                             type="button"
                             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
-                            onClick={() => {
-                              setExpandedRows((previous) => ({ ...previous, [contrato.key]: !previous[contrato.key] }))
-                            }}
-                            aria-label={expandedRows[contrato.key] ? 'Recolher detalhes' : 'Expandir detalhes'}
+                            onClick={() =>
+                              setExpandedClientes((p) => ({ ...p, [cliente.key]: !clienteExpanded }))
+                            }
+                            aria-label={clienteExpanded ? 'Recolher cliente' : 'Expandir cliente'}
                           >
-                            {expandedRows[contrato.key] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {clienteExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           </button>
                         </td>
-                        <td className="px-4 py-3 font-medium">{contrato.regraFinanceira}</td>
-                        <td className="px-4 py-3 font-medium">
-                          {contrato.contratoNumero ? `${contrato.contratoNumero} - ` : ''}
-                          {contrato.contratoNome}
-                        </td>
-                        <td className="px-4 py-3">
-                          {contrato.casoNumero ? `${contrato.casoNumero} - ` : ''}
-                          {contrato.casoNome}
-                        </td>
-                        <td className="px-4 py-3">{contrato.statusLabel}</td>
-                        <td className="px-4 py-3">{contrato.responsavelAtual}</td>
-                        <td className="px-4 py-3">{contrato.itens}</td>
-                        <td className="px-4 py-3">{formatHours(contrato.horas)}</td>
-                        <td className="px-4 py-3 text-right">{formatMoney(contrato.valor)}</td>
+                        <td className="px-4 py-3 font-semibold">{cliente.nome}</td>
+                        <td className="px-4 py-3 text-sm">{clienteSummary.status}</td>
+                        <td className="px-4 py-3 text-sm">{clienteSummary.responsavel}</td>
+                        <td className="px-4 py-3">{cliente.itemCount}</td>
+                        <td className="px-4 py-3">{formatHours(cliente.totalHoras)}</td>
+                        <td className="px-4 py-3 text-right">{formatMoney(cliente.totalValor)}</td>
+                        <td className="px-4 py-3 text-right text-muted-foreground">—</td>
                       </tr>
-                      {expandedRows[contrato.key] ? (
-                        <tr>
-                          <td colSpan={10} className="bg-muted/20 px-4 py-3">
-                            <div className="rounded-md border bg-white">
-                              <Table className="w-full min-w-full">
-                                <thead className="bg-gray-50">
-                                  <tr>
-                                    <th className="w-10 px-3 py-2 text-left" />
-                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Item</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Referência</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Responsável</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Horas</th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {contrato.detalhes.map((detalhe) => {
-                                    const canBill = isDetalheFaturavel(detalhe)
-                                    const busy = faturandoSelecionados || faturandoItemId === detalhe.id
-                                    return (
-                                      <tr key={detalhe.id}>
-                                        <td className="px-3 py-2">
+
+                      {clienteExpanded &&
+                        cliente.contratos.map((contrato) => {
+                          const contratoExpanded = expandedContratos[contrato.key] ?? true
+                          const contratoItems = contrato.casos.flatMap((ca) => ca.itens)
+                          const contratoSummary = summarizeStatusAndResponsavel(contratoItems)
+                          const metrics = contrato.casos.reduce(
+                            (acc, ca) => {
+                              const m = getCasoDisplayMetrics(ca.itens)
+                              acc.h += m.totalHoras
+                              acc.v += m.totalValor
+                              acc.n += m.itemCount
+                              return acc
+                            },
+                            { h: 0, v: 0, n: 0 },
+                          )
+                          const eligibleContrato = collectEligibleIdsUnderContrato(contrato)
+                          const selectedContrato = eligibleContrato.filter((id) => !!selectedFaturamentoItems[id]).length
+
+                          return (
+                            <Fragment key={contrato.key}>
+                              <tr>
+                                <td className="px-2 py-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      eligibleContrato.length > 0 && selectedContrato === eligibleContrato.length
+                                    }
+                                    ref={(element) => {
+                                      if (element) {
+                                        element.indeterminate =
+                                          selectedContrato > 0 && selectedContrato < eligibleContrato.length
+                                      }
+                                    }}
+                                    onChange={(event) =>
+                                      toggleSelectionForItemIds(eligibleContrato, event.target.checked)
+                                    }
+                                    disabled={
+                                      eligibleContrato.length === 0 ||
+                                      loading ||
+                                      loadingContratos ||
+                                      faturandoSelecionados
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-3">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
+                                    onClick={() =>
+                                      setExpandedContratos((p) => ({ ...p, [contrato.key]: !contratoExpanded }))
+                                    }
+                                    aria-label={contratoExpanded ? 'Recolher contrato' : 'Expandir contrato'}
+                                  >
+                                    {contratoExpanded ? (
+                                      <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3 pl-10 font-medium">
+                                  {contrato.numero ? `${contrato.numero} - ` : ''}
+                                  {contrato.nome}
+                                </td>
+                                <td className="px-4 py-3 text-sm">{contratoSummary.status}</td>
+                                <td className="px-4 py-3 text-sm">{contratoSummary.responsavel}</td>
+                                <td className="px-4 py-3">{metrics.n}</td>
+                                <td className="px-4 py-3">{formatHours(metrics.h)}</td>
+                                <td className="px-4 py-3 text-right">{formatMoney(metrics.v)}</td>
+                                <td className="px-4 py-3 text-right text-muted-foreground">—</td>
+                              </tr>
+
+                              {contratoExpanded &&
+                                contrato.casos.map((casoG) => {
+                                  const casoExpanded = expandedCasos[casoG.key] ?? true
+                                  const casoSummary = summarizeStatusAndResponsavel(casoG.itens)
+                                  const caseMetrics = getCasoDisplayMetrics(casoG.itens)
+                                  const eligibleCaso = collectEligibleIdsUnderCaso(casoG)
+                                  const selectedCaso = eligibleCaso.filter((id) => !!selectedFaturamentoItems[id]).length
+
+                                  return (
+                                    <Fragment key={casoG.key}>
+                                      <tr>
+                                        <td className="px-2 py-3">
                                           <input
                                             type="checkbox"
-                                            checked={!!selectedFaturamentoItems[detalhe.id]}
-                                            onChange={(event) => toggleSelectionForItemIds([detalhe.id], event.target.checked)}
-                                            disabled={!canBill || loading || loadingContratos || faturandoSelecionados}
+                                            checked={
+                                              eligibleCaso.length > 0 && selectedCaso === eligibleCaso.length
+                                            }
+                                            ref={(element) => {
+                                              if (element) {
+                                                element.indeterminate =
+                                                  selectedCaso > 0 && selectedCaso < eligibleCaso.length
+                                              }
+                                            }}
+                                            onChange={(event) =>
+                                              toggleSelectionForItemIds(eligibleCaso, event.target.checked)
+                                            }
+                                            disabled={
+                                              eligibleCaso.length === 0 ||
+                                              loading ||
+                                              loadingContratos ||
+                                              faturandoSelecionados
+                                            }
                                           />
                                         </td>
-                                        <td className="px-3 py-2 text-sm">{detalhe.descricao}</td>
-                                        <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
-                                        <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
-                                        <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
-                                        <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
-                                        <td className="px-3 py-2 text-right text-sm">{formatMoney(detalhe.valor)}</td>
-                                        <td className="px-3 py-2 text-right">
-                                          {canBill ? (
-                                            <Button size="icon" variant="ghost" onClick={() => void faturarSingleItem(detalhe.id)} disabled={busy}>
-                                              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                            </Button>
-                                          ) : (
-                                            <span className="text-xs text-muted-foreground">-</span>
-                                          )}
+                                        <td className="px-2 py-3">
+                                          <button
+                                            type="button"
+                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
+                                            onClick={() =>
+                                              setExpandedCasos((p) => ({ ...p, [casoG.key]: !casoExpanded }))
+                                            }
+                                            aria-label={casoExpanded ? 'Recolher caso' : 'Expandir caso'}
+                                          >
+                                            {casoExpanded ? (
+                                              <ChevronDown className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronRight className="h-4 w-4" />
+                                            )}
+                                          </button>
+                                        </td>
+                                        <td className="px-4 py-3 pl-16 text-muted-foreground">
+                                          {casoG.numero ? `${casoG.numero} - ` : ''}
+                                          {casoG.nome}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                                          {casoSummary.status}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                                          {casoSummary.responsavel}
+                                        </td>
+                                        <td className="px-4 py-3 text-muted-foreground">{caseMetrics.itemCount}</td>
+                                        <td className="px-4 py-3 text-muted-foreground">
+                                          {formatHours(caseMetrics.totalHoras)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-muted-foreground">
+                                          {formatMoney(caseMetrics.totalValor)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => setResumoCasoKey(casoG.key)}
+                                            disabled={casoG.itens.length === 0}
+                                          >
+                                            <Eye className="mr-1 h-3.5 w-3.5" />
+                                            Visualizar
+                                          </Button>
                                         </td>
                                       </tr>
-                                    )
-                                  })}
-                                </tbody>
-                              </Table>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
+
+                                      {casoExpanded ? (
+                                        <tr>
+                                          <td colSpan={9} className="bg-muted/20 px-4 py-3">
+                                            <div className="rounded-md border bg-white">
+                                              <Table className="w-full min-w-full">
+                                                <thead className="bg-gray-50">
+                                                  <tr>
+                                                    <th className="w-10 px-3 py-2 text-left" />
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                      Regra / tipo
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                      Referência
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                      Status
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                      Responsável
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                      Horas
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">
+                                                      Valor
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">
+                                                      Ações
+                                                    </th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                  {casoG.itens.map((itemRow) => {
+                                                    const detalhe = itemToDetalhe(itemRow)
+                                                    const canBill = isDetalheFaturavel(detalhe)
+                                                    const busy =
+                                                      faturandoSelecionados || faturandoItemId === detalhe.id
+                                                    return (
+                                                      <tr key={detalhe.id}>
+                                                        <td className="px-3 py-2">
+                                                          <input
+                                                            type="checkbox"
+                                                            checked={!!selectedFaturamentoItems[detalhe.id]}
+                                                            onChange={(event) =>
+                                                              toggleSelectionForItemIds(
+                                                                [detalhe.id],
+                                                                event.target.checked,
+                                                              )
+                                                            }
+                                                            disabled={
+                                                              !canBill ||
+                                                              loading ||
+                                                              loadingContratos ||
+                                                              faturandoSelecionados
+                                                            }
+                                                          />
+                                                        </td>
+                                                        <td className="px-3 py-2 text-sm">{detalhe.descricao}</td>
+                                                        <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
+                                                        <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
+                                                        <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
+                                                        <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
+                                                        <td className="px-3 py-2 text-right text-sm">
+                                                          {formatMoney(detalhe.valor)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right">
+                                                          <div className="flex justify-end gap-1">
+                                                            <Button
+                                                              size="icon"
+                                                              variant="ghost"
+                                                              title="Transferir para outro caso"
+                                                              onClick={() => {
+                                                                setTransferCasoId('')
+                                                                setTransferItemId(detalhe.id)
+                                                              }}
+                                                            >
+                                                              <ArrowRightLeft className="h-4 w-4" />
+                                                            </Button>
+                                                            {canBill ? (
+                                                              <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                onClick={() => void faturarSingleItem(detalhe.id)}
+                                                                disabled={busy}
+                                                              >
+                                                                {busy ? (
+                                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                  <Save className="h-4 w-4" />
+                                                                )}
+                                                              </Button>
+                                                            ) : (
+                                                              <span className="inline-flex w-10 justify-center text-xs text-muted-foreground">
+                                                                —
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                        </td>
+                                                      </tr>
+                                                    )
+                                                  })}
+                                                </tbody>
+                                              </Table>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ) : null}
+                                    </Fragment>
+                                  )
+                                })}
+                            </Fragment>
+                          )
+                        })}
                     </Fragment>
                   )
                 })
@@ -713,6 +1275,165 @@ export default function FluxoDeFaturamentoList() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={!!resumoCasoKey && !!resumoCasoGroup} onOpenChange={(open) => !open && setResumoCasoKey(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Resumo do caso</DialogTitle>
+            <DialogDescription>
+              {resumoCasoGroup
+                ? `${resumoCasoGroup.cliente.nome} · ${resumoCasoGroup.contrato.numero ? `${resumoCasoGroup.contrato.numero} - ` : ''}${resumoCasoGroup.contrato.nome} · ${resumoCasoGroup.caso.numero ? `${resumoCasoGroup.caso.numero} - ` : ''}${resumoCasoGroup.caso.nome}`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
+            {resumoCasoGroup?.caso.itens.map((itemRow) => {
+              const ruleTitle = getRuleTitle(itemRow)
+              const snapRows = itemRow.origem_tipo === 'timesheet' ? parseTimesheetRowsForDialog(itemRow) : []
+              const resp = resolveResponsavelAtual(itemRow)
+              return (
+                <div key={itemRow.id} className="rounded-md border p-3 text-sm">
+                  <div className="font-medium text-foreground">{ruleTitle}</div>
+                  <dl className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      <dt className="font-medium text-foreground">Horas informadas</dt>
+                      <dd>{formatNullableHours(itemRow.horas_informadas)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Horas revisadas</dt>
+                      <dd>{formatNullableHours(itemRow.horas_revisadas)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Horas aprovadas</dt>
+                      <dd>{formatNullableHours(itemRow.horas_aprovadas)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Responsável atual</dt>
+                      <dd>{resp}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Valor informado</dt>
+                      <dd>{formatNullableMoney(itemRow.valor_informado)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Valor revisado</dt>
+                      <dd>{formatNullableMoney(itemRow.valor_revisado)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-foreground">Valor aprovado</dt>
+                      <dd>{formatNullableMoney(itemRow.valor_aprovado)}</dd>
+                    </div>
+                  </dl>
+                  {snapRows.length > 0 ? (
+                    <div className="mt-3 overflow-x-auto">
+                      <p className="mb-1 text-xs font-medium uppercase text-gray-500">Lançamentos (timesheet)</p>
+                      <Table className="w-full min-w-[520px] text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Data</th>
+                            <th className="px-2 py-1 text-left">Profissional</th>
+                            <th className="px-2 py-1 text-left">Atividade</th>
+                            <th className="px-2 py-1 text-right">H. inf.</th>
+                            <th className="px-2 py-1 text-right">H. rev.</th>
+                            <th className="px-2 py-1 text-right">R$/h</th>
+                            <th className="px-2 py-1 text-right">Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {snapRows.map((row, idx) => (
+                            <tr key={idx} className="border-t">
+                              <td className="px-2 py-1">{row.data || '—'}</td>
+                              <td className="px-2 py-1">{row.profissional || '—'}</td>
+                              <td className="px-2 py-1">{row.atividade || '—'}</td>
+                              <td className="px-2 py-1 text-right">{formatHours(row.horasInformadas)}</td>
+                              <td className="px-2 py-1 text-right">{formatHours(row.horasRevisadas)}</td>
+                              <td className="px-2 py-1 text-right">{formatMoney(row.valorHora)}</td>
+                              <td className="px-2 py-1 text-right">
+                                {formatMoney(row.horasRevisadas * row.valorHora)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setResumoCasoKey(null)} disabled={devolvendo}>
+              Fechar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void devolverCasoParaRevisao()}
+              disabled={
+                devolvendo ||
+                !resumoCasoGroup?.caso.itens.some(
+                  (it) => it.status === 'em_aprovacao' || it.status === 'aprovado',
+                )
+              }
+            >
+              {devolvendo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Undo2 className="mr-2 h-4 w-4" />}
+              Devolver para revisão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!transferItemId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTransferItemId(null)
+            setTransferCasoId('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transferir para outro caso</DialogTitle>
+            <DialogDescription>Selecione o caso de destino para reatribuir este lançamento.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <CommandSelect
+              value={transferCasoId}
+              onValueChange={setTransferCasoId}
+              options={transferCasoOptions}
+              placeholder="Selecione o caso de destino"
+              searchPlaceholder="Buscar caso..."
+              emptyText="Nenhum caso encontrado."
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setTransferItemId(null)
+                setTransferCasoId('')
+              }}
+              disabled={transferring}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={() => void handleTransferCaso()} disabled={transferring || !transferCasoId}>
+              {transferring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+              Transferir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
+}
+
+function formatNullableHours(value: number | null | undefined) {
+  if (value === null || value === undefined) return '-'
+  return formatHours(value)
+}
+
+function formatNullableMoney(value: number | null | undefined) {
+  if (value === null || value === undefined) return '-'
+  return formatMoney(value)
 }

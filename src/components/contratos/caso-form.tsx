@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronRight, CircleDollarSign, Clock3, Eye, Landmark, Layers3, Loader2, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { AlertDialog } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -266,6 +267,8 @@ export default function CasoForm({
   const [dragAprovadorIndex, setDragAprovadorIndex] = useState<number | null>(null)
   const [billingRules, setBillingRules] = useState<BillingRuleDraft[]>([])
   const [selectedBillingRuleIndex, setSelectedBillingRuleIndex] = useState(0)
+  const [deleteCasoOpen, setDeleteCasoOpen] = useState(false)
+  const [deleteCasoLoading, setDeleteCasoLoading] = useState(false)
 
   const isEdit = !!casoId
   const isReadOnly = viewOnly || !canWrite
@@ -1330,6 +1333,41 @@ export default function CasoForm({
     }
   }
 
+  const deleteCaso = async () => {
+    if (!casoId) return
+    try {
+      setDeleteCasoLoading(true)
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-caso`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: casoId }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) {
+        toastError(data.error || 'Erro ao excluir caso')
+        return
+      }
+      success('Caso excluído com sucesso.')
+      router.push(`/contratos/${contratoId}/editar`)
+      router.refresh()
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao excluir caso')
+    } finally {
+      setDeleteCasoLoading(false)
+      setDeleteCasoOpen(false)
+    }
+  }
+
   const openAnexo = async (anexoId: string) => {
     try {
       setOpeningAnexoId(anexoId)
@@ -1423,7 +1461,7 @@ export default function CasoForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       {error && (
         <Alert className="border-red-200 bg-red-50 text-red-800">
           <AlertTitle>Atenção</AlertTitle>
@@ -2933,14 +2971,34 @@ export default function CasoForm({
         </CardContent>
       </Card>
 
-      <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t bg-background py-4">
-        <Button variant="outline" onClick={() => router.back()} disabled={loading}>Cancelar</Button>
-        {!isReadOnly && (
-          <Button onClick={submit} disabled={loading}>
-            {loading ? 'Salvando...' : isEdit ? 'Atualizar caso' : 'Criar caso'}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 backdrop-blur-sm md:pl-64">
+        <div className="pointer-events-auto container mx-auto flex flex-wrap justify-end gap-2 px-4 py-4">
+          {isEdit && !isReadOnly ? (
+            <Button variant="outline" onClick={() => setDeleteCasoOpen(true)} disabled={loading || deleteCasoLoading}>
+              Excluir caso
+            </Button>
+          ) : null}
+          <Button variant="outline" onClick={() => router.back()} disabled={loading}>
+            Cancelar
           </Button>
-        )}
+          {!isReadOnly && (
+            <Button onClick={submit} disabled={loading}>
+              {loading ? 'Salvando...' : isEdit ? 'Atualizar caso' : 'Criar caso'}
+            </Button>
+          )}
+        </div>
       </div>
+
+      <AlertDialog
+        open={deleteCasoOpen}
+        onOpenChange={setDeleteCasoOpen}
+        title="Excluir caso definitivamente?"
+        description="Essa ação remove o caso e os dados vinculados. Não é possível desfazer."
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        onConfirm={deleteCaso}
+        loading={deleteCasoLoading}
+      />
 
       <Dialog open={priceTableDialogOpen} onOpenChange={setPriceTableDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">

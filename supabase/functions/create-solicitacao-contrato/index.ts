@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
             tenant_id: solicitacao.tenant_id,
             cliente_id: solicitacao.cliente_id,
             nome_contrato: nomeContrato,
-            status: "solicitacao",
+            status: "rascunho",
             forma_entrada: "organico",
             created_by: user.id,
             updated_by: user.id,
