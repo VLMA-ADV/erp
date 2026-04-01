@@ -11,22 +11,22 @@ interface SidebarMenuFaturamentoProps {
 
 const faturamentoMenuItems = [
   {
-    label: 'Itens a faturar',
+    label: '1. Itens a faturar',
     href: '/financeiro/itens-a-faturar',
     permission: 'finance.faturamento.read',
   },
   {
-    label: 'Revisão de fatura',
+    label: '2. Revisão de fatura',
     href: '/financeiro/revisao-de-fatura',
     permission: 'finance.faturamento.read',
   },
   {
-    label: 'Fluxo de faturamento',
+    label: '3. Fluxo de faturamento',
     href: '/financeiro/fluxo-de-faturamento',
     permission: 'finance.faturamento.read',
   },
   {
-    label: 'Notas geradas',
+    label: '4. Notas geradas',
     href: '/financeiro/notas-geradas',
     permission: 'finance.faturamento.read',
   },
