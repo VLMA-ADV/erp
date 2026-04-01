@@ -93,25 +93,42 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!solicitacaoError && solicitacao?.cliente_id && !solicitacao.contrato_id) {
-        const nomeContrato =
+        const nomeBase =
           typeof payload?.nome === "string" && payload.nome.trim().length > 0
             ? payload.nome.trim()
             : (solicitacao.descricao || "Pré-cadastro de contrato");
 
-        const { data: contratoCriado, error: contratoError } = await supabase
-          .schema("contracts")
-          .from("contratos")
-          .insert({
-            tenant_id: solicitacao.tenant_id,
-            cliente_id: solicitacao.cliente_id,
-            nome_contrato: nomeContrato,
-            status: "rascunho",
-            forma_entrada: "organico",
-            created_by: user.id,
-            updated_by: user.id,
-          })
-          .select("id")
-          .single();
+        // Tenta inserir; se nome duplicado, adiciona sufixo incremental
+        let contratoCriado: { id: string } | null = null;
+        let contratoError: any = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const nomeContrato = attempt === 0 ? nomeBase : `${nomeBase} (${attempt + 1})`;
+          const result = await supabase
+            .schema("contracts")
+            .from("contratos")
+            .insert({
+              tenant_id: solicitacao.tenant_id,
+              cliente_id: solicitacao.cliente_id,
+              nome_contrato: nomeContrato,
+              status: "rascunho",
+              forma_entrada: "organico",
+              created_by: user.id,
+              updated_by: user.id,
+            })
+            .select("id")
+            .single();
+          if (!result.error) {
+            contratoCriado = result.data;
+            contratoError = null;
+            break;
+          }
+          if (result.error.message?.includes("idx_contratos_tenant_nome_unique")) {
+            contratoError = result.error;
+            continue;
+          }
+          contratoError = result.error;
+          break;
+        }
 
         if (!contratoError && contratoCriado?.id) {
           const { data: anexosSolicitacao } = await supabase

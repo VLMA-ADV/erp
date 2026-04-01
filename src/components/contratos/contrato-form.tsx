@@ -1778,7 +1778,12 @@ export default function ContratoForm({
       })
       const data = await resp.json()
       if (!resp.ok) {
-        throw new Error(data.error || 'Erro ao salvar rascunho do contrato')
+        const msg = data.error || 'Erro ao salvar rascunho do contrato'
+        throw new Error(
+          msg.includes('unique constraint') || msg.includes('duplicate key')
+            ? `Já existe um contrato com o nome "${form.nome_contrato}". Escolha outro nome.`
+            : msg,
+        )
       }
       const id = data.data?.id as string | undefined
       if (!id) throw new Error('Contrato criado sem retorno de ID')
