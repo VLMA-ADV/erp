@@ -5,6 +5,7 @@ import SidebarClient from '@/components/layout/sidebar-client'
 import { PermissionsProvider } from '@/lib/contexts/permissions-context'
 import PageBreadcrumb from '@/components/layout/page-breadcrumb'
 import { SonnerProvider } from '@/components/ui/sonner'
+import { ReactQueryProvider } from '@/components/providers/react-query-provider'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,20 +46,22 @@ export default async function DashboardLayout({
   }
 
   return (
-    <PermissionsProvider>
-      <SonnerProvider>
-        <div className="flex h-screen">
-          <Suspense fallback={<SidebarFallback />}>
-            <SidebarClient />
-          </Suspense>
-          <main className="flex-1 overflow-y-auto">
-            <div className="sticky top-0 z-10 border-b bg-white/95 px-6 py-3 backdrop-blur-sm">
-              <PageBreadcrumb />
-            </div>
-            {children}
-          </main>
-        </div>
-      </SonnerProvider>
-    </PermissionsProvider>
+    <ReactQueryProvider>
+      <PermissionsProvider>
+        <SonnerProvider>
+          <div className="flex h-screen">
+            <Suspense fallback={<SidebarFallback />}>
+              <SidebarClient />
+            </Suspense>
+            <main className="flex-1 overflow-y-auto">
+              <div className="sticky top-0 z-10 border-b bg-white/95 px-6 py-3 backdrop-blur-sm">
+                <PageBreadcrumb />
+              </div>
+              {children}
+            </main>
+          </div>
+        </SonnerProvider>
+      </PermissionsProvider>
+    </ReactQueryProvider>
   )
 }

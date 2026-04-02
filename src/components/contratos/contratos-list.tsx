@@ -13,6 +13,7 @@ import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
 import { Table } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
+import ContratosDashboard from './contratos-dashboard'
 
 export default function ContratosList() {
   const searchParams = useSearchParams()
@@ -160,6 +161,8 @@ export default function ContratosList() {
   return (
     <div className="space-y-4">
       {error && <div className="rounded-md bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+
+      <ContratosDashboard />
 
       <div className="flex items-center justify-between gap-3">
         <Input

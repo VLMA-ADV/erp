@@ -196,7 +196,7 @@ export default function TimesheetList() {
     () =>
       casosFromCliente.map((caso) => ({
         value: caso.id,
-        label: `${caso.numero || '-'} - ${caso.nome} (${caso.contrato_numero || '-'} - ${caso.contrato_nome})`,
+        label: `${caso.numero || '-'} - ${caso.nome}`,
       })),
     [casosFromCliente],
   )
@@ -402,6 +402,13 @@ export default function TimesheetList() {
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-4">
+        {canWrite ? (
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo lançamento
+          </Button>
+        ) : null}
+
         <CommandSelect
           value={filterContratoId}
           onValueChange={(value) => {
@@ -429,13 +436,6 @@ export default function TimesheetList() {
           options={statusOptions}
           placeholder="Status"
         />
-
-        {canWrite ? (
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo lançamento
-          </Button>
-        ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

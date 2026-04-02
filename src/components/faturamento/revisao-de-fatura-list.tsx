@@ -1652,7 +1652,41 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
     setEditingTimesheetItemId((current) => (current === rowId ? null : current))
   }
 
-  const saveItem = async (item: RevisaoItem) => {
+  const syncTimesheetDraftRows = (
+    itemId: string,
+    updater: (rows: TimesheetRowDraft[]) => TimesheetRowDraft[],
+  ) => {
+    setDrafts((prev) => {
+      const current = prev[itemId]
+      if (!current) return prev
+
+      const nextRows = updater((current.timesheetRows || []).map((row) => ({ ...row })))
+      const totalHoras = nextRows.reduce((acc, row) => acc + parseDecimalInput(row.horasRevisadas || row.horasIniciais), 0)
+      const totalValor = nextRows.reduce(
+        (acc, row) => acc + parseDecimalInput(row.horasRevisadas || row.horasIniciais) * parseDecimalInput(row.valorHora),
+        0,
+      )
+
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          horas: String(totalHoras),
+          valor: String(totalValor),
+          timesheetRows: nextRows,
+        },
+      }
+    })
+  }
+
+  const hasInvalidTempoDraftForItem = (itemId: string) => {
+    const horasRaw = (drafts[itemId]?.horas || '').trim()
+    if (!horasRaw) return true
+    const horas = parseDecimalInput(horasRaw)
+    return !Number.isFinite(horas) || horas <= 0
+  }
+
+  const saveItem = async (item: RevisaoItem, reviewModeOverride?: 'default' | 'timesheet') => {
     try {
       setSavingItemId(item.id)
       const draft = drafts[item.id] || {
@@ -1674,7 +1708,9 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
       )
       const totalRevisadoRegra = valueRows.reduce((acc, row) => acc + parseDecimalInput(row.valorRevisado), 0)
       const firstRow = timesheetRows[0]
-      const isTimesheetMode = (selectedItemId === item.id && selectedReviewMode === 'timesheet') || item.origemTipo === 'timesheet'
+      const isTimesheetMode =
+        reviewModeOverride === 'timesheet' ||
+        ((selectedItemId === item.id && selectedReviewMode === 'timesheet') || item.origemTipo === 'timesheet')
       if (isTimesheetMode) {
         const horasRaw = (draft.horas || '').trim()
         const horas = parseDecimalInput(horasRaw)
@@ -1998,12 +2034,14 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
     return 'Avançar'
   }
 
-  const saveAndAdvanceItem = async (item: RevisaoItem) => {
-    if (item.id === selectedItem?.id && hasInvalidEditableTempo) {
+  const saveAndAdvanceItem = async (item: RevisaoItem, reviewModeOverride?: 'default' | 'timesheet') => {
+    const requiresTempoValidation =
+      reviewModeOverride === 'timesheet' || item.origemTipo === 'timesheet' || item.id === selectedItem?.id
+    if (requiresTempoValidation && hasInvalidTempoDraftForItem(item.id)) {
       toastError('Informe o tempo em minutos para avançar o item.')
       return
     }
-    const saved = await saveItem(item)
+    const saved = await saveItem(item, reviewModeOverride)
     if (!saved) return
     const handledInApprovalChain = await advanceToNextApprover(item)
     if (handledInApprovalChain) return
@@ -3056,56 +3094,180 @@ function getCaseDisplayMetrics(casoGroup: CasoGroup): CaseDisplayMetrics {
 
                                             {baseItem ? (
                                               <tr key={`synthetic-timesheet-${casoGroup.key}`} className="bg-muted/5">
-                                                <td className="px-4 py-3 pl-24 text-xs text-muted-foreground">
-                                                  <div className="max-w-[460px] truncate">Timesheet</div>
-                                                </td>
-                                                <td className="px-4 py-3 text-xs">{formatHours(caseMetrics.timesheetHours)}</td>
-                                                <td className="px-4 py-3 text-xs">{caseMetrics.timesheetItemCount}</td>
-                                                <td className="px-4 py-3 text-xs">{formatStatus(baseItem.status)}</td>
-                                                <td className="px-4 py-3 text-xs">{getResponsavelAtualNome(baseItem) || '-'}</td>
-                                                <td className="px-4 py-3 text-right text-xs">{formatMoney(caseMetrics.timesheetValue)}</td>
-                                                <td className="px-4 py-3">
-                                                  {canShowReviewActions(baseItem.status) ? (
-                                                    <div className="flex flex-wrap items-center justify-end gap-2">
-                                                      {canManageReviewers ? (
-                                                        <Tooltip content="Configurar revisores/aprovadores">
-                                                          <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            onClick={() => setSelectedContratoConfigId(baseItem.contratoId || null)}
-                                                            disabled={!baseItem.contratoId || timesheetBusy}
-                                                          >
-                                                            <Settings2 className="h-4 w-4" />
-                                                          </Button>
-                                                        </Tooltip>
-                                                      ) : null}
-                                                      <Tooltip content="Transferir caso">
-                                                        <Button
-                                                          size="icon"
-                                                          variant="ghost"
-                                                          onClick={() => {
-                                                            setTransferItemId(baseItem.id)
-                                                            setTransferCasoId('')
-                                                          }}
-                                                          disabled={timesheetBusy}
-                                                        >
-                                                          <ArrowRightLeft className="h-4 w-4" />
-                                                        </Button>
-                                                      </Tooltip>
-                                                      <Tooltip content={baseItem.status === 'em_aprovacao' ? 'Aprovar timesheet' : 'Revisar timesheet'}>
-                                                        <Button
-                                                          size="icon"
-                                                          variant="ghost"
-                                                          onClick={() => openReviewModal(baseItem.id, 'timesheet')}
-                                                          disabled={timesheetBusy}
-                                                        >
-                                                          {baseItem.status === 'em_aprovacao' ? <Check className="h-4 w-4" /> : <SquarePen className="h-4 w-4" />}
-                                                        </Button>
-                                                      </Tooltip>
-                                                    </div>
-                                                  ) : (
-                                                    <div className="text-right text-xs text-muted-foreground">-</div>
-                                                  )}
+                                                <td colSpan={7} className="px-4 py-3">
+                                                  {(() => {
+                                                    const timesheetDraft = drafts[baseItem.id]
+                                                    const timesheetRows = timesheetDraft?.timesheetRows || []
+                                                    const reviewDisabled = timesheetBusy || !canShowReviewActions(baseItem.status)
+                                                    const reviewCaseLabel = casoGroup.numero ? `${casoGroup.numero} - ${casoGroup.nome}` : casoGroup.nome
+                                                    const reviewResponsavel = getResponsavelAtualNome(baseItem) || '-'
+
+                                                    return (
+                                                      <div className="space-y-3 rounded-md border bg-white p-3">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                          <div>
+                                                            <p className="text-sm font-medium text-foreground">Timesheet</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                              Edite horas e observacao inline ou abra o modal detalhado.
+                                                            </p>
+                                                          </div>
+                                                          <div className="flex flex-wrap items-center gap-2">
+                                                            {canManageReviewers ? (
+                                                              <Tooltip content="Configurar revisores/aprovadores">
+                                                                <Button
+                                                                  size="icon"
+                                                                  variant="ghost"
+                                                                  onClick={() => setSelectedContratoConfigId(baseItem.contratoId || null)}
+                                                                  disabled={!baseItem.contratoId || timesheetBusy}
+                                                                >
+                                                                  <Settings2 className="h-4 w-4" />
+                                                                </Button>
+                                                              </Tooltip>
+                                                            ) : null}
+                                                            <Tooltip content="Transferir caso">
+                                                              <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                onClick={() => {
+                                                                  setTransferItemId(baseItem.id)
+                                                                  setTransferCasoId('')
+                                                                }}
+                                                                disabled={timesheetBusy}
+                                                              >
+                                                                <ArrowRightLeft className="h-4 w-4" />
+                                                              </Button>
+                                                            </Tooltip>
+                                                            <Tooltip content="Abrir modal detalhado">
+                                                              <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                onClick={() => openReviewModal(baseItem.id, 'timesheet')}
+                                                                disabled={timesheetBusy}
+                                                              >
+                                                                <Eye className="h-4 w-4" />
+                                                              </Button>
+                                                            </Tooltip>
+                                                          </div>
+                                                        </div>
+
+                                                        <div className="overflow-x-auto">
+                                                          <Table className="w-full min-w-[980px]">
+                                                            <thead className="bg-gray-50">
+                                                              <tr>
+                                                                <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Data</th>
+                                                                <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Caso</th>
+                                                                <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Profissional</th>
+                                                                <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Revisor</th>
+                                                                <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-gray-500">Texto do timesheet</th>
+                                                                <th className="px-3 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Horas informadas</th>
+                                                                <th className="px-3 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Horas revisadas</th>
+                                                                <th className="px-3 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Valor</th>
+                                                                <th className="px-3 py-2 text-right text-[11px] font-medium uppercase text-gray-500">Ação</th>
+                                                              </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                              {timesheetRows.map((row) => {
+                                                                const currentCaseLabel =
+                                                                  caseTransferMap.options.find((option) => option.value === row.casoId)?.label ||
+                                                                  reviewCaseLabel
+                                                                const rowValue =
+                                                                  parseDecimalInput(row.horasRevisadas || row.horasIniciais) *
+                                                                  parseDecimalInput(row.valorHora)
+
+                                                                return (
+                                                                  <tr key={`${baseItem.id}-${row.id}`} className="border-t">
+                                                                    <td className="px-3 py-2 text-xs">{row.dataLancamento ? formatDate(row.dataLancamento) : '-'}</td>
+                                                                    <td className="px-3 py-2 text-xs text-muted-foreground">{currentCaseLabel || '-'}</td>
+                                                                    <td className="px-3 py-2 text-xs">{row.profissional || '-'}</td>
+                                                                    <td className="px-3 py-2 text-xs">{reviewResponsavel}</td>
+                                                                    <td className="px-3 py-2 text-xs">
+                                                                      <div className="max-w-[240px] truncate">{row.atividade || '-'}</div>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right text-xs">{formatHours(parseDecimalInput(row.horasIniciais))}</td>
+                                                                    <td className="px-3 py-2">
+                                                                      <Input
+                                                                        value={row.horasRevisadas}
+                                                                        onChange={(event) =>
+                                                                          syncTimesheetDraftRows(baseItem.id, (rows) =>
+                                                                            rows.map((currentRow) =>
+                                                                              currentRow.id === row.id
+                                                                                ? { ...currentRow, horasRevisadas: event.target.value }
+                                                                                : currentRow,
+                                                                            ),
+                                                                          )
+                                                                        }
+                                                                        disabled={reviewDisabled}
+                                                                        className="h-8 min-w-[96px] text-right text-xs"
+                                                                        inputMode="decimal"
+                                                                      />
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right text-xs">{formatMoney(rowValue)}</td>
+                                                                    <td className="px-3 py-2">
+                                                                      <div className="flex items-center justify-end gap-1">
+                                                                        {canReturn(baseItem.status) ? (
+                                                                          <Button
+                                                                            size="icon"
+                                                                            variant="ghost"
+                                                                            onClick={() => void handleReturnAction(baseItem)}
+                                                                            disabled={timesheetBusy}
+                                                                            className="text-amber-600 hover:text-amber-700"
+                                                                          >
+                                                                            <Undo2 className="h-4 w-4" />
+                                                                          </Button>
+                                                                        ) : null}
+                                                                        {canAdvance(baseItem.status) ? (
+                                                                          <Button
+                                                                            size="icon"
+                                                                            variant="ghost"
+                                                                            onClick={() => void saveAndAdvanceItem(baseItem, 'timesheet')}
+                                                                            disabled={timesheetBusy || hasInvalidTempoDraftForItem(baseItem.id)}
+                                                                            className={baseItem.status === 'em_aprovacao' ? 'text-green-600 hover:text-green-700' : 'text-primary'}
+                                                                          >
+                                                                            {timesheetBusy ? (
+                                                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : baseItem.status === 'em_aprovacao' ? (
+                                                                              <Check className="h-4 w-4" />
+                                                                            ) : (
+                                                                              <SquarePen className="h-4 w-4" />
+                                                                            )}
+                                                                          </Button>
+                                                                        ) : null}
+                                                                      </div>
+                                                                    </td>
+                                                                  </tr>
+                                                                )
+                                                              })}
+                                                            </tbody>
+                                                          </Table>
+                                                        </div>
+
+                                                        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                                                          <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-gray-500">Texto da revisão</label>
+                                                            <Textarea
+                                                              value={timesheetDraft?.observacao || ''}
+                                                              onChange={(event) => updateDraft(baseItem.id, { observacao: event.target.value })}
+                                                              disabled={reviewDisabled}
+                                                              rows={2}
+                                                              className="min-h-[64px] text-xs"
+                                                            />
+                                                          </div>
+                                                          <div className="rounded-md border bg-gray-50 px-3 py-2 text-xs">
+                                                            <p className="text-gray-500">Horas revisadas</p>
+                                                            <p className="font-medium text-gray-900">
+                                                              {formatHours(parseDecimalInput(timesheetDraft?.horas || '0'))}
+                                                            </p>
+                                                          </div>
+                                                          <div className="rounded-md border bg-gray-50 px-3 py-2 text-xs">
+                                                            <p className="text-gray-500">Valor</p>
+                                                            <p className="font-medium text-gray-900">
+                                                              {formatMoney(parseDecimalInput(timesheetDraft?.valor || '0'))}
+                                                            </p>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )
+                                                  })()}
                                                 </td>
                                               </tr>
                                             ) : null}

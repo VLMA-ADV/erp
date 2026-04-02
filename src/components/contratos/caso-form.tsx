@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, CircleDollarSign, Clock3, Eye, Landmark, Layers3, Loader2, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
+import { ChevronRight, CircleDollarSign, Clock3, Copy, Eye, Landmark, Layers3, Loader2, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertDialog } from '@/components/ui/alert-dialog'
@@ -221,6 +221,12 @@ function sanitizeSingleRuleConfig(config: Record<string, any> | undefined | null
   return next
 }
 
+function cloneCasoValue<T>(value: T): T {
+  if (value === null || value === undefined) return value
+  if (typeof structuredClone === 'function') return structuredClone(value)
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 export default function CasoForm({
   contratoId,
   casoId,
@@ -261,6 +267,7 @@ export default function CasoForm({
   const [priceTableSaving, setPriceTableSaving] = useState(false)
   const [anexoModalOpen, setAnexoModalOpen] = useState(false)
   const [caseAnexos, setCaseAnexos] = useState<CasoAnexoItem[]>([])
+  const [contractCases, setContractCases] = useState<Array<Record<string, any>>>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [removingAnexoId, setRemovingAnexoId] = useState<string | null>(null)
   const [dragRevisorIndex, setDragRevisorIndex] = useState<number | null>(null)
@@ -464,6 +471,80 @@ export default function CasoForm({
     applyBillingRuleToForm(updated[nextIndex])
   }
 
+  const replicatePreviousCase = () => {
+    const lastCase = contractCases[contractCases.length - 1]
+    if (!lastCase) return
+
+    const nextFormPatch: Partial<CasoPayload> = {
+      nome: `Cópia - ${String(lastCase.nome || '').trim() || 'Caso'}`,
+      servico_id: String(lastCase.servico_id || ''),
+      produto_id: String(lastCase.produto_id || ''),
+      responsavel_id: String(lastCase.responsavel_id || ''),
+      regra_cobranca: normalizeRegraCobranca(lastCase.regra_cobranca as CasoPayload['regra_cobranca']),
+      regra_cobranca_config: cloneCasoValue(sanitizeSingleRuleConfig(lastCase.regra_cobranca_config || {})),
+      centro_custo_rateio: cloneCasoValue(lastCase.centro_custo_rateio || []),
+      pagadores_servico: cloneCasoValue(lastCase.pagadores_servico || []),
+      despesas_config: cloneCasoValue(lastCase.despesas_config || emptyCaso.despesas_config),
+      pagadores_despesa: cloneCasoValue(lastCase.pagadores_despesa || []),
+      timesheet_config: cloneCasoValue(lastCase.timesheet_config || emptyCaso.timesheet_config),
+      indicacao_config: cloneCasoValue(lastCase.indicacao_config || emptyCaso.indicacao_config),
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      ...nextFormPatch,
+    }))
+
+    const sourceRules = Array.isArray(lastCase.regras_financeiras)
+      ? lastCase.regras_financeiras
+      : Array.isArray(lastCase.regra_cobranca_config?.regras_cobranca)
+        ? lastCase.regra_cobranca_config.regras_cobranca
+        : []
+
+    const copiedRules: BillingRuleDraft[] =
+      sourceRules.length > 0
+        ? sourceRules.map((item: any) => ({
+            ...item,
+            id: item.id || createRuleId(),
+            status: (item.status || 'ativo') as BillingRuleStatus,
+            regra_cobranca: normalizeRegraCobranca(item.regra_cobranca as CasoPayload['regra_cobranca']),
+            regra_cobranca_config: sanitizeSingleRuleConfig(cloneCasoValue(item.regra_cobranca_config || {})),
+            pagadores_servico: cloneCasoValue(item.pagadores_servico || lastCase.pagadores_servico || []),
+            indicacao_config: cloneCasoValue(item.indicacao_config || lastCase.indicacao_config || emptyCaso.indicacao_config),
+            moeda: (item.moeda || lastCase.moeda || emptyCaso.moeda) as BillingRuleDraft['moeda'],
+            tipo_cobranca_documento: (item.tipo_cobranca_documento || lastCase.tipo_cobranca_documento || emptyCaso.tipo_cobranca_documento) as BillingRuleDraft['tipo_cobranca_documento'],
+            data_inicio_faturamento: String(item.data_inicio_faturamento || lastCase.data_inicio_faturamento || ''),
+            pagamento_dia_mes: String(item.pagamento_dia_mes || lastCase.pagamento_dia_mes || ''),
+            inicio_vigencia: String(item.inicio_vigencia || lastCase.inicio_vigencia || ''),
+            periodo_reajuste: String(item.periodo_reajuste || lastCase.periodo_reajuste || emptyCaso.periodo_reajuste),
+            data_proximo_reajuste: String(item.data_proximo_reajuste || lastCase.data_proximo_reajuste || ''),
+            data_ultimo_reajuste: String(item.data_ultimo_reajuste || lastCase.data_ultimo_reajuste || ''),
+            indice_reajuste: String(item.indice_reajuste || lastCase.indice_reajuste || emptyCaso.indice_reajuste),
+          }))
+        : [{
+            id: createRuleId(),
+            status: 'ativo',
+            moeda: (lastCase.moeda || emptyCaso.moeda) as BillingRuleDraft['moeda'],
+            tipo_cobranca_documento: (lastCase.tipo_cobranca_documento || emptyCaso.tipo_cobranca_documento) as BillingRuleDraft['tipo_cobranca_documento'],
+            data_inicio_faturamento: String(lastCase.data_inicio_faturamento || ''),
+            pagamento_dia_mes: String(lastCase.pagamento_dia_mes || ''),
+            inicio_vigencia: String(lastCase.inicio_vigencia || ''),
+            periodo_reajuste: String(lastCase.periodo_reajuste || emptyCaso.periodo_reajuste),
+            data_proximo_reajuste: String(lastCase.data_proximo_reajuste || ''),
+            data_ultimo_reajuste: String(lastCase.data_ultimo_reajuste || ''),
+            indice_reajuste: String(lastCase.indice_reajuste || emptyCaso.indice_reajuste),
+            regra_cobranca: normalizeRegraCobranca(lastCase.regra_cobranca as CasoPayload['regra_cobranca']),
+            regra_cobranca_config: sanitizeSingleRuleConfig(cloneCasoValue(lastCase.regra_cobranca_config || {})),
+            pagadores_servico: cloneCasoValue(lastCase.pagadores_servico || []),
+            indicacao_config: cloneCasoValue(lastCase.indicacao_config || emptyCaso.indicacao_config),
+          }]
+
+    setBillingRules(copiedRules)
+    setSelectedBillingRuleIndex(0)
+    setError(null)
+    success('Dados do caso anterior copiados. Revise antes de salvar.')
+  }
+
   const toggleCurrentBillingRuleStatus = () => {
     const current = billingRules[selectedBillingRuleIndex]
     if (!current) return
@@ -589,6 +670,8 @@ export default function CasoForm({
           setError(contratoData.error || 'Erro ao carregar contrato')
           return
         }
+
+        setContractCases(Array.isArray(contratoData.data?.casos) ? contratoData.data.casos : [])
 
         if (casoId) {
           const caso = (contratoData.data?.casos || []).find((c: any) => c.id === casoId)
@@ -1468,6 +1551,15 @@ export default function CasoForm({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {!isEdit && contractCases.length > 0 ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={replicatePreviousCase}>
+            <Copy className="mr-2 h-4 w-4" />
+            Replicar caso anterior
+          </Button>
+        </div>
+      ) : null}
 
       <Card>
         <CardContent className="pt-4">
@@ -2983,7 +3075,7 @@ export default function CasoForm({
           </Button>
           {!isReadOnly && (
             <Button onClick={submit} disabled={loading}>
-              {loading ? 'Salvando...' : isEdit ? 'Atualizar caso' : 'Criar caso'}
+              {loading ? 'Salvando...' : isEdit ? 'Atualizar contrato' : 'Criar caso'}
             </Button>
           )}
         </div>

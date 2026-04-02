@@ -83,7 +83,7 @@ interface ContratoFormState {
   responsavel_prospeccao_id: string
   canal_prospeccao: string
   grupo_imposto_id: string
-  status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
+  status: 'rascunho' | 'solicitacao' | 'em_analise' | 'ativo' | 'encerrado'
   casos: CasoPayload[]
 }
 
@@ -259,8 +259,8 @@ function formatDateBr(value: string) {
 }
 
 function normalizeContratoStatus(status?: string): ContratoFormState['status'] {
-  if (status === 'em_analise') return 'validacao'
-  if (status === 'rascunho' || status === 'solicitacao' || status === 'validacao' || status === 'ativo' || status === 'encerrado') {
+  if (status === 'validacao') return 'em_analise'
+  if (status === 'rascunho' || status === 'solicitacao' || status === 'em_analise' || status === 'ativo' || status === 'encerrado') {
     return status
   }
   return 'rascunho'
@@ -269,7 +269,7 @@ function normalizeContratoStatus(status?: string): ContratoFormState['status'] {
 function formatContratoStatus(status?: string) {
   const normalized = normalizeContratoStatus(status)
   if (normalized === 'solicitacao') return 'solicitação'
-  if (normalized === 'validacao') return 'validação'
+  if (normalized === 'em_analise') return 'validação'
   return normalized
 }
 
@@ -2227,14 +2227,14 @@ export default function ContratoForm({
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ id: contractTargetId, status: 'validacao' }),
+          body: JSON.stringify({ id: contractTargetId, status: 'em_analise' }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {
           setError(statusData.error || 'Erro ao mover contrato para validação')
           return
         }
-        setForm((prev) => ({ ...prev, status: 'validacao' }))
+        setForm((prev) => ({ ...prev, status: 'em_analise' }))
       }
 
       const successMessage =

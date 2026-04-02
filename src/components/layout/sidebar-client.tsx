@@ -43,7 +43,7 @@ const menuItems = [
   },
   {
     label: 'PDI',
-    href: '/pdi',
+    href: '/avaliacoes-pdi',
     permission: 'people.pdi.read',
   },
   {
@@ -102,22 +102,33 @@ export default function SidebarClient() {
         <p className="text-sm text-gray-500">Versão 1.0.0</p>
       </SidebarHeader>
       <SidebarContent>
+        {/* Menu Configuração (Expansível) */}
+        <SidebarMenuConfiguracao pathname={pathname} hasPermission={checkPermission} />
+
         {/* Menu Pessoas (Expansível) */}
         <SidebarMenuPessoas pathname={pathname} hasPermission={checkPermission} />
 
-        {/* Menu Configuração (Expansível) */}
-        <SidebarMenuConfiguracao pathname={pathname} hasPermission={checkPermission} />
+        {/* Outros itens do menu (ordem: Dashboard, CRM, Solicitações, Contratos, Timesheet, Despesas) */}
+        {['/home', '/crm', '/solicitacoes-contrato', '/contratos', '/timesheet', '/despesas'].map((href) => {
+          const item = menuItems.find((m) => m.href === href)
+          if (!item || !checkPermission(item.permission)) return null
+          return (
+            <SidebarItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              active={pathname === item.href}
+            />
+          )
+        })}
 
         {/* Menu Faturamento (Expansível) */}
         <SidebarMenuFaturamento pathname={pathname} hasPermission={checkPermission} />
 
-        {/* Outros itens do menu */}
-        {menuItems.map((item) => {
-          // Se showAllItems, mostrar todos; caso contrário, verificar permissão
-          if (!checkPermission(item.permission)) {
-            return null
-          }
-
+        {/* PDI e Relatórios */}
+        {['/avaliacoes-pdi', '/relatorios'].map((href) => {
+          const item = menuItems.find((m) => m.href === href)
+          if (!item || !checkPermission(item.permission)) return null
           return (
             <SidebarItem
               key={item.href}

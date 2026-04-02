@@ -5,9 +5,9 @@ import {
   ArrowRightLeft,
   ChevronDown,
   ChevronRight,
+  DollarSign,
   Eye,
   Loader2,
-  Save,
   Send,
   Undo2,
 } from 'lucide-react'
@@ -82,6 +82,20 @@ interface ClienteGroupFluxo {
   totalValor: number
   itemCount: number
   contratos: ContratoGroupFluxo[]
+}
+
+interface ResumoCasoDialogRow {
+  key: string
+  contrato: string
+  caso: string
+  data: string
+  profissional: string
+  atividade: string
+  revisor: string
+  aprovador: string
+  horasInformadas: number | null
+  horasRevisadas: number | null
+  valorFinal: number | null
 }
 
 function toObject(value: unknown): Record<string, unknown> | null {
@@ -209,6 +223,12 @@ function formatStatus(value: string) {
     default:
       return value || '-'
   }
+}
+
+function getDetalheRowClass(status: RevisaoItem['status']) {
+  if (status === 'em_revisao') return 'bg-yellow-50'
+  if (status === 'aprovado') return 'bg-green-50'
+  return ''
 }
 
 function isDetalheFaturavel(detalhe: FluxoItemDetalhe) {
@@ -432,6 +452,74 @@ function parseTimesheetRowsForDialog(item: RevisaoItem) {
       }
     })
     .filter((row): row is NonNullable<typeof row> => row !== null)
+}
+
+function formatDateCell(value: string | null | undefined) {
+  if (!value) return '—'
+  const normalized = `${value}T00:00:00`
+  const dt = new Date(normalized)
+  if (Number.isNaN(dt.getTime())) return value
+  return dt.toLocaleDateString('pt-BR')
+}
+
+function buildResumoCasoDialogRows(resumoCasoGroup: {
+  contrato: ContratoGroupFluxo
+  caso: CasoGroupFluxo
+}): ResumoCasoDialogRow[] {
+  const contratoLabel = resumoCasoGroup.contrato.numero
+    ? `${resumoCasoGroup.contrato.numero} - ${resumoCasoGroup.contrato.nome}`
+    : resumoCasoGroup.contrato.nome
+  const casoLabel = resumoCasoGroup.caso.numero
+    ? `${resumoCasoGroup.caso.numero} - ${resumoCasoGroup.caso.nome}`
+    : resumoCasoGroup.caso.nome
+
+  return resumoCasoGroup.caso.itens.flatMap((itemRow) => {
+    const snapshot = itemRow.snapshot || {}
+    const revisor =
+      itemRow.responsavel_revisao_nome ||
+      (typeof snapshot.responsavel_revisao_nome === 'string' ? snapshot.responsavel_revisao_nome : null) ||
+      '-'
+    const aprovador =
+      itemRow.responsavel_aprovacao_nome ||
+      (typeof snapshot.responsavel_aprovacao_nome === 'string' ? snapshot.responsavel_aprovacao_nome : null) ||
+      '-'
+    const snapRows = itemRow.origem_tipo === 'timesheet' ? parseTimesheetRowsForDialog(itemRow) : []
+
+    if (snapRows.length > 0) {
+      return snapRows.map((row, idx) => ({
+        key: `${itemRow.id}-${idx}`,
+        contrato: contratoLabel,
+        caso: casoLabel,
+        data: formatDateCell(row.data || itemRow.data_referencia || null),
+        profissional: row.profissional || '-',
+        atividade: row.atividade || '—',
+        revisor,
+        aprovador,
+        horasInformadas: Number.isFinite(row.horasInformadas) ? row.horasInformadas : null,
+        horasRevisadas: Number.isFinite(row.horasRevisadas) ? row.horasRevisadas : null,
+        valorFinal:
+          Number.isFinite(row.horasRevisadas) && Number.isFinite(row.valorHora)
+            ? row.horasRevisadas * row.valorHora
+            : null,
+      }))
+    }
+
+    return [
+      {
+        key: itemRow.id,
+        contrato: contratoLabel,
+        caso: casoLabel,
+        data: formatDateCell(itemRow.data_referencia || null),
+        profissional: '-',
+        atividade: itemRow.origem_tipo === 'despesa' ? 'Despesa' : getRuleTitle(itemRow),
+        revisor,
+        aprovador,
+        horasInformadas: itemRow.horas_informadas,
+        horasRevisadas: itemRow.horas_revisadas,
+        valorFinal: getEffectiveValue(itemRow),
+      },
+    ]
+  })
 }
 
 export default function FluxoDeFaturamentoList() {
@@ -955,7 +1043,7 @@ export default function FluxoDeFaturamentoList() {
                   </td>
                 </tr>
               ) : (
-                tree.map((cliente) => {
+                tree.map((cliente, clienteIndex) => {
                   const clienteExpanded = expandedClientes[cliente.key] ?? true
                   const clienteItems = cliente.contratos.flatMap((co) => co.casos.flatMap((ca) => ca.itens))
                   const clienteSummary = summarizeStatusAndResponsavel(clienteItems)
@@ -1192,7 +1280,7 @@ export default function FluxoDeFaturamentoList() {
                                                     const busy =
                                                       faturandoSelecionados || faturandoItemId === detalhe.id
                                                     return (
-                                                      <tr key={detalhe.id}>
+                                                      <tr key={detalhe.id} className={getDetalheRowClass(detalhe.status)}>
                                                         <td className="px-3 py-2">
                                                           <input
                                                             type="checkbox"
@@ -1242,7 +1330,7 @@ export default function FluxoDeFaturamentoList() {
                                                                 {busy ? (
                                                                   <Loader2 className="h-4 w-4 animate-spin" />
                                                                 ) : (
-                                                                  <Save className="h-4 w-4" />
+                                                                  <DollarSign className="h-4 w-4" />
                                                                 )}
                                                               </Button>
                                                             ) : (
@@ -1267,6 +1355,11 @@ export default function FluxoDeFaturamentoList() {
                             </Fragment>
                           )
                         })}
+                      {clienteIndex < tree.length - 1 ? (
+                        <tr>
+                          <td colSpan={9} className="h-4 border-0 bg-transparent" />
+                        </tr>
+                      ) : null}
                     </Fragment>
                   )
                 })
@@ -1277,7 +1370,7 @@ export default function FluxoDeFaturamentoList() {
       </div>
 
       <Dialog open={!!resumoCasoKey && !!resumoCasoGroup} onOpenChange={(open) => !open && setResumoCasoKey(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-7xl">
           <DialogHeader>
             <DialogTitle>Resumo do caso</DialogTitle>
             <DialogDescription>
@@ -1286,80 +1379,49 @@ export default function FluxoDeFaturamentoList() {
                 : ''}
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
-            {resumoCasoGroup?.caso.itens.map((itemRow) => {
-              const ruleTitle = getRuleTitle(itemRow)
-              const snapRows = itemRow.origem_tipo === 'timesheet' ? parseTimesheetRowsForDialog(itemRow) : []
-              const resp = resolveResponsavelAtual(itemRow)
-              return (
-                <div key={itemRow.id} className="rounded-md border p-3 text-sm">
-                  <div className="font-medium text-foreground">{ruleTitle}</div>
-                  <dl className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                    <div>
-                      <dt className="font-medium text-foreground">Horas informadas</dt>
-                      <dd>{formatNullableHours(itemRow.horas_informadas)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-foreground">Horas revisadas</dt>
-                      <dd>{formatNullableHours(itemRow.horas_revisadas)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-foreground">Horas aprovadas</dt>
-                      <dd>{formatNullableHours(itemRow.horas_aprovadas)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-foreground">Responsável atual</dt>
-                      <dd>{resp}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-foreground">Valor informado</dt>
-                      <dd>{formatNullableMoney(itemRow.valor_informado)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-foreground">Valor revisado</dt>
-                      <dd>{formatNullableMoney(itemRow.valor_revisado)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-foreground">Valor aprovado</dt>
-                      <dd>{formatNullableMoney(itemRow.valor_aprovado)}</dd>
-                    </div>
-                  </dl>
-                  {snapRows.length > 0 ? (
-                    <div className="mt-3 overflow-x-auto">
-                      <p className="mb-1 text-xs font-medium uppercase text-gray-500">Lançamentos (timesheet)</p>
-                      <Table className="w-full min-w-[520px] text-xs">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-2 py-1 text-left">Data</th>
-                            <th className="px-2 py-1 text-left">Profissional</th>
-                            <th className="px-2 py-1 text-left">Atividade</th>
-                            <th className="px-2 py-1 text-right">H. inf.</th>
-                            <th className="px-2 py-1 text-right">H. rev.</th>
-                            <th className="px-2 py-1 text-right">R$/h</th>
-                            <th className="px-2 py-1 text-right">Subtotal</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {snapRows.map((row, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="px-2 py-1">{row.data || '—'}</td>
-                              <td className="px-2 py-1">{row.profissional || '—'}</td>
-                              <td className="px-2 py-1">{row.atividade || '—'}</td>
-                              <td className="px-2 py-1 text-right">{formatHours(row.horasInformadas)}</td>
-                              <td className="px-2 py-1 text-right">{formatHours(row.horasRevisadas)}</td>
-                              <td className="px-2 py-1 text-right">{formatMoney(row.valorHora)}</td>
-                              <td className="px-2 py-1 text-right">
-                                {formatMoney(row.horasRevisadas * row.valorHora)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </Table>
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
+          <div className="max-h-[60vh] overflow-y-auto py-2">
+            <div className="overflow-x-auto rounded-md border">
+              <Table className="w-full min-w-[1240px] text-xs">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Contrato</th>
+                    <th className="px-3 py-2 text-left">Caso</th>
+                    <th className="px-3 py-2 text-left">Data</th>
+                    <th className="px-3 py-2 text-left">Profissional</th>
+                    <th className="px-3 py-2 text-left">Atividade</th>
+                    <th className="px-3 py-2 text-left">Revisor</th>
+                    <th className="px-3 py-2 text-left">Aprovador</th>
+                    <th className="px-3 py-2 text-right">Horas informadas</th>
+                    <th className="px-3 py-2 text-right">Horas revisadas</th>
+                    <th className="px-3 py-2 text-right">Valor final</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resumoCasoGroup ? (
+                    buildResumoCasoDialogRows(resumoCasoGroup).map((row) => (
+                      <tr key={row.key} className="border-t align-top">
+                        <td className="px-3 py-2">{row.contrato}</td>
+                        <td className="px-3 py-2">{row.caso}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{row.data}</td>
+                        <td className="px-3 py-2">{row.profissional}</td>
+                        <td className="px-3 py-2">{row.atividade}</td>
+                        <td className="px-3 py-2">{row.revisor}</td>
+                        <td className="px-3 py-2">{row.aprovador}</td>
+                        <td className="px-3 py-2 text-right">{formatNullableHours(row.horasInformadas)}</td>
+                        <td className="px-3 py-2 text-right">{formatNullableHours(row.horasRevisadas)}</td>
+                        <td className="px-3 py-2 text-right">{formatNullableMoney(row.valorFinal)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+                        Nenhum item encontrado para este caso.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </Table>
+            </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setResumoCasoKey(null)} disabled={devolvendo}>

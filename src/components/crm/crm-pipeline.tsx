@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, Edit3, GripVertical, MoveRight, Plus, UserPlus, UserRound } from 'lucide-react'
+import { Download, Edit3, FilePlus2, GripVertical, MoveRight, Paperclip, Plus, UserPlus, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { maskCNPJ, onlyDigits } from '@/lib/utils/masks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,11 @@ interface PipelineCard {
 interface OptionItem {
   id: string
   nome: string
+}
+
+interface PendingAnexo {
+  nome: string
+  file: File
 }
 
 interface FormState {
@@ -154,9 +160,21 @@ export default function CrmPipeline() {
   const [servicos, setServicos] = useState<OptionItem[]>([])
   const [produtos, setProdutos] = useState<OptionItem[]>([])
   const [colaboradores, setColaboradores] = useState<OptionItem[]>([])
+  const [areas, setAreas] = useState<OptionItem[]>([])
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm)
+  const [solicitacaoOpen, setSolicitacaoOpen] = useState(false)
+  const [solicitacaoSubmitting, setSolicitacaoSubmitting] = useState(false)
+  const [solicitacaoCardId, setSolicitacaoCardId] = useState('')
+  const [solicitacaoNome, setSolicitacaoNome] = useState('')
+  const [solicitacaoDescricao, setSolicitacaoDescricao] = useState('')
+  const [solicitacaoClienteId, setSolicitacaoClienteId] = useState('')
+  const [solicitacaoNomeClienteNovo, setSolicitacaoNomeClienteNovo] = useState('')
+  const [solicitacaoCnpjClienteNovo, setSolicitacaoCnpjClienteNovo] = useState('')
+  const [solicitacaoCentroCustoId, setSolicitacaoCentroCustoId] = useState('')
+  const [solicitacaoAnexos, setSolicitacaoAnexos] = useState<PendingAnexo[]>([])
+  const [creatingSolicitacaoCliente, setCreatingSolicitacaoCliente] = useState(false)
 
   const [existingAnexos, setExistingAnexos] = useState<PipelineAnexo[]>([])
   const [removeAnexoIds, setRemoveAnexoIds] = useState<string[]>([])
@@ -260,6 +278,29 @@ export default function CrmPipeline() {
     setProdutos(nextProdutos)
   }
 
+  const fetchAreas = async () => {
+    const session = await getSession()
+    if (!session) return
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-areas?_ts=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return
+
+    const nextAreas = (payload.data || [])
+      .filter((item: any) => item?.id && item?.nome)
+      .map((item: any) => ({ id: item.id as string, nome: item.nome as string }))
+
+    setAreas(nextAreas)
+  }
+
   const fetchColaboradores = async () => {
     const session = await getSession()
     if (!session) return
@@ -290,7 +331,7 @@ export default function CrmPipeline() {
     try {
       setLoading(true)
       setError(null)
-      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores()])
+      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas()])
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Erro ao carregar CRM')
@@ -351,6 +392,14 @@ export default function CrmPipeline() {
     [colaboradores],
   )
 
+  const areasOptions = useMemo(
+    () => areas.map((item) => ({ value: item.id, label: item.nome })),
+    [areas],
+  )
+
+  const hasSolicitacaoClienteSelecionado = solicitacaoClienteId.trim().length > 0
+  const hasSolicitacaoClienteNovo = solicitacaoNomeClienteNovo.trim().length > 0
+
   const resetDialog = () => {
     setForm(emptyForm)
     setExistingAnexos([])
@@ -405,11 +454,44 @@ export default function CrmPipeline() {
     setNewAnexos((prev) => prev.filter((item) => item.id !== id))
   }
 
-  const createClienteOnDemand = async (nomeCliente: string) => {
+  const resetSolicitacaoDialog = () => {
+    setSolicitacaoCardId('')
+    setSolicitacaoNome('')
+    setSolicitacaoDescricao('')
+    setSolicitacaoClienteId('')
+    setSolicitacaoNomeClienteNovo('')
+    setSolicitacaoCnpjClienteNovo('')
+    setSolicitacaoCentroCustoId('')
+    setSolicitacaoAnexos([])
+  }
+
+  const openSolicitacaoDialog = (card: PipelineCard) => {
+    const nome = [card.cliente_nome, card.servico_nome || card.produto_nome || 'Proposta comercial'].filter(Boolean).join(' - ')
+    resetSolicitacaoDialog()
+    setSolicitacaoCardId(card.id)
+    setSolicitacaoNome(nome)
+    setSolicitacaoDescricao(card.observacoes || 'Solicitação criada via CRM (conversão).')
+    setSolicitacaoClienteId(card.cliente_id || '')
+    setSolicitacaoOpen(true)
+  }
+
+  const handleSelectSolicitacaoFiles = (files: FileList | null) => {
+    if (!files) return
+    const file = files[0]
+    if (!file) return
+    setSolicitacaoAnexos([{ nome: 'Proposta', file }])
+  }
+
+  const createClienteOnDemand = async (
+    nomeCliente: string,
+    onCreated?: (clienteId: string) => void,
+    setCreating?: (value: boolean) => void,
+  ) => {
     const nome = nomeCliente.trim()
     if (!nome) return
 
     try {
+      setCreating?.(true)
       const session = await getSession()
       if (!session) return
 
@@ -436,13 +518,96 @@ export default function CrmPipeline() {
       await fetchClientes()
 
       if (clienteId) {
-        setForm((prev) => ({ ...prev, cliente_id: clienteId }))
+        onCreated?.(clienteId)
       }
 
       success('Cliente criado com sucesso')
     } catch (err) {
       console.error(err)
       toastError('Erro ao criar cliente')
+    } finally {
+      setCreating?.(false)
+    }
+  }
+
+  const createSolicitacao = async () => {
+    if (!solicitacaoNome.trim()) {
+      toastError('Nome do contrato é obrigatório')
+      return
+    }
+
+    if (!solicitacaoDescricao.trim()) {
+      toastError('Descrição do contrato é obrigatória')
+      return
+    }
+
+    try {
+      setSolicitacaoSubmitting(true)
+      const session = await getSession()
+      if (!session) return
+
+      const anexosPayload =
+        solicitacaoAnexos.length === 0
+          ? []
+          : await Promise.all(
+              solicitacaoAnexos.map(async (item) => ({
+                nome: item.nome.trim() || 'Proposta',
+                arquivo_nome: item.file.name,
+                mime_type: item.file.type || 'application/octet-stream',
+                tamanho_bytes: item.file.size,
+                arquivo_base64: await fileToBase64(item.file),
+              })),
+            )
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-solicitacao-contrato`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nome: solicitacaoNome.trim(),
+          descricao: solicitacaoDescricao.trim(),
+          cliente_id: solicitacaoClienteId || null,
+          nome_cliente_novo: solicitacaoNomeClienteNovo.trim() || null,
+          cnpj_cliente_novo: onlyDigits(solicitacaoCnpjClienteNovo) || null,
+          centro_custo_id: solicitacaoCentroCustoId || null,
+          anexos: anexosPayload.length ? anexosPayload : undefined,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao criar solicitação')
+        return
+      }
+
+      const solicitacaoId = typeof payload?.data?.id === 'string' ? (payload.data.id as string) : ''
+      if (solicitacaoCardId && solicitacaoId) {
+        await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-crm-pipeline-card`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: solicitacaoCardId,
+            converted_solicitacao_id: solicitacaoId,
+          }),
+        }).catch((err) => {
+          console.warn('Não foi possível vincular a solicitação ao card do CRM:', err)
+        })
+      }
+
+      success('Solicitação criada com sucesso')
+      setSolicitacaoOpen(false)
+      resetSolicitacaoDialog()
+      await fetchPipeline()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao criar solicitação')
+    } finally {
+      setSolicitacaoSubmitting(false)
     }
   }
 
@@ -583,19 +748,7 @@ export default function CrmPipeline() {
   }
 
   const goToSolicitacaoContrato = (card: PipelineCard) => {
-    const nome = [card.cliente_nome, card.servico_nome || card.produto_nome || 'Proposta comercial']
-      .filter(Boolean)
-      .join(' - ')
-
-    const params = new URLSearchParams({
-      from_crm: '1',
-      crm_card_id: card.id,
-      cliente_id: card.cliente_id,
-      nome,
-      descricao: card.observacoes || 'Solicitação criada via CRM (conversão).',
-    })
-
-    router.push(`/solicitacoes-contrato?${params.toString()}`)
+    openSolicitacaoDialog(card)
   }
 
   if (!canRead) {
@@ -777,7 +930,14 @@ export default function CrmPipeline() {
                 placeholder="Selecione o cliente"
                 searchPlaceholder="Buscar cliente..."
                 emptyText="Nenhum cliente encontrado."
-                onCreateOption={canWrite ? createClienteOnDemand : undefined}
+                onCreateOption={
+                  canWrite
+                    ? (value) =>
+                        void createClienteOnDemand(value, (clienteId) => {
+                          setForm((prev) => ({ ...prev, cliente_id: clienteId }))
+                        })
+                    : undefined
+                }
                 createOptionLabel="Criar cliente"
                 disabled={saving}
                 maxVisibleOptions={7}
@@ -958,6 +1118,136 @@ export default function CrmPipeline() {
             </Button>
             <Button type="button" onClick={() => void submitCard()} disabled={saving}>
               {saving ? 'Salvando...' : form.id ? 'Salvar alterações' : 'Criar card'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={solicitacaoOpen} onOpenChange={(open) => {
+        if (!solicitacaoSubmitting) {
+          setSolicitacaoOpen(open)
+          if (!open) resetSolicitacaoDialog()
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Nova solicitação de abertura de contrato</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <CommandSelect
+                value={solicitacaoClienteId}
+                onValueChange={setSolicitacaoClienteId}
+                options={clientesOptions}
+                placeholder="Selecione o cliente"
+                searchPlaceholder="Buscar cliente..."
+                emptyText="Nenhum cliente encontrado"
+                onCreateOption={
+                  canWrite
+                    ? (value) =>
+                        void createClienteOnDemand(
+                          value,
+                          (clienteId) => setSolicitacaoClienteId(clienteId),
+                          setCreatingSolicitacaoCliente,
+                        )
+                    : undefined
+                }
+                createOptionLabel={creatingSolicitacaoCliente ? 'Cadastrando' : 'Cadastrar cliente'}
+                disabled={creatingSolicitacaoCliente || hasSolicitacaoClienteNovo}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do cliente novo</Label>
+              <Input
+                value={solicitacaoNomeClienteNovo}
+                onChange={(event) => setSolicitacaoNomeClienteNovo(event.target.value)}
+                placeholder="Preencha apenas se o cliente ainda não existir"
+                disabled={hasSolicitacaoClienteSelecionado}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>CNPJ do cliente novo</Label>
+              <Input
+                value={solicitacaoCnpjClienteNovo}
+                onChange={(event) => setSolicitacaoCnpjClienteNovo(maskCNPJ(event.target.value))}
+                placeholder="00.000.000/0000-00"
+                disabled={hasSolicitacaoClienteSelecionado}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do contrato</Label>
+              <Input
+                value={solicitacaoNome}
+                onChange={(event) => setSolicitacaoNome(event.target.value)}
+                placeholder="Nome da solicitação/contrato"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição do contrato</Label>
+              <Textarea
+                value={solicitacaoDescricao}
+                onChange={(event) => setSolicitacaoDescricao(event.target.value)}
+                placeholder="Descreva a solicitação para o financeiro concluir o cadastro"
+                rows={4}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Centro de custo</Label>
+              <CommandSelect
+                value={solicitacaoCentroCustoId}
+                onValueChange={setSolicitacaoCentroCustoId}
+                options={areasOptions}
+                placeholder="Selecione o centro de custo"
+                searchPlaceholder="Buscar centro de custo..."
+                emptyText="Nenhum centro de custo encontrado"
+                disabled={solicitacaoSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Anexo de proposta</Label>
+              <Input type="file" onChange={(event) => handleSelectSolicitacaoFiles(event.target.files)} />
+              {solicitacaoAnexos.length ? (
+                <div className="space-y-2 rounded-md border p-3">
+                  {solicitacaoAnexos.map((item, idx) => (
+                    <div key={`${item.file.name}_${idx}`} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Paperclip className="h-4 w-4 text-muted-foreground" />
+                        <span>{item.nome}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSolicitacaoAnexos((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
+                  <FilePlus2 className="mb-2 h-4 w-4" />
+                  Nenhum anexo selecionado.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSolicitacaoOpen(false)} disabled={solicitacaoSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => void createSolicitacao()} disabled={solicitacaoSubmitting}>
+              {solicitacaoSubmitting ? 'Salvando...' : 'Criar solicitação'}
             </Button>
           </DialogFooter>
         </DialogContent>

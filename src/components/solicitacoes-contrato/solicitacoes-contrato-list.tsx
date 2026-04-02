@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { FilePlus2, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { maskCNPJ, onlyDigits } from '@/lib/utils/masks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,6 +45,11 @@ interface SolicitacaoContrato {
 }
 
 interface ClienteOption {
+  id: string
+  nome: string
+}
+
+interface AreaOption {
   id: string
   nome: string
 }
@@ -100,6 +106,9 @@ export default function SolicitacoesContratoList() {
   const [createOpen, setCreateOpen] = useState(false)
   const [nomeSolicitacao, setNomeSolicitacao] = useState('')
   const [descricaoSolicitacao, setDescricaoSolicitacao] = useState('')
+  const [nomeClienteNovo, setNomeClienteNovo] = useState('')
+  const [cnpjClienteNovo, setCnpjClienteNovo] = useState('')
+  const [centroCustoId, setCentroCustoId] = useState('')
   const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [creatingCliente, setCreatingCliente] = useState(false)
@@ -107,6 +116,7 @@ export default function SolicitacoesContratoList() {
   const [lastCrmPrefillToken, setLastCrmPrefillToken] = useState('')
 
   const [clientes, setClientes] = useState<ClienteOption[]>([])
+  const [areas, setAreas] = useState<AreaOption[]>([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
 
   const clientesOptions = useMemo(
@@ -117,6 +127,18 @@ export default function SolicitacoesContratoList() {
       })),
     [clientes],
   )
+
+  const areasOptions = useMemo(
+    () =>
+      areas.map((area) => ({
+        value: area.id,
+        label: area.nome,
+      })),
+    [areas],
+  )
+
+  const hasSelectedCliente = selectedClienteId.trim().length > 0
+  const hasNomeClienteNovo = nomeClienteNovo.trim().length > 0
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -198,10 +220,33 @@ export default function SolicitacoesContratoList() {
     }
   }
 
+  const fetchAreas = async () => {
+    const session = await getSession()
+    if (!session) return
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-areas?_ts=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        ...getFunctionsHeaders(session.access_token),
+      },
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return
+
+    const nextAreas = (payload.data || [])
+      .filter((item: any) => item?.id && item?.nome)
+      .map((item: any) => ({ id: item.id as string, nome: item.nome as string }))
+
+    setAreas(nextAreas)
+  }
+
   useEffect(() => {
     if (!canRead) return
     void fetchItems()
     void fetchClientes()
+    void fetchAreas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -214,6 +259,9 @@ export default function SolicitacoesContratoList() {
       searchParams.get('cliente_id') || '',
       searchParams.get('nome') || '',
       searchParams.get('descricao') || '',
+      searchParams.get('nome_cliente_novo') || '',
+      searchParams.get('cnpj_cliente_novo') || '',
+      searchParams.get('centro_custo_id') || '',
     ].join('|')
 
     if (!token || token === lastCrmPrefillToken) return
@@ -221,6 +269,9 @@ export default function SolicitacoesContratoList() {
     setNomeSolicitacao(searchParams.get('nome') || '')
     setDescricaoSolicitacao(searchParams.get('descricao') || '')
     setSelectedClienteId(searchParams.get('cliente_id') || '')
+    setNomeClienteNovo(searchParams.get('nome_cliente_novo') || '')
+    setCnpjClienteNovo(maskCNPJ(searchParams.get('cnpj_cliente_novo') || ''))
+    setCentroCustoId(searchParams.get('centro_custo_id') || '')
     setPendingAnexos([])
     setCrmCardIdPrefill(searchParams.get('crm_card_id') || '')
     setCreateOpen(true)
@@ -233,6 +284,9 @@ export default function SolicitacoesContratoList() {
     setNomeSolicitacao('')
     setDescricaoSolicitacao('')
     setSelectedClienteId('')
+    setNomeClienteNovo('')
+    setCnpjClienteNovo('')
+    setCentroCustoId('')
     setPendingAnexos([])
     setCrmCardIdPrefill('')
   }
@@ -300,11 +354,6 @@ export default function SolicitacoesContratoList() {
       return
     }
 
-    if (!selectedClienteId) {
-      toastError('Cliente é obrigatório')
-      return
-    }
-
     try {
       setSubmitting(true)
       const session = await getSession()
@@ -334,7 +383,10 @@ export default function SolicitacoesContratoList() {
         body: JSON.stringify({
           nome: nomeSolicitacao.trim(),
           descricao: descricaoSolicitacao.trim(),
-          cliente_id: selectedClienteId,
+          cliente_id: selectedClienteId || null,
+          nome_cliente_novo: nomeClienteNovo.trim() || null,
+          cnpj_cliente_novo: onlyDigits(cnpjClienteNovo) || null,
+          centro_custo_id: centroCustoId || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
         }),
       })
@@ -576,12 +628,32 @@ export default function SolicitacoesContratoList() {
                 emptyText="Nenhum cliente encontrado"
                 onCreateOption={(value) => void createClienteOnDemand(value)}
                 createOptionLabel={creatingCliente ? 'Cadastrando' : 'Cadastrar cliente'}
-                disabled={creatingCliente}
+                disabled={creatingCliente || hasNomeClienteNovo}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Nome</Label>
+              <Label>Nome do cliente novo</Label>
+              <Input
+                value={nomeClienteNovo}
+                onChange={(event) => setNomeClienteNovo(event.target.value)}
+                placeholder="Preencha apenas se o cliente ainda não existir"
+                disabled={hasSelectedCliente}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>CNPJ do cliente novo</Label>
+              <Input
+                value={cnpjClienteNovo}
+                onChange={(event) => setCnpjClienteNovo(maskCNPJ(event.target.value))}
+                placeholder="00.000.000/0000-00"
+                disabled={hasSelectedCliente}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do contrato</Label>
               <Input
                 value={nomeSolicitacao}
                 onChange={(event) => setNomeSolicitacao(event.target.value)}
@@ -596,6 +668,19 @@ export default function SolicitacoesContratoList() {
                 onChange={(event) => setDescricaoSolicitacao(event.target.value)}
                 placeholder="Descreva a solicitação para o financeiro concluir o cadastro"
                 rows={4}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Centro de custo</Label>
+              <CommandSelect
+                value={centroCustoId}
+                onValueChange={setCentroCustoId}
+                options={areasOptions}
+                placeholder="Selecione o centro de custo"
+                searchPlaceholder="Buscar centro de custo..."
+                emptyText="Nenhum centro de custo encontrado"
+                disabled={submitting}
               />
             </div>
 

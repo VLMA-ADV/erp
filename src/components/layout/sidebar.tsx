@@ -6,7 +6,6 @@ import SidebarItem from './sidebar-item'
 import SidebarMenuPessoas from './sidebar-menu-pessoas'
 import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
 import SidebarMenuFaturamento from './sidebar-menu-faturamento'
-import { cn } from '@/lib/utils/cn'
 
 const menuItems = [
   {
@@ -70,36 +69,48 @@ export default function Sidebar() {
     )
   }
 
+  const renderMenuItem = (href: string) => {
+    const item = menuItems.find((menuItem) => menuItem.href === href)
+
+    if (!item || !hasPermission(item.permission)) {
+      return null
+    }
+
+    return (
+      <SidebarItem
+        key={item.href}
+        href={item.href}
+        label={item.label}
+        active={pathname === item.href}
+      />
+    )
+  }
+
   return (
     <aside className="w-64 border-r bg-gray-50 p-4">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">ERP-VLMA</h1>
       </div>
       <nav className="space-y-1">
+        {/* Menu Configuração (Expansível) */}
+        <SidebarMenuConfiguracao pathname={pathname} hasPermission={hasPermission} />
+
         {/* Menu Pessoas (Expansível) */}
         <SidebarMenuPessoas pathname={pathname} hasPermission={hasPermission} />
 
-        {/* Menu Configuração (Expansível) */}
-        <SidebarMenuConfiguracao pathname={pathname} hasPermission={hasPermission} />
+        {/* Outros itens do menu */}
+        {renderMenuItem('/home')}
+        {renderMenuItem('/crm')}
+        {renderMenuItem('/solicitacoes-contrato')}
+        {renderMenuItem('/contratos')}
+        {renderMenuItem('/timesheet')}
+        {renderMenuItem('/despesas')}
 
         {/* Menu Faturamento (Expansível) */}
         <SidebarMenuFaturamento pathname={pathname} hasPermission={hasPermission} />
 
-        {/* Outros itens do menu */}
-        {menuItems.map((item) => {
-          if (!hasPermission(item.permission)) {
-            return null
-          }
-
-          return (
-            <SidebarItem
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              active={pathname === item.href}
-            />
-          )
-        })}
+        {renderMenuItem('/avaliacoes-pdi')}
+        {renderMenuItem('/relatorios')}
       </nav>
     </aside>
   )
