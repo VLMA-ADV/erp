@@ -8,6 +8,7 @@ import { Upload, X, FileText, Loader2 } from 'lucide-react'
 interface CsvRow {
   nome: string
   cnpj: string
+  tipo: 'pessoa_juridica' | 'pessoa_fisica'
 }
 
 interface ImportResult {
@@ -24,9 +25,16 @@ function parseCsv(text: string): CsvRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim())
   if (lines.length < 2) return []
 
-  const header = lines[0].toLowerCase().split(/[;,\t]/).map((h) => h.trim())
-  const nomeIdx = header.findIndex((h) => h === 'nome' || h === 'razao_social' || h === 'razao social')
-  const cnpjIdx = header.findIndex((h) => h === 'cnpj' || h === 'cpf_cnpj' || h === 'cpf/cnpj')
+  const header = lines[0].toLowerCase().split(/[;,\t]/).map((h) => h.trim().replace(/^"|"$/g, ''))
+  const nomeIdx = header.findIndex((h) =>
+    h === 'nome' || h === 'nome do cliente' || h === 'razao_social' || h === 'razao social' || h === 'nome/razão social'
+  )
+  const cnpjIdx = header.findIndex((h) =>
+    h === 'cnpj' || h === 'cpf' || h === 'cnpj/cpf' || h === 'cpf/cnpj' || h === 'cpf_cnpj' || h === 'documento'
+  )
+  const categoriaIdx = header.findIndex((h) =>
+    h === 'categoria' || h === 'tipo' || h === 'tipo pessoa' || h === 'tipo_pessoa'
+  )
 
   if (nomeIdx === -1 || cnpjIdx === -1) return []
 
@@ -35,8 +43,13 @@ function parseCsv(text: string): CsvRow[] {
     const cols = lines[i].split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, ''))
     const nome = cols[nomeIdx]?.trim()
     const cnpj = cols[cnpjIdx]?.trim().replace(/[.\-/\s]/g, '')
+    const categoriaRaw = categoriaIdx >= 0 ? (cols[categoriaIdx]?.trim().toLowerCase() || '') : ''
+    const tipo: 'pessoa_juridica' | 'pessoa_fisica' =
+      categoriaRaw.includes('física') || categoriaRaw.includes('fisica') || categoriaRaw === 'pf'
+        ? 'pessoa_fisica'
+        : 'pessoa_juridica'
     if (nome && cnpj) {
-      rows.push({ nome, cnpj })
+      rows.push({ nome, cnpj, tipo })
     }
   }
   return rows
@@ -115,7 +128,7 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
           body: JSON.stringify({
             nome: row.nome,
             cnpj: row.cnpj,
-            tipo: row.cnpj.length <= 11 ? 'pessoa_fisica' : 'pessoa_juridica',
+            tipo: row.tipo,
             ativo: true,
           }),
         })
@@ -157,7 +170,7 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
       </div>
 
       <p className="text-xs text-slate-500">
-        O arquivo deve ter cabecalho com colunas <strong>nome</strong> e <strong>cnpj</strong> (separador: virgula, ponto-e-virgula ou tab).
+        Colunas aceitas: <strong>Nome do Cliente</strong> (ou <em>nome</em>) e <strong>CNPJ/CPF</strong> (ou <em>cnpj</em>). Coluna <strong>Categoria</strong> opcional para distinguir PF/PJ. Separador: vírgula, ponto-e-vírgula ou tab.
       </p>
 
       {!file && (
