@@ -692,46 +692,14 @@ export default function ContratoForm({
   }
 
   const validateDados = () => {
-    if (!form.cliente_id) return 'Cliente é obrigatório'
-    if (!form.forma_entrada) return 'Forma de entrada é obrigatória'
     return null
   }
 
-  const validateCasoBasico = (caso: CasoPayload) => {
-    if (!caso.nome.trim()) return 'Nome do caso é obrigatório'
-    if (!caso.servico_id) return 'Serviço do caso é obrigatório'
-    if (!caso.produto_id) return 'Produto do caso é obrigatório'
-    if (!caso.responsavel_id) return 'Responsável do caso é obrigatório'
+  const validateCasoBasico = (_caso: CasoPayload) => {
     return null
   }
 
-  const validateCasoFinanceiro = (caso: CasoPayload) => {
-    if (!caso.tipo_cobranca_documento) return 'Tipo de cobrança é obrigatório'
-    if (!caso.regra_cobranca) return 'Regra de cobrança é obrigatória'
-    if (caso.regra_cobranca === 'hora') {
-      const regrasCaso = caso.regra_cobranca_config || {}
-      const modo = regrasCaso.modo_preco || (regrasCaso.tabela_preco_id || regrasCaso.tabela_preco_nome ? 'tabela' : 'valor_hora')
-      if (modo === 'valor_hora' && !String(regrasCaso.valor_hora || '').trim()) {
-        return 'Informe o valor da hora ou selecione tabela de preço'
-      }
-      if (modo === 'valor_hora' && regrasCaso.cobra_excedente && !String(regrasCaso.valor_hora_excedente || '').trim()) {
-        return 'Informe o valor da hora excedente'
-      }
-      if (modo === 'tabela') {
-        if (!String(regrasCaso.tabela_preco_id || regrasCaso.tabela_preco_nome || '').trim()) {
-          return 'Selecione ou cadastre uma tabela de preço'
-        }
-        if (!Array.isArray(regrasCaso.tabela_preco_itens) || regrasCaso.tabela_preco_itens.length === 0) {
-          return 'A tabela de preço precisa ter itens por cargo'
-        }
-      }
-      if (regrasCaso.cap_enabled && regrasCaso.encontro_contas_enabled && !String(regrasCaso.encontro_periodicidade || '').trim()) {
-        return 'Selecione a periodicidade do encontro de contas'
-      }
-    }
-    if (caso.regra_cobranca === 'mensalidade_processo' && !String(caso.regra_cobranca_config?.valor_mensal || '').trim()) {
-      return 'Informe o valor mensal da mensalidade de processo'
-    }
+  const validateCasoFinanceiro = (_caso: CasoPayload) => {
     return null
   }
 

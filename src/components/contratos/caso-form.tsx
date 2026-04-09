@@ -1322,36 +1322,10 @@ export default function CasoForm({
   }, [currentBillingRule?.regra_cobranca, form.regra_cobranca])
 
   const validateFinanceiro = (): string | null => {
-    if (!form.tipo_cobranca_documento) return 'Tipo de cobrança é obrigatório'
-    if (!form.regra_cobranca) return 'Regra de cobrança é obrigatória'
-
-    if (form.regra_cobranca === 'hora') {
-      if (modoPreco === 'valor_hora' && !String(regras.valor_hora || '').trim()) {
-        return 'Informe o valor da hora'
-      }
-      if (modoPreco === 'valor_hora' && regras.cobra_excedente && !String(regras.valor_hora_excedente || '').trim()) {
-        return 'Informe o valor da hora excedente'
-      }
-      if (modoPreco === 'tabela' && !String(regras.tabela_preco_id || regras.tabela_preco_nome || '').trim()) {
-        return 'Selecione uma tabela de preço'
-      }
-      if (regras.cap_enabled && regras.encontro_contas_enabled && !String(regras.encontro_periodicidade || '').trim()) {
-        return 'Selecione a periodicidade do encontro de contas'
-      }
-    }
-
-    if (form.regra_cobranca === 'mensalidade_processo' && !String(regras.valor_mensal || '').trim()) {
-      return 'Informe o valor mensal da mensalidade de processo'
-    }
-
     return null
   }
 
   const validateBasico = (): string | null => {
-    if (!form.nome.trim()) return 'Nome do caso é obrigatório'
-    if (!form.servico_id) return 'Serviço do caso é obrigatório'
-    if (!form.produto_id) return 'Produto do caso é obrigatório'
-    if (!form.responsavel_id) return 'Responsável do caso é obrigatório'
     return null
   }
 
