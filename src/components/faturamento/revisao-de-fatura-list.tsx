@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -618,16 +618,16 @@ export default function RevisaoDeFaturaList() {
 
   const caseLabelById = useMemo(() => new Map(caseOptions.map((option) => [option.value, option.label])), [caseOptions])
 
-  const getLiveItemHours = (item: RevisaoItem, mode: ReviewMode) => {
+  const getLiveItemHours = useCallback((item: RevisaoItem, mode: ReviewMode) => {
     const draft = drafts[item.id]
     if (!draft) return getEffectiveItemHours(item)
     if (mode === 'timesheet') {
       return draft.timesheetRows.reduce((acc, row) => acc + parseDecimalInput(row.horasRevisadas || row.horasIniciais), 0)
     }
     return parseDecimalInput(draft.horas || String(getEffectiveItemHours(item)))
-  }
+  }, [drafts])
 
-  const getLiveItemValue = (item: RevisaoItem, mode: ReviewMode) => {
+  const getLiveItemValue = useCallback((item: RevisaoItem, mode: ReviewMode) => {
     const draft = drafts[item.id]
     if (!draft) return getEffectiveItemValue(item)
     if (mode === 'timesheet') {
@@ -639,9 +639,9 @@ export default function RevisaoDeFaturaList() {
     return draft.valueRows.length > 0
       ? draft.valueRows.reduce((acc, row) => acc + parseDecimalInput(row.valorRevisado), 0)
       : parseDecimalInput(draft.valor || String(getEffectiveItemValue(item)))
-  }
+  }, [drafts])
 
-  const getLiveCaseMetrics = (casoGroup: CasoGroup): CaseMetrics => {
+  const getLiveCaseMetrics = useCallback((casoGroup: CasoGroup): CaseMetrics => {
     const baseMetrics = getCaseBaseMetrics(casoGroup)
     const timesheetAnchor = baseMetrics.timesheetAnchorItem
     const timesheetHours = timesheetAnchor ? getLiveItemHours(timesheetAnchor, 'timesheet') : 0
@@ -656,9 +656,9 @@ export default function RevisaoDeFaturaList() {
       timesheetAnchorItem: timesheetAnchor,
       nonTimesheetItems: baseMetrics.nonTimesheetItems,
     }
-  }
+  }, [getLiveItemHours, getLiveItemValue])
 
-  const getReviewRows = (casoGroup: CasoGroup) => {
+  const getReviewRows = useCallback((casoGroup: CasoGroup) => {
     const metrics = getLiveCaseMetrics(casoGroup)
     const rows: Array<{ item: RevisaoItem; mode: ReviewMode; key: string }> = []
     if (metrics.timesheetAnchorItem) {
@@ -676,7 +676,7 @@ export default function RevisaoDeFaturaList() {
       })
     }
     return rows
-  }
+  }, [getLiveCaseMetrics])
 
   const allRows = useMemo(() => {
     const rows: Array<{ item: RevisaoItem; mode: ReviewMode; key: string }> = []
@@ -688,7 +688,7 @@ export default function RevisaoDeFaturaList() {
       }
     }
     return rows
-  }, [fullTree, drafts])
+  }, [fullTree, getReviewRows])
 
   const ruleButtons = useMemo(() => {
     const counts = new Map<RuleFilterKey, number>()
@@ -721,7 +721,7 @@ export default function RevisaoDeFaturaList() {
       },
       { horas: 0, valor: 0, itens: 0 },
     )
-  }, [tree, drafts])
+  }, [tree, getLiveCaseMetrics])
 
   const getResponsavelAtualNome = (item: RevisaoItem) => {
     return item.responsavelFluxoNome || item.responsavelRevisaoNome || item.responsavelAprovacaoNome || '-'
