@@ -1,11 +1,12 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
@@ -445,6 +446,7 @@ export default function RevisaoDeFaturaList() {
   const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
 
   const canRead =
     hasPermission('finance.faturamento.read') ||
@@ -947,6 +949,47 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  const postergarItem = async (item: RevisaoItem) => {
+    try {
+      setBusyKey(`postergar:${item.id}`)
+      const accessToken = await getSessionToken()
+      if (!accessToken) return false
+
+      // Calcula o primeiro dia do próximo mês a partir de hoje
+      const hoje = new Date()
+      const proximoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1)
+      const periodoFaturamento = proximoMes.toISOString().slice(0, 10)
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-timesheet`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: item.timesheetId,
+          periodo_faturamento: periodoFaturamento,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao postergar item')
+        return false
+      }
+
+      success(`Item postergado para ${proximoMes.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}.`)
+      await loadItems()
+      return true
+    } catch (postergarError) {
+      console.error(postergarError)
+      toastError('Erro ao postergar item')
+      return false
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   if (!canRead) {
     return (
       <div className="rounded-md bg-red-50 p-4">
@@ -1252,7 +1295,7 @@ export default function RevisaoDeFaturaList() {
                                                     </td>
                                                     <td className="px-3 py-3 text-right text-sm text-slate-700">{hoursToMinutes(liveHours)}</td>
                                                     <td className="px-3 py-3 text-right text-sm font-medium text-slate-900">{formatMoney(liveValue)}</td>
-                                                    <td className="px-3 py-3">
+                                                      <td className="px-3 py-3">
                                                       <div className="flex items-center justify-end gap-2">
                                                         <Button
                                                           size="sm"
@@ -1260,7 +1303,7 @@ export default function RevisaoDeFaturaList() {
                                                           onClick={() => void saveAndAdvance(item, mode)}
                                                           disabled={!canAdvance(item.status) || busy}
                                                         >
-                                                          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                          {busy && busyKey !== `postergar:${item.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                                           OK
                                                         </Button>
                                                         <Button
@@ -1271,6 +1314,22 @@ export default function RevisaoDeFaturaList() {
                                                         >
                                                           Editar
                                                         </Button>
+                                                        {item.timesheetId ? (
+                                                          <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                            onClick={() => setPostergarConfirmId(item.id)}
+                                                            disabled={busy}
+                                                            title="Postergar para próximo mês"
+                                                          >
+                                                            {busyKey === `postergar:${item.id}` ? (
+                                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                              <Clock className="h-4 w-4" />
+                                                            )}
+                                                          </Button>
+                                                        ) : null}
                                                       </div>
                                                     </td>
                                                   </tr>
@@ -1471,6 +1530,39 @@ export default function RevisaoDeFaturaList() {
           })}
         </div>
       )}
+
+      <Dialog open={postergarConfirmId !== null} onOpenChange={(open) => !open && setPostergarConfirmId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Postergar lançamento</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            Mover este lançamento para o faturamento do próximo mês?
+          </p>
+          <p className="text-xs text-slate-400">
+            O item será removido da lista atual e reaparecerá no período seguinte.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPostergarConfirmId(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="default"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                const confirmId = postergarConfirmId
+                setPostergarConfirmId(null)
+                if (confirmId) {
+                  const item = items.find((i) => i.id === confirmId)
+                  if (item) void postergarItem(item)
+                }
+              }}
+            >
+              Postergar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

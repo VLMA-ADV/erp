@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { FilePlus2, Paperclip } from 'lucide-react'
+import { ChevronDown, ChevronRight, FilePlus2, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { maskCNPJ, onlyDigits } from '@/lib/utils/masks'
@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import SolicitacaoMensagens from './solicitacao-mensagens'
 
 interface SolicitacaoAnexo {
   id: string
@@ -112,6 +113,7 @@ export default function SolicitacoesContratoList() {
   const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [creatingCliente, setCreatingCliente] = useState(false)
+  const [expandedMensagens, setExpandedMensagens] = useState<Record<string, boolean>>({})
   const [crmCardIdPrefill, setCrmCardIdPrefill] = useState('')
   const [lastCrmPrefillToken, setLastCrmPrefillToken] = useState('')
 
@@ -236,8 +238,14 @@ export default function SolicitacoesContratoList() {
     if (!response.ok) return
 
     const nextAreas = (payload.data || [])
-      .filter((item: any) => item?.id && item?.nome)
-      .map((item: any) => ({ id: item.id as string, nome: item.nome as string }))
+      .filter((item: unknown) => {
+        const obj = item as Record<string, unknown>
+        return obj?.id && obj?.nome
+      })
+      .map((item: unknown) => {
+        const obj = item as Record<string, unknown>
+        return { id: obj.id as string, nome: obj.nome as string }
+      })
 
     setAreas(nextAreas)
   }
@@ -516,6 +524,7 @@ export default function SolicitacoesContratoList() {
         <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
+              <th className="w-8 px-4 py-3" />
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Solicitante</th>
@@ -546,63 +555,85 @@ export default function SolicitacoesContratoList() {
                     : item.status === 'cancelada'
                       ? 'border-red-200 bg-red-100 text-red-700'
                       : 'border-yellow-200 bg-yellow-100 text-yellow-700'
+                const mensagensExpanded = expandedMensagens[item.id] === true
 
                 return (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3 align-top text-sm">
-                      <p className="font-medium text-gray-900">{item.nome || item.descricao}</p>
-                      {item.descricao && item.descricao !== item.nome ? (
-                        <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.descricao}</p>
-                      ) : null}
-                      <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{item.cliente_nome || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{item.solicitante_nome || '-'}</td>
-                    <td className="px-4 py-3">
-                      <Badge className={statusClassName}>{item.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {item.contrato_id ? `${item.contrato_numero || '-'} - ${item.contrato_nome || '-'}` : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {item.anexos?.length ? (
-                        <div className="space-y-1">
-                          {item.anexos.map((anexo) => (
-                            <button
-                              key={anexo.id}
-                              type="button"
-                              className="w-full rounded border p-2 text-left transition hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => void openSolicitacaoAnexo(anexo.id)}
-                              disabled={openingAnexoId === anexo.id}
-                              title="Clique para visualizar o anexo"
-                            >
-                              <p className="font-medium">{anexo.nome}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {anexo.arquivo_nome} · {formatBytes(anexo.tamanho_bytes)}
-                                {openingAnexoId === anexo.id ? ' · Abrindo...' : ''}
-                              </p>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        {item.status === 'concluida' && item.contrato_id ? (
-                          <Link
-                            href={`/contratos?contrato_id=${encodeURIComponent(item.contrato_id)}&search=${encodeURIComponent(
-                              item.contrato_nome || String(item.contrato_numero || ''),
-                            )}`}
-                          >
-                            <Button size="sm" variant="outline">Ir para contrato</Button>
-                          </Link>
+                  <Fragment key={item.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMensagens((prev) => ({ ...prev, [item.id]: !mensagensExpanded }))}
+                          className="text-slate-400 hover:text-slate-700"
+                          title="Ver mensagens"
+                        >
+                          {mensagensExpanded
+                            ? <ChevronDown className="h-4 w-4" />
+                            : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 align-top text-sm">
+                        <p className="font-medium text-gray-900">{item.nome || item.descricao}</p>
+                        {item.descricao && item.descricao !== item.nome ? (
+                          <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.descricao}</p>
                         ) : null}
+                        <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{item.cliente_nome || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{item.solicitante_nome || '-'}</td>
+                      <td className="px-4 py-3">
+                        <Badge className={statusClassName}>{item.status}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {item.contrato_id ? `${item.contrato_numero || '-'} - ${item.contrato_nome || '-'}` : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {item.anexos?.length ? (
+                          <div className="space-y-1">
+                            {item.anexos.map((anexo) => (
+                              <button
+                                key={anexo.id}
+                                type="button"
+                                className="w-full rounded border p-2 text-left transition hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void openSolicitacaoAnexo(anexo.id)}
+                                disabled={openingAnexoId === anexo.id}
+                                title="Clique para visualizar o anexo"
+                              >
+                                <p className="font-medium">{anexo.nome}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {anexo.arquivo_nome} · {formatBytes(anexo.tamanho_bytes)}
+                                  {openingAnexoId === anexo.id ? ' · Abrindo...' : ''}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          {item.status === 'concluida' && item.contrato_id ? (
+                            <Link
+                              href={`/contratos?contrato_id=${encodeURIComponent(item.contrato_id)}&search=${encodeURIComponent(
+                                item.contrato_nome || String(item.contrato_numero || ''),
+                              )}`}
+                            >
+                              <Button size="sm" variant="outline">Ir para contrato</Button>
+                            </Link>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
 
-                      </div>
-                    </td>
-                  </tr>
+                    {mensagensExpanded ? (
+                      <tr className="bg-slate-50/70">
+                        <td colSpan={8} className="px-6 py-4">
+                          <SolicitacaoMensagens solicitacaoId={item.id} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 )
               })
             )}

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Input } from '@/components/ui/input'
 import ClientesTable from './clientes-table'
+import ClientesCsvUpload from './clientes-csv-upload'
 
 export interface ClienteListItem {
   id: string
@@ -104,6 +105,7 @@ export default function ClientesList() {
           placeholder="Buscar por nome ou CNPJ..."
           className="max-w-md"
         />
+        <ClientesCsvUpload onComplete={fetchItems} />
       </div>
 
       <ClientesTable items={items} loading={loading} onRefresh={fetchItems} />
