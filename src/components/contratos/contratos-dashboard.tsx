@@ -33,13 +33,13 @@ function normalizeList(value: unknown): DashboardListItem[] {
 }
 
 function MiniBarChart({ title, items }: { title: string; items: DashboardListItem[] }) {
-  const topItems = items.slice(0, 5)
+  const topItems = items.slice(0, 4)
   const max = topItems.reduce((acc, item) => Math.max(acc, item.total), 0)
 
   return (
-    <div className="rounded-lg border bg-white p-3 shadow-sm">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
-      <div className="space-y-2">
+    <div className="flex h-full min-h-[132px] flex-col rounded-xl border bg-white p-3 shadow-sm">
+      <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500">{title}</p>
+      <div className="space-y-1.5">
         {topItems.length === 0 ? (
           <p className="text-xs text-gray-400">Sem dados</p>
         ) : (
@@ -47,12 +47,12 @@ function MiniBarChart({ title, items }: { title: string; items: DashboardListIte
             const width = max > 0 ? (item.total / max) * 100 : 0
             return (
               <div key={`${title}-${item.nome}`} className="space-y-1">
-                <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="truncate text-gray-600">{item.nome}</span>
                   <span className="font-medium text-gray-900">{item.total}</span>
                 </div>
-                <div className="h-2 rounded-full bg-gray-100">
-                  <div className="h-2 rounded-full bg-blue-500" style={{ width: `${width}%` }} />
+                <div className="h-1.5 rounded-full bg-gray-100">
+                  <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${width}%` }} />
                 </div>
               </div>
             )
@@ -65,31 +65,33 @@ function MiniBarChart({ title, items }: { title: string; items: DashboardListIte
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-3">
-        {[1, 2, 3].map((item) => (
-          <div key={item} className="rounded-lg border bg-white p-3 shadow-sm">
-            <div className="animate-pulse space-y-2">
-              <div className="h-3 w-24 rounded bg-gray-200" />
-              <div className="h-7 w-16 rounded bg-gray-200" />
+    <div className="rounded-2xl border bg-slate-50/80 p-3">
+      <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          {[1, 2, 3].map((item) => (
+            <div key={item} className="rounded-xl border bg-white p-3 shadow-sm">
+              <div className="animate-pulse space-y-2">
+                <div className="h-3 w-20 rounded bg-gray-200" />
+                <div className="h-7 w-14 rounded bg-gray-200" />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-      <div className="grid gap-3 lg:grid-cols-3">
-        {[1, 2, 3].map((item) => (
-          <div key={`chart-${item}`} className="rounded-lg border bg-white p-3 shadow-sm">
-            <div className="animate-pulse space-y-2">
-              <div className="h-3 w-28 rounded bg-gray-200" />
-              {[1, 2, 3].map((row) => (
-                <div key={row} className="space-y-1">
-                  <div className="h-3 w-full rounded bg-gray-100" />
-                  <div className="h-2 w-full rounded bg-gray-200" />
-                </div>
-              ))}
+          ))}
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {[1, 2, 3].map((item) => (
+            <div key={`chart-${item}`} className="rounded-xl border bg-white p-3 shadow-sm">
+              <div className="animate-pulse space-y-2">
+                <div className="h-3 w-24 rounded bg-gray-200" />
+                {[1, 2, 3].map((row) => (
+                  <div key={row} className="space-y-1">
+                    <div className="h-2.5 w-full rounded bg-gray-100" />
+                    <div className="h-1.5 w-full rounded bg-gray-200" />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -155,26 +157,28 @@ export default function ContratosDashboard() {
   if (!data) return null
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border bg-white p-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-gray-500">Contratos</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{data.total_contratos}</p>
+    <div className="overflow-hidden rounded-2xl border bg-slate-50/80 p-3">
+      <div className="grid gap-3 xl:max-h-[200px] xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <div className="rounded-xl border bg-white p-3 shadow-sm">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Contratos</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.total_contratos}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-3 shadow-sm">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Casos</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.total_casos}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-3 shadow-sm">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Reajuste 2026</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.com_reajuste_2026}</p>
+          </div>
         </div>
-        <div className="rounded-lg border bg-white p-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-gray-500">Casos</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{data.total_casos}</p>
-        </div>
-        <div className="rounded-lg border bg-white p-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-gray-500">Com reajuste</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{data.com_reajuste_2026}</p>
-        </div>
-      </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
         <MiniBarChart title="Por responsável" items={data.por_responsavel} />
         <MiniBarChart title="Por serviço" items={data.por_servico} />
         <MiniBarChart title="Por produto" items={data.por_produto} />
+        </div>
       </div>
     </div>
   )

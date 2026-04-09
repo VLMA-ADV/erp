@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
     }
 
     const normalizedData = data ?? {};
+    const { data: tenantUserData } = await supabase.rpc("get_user_tenant", { p_user_id: user.id });
+    const tenantId = tenantUserData?.[0]?.tenant_id as string | undefined;
 
     if (!Array.isArray((normalizedData as any).cargos) || (normalizedData as any).cargos.length === 0) {
       try {
@@ -92,6 +94,34 @@ Deno.serve(async (req) => {
 
     if (!Array.isArray((normalizedData as any).tabelas_preco)) {
       (normalizedData as any).tabelas_preco = [];
+    }
+
+    if (Array.isArray((normalizedData as any).colaboradores)) {
+      (normalizedData as any).colaboradores = (normalizedData as any).colaboradores.filter((item: any) => item?.ativo !== false);
+    }
+
+    if (
+      (!Array.isArray((normalizedData as any).colaboradores) || (normalizedData as any).colaboradores.length === 0) &&
+      tenantId
+    ) {
+      try {
+        const { data: colaboradoresData } = await supabase
+          .schema("people")
+          .from("colaboradores")
+          .select("id,nome,categoria,ativo")
+          .eq("tenant_id", tenantId)
+          .eq("ativo", true)
+          .order("nome", { ascending: true });
+
+        (normalizedData as any).colaboradores = (colaboradoresData ?? []).map((colaborador: any) => ({
+          id: colaborador.id,
+          nome: colaborador.nome,
+          categoria: colaborador.categoria ?? undefined,
+          ativo: colaborador.ativo,
+        }));
+      } catch (_colaboradoresError) {
+        (normalizedData as any).colaboradores = [];
+      }
     }
 
     if (!Array.isArray((normalizedData as any).servicos)) {
@@ -142,4 +172,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

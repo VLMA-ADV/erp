@@ -13,7 +13,14 @@ import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
 import { Table } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
-import ContratosDashboard from './contratos-dashboard'
+
+function getContratoDisplayLabel(item: Pick<ContratoListItem, 'numero_sequencial' | 'nome_contrato'>) {
+  if (typeof item.numero_sequencial === 'number' && item.numero_sequencial > 0) {
+    return `Contrato ${item.numero_sequencial}`
+  }
+  const fallback = item.nome_contrato?.trim()
+  return fallback || 'Contrato sem identificador'
+}
 
 export default function ContratosList() {
   const searchParams = useSearchParams()
@@ -71,6 +78,8 @@ export default function ContratosList() {
         const s = search.toLowerCase()
         list = list.filter((c) =>
           String(c.numero || '').includes(s) ||
+          String(c.numero_sequencial || '').includes(s) ||
+          getContratoDisplayLabel(c).toLowerCase().includes(s) ||
           c.nome_contrato.toLowerCase().includes(s) ||
           c.cliente_nome.toLowerCase().includes(s) ||
           c.casos?.some((caso) => String(caso.numero || '').includes(s) || caso.nome.toLowerCase().includes(s)),
@@ -161,8 +170,6 @@ export default function ContratosList() {
   return (
     <div className="space-y-4">
       {error && <div className="rounded-md bg-red-50 p-4 text-sm text-red-800">{error}</div>}
-
-      <ContratosDashboard />
 
       <div className="flex items-center justify-between gap-3">
         <Input
@@ -259,7 +266,9 @@ export default function ContratosList() {
                                   {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                 </button>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.numero || '-'} - {item.nome_contrato}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {getContratoDisplayLabel(item)}
+                              </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusPill(item.status)}`}>
                                   {formatContractStatus(item.status)}

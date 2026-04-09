@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MoneyInput } from '@/components/ui/money-input'
 import { NativeSelect } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -25,6 +26,7 @@ import type { CasoPayload, ContratoFormOptions } from './types'
 
 const emptyCaso: CasoPayload = {
   nome: '',
+  observacao: '',
   servico_id: '',
   produto_id: '',
   responsavel_id: '',
@@ -227,6 +229,23 @@ function cloneCasoValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+function buildInheritedReajusteVigenciaPatch(source?: Partial<CasoPayload> | null): Partial<CasoPayload> {
+  if (!source) return {}
+
+  const possuiReajuste = source.possui_reajuste !== false
+  const inicioVigencia = String(source.inicio_vigencia || '')
+  const dataUltimoReajuste = String(source.data_ultimo_reajuste || inicioVigencia || '')
+
+  return {
+    possui_reajuste: possuiReajuste,
+    inicio_vigencia: inicioVigencia,
+    periodo_reajuste: possuiReajuste ? String(source.periodo_reajuste || emptyCaso.periodo_reajuste) : 'nao_tem',
+    data_proximo_reajuste: String(source.data_proximo_reajuste || ''),
+    data_ultimo_reajuste: dataUltimoReajuste,
+    indice_reajuste: possuiReajuste ? String(source.indice_reajuste || emptyCaso.indice_reajuste) : 'nao_tem',
+  }
+}
+
 export default function CasoForm({
   contratoId,
   casoId,
@@ -327,7 +346,10 @@ export default function CasoForm({
     [options.produtos],
   )
   const colaboradorOptions = useMemo(
-    () => (options.colaboradores || []).map((item) => ({ value: item.id, label: item.nome })),
+    () =>
+      (options.colaboradores || [])
+        .filter((item) => item.ativo !== false)
+        .map((item) => ({ value: item.id, label: item.nome })),
     [options.colaboradores],
   )
   const indicacaoOptions = useMemo(
@@ -480,6 +502,7 @@ export default function CasoForm({
       servico_id: String(lastCase.servico_id || ''),
       produto_id: String(lastCase.produto_id || ''),
       responsavel_id: String(lastCase.responsavel_id || ''),
+      ...buildInheritedReajusteVigenciaPatch(lastCase),
       regra_cobranca: normalizeRegraCobranca(lastCase.regra_cobranca as CasoPayload['regra_cobranca']),
       regra_cobranca_config: cloneCasoValue(sanitizeSingleRuleConfig(lastCase.regra_cobranca_config || {})),
       centro_custo_rateio: cloneCasoValue(lastCase.centro_custo_rateio || []),
@@ -683,6 +706,7 @@ export default function CasoForm({
           const loadedForm: CasoPayload = {
             ...emptyCaso,
             nome: caso.nome || '',
+            observacao: caso.observacao || '',
             servico_id: caso.servico_id || '',
             produto_id: caso.produto_id || '',
             responsavel_id: caso.responsavel_id || '',
@@ -746,6 +770,15 @@ export default function CasoForm({
           setSelectedBillingRuleIndex(0)
           setCaseAnexos(((caso?.anexos || []) as CasoAnexoItem[]) ?? [])
         } else {
+          const lastCase =
+            Array.isArray(contratoData.data?.casos) && contratoData.data.casos.length > 0
+              ? contratoData.data.casos[contratoData.data.casos.length - 1]
+              : null
+          const inheritedPatch = buildInheritedReajusteVigenciaPatch(lastCase)
+          setForm({
+            ...emptyCaso,
+            ...inheritedPatch,
+          })
           const initialRule: BillingRuleDraft = {
             id: createRuleId(),
             status: 'rascunho',
@@ -753,11 +786,11 @@ export default function CasoForm({
             tipo_cobranca_documento: emptyCaso.tipo_cobranca_documento,
             data_inicio_faturamento: emptyCaso.data_inicio_faturamento,
             pagamento_dia_mes: emptyCaso.pagamento_dia_mes,
-            inicio_vigencia: emptyCaso.inicio_vigencia,
-            periodo_reajuste: emptyCaso.periodo_reajuste,
-            data_proximo_reajuste: emptyCaso.data_proximo_reajuste,
-            data_ultimo_reajuste: emptyCaso.data_ultimo_reajuste,
-            indice_reajuste: emptyCaso.indice_reajuste,
+            inicio_vigencia: String(inheritedPatch.inicio_vigencia || emptyCaso.inicio_vigencia),
+            periodo_reajuste: String(inheritedPatch.periodo_reajuste || emptyCaso.periodo_reajuste),
+            data_proximo_reajuste: String(inheritedPatch.data_proximo_reajuste || emptyCaso.data_proximo_reajuste),
+            data_ultimo_reajuste: String(inheritedPatch.data_ultimo_reajuste || emptyCaso.data_ultimo_reajuste),
+            indice_reajuste: String(inheritedPatch.indice_reajuste || emptyCaso.indice_reajuste),
             regra_cobranca: emptyCaso.regra_cobranca,
             regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
             pagadores_servico: [],
@@ -1365,7 +1398,7 @@ export default function CasoForm({
         possui_reajuste: possuiReajuste,
         possui_cap_horas: capDesejadoEnabled,
         regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
-        data_ultimo_reajuste: form.data_ultimo_reajuste || form.data_inicio_faturamento,
+        data_ultimo_reajuste: form.data_ultimo_reajuste || form.inicio_vigencia || '',
         regras_financeiras: preparedRules.map((rule) => ({
           ...rule,
           regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
@@ -1694,6 +1727,16 @@ export default function CasoForm({
               <div className="space-y-2 md:col-span-2">
                 <Label>Nome</Label>
                 <Input value={form.nome} onChange={(e) => setField('nome', e.target.value)} disabled={isReadOnly} />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Observação</Label>
+                <Textarea
+                  value={form.observacao || ''}
+                  onChange={(event) => setField('observacao', event.target.value)}
+                  disabled={isReadOnly}
+                  placeholder="Observações livres sobre o caso"
+                />
               </div>
 
               <div className="space-y-2">
@@ -3075,7 +3118,7 @@ export default function CasoForm({
           </Button>
           {!isReadOnly && (
             <Button onClick={submit} disabled={loading}>
-              {loading ? 'Salvando...' : isEdit ? 'Atualizar contrato' : 'Criar caso'}
+              {loading ? 'Salvando...' : isEdit ? 'Atualizar caso' : 'Criar caso'}
             </Button>
           )}
         </div>

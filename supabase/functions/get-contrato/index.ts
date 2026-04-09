@@ -6,6 +6,32 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function enrichContratoWithSequentialData(
+  supabase: ReturnType<typeof createClient>,
+  payload: any,
+  contratoId: string,
+) {
+  const { data: record } = await supabase
+    .schema("contracts")
+    .from("contratos")
+    .select("id, numero_sequencial, nome_contrato")
+    .eq("id", contratoId)
+    .maybeSingle();
+
+  if (!record || !payload || typeof payload !== "object") return payload;
+
+  const nextPayload = { ...payload };
+  const contrato = nextPayload.contrato && typeof nextPayload.contrato === "object"
+    ? { ...nextPayload.contrato }
+    : {};
+
+  contrato.numero_sequencial = record.numero_sequencial ?? contrato.numero_sequencial ?? null;
+  contrato.nome_contrato = record.nome_contrato ?? contrato.nome_contrato ?? "";
+  nextPayload.contrato = contrato;
+
+  return nextPayload;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -68,7 +94,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ data }), {
+    const enrichedData = await enrichContratoWithSequentialData(supabase, data, contratoId);
+
+    return new Response(JSON.stringify({ data: enrichedData }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -79,4 +107,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

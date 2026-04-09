@@ -1,6 +1,7 @@
 export interface ContratoListItem {
   id: string
   numero?: number
+  numero_sequencial?: number | null
   cliente_id: string
   cliente_nome: string
   nome_contrato: string
@@ -39,7 +40,7 @@ export interface ContratoFormOptions {
   produtos: Array<{ id: string; nome: string }>
   centros_custo: Array<{ id: string; nome: string }>
   cargos: Array<{ id: string; nome: string }>
-  colaboradores: Array<{ id: string; nome: string; categoria?: string }>
+  colaboradores: Array<{ id: string; nome: string; categoria?: string; ativo?: boolean }>
   socios: Array<{ id: string; nome: string }>
   tabelas_preco?: Array<{
     id: string
@@ -59,6 +60,7 @@ export interface CasoPayload {
   anexos?: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }>
   regras_financeiras?: Array<Record<string, any>>
   nome: string
+  observacao?: string
   servico_id?: string
   produto_id: string
   responsavel_id: string
@@ -93,7 +95,8 @@ export interface CasoPayload {
 
 export interface ContratoPayload {
   cliente_id: string
-  nome_contrato: string
+  nome_contrato?: string
+  numero_sequencial?: number | null
   forma_entrada?: 'organico' | 'prospeccao' | ''
   responsavel_prospeccao_id?: string | null
   canal_prospeccao?: string | null

@@ -31,6 +31,9 @@ function sanitizeCaso(caso: any) {
 function sanitizeContratoPayload(payload: any) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const next = { ...payload };
+  if (next.status === "em_analise") {
+    next.status = "validacao";
+  }
   if (Array.isArray(next.casos)) {
     next.casos = next.casos.map((caso: any) => sanitizeCaso(caso));
   }
@@ -108,6 +111,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (tenantUser?.tenant_id && Object.prototype.hasOwnProperty.call(sanitizedBody, "responsavel_prospeccao_id")) {
+      const { error: syncError } = await supabase
+        .schema("contracts")
+        .from("contratos")
+        .update({
+          responsavel_prospeccao_id:
+            sanitizedBody.forma_entrada === "prospeccao"
+              ? sanitizedBody.responsavel_prospeccao_id || null
+              : null,
+        })
+        .eq("id", sanitizedBody.id)
+        .eq("tenant_id", tenantUser.tenant_id);
+
+      if (syncError) {
+        return new Response(JSON.stringify({ error: syncError.message, details: syncError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (tenantUser?.tenant_id) {
       await createAuditLog({
         supabase,
@@ -134,4 +158,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

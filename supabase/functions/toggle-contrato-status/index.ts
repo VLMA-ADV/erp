@@ -26,6 +26,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const requestedStatus = body.status === "em_analise" ? "validacao" : body.status;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase.rpc("toggle_contrato_status", {
       p_user_id: user.id,
       p_contrato_id: body.id,
-      p_status: body.status,
+      p_status: requestedStatus,
     });
 
     if (error) {
@@ -80,7 +81,7 @@ Deno.serve(async (req) => {
         entidadeId: body.id,
         acao: "update",
         userId: user.id,
-        dadosNovos: { status: body.status },
+        dadosNovos: { status: requestedStatus },
         ipAddress: getIpAddress(req),
         userAgent: getUserAgent(req),
       });
@@ -97,4 +98,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

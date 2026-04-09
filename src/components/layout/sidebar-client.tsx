@@ -37,7 +37,7 @@ const menuItems = [
     permission: 'operations.timesheet.read',
   },
   {
-    label: 'Despesas',
+    label: 'Despesas dos casos',
     href: '/despesas',
     permission: 'operations.despesas.read',
   },

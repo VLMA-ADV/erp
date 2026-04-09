@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MoneyInput } from '@/components/ui/money-input'
 import { NativeSelect } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
@@ -79,6 +80,7 @@ interface ProspecaoConfig {
 interface ContratoFormState {
   cliente_id: string
   nome_contrato: string
+  numero_sequencial: number | null
   forma_entrada: 'organico' | 'prospeccao' | ''
   responsavel_prospeccao_id: string
   canal_prospeccao: string
@@ -125,6 +127,7 @@ const caseSubsteps: Array<{ key: CaseSubstepKey; label: string; icon: typeof Lay
 const emptyCaso: CasoPayload = {
   status: 'rascunho',
   nome: '',
+  observacao: '',
   servico_id: '',
   produto_id: '',
   responsavel_id: '',
@@ -215,6 +218,7 @@ function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
 const emptyState: ContratoFormState = {
   cliente_id: '',
   nome_contrato: '',
+  numero_sequencial: null,
   forma_entrada: '',
   responsavel_prospeccao_id: '',
   canal_prospeccao: '',
@@ -273,6 +277,23 @@ function formatContratoStatus(status?: string) {
   return normalized
 }
 
+function formatContratoIdentifier(numeroSequencial?: number | null) {
+  return typeof numeroSequencial === 'number' && numeroSequencial > 0 ? `Contrato ${numeroSequencial}` : ''
+}
+
+function getContratoDisplayName(numeroSequencial?: number | null, nomeContrato?: string | null) {
+  const identifier = formatContratoIdentifier(numeroSequencial)
+  if (identifier) return identifier
+  const fallback = String(nomeContrato || '').trim()
+  return fallback || 'Será gerado automaticamente ao salvar'
+}
+
+function getPersistedContractName(numeroSequencial?: number | null, nomeContrato?: string | null) {
+  const fallback = String(nomeContrato || '').trim()
+  if (fallback) return fallback
+  return formatContratoIdentifier(numeroSequencial)
+}
+
 function normalizeProspecaoConfig(value: unknown): ProspecaoConfig {
   const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {}
   const rawPagadores = Array.isArray(raw.pagadores)
@@ -329,6 +350,26 @@ function buildLegacyRuleFromCaso(caso: CasoPayload): BillingRuleDraft {
     pagadores_servico: [...(caso.pagadores_servico || [])],
     indicacao_config: { ...(caso.indicacao_config || emptyCaso.indicacao_config) },
   }
+}
+
+function buildInheritedReajusteVigenciaPatch(source?: Partial<CasoPayload> | null): Partial<CasoPayload> {
+  if (!source) return {}
+
+  const inicioVigencia = String(source.inicio_vigencia || '')
+  const possuiReajuste = source.possui_reajuste !== false
+  const dataUltimoReajuste = String(source.data_ultimo_reajuste || inicioVigencia || '')
+
+  return {
+    inicio_vigencia: inicioVigencia,
+    periodo_reajuste: possuiReajuste ? String(source.periodo_reajuste || emptyCaso.periodo_reajuste) : 'nao_tem',
+    data_proximo_reajuste: String(source.data_proximo_reajuste || ''),
+    data_ultimo_reajuste: dataUltimoReajuste,
+    indice_reajuste: possuiReajuste ? String(source.indice_reajuste || emptyCaso.indice_reajuste) : 'nao_tem',
+  }
+}
+
+function toPersistedContratoStatus(status: ContratoFormState['status']) {
+  return status === 'em_analise' ? 'validacao' : status
 }
 
 function sanitizeSingleRuleConfig(config: Record<string, any> | undefined | null) {
@@ -428,7 +469,10 @@ export default function ContratoForm({
     [options.produtos],
   )
   const colaboradorOptions = useMemo(
-    () => (options.colaboradores || []).map((item) => ({ value: item.id, label: item.nome })),
+    () =>
+      (options.colaboradores || [])
+        .filter((item) => item.ativo !== false)
+        .map((item) => ({ value: item.id, label: item.nome })),
     [options.colaboradores],
   )
   const aprovadorOptions = useMemo(
@@ -649,7 +693,6 @@ export default function ContratoForm({
 
   const validateDados = () => {
     if (!form.cliente_id) return 'Cliente é obrigatório'
-    if (!form.nome_contrato.trim()) return 'Nome do contrato é obrigatório'
     if (!form.forma_entrada) return 'Forma de entrada é obrigatória'
     return null
   }
@@ -874,6 +917,10 @@ export default function ContratoForm({
           setForm({
             cliente_id: contrato.cliente_id || '',
             nome_contrato: contrato.nome_contrato || '',
+            numero_sequencial:
+              typeof (contrato as any).numero_sequencial === 'number'
+                ? (contrato as any).numero_sequencial
+                : Number((contrato as any).numero_sequencial || 0) || null,
             forma_entrada: (contrato.forma_entrada || '') as 'organico' | 'prospeccao' | '',
             responsavel_prospeccao_id: String((contrato as any).responsavel_prospeccao_id || ''),
             canal_prospeccao: String((contrato as any).canal_prospeccao || ''),
@@ -1553,9 +1600,10 @@ export default function ContratoForm({
   }, [crossSellEnabled, crossSellPeriodicidade, crossSellModo, regras, currentCaso.pagamento_dia_mes])
 
   const addCaso = () => {
+    const inheritedPatch = buildInheritedReajusteVigenciaPatch(form.casos[form.casos.length - 1])
     setForm((prev) => ({
       ...prev,
-      casos: [...prev.casos, { ...emptyCaso }],
+      casos: [...prev.casos, { ...emptyCaso, ...inheritedPatch }],
     }))
     setSelectedCaseIndex(form.casos.length)
     setSubstep('basico')
@@ -1767,7 +1815,8 @@ export default function ContratoForm({
         },
         body: JSON.stringify({
           cliente_id: form.cliente_id,
-          nome_contrato: form.nome_contrato,
+          nome_contrato: getPersistedContractName(form.numero_sequencial, form.nome_contrato) || null,
+          numero_sequencial: form.numero_sequencial,
           forma_entrada: form.forma_entrada || null,
           responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
           canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
@@ -1778,15 +1827,21 @@ export default function ContratoForm({
       })
       const data = await resp.json()
       if (!resp.ok) {
-        const msg = data.error || 'Erro ao salvar rascunho do contrato'
-        throw new Error(
-          msg.includes('unique constraint') || msg.includes('duplicate key')
-            ? `Já existe um contrato com o nome "${form.nome_contrato}". Escolha outro nome.`
-            : msg,
-        )
+        throw new Error(data.error || 'Erro ao salvar rascunho do contrato')
       }
       const id = data.data?.id as string | undefined
       if (!id) throw new Error('Contrato criado sem retorno de ID')
+      const nextNumeroSequencial =
+        typeof data.data?.numero_sequencial === 'number'
+          ? data.data.numero_sequencial
+          : Number(data.data?.numero_sequencial || 0) || null
+      if (nextNumeroSequencial) {
+        setForm((prev) => ({
+          ...prev,
+          numero_sequencial: nextNumeroSequencial,
+          nome_contrato: prev.nome_contrato || String(data.data?.nome_contrato || ''),
+        }))
+      }
       setDraftContratoId(id)
       return id
     })()
@@ -2041,7 +2096,8 @@ export default function ContratoForm({
             body: JSON.stringify({
               id: contratoId,
               cliente_id: form.cliente_id,
-              nome_contrato: form.nome_contrato,
+              nome_contrato: getPersistedContractName(form.numero_sequencial, form.nome_contrato) || null,
+              numero_sequencial: form.numero_sequencial,
               forma_entrada: form.forma_entrada || null,
               responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
               canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
@@ -2099,7 +2155,8 @@ export default function ContratoForm({
         body: JSON.stringify({
           id: contractTargetId,
           cliente_id: form.cliente_id,
-          nome_contrato: form.nome_contrato,
+          nome_contrato: getPersistedContractName(form.numero_sequencial, form.nome_contrato) || null,
+          numero_sequencial: form.numero_sequencial,
           forma_entrada: form.forma_entrada || null,
           responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
           canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
@@ -2162,7 +2219,7 @@ export default function ContratoForm({
         const payload = {
           ...caso,
           regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca),
-          data_ultimo_reajuste: caso.data_ultimo_reajuste || caso.data_inicio_faturamento || '',
+          data_ultimo_reajuste: caso.data_ultimo_reajuste || caso.inicio_vigencia || '',
           status: isCaseComplete(caso) ? 'ativo' : 'rascunho',
         }
 
@@ -2227,7 +2284,7 @@ export default function ContratoForm({
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ id: contractTargetId, status: 'em_analise' }),
+          body: JSON.stringify({ id: contractTargetId, status: toPersistedContratoStatus('em_analise') }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {
@@ -2399,8 +2456,8 @@ export default function ContratoForm({
                   <p className="font-medium">{form.canal_prospeccao || '-'}</p>
                 </div>
                 <div className="md:col-span-2">
-                  <p className="text-xs text-muted-foreground">Nome do contrato</p>
-                  <p className="font-medium">{form.nome_contrato || '-'}</p>
+                  <p className="text-xs text-muted-foreground">Identificador do contrato</p>
+                  <p className="font-medium">{getContratoDisplayName(form.numero_sequencial, form.nome_contrato)}</p>
                 </div>
               </div>
 
@@ -2671,11 +2728,10 @@ export default function ContratoForm({
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label>Nome do contrato</Label>
+              <Label>Identificador do contrato</Label>
               <Input
-                value={form.nome_contrato}
-                onChange={(e) => setForm((prev) => ({ ...prev, nome_contrato: e.target.value }))}
-                disabled={isReadOnly}
+                value={getContratoDisplayName(form.numero_sequencial, form.nome_contrato)}
+                disabled
               />
             </div>
 
@@ -2993,6 +3049,16 @@ export default function ContratoForm({
                     />
                   </div>
 
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Observação</Label>
+                    <Textarea
+                      value={currentCaso.observacao || ''}
+                      onChange={(event) => updateCurrentCaso({ observacao: event.target.value })}
+                      disabled={isReadOnly}
+                      placeholder="Observações livres sobre o caso"
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Serviço</Label>
                     <CommandSelect
@@ -3280,13 +3346,7 @@ export default function ContratoForm({
                     <Label>Data início faturamento</Label>
                     <DatePicker
                       value={currentCaso.data_inicio_faturamento}
-                      onChange={(value) =>
-                        updateCurrentCaso(
-                          isEdit
-                            ? { data_inicio_faturamento: value }
-                            : { data_inicio_faturamento: value, data_ultimo_reajuste: value },
-                        )
-                      }
+                      onChange={(value) => updateCurrentCaso({ data_inicio_faturamento: value })}
                       disabled={isReadOnly}
                     />
                   </div>
