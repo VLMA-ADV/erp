@@ -172,7 +172,7 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
           className="self-end"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          <span className="ml-1 hidden sm:inline">Enviar</span>
+          <span className="ml-1 hidden sm:inline">Enviar atualização</span>
         </Button>
       </div>
       <p className="text-xs text-slate-400">Ctrl+Enter para enviar</p>

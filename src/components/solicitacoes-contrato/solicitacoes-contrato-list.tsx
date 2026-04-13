@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ChevronDown, ChevronRight, FilePlus2, Paperclip } from 'lucide-react'
+import { ChevronDown, ChevronRight, FilePlus2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { maskCNPJ, onlyDigits } from '@/lib/utils/masks'
@@ -13,11 +13,10 @@ import { Button } from '@/components/ui/button'
 import { CommandSelect } from '@/components/ui/command-select'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Table } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import SolicitacaoMensagens from './solicitacao-mensagens'
+import SolicitacaoContratoFormFields, { type PendingSolicitacaoAnexo } from './solicitacao-contrato-form-fields'
 
 interface SolicitacaoAnexo {
   id: string
@@ -53,11 +52,6 @@ interface ClienteOption {
 interface AreaOption {
   id: string
   nome: string
-}
-
-interface PendingAnexo {
-  nome: string
-  file: File
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -110,7 +104,7 @@ export default function SolicitacoesContratoList() {
   const [nomeClienteNovo, setNomeClienteNovo] = useState('')
   const [cnpjClienteNovo, setCnpjClienteNovo] = useState('')
   const [centroCustoId, setCentroCustoId] = useState('')
-  const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
+  const [pendingAnexos, setPendingAnexos] = useState<PendingSolicitacaoAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [creatingCliente, setCreatingCliente] = useState(false)
   const [expandedMensagens, setExpandedMensagens] = useState<Record<string, boolean>>({})
@@ -300,10 +294,9 @@ export default function SolicitacoesContratoList() {
   }
 
   const onAddFiles = (files: FileList | null) => {
-    if (!files) return
-    const file = files[0]
-    if (!file) return
-    setPendingAnexos([{ nome: 'Proposta', file }])
+    if (!files?.length) return
+    const nextFiles = Array.from(files).map((file) => ({ nome: file.name, file }))
+    setPendingAnexos((prev) => [...prev, ...nextFiles])
   }
 
   const createClienteOnDemand = async (nomeCliente: string) => {
@@ -375,7 +368,7 @@ export default function SolicitacoesContratoList() {
           ? []
           : await Promise.all(
               pendingAnexos.map(async (item) => ({
-                nome: 'Proposta',
+                nome: item.nome.trim() || item.file.name,
                 arquivo_nome: item.file.name,
                 mime_type: item.file.type || 'application/octet-stream',
                 tamanho_bytes: item.file.size,
@@ -647,99 +640,30 @@ export default function SolicitacoesContratoList() {
             <DialogTitle>Nova solicitação de abertura de contrato</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Cliente</Label>
-              <CommandSelect
-                value={selectedClienteId}
-                onValueChange={setSelectedClienteId}
-                options={clientesOptions}
-                placeholder="Selecione o cliente"
-                searchPlaceholder="Buscar cliente..."
-                emptyText="Nenhum cliente encontrado"
-                onCreateOption={(value) => void createClienteOnDemand(value)}
-                createOptionLabel={creatingCliente ? 'Cadastrando' : 'Cadastrar cliente'}
-                disabled={creatingCliente || hasNomeClienteNovo}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Nome do cliente novo</Label>
-              <Input
-                value={nomeClienteNovo}
-                onChange={(event) => setNomeClienteNovo(event.target.value)}
-                placeholder="Preencha apenas se o cliente ainda não existir"
-                disabled={hasSelectedCliente}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>CNPJ do cliente novo</Label>
-              <Input
-                value={cnpjClienteNovo}
-                onChange={(event) => setCnpjClienteNovo(maskCNPJ(event.target.value))}
-                placeholder="00.000.000/0000-00"
-                disabled={hasSelectedCliente}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Nome do contrato</Label>
-              <Input
-                value={nomeSolicitacao}
-                onChange={(event) => setNomeSolicitacao(event.target.value)}
-                placeholder="Nome da solicitação/contrato"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Textarea
-                value={descricaoSolicitacao}
-                onChange={(event) => setDescricaoSolicitacao(event.target.value)}
-                placeholder="Descreva a solicitação para o financeiro concluir o cadastro"
-                rows={4}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Centro de custo</Label>
-              <CommandSelect
-                value={centroCustoId}
-                onValueChange={setCentroCustoId}
-                options={areasOptions}
-                placeholder="Selecione o centro de custo"
-                searchPlaceholder="Buscar centro de custo..."
-                emptyText="Nenhum centro de custo encontrado"
-                disabled={submitting}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Anexo de proposta</Label>
-              <Input type="file" onChange={(event) => onAddFiles(event.target.files)} />
-              {pendingAnexos.length ? (
-                <div className="space-y-2 rounded-md border p-3">
-                  {pendingAnexos.map((item, idx) => (
-                    <div key={`${item.file.name}_${idx}`} className="flex items-center justify-between gap-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Paperclip className="h-4 w-4 text-muted-foreground" />
-                        <span>Proposta</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setPendingAnexos((prev) => prev.filter((_, i) => i !== idx))}
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
+          <SolicitacaoContratoFormFields
+            areasOptions={areasOptions}
+            centroCustoId={centroCustoId}
+            clientesOptions={clientesOptions}
+            creatingCliente={creatingCliente}
+            descricaoSolicitacao={descricaoSolicitacao}
+            disabled={submitting}
+            hasNomeClienteNovo={hasNomeClienteNovo}
+            hasSelectedCliente={hasSelectedCliente}
+            nomeClienteNovo={nomeClienteNovo}
+            nomeSolicitacao={nomeSolicitacao}
+            onAddFiles={onAddFiles}
+            onCentroCustoChange={setCentroCustoId}
+            onCnpjClienteNovoChange={setCnpjClienteNovo}
+            onCreateCliente={(value) => void createClienteOnDemand(value)}
+            onDescricaoSolicitacaoChange={setDescricaoSolicitacao}
+            onNomeClienteNovoChange={setNomeClienteNovo}
+            onNomeSolicitacaoChange={setNomeSolicitacao}
+            onRemovePendingAnexo={(index) => setPendingAnexos((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+            onSelectedClienteIdChange={setSelectedClienteId}
+            pendingAnexos={pendingAnexos}
+            selectedClienteId={selectedClienteId}
+            cnpjClienteNovo={cnpjClienteNovo}
+          />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={submitting}>

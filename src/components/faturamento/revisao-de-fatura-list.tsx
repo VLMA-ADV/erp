@@ -176,6 +176,14 @@ function normalizeDateFromDisplay(value: string) {
   return normalizeDateInput(trimmed) || trimmed
 }
 
+function getNextBillingPeriodDate(item: RevisaoItem) {
+  const reference = normalizeDateFromDisplay(item.dataReferencia || item.timesheetDataLancamento)
+  const fallbackDate = new Date()
+  const parsedReference = reference ? new Date(`${reference}T00:00:00`) : fallbackDate
+  const baseDate = Number.isNaN(parsedReference.getTime()) ? fallbackDate : parsedReference
+  return new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 1)
+}
+
 function formatDate(value: string) {
   if (!value) return '-'
   const normalized = normalizeDateFromDisplay(value)
@@ -955,9 +963,7 @@ export default function RevisaoDeFaturaList() {
       const accessToken = await getSessionToken()
       if (!accessToken) return false
 
-      // Calcula o primeiro dia do próximo mês a partir de hoje
-      const hoje = new Date()
-      const proximoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1)
+      const proximoMes = getNextBillingPeriodDate(item)
       const periodoFaturamento = proximoMes.toISOString().slice(0, 10)
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-timesheet`, {
