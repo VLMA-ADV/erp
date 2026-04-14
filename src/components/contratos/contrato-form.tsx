@@ -294,6 +294,22 @@ function getPersistedContractName(numeroSequencial?: number | null, nomeContrato
   return formatContratoIdentifier(numeroSequencial)
 }
 
+/** Nome nunca vazio para create/update-contrato (evita 500 na RPC quando a edge remota não normaliza). */
+function resolveNomeContratoNaoVazio(
+  numeroSequencial?: number | null,
+  nomeContrato?: string | null,
+  contratoIdFallback?: string | null,
+): string {
+  const fromPersisted = getPersistedContractName(numeroSequencial, nomeContrato)?.trim()
+  if (fromPersisted) return fromPersisted
+  if (numeroSequencial && numeroSequencial > 0) return `Contrato ${numeroSequencial}`
+  if (contratoIdFallback) {
+    const safeId = String(contratoIdFallback).replace(/-/g, '').slice(0, 12)
+    if (safeId) return `Contrato ${safeId}`
+  }
+  return 'Contrato'
+}
+
 function normalizeProspecaoConfig(value: unknown): ProspecaoConfig {
   const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {}
   const rawPagadores = Array.isArray(raw.pagadores)
@@ -433,7 +449,11 @@ export default function ContratoForm({
   const [draftContratoId, setDraftContratoId] = useState<string | null>(contratoId ?? null)
   const [loadedCaseIds, setLoadedCaseIds] = useState<string[]>([])
   const [loadedCaseStatusById, setLoadedCaseStatusById] = useState<Record<string, string>>({})
-  const draftContratoPromiseRef = useRef<Promise<string | null> | null>(null)
+  const draftContratoPromiseRef = useRef<Promise<{ id: string; numero_sequencial: number | null } | null> | null>(null)
+  /** Evita enviar update sem numero_sequencial quando o state do form ainda não hidratou após create-contrato. */
+  const draftNumeroSequencialRef = useRef<number | null>(null)
+  /** ID do rascunho criado na edge — atualizado no mesmo tick da resposta (state React pode atrasar). */
+  const draftContratoIdRef = useRef<string | null>(null)
   const [anexoDialogOpen, setAnexoDialogOpen] = useState(false)
   const [anexoDialogNome, setAnexoDialogNome] = useState('')
   const [anexoDialogFile, setAnexoDialogFile] = useState<File | null>(null)
@@ -743,7 +763,7 @@ export default function ContratoForm({
     !caso.responsavel_id &&
     !caso.tipo_cobranca_documento &&
     !caso.regra_cobranca &&
-    !caso.indice_reajuste &&
+    (!caso.indice_reajuste || caso.indice_reajuste === 'nao_tem') &&
     (caso.centro_custo_rateio || []).length === 0 &&
     (caso.pagadores_servico || []).length === 0 &&
     (caso.pagadores_despesa || []).length === 0
@@ -871,6 +891,11 @@ export default function ContratoForm({
           }
 
           const contrato = contratoData.data?.contrato || {}
+          const loadedNumeroSequencial =
+            typeof (contrato as any).numero_sequencial === 'number'
+              ? (contrato as any).numero_sequencial
+              : Number((contrato as any).numero_sequencial || 0) || null
+          draftNumeroSequencialRef.current = loadedNumeroSequencial
           const casos = (contratoData.data?.casos || []) as CasoPayload[]
           const persistedCaseIds = casos
             .map((caso) => ((caso as any)?.id ? String((caso as any).id) : ''))
@@ -885,10 +910,7 @@ export default function ContratoForm({
           setForm({
             cliente_id: contrato.cliente_id || '',
             nome_contrato: contrato.nome_contrato || '',
-            numero_sequencial:
-              typeof (contrato as any).numero_sequencial === 'number'
-                ? (contrato as any).numero_sequencial
-                : Number((contrato as any).numero_sequencial || 0) || null,
+            numero_sequencial: loadedNumeroSequencial,
             forma_entrada: (contrato.forma_entrada || '') as 'organico' | 'prospeccao' | '',
             responsavel_prospeccao_id: String((contrato as any).responsavel_prospeccao_id || ''),
             canal_prospeccao: String((contrato as any).canal_prospeccao || ''),
@@ -962,7 +984,10 @@ export default function ContratoForm({
   }, [isEdit, contratoId])
 
   useEffect(() => {
-    if (contratoId) setDraftContratoId(contratoId)
+    if (contratoId) {
+      draftContratoIdRef.current = contratoId
+      setDraftContratoId(contratoId)
+    }
   }, [contratoId])
 
   useEffect(() => {
@@ -1769,10 +1794,25 @@ export default function ContratoForm({
     setError(null)
   }
 
-  const ensureDraftCreated = async (accessToken: string): Promise<string | null> => {
-    if (isEdit && contratoId) return contratoId
-    if (draftContratoId) return draftContratoId
-    if (draftContratoPromiseRef.current) return draftContratoPromiseRef.current
+  const ensureDraftCreated = async (
+    accessToken: string,
+  ): Promise<{ id: string; numero_sequencial: number | null } | null> => {
+    if (isEdit && contratoId) {
+      draftContratoIdRef.current = contratoId
+      draftNumeroSequencialRef.current = form.numero_sequencial ?? null
+      return { id: contratoId, numero_sequencial: form.numero_sequencial ?? null }
+    }
+    const draftId = draftContratoIdRef.current || draftContratoId
+    if (draftId) {
+      return {
+        id: draftId,
+        numero_sequencial: form.numero_sequencial ?? draftNumeroSequencialRef.current,
+      }
+    }
+    if (draftContratoPromiseRef.current) {
+      const awaited = await draftContratoPromiseRef.current
+      return awaited
+    }
 
     const promise = (async () => {
       const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-contrato`, {
@@ -1783,7 +1823,7 @@ export default function ContratoForm({
         },
         body: JSON.stringify({
           cliente_id: form.cliente_id,
-          nome_contrato: getPersistedContractName(form.numero_sequencial, form.nome_contrato) || null,
+          nome_contrato: resolveNomeContratoNaoVazio(form.numero_sequencial, form.nome_contrato),
           numero_sequencial: form.numero_sequencial,
           forma_entrada: form.forma_entrada || null,
           responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
@@ -1803,15 +1843,22 @@ export default function ContratoForm({
         typeof data.data?.numero_sequencial === 'number'
           ? data.data.numero_sequencial
           : Number(data.data?.numero_sequencial || 0) || null
+      draftNumeroSequencialRef.current = nextNumeroSequencial
       if (nextNumeroSequencial) {
         setForm((prev) => ({
           ...prev,
           numero_sequencial: nextNumeroSequencial,
           nome_contrato: prev.nome_contrato || String(data.data?.nome_contrato || ''),
         }))
+      } else if (data.data?.nome_contrato) {
+        setForm((prev) => ({
+          ...prev,
+          nome_contrato: prev.nome_contrato || String(data.data.nome_contrato),
+        }))
       }
+      draftContratoIdRef.current = id
       setDraftContratoId(id)
-      return id
+      return { id, numero_sequencial: nextNumeroSequencial }
     })()
 
     draftContratoPromiseRef.current = promise
@@ -2035,8 +2082,8 @@ export default function ContratoForm({
             data: { session },
           } = await supabase.auth.getSession()
           if (!session) return
-          const createdId = await ensureDraftCreated(session.access_token)
-          if (!createdId) return
+          const created = await ensureDraftCreated(session.access_token)
+          if (!created?.id) return
           success('Rascunho salvo')
         } catch (submitError) {
           console.error(submitError)
@@ -2064,7 +2111,11 @@ export default function ContratoForm({
             body: JSON.stringify({
               id: contratoId,
               cliente_id: form.cliente_id,
-              nome_contrato: getPersistedContractName(form.numero_sequencial, form.nome_contrato) || null,
+              nome_contrato: resolveNomeContratoNaoVazio(
+                form.numero_sequencial,
+                form.nome_contrato,
+                contratoId,
+              ),
               numero_sequencial: form.numero_sequencial,
               forma_entrada: form.forma_entrada || null,
               responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
@@ -2108,11 +2159,20 @@ export default function ContratoForm({
       } = await supabase.auth.getSession()
       if (!session) return
 
-      const contractTargetId = await ensureDraftCreated(session.access_token)
-      if (!contractTargetId) {
+      const draftMeta = await ensureDraftCreated(session.access_token)
+      if (!draftMeta?.id) {
         setError('Salve os dados do contrato antes de cadastrar casos')
         return
       }
+
+      const effectiveNumeroSequencial =
+        form.numero_sequencial ?? draftMeta.numero_sequencial ?? draftNumeroSequencialRef.current ?? null
+
+      const nomePersistido = resolveNomeContratoNaoVazio(
+        effectiveNumeroSequencial,
+        form.nome_contrato,
+        draftMeta.id,
+      )
 
       const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-contrato`, {
         method: 'POST',
@@ -2121,10 +2181,10 @@ export default function ContratoForm({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          id: contractTargetId,
+          id: draftMeta.id,
           cliente_id: form.cliente_id,
-          nome_contrato: getPersistedContractName(form.numero_sequencial, form.nome_contrato) || null,
-          numero_sequencial: form.numero_sequencial,
+          nome_contrato: nomePersistido,
+          numero_sequencial: effectiveNumeroSequencial,
           forma_entrada: form.forma_entrada || null,
           responsavel_prospeccao_id: form.forma_entrada === 'prospeccao' ? form.responsavel_prospeccao_id || null : null,
           canal_prospeccao: form.forma_entrada === 'prospeccao' ? form.canal_prospeccao || null : null,
@@ -2163,7 +2223,7 @@ export default function ContratoForm({
       }
 
       if (pendingAnexos.length > 0) {
-        const uploaded = await uploadPendingAnexos(contractTargetId, session.access_token, pendingAnexos)
+        const uploaded = await uploadPendingAnexos(draftMeta.id, session.access_token, pendingAnexos)
         setExistingAnexos((prev) => [...uploaded, ...prev])
         setPendingAnexos([])
       }
@@ -2177,15 +2237,9 @@ export default function ContratoForm({
         const caso = form.casos[caseIndex]
         if (isCaseEmpty(caso)) continue
 
-        if (!caso.nome?.trim()) {
-          setStep('casos')
-          setSubstep('basico')
-          setError('Caso em rascunho precisa ter ao menos um nome')
-          return
-        }
-
         const payload = {
           ...caso,
+          nome: (caso.nome ?? '').trim(),
           regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca),
           data_ultimo_reajuste: caso.data_ultimo_reajuste || caso.inicio_vigencia || '',
           status: isCaseComplete(caso) ? 'ativo' : 'rascunho',
@@ -2204,7 +2258,7 @@ export default function ContratoForm({
             body: JSON.stringify(
               isExistingCase
                 ? { id: existingCaseId, ...payload }
-                : { contrato_id: contractTargetId, ...payload },
+                : { contrato_id: draftMeta.id, ...payload },
             ),
           },
         )
@@ -2252,7 +2306,7 @@ export default function ContratoForm({
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ id: contractTargetId, status: toPersistedContratoStatus('em_analise') }),
+          body: JSON.stringify({ id: draftMeta.id, status: toPersistedContratoStatus('em_analise') }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {

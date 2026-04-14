@@ -40,6 +40,26 @@ function sanitizeContratoPayload(payload: any) {
   return next;
 }
 
+/** Garante nome_contrato quando o cliente envia null antes do React aplicar numero_sequencial (RF-064). */
+function normalizeNomeContratoForUpdate(payload: any, previous: any) {
+  if (!payload || typeof payload !== "object") return;
+  const explicit = typeof payload.nome_contrato === "string" ? payload.nome_contrato.trim() : "";
+  if (explicit) {
+    payload.nome_contrato = explicit;
+    return;
+  }
+  const seqPayload = Number(payload.numero_sequencial ?? 0);
+  const prevRow = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : null;
+  const seqPrev = Number(prevRow?.numero_sequencial ?? 0);
+  const seq = Number.isFinite(seqPayload) && seqPayload > 0 ? seqPayload : seqPrev;
+  if (Number.isFinite(seq) && seq > 0) {
+    payload.nome_contrato = `Contrato ${seq}`;
+    return;
+  }
+  const prevNome = typeof prevRow?.nome_contrato === "string" ? prevRow.nome_contrato.trim() : "";
+  if (prevNome) payload.nome_contrato = prevNome;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -98,6 +118,7 @@ Deno.serve(async (req) => {
     });
 
     const sanitizedBody = sanitizeContratoPayload(body);
+    normalizeNomeContratoForUpdate(sanitizedBody, previous);
     const { data, error } = await supabase.rpc("update_contrato", {
       p_user_id: user.id,
       p_contrato_id: sanitizedBody.id,

@@ -48,7 +48,33 @@ Deno.serve(async (req) => {
       });
     }
 
-    const payload = await req.json();
+    const raw = await req.json();
+    const nomeIn = typeof raw?.nome === "string" ? raw.nome.trim() : "";
+    const descIn = typeof raw?.descricao === "string" ? raw.descricao.trim() : "";
+    const clienteId = typeof raw?.cliente_id === "string" && raw.cliente_id.trim().length > 0 ? raw.cliente_id.trim() : null;
+    const nomeClienteNovo =
+      typeof raw?.nome_cliente_novo === "string" && raw.nome_cliente_novo.trim().length > 0
+        ? raw.nome_cliente_novo.trim()
+        : null;
+
+    if (!clienteId && !nomeClienteNovo) {
+      return new Response(
+        JSON.stringify({ error: "Selecione um cliente existente ou informe o nome do cliente novo." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const payload = {
+      ...raw,
+      cliente_id: clienteId,
+      nome_cliente_novo: nomeClienteNovo,
+      nome: nomeIn || "Solicitação de contrato",
+      descricao: descIn || "Sem descrição",
+    };
+
     const { data, error } = await supabase.rpc("create_solicitacao_contrato", {
       p_user_id: user.id,
       p_payload: payload,
