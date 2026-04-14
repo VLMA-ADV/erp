@@ -526,16 +526,6 @@ export default function CrmPipeline() {
   }
 
   const createSolicitacao = async () => {
-    if (!solicitacaoNome.trim()) {
-      toastError('Nome do contrato é obrigatório')
-      return
-    }
-
-    if (!solicitacaoDescricao.trim()) {
-      toastError('Descrição do contrato é obrigatória')
-      return
-    }
-
     try {
       setSolicitacaoSubmitting(true)
       const session = await getSession()

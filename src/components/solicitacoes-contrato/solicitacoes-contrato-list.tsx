@@ -345,16 +345,6 @@ export default function SolicitacoesContratoList() {
   }
 
   const createSolicitacao = async () => {
-    if (!nomeSolicitacao.trim()) {
-      toastError('Nome é obrigatório')
-      return
-    }
-
-    if (!descricaoSolicitacao.trim()) {
-      toastError('Descrição é obrigatória')
-      return
-    }
-
     try {
       setSubmitting(true)
       const session = await getSession()
