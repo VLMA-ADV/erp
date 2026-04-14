@@ -81,8 +81,16 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
-      return new Response(JSON.stringify({ error: error.message, details: error.message }), {
-        status: 500,
+      const msg = String(error.message || "");
+      const isBusinessValidation =
+        msg.includes(" é obrigatório") ||
+        msg.includes(" não encontrado") ||
+        msg.includes("Selecione um cliente existente") ||
+        msg.includes("informe o nome do cliente novo") ||
+        msg.includes("Anexo de proposta é obrigatório");
+
+      return new Response(JSON.stringify({ error: msg, details: msg }), {
+        status: isBusinessValidation ? 400 : 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

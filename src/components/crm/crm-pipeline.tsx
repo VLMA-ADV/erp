@@ -563,7 +563,13 @@ export default function CrmPipeline() {
 
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        toastError(payload.error || 'Erro ao criar solicitação')
+        const errMsg =
+          typeof payload?.error === 'string' && payload.error.trim().length > 0
+            ? payload.error
+            : `Erro ao criar solicitação (HTTP ${response.status})`
+        const details =
+          typeof payload?.details === 'string' && payload.details.trim().length > 0 ? ` — ${payload.details}` : ''
+        toastError(`${errMsg}${details}`)
         return
       }
 
