@@ -1,3 +1,6 @@
+// Deploy: manter verify_jwt=false no dashboard/CLI (mesmo padrão do projeto).
+// O gateway com verify_jwt=true rejeita sessões JWT ES256 do GoTrue;
+// a validação fica em auth.getUser() dentro do handler.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
