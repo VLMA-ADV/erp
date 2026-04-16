@@ -59,19 +59,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data, error } = await supabase
+    const { data: mensagens, error } = await supabase
       .schema("contracts")
       .from("solicitacao_mensagens")
-      .select(`
-        id,
-        mensagem,
-        created_at,
-        autor_id,
-        autor:people.colaboradores!autor_id (
-          id,
-          nome_completo
-        )
-      `)
+      .select("id, mensagem, created_at, autor_id")
       .eq("solicitacao_id", solicitacaoId)
       .order("created_at", { ascending: true });
 
@@ -82,7 +73,28 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ data: data ?? [] }), {
+    // Resolve autores em query separada (evita join cross-schema contracts→people)
+    const autorIds = [...new Set((mensagens ?? []).map((m) => m.autor_id).filter(Boolean))];
+    let autoresMap: Record<string, { id: string; nome_completo: string }> = {};
+
+    if (autorIds.length > 0) {
+      const { data: autores } = await supabase
+        .schema("people")
+        .from("colaboradores")
+        .select("id, nome_completo")
+        .in("id", autorIds);
+
+      if (autores) {
+        autoresMap = Object.fromEntries(autores.map((a) => [a.id, a]));
+      }
+    }
+
+    const data = (mensagens ?? []).map((m) => ({
+      ...m,
+      autor: autoresMap[m.autor_id] ?? null,
+    }));
+
+    return new Response(JSON.stringify({ data }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
