@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { normalizeContratoStatusForToggle } from "../_shared/contrato-status.ts";
 import { createAuditLog, getIpAddress, getUserAgent } from "../_shared/audit-log.ts";
 
 const corsHeaders = {
@@ -26,7 +27,8 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const requestedStatus = body.status === "em_analise" ? "validacao" : body.status;
+    const requestedStatus = normalizeContratoStatusForToggle(typeof body.status === "string" ? body.status : undefined) ??
+      body.status;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",

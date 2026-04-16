@@ -298,8 +298,8 @@ export default function CasoForm({
 
   const isEdit = !!casoId
   const isReadOnly = viewOnly || !canWrite
+  const isInicioVigenciaReadOnly = viewOnly || (isEdit && !canWrite)
 
-  const socioOptions = useMemo(() => options.socios || [], [options.socios])
   const regras = form.regra_cobranca_config || {}
   const despesas = form.despesas_config || {}
   const timesheet = form.timesheet_config || {}
@@ -1930,7 +1930,7 @@ export default function CasoForm({
               </div>
               <div className="space-y-2">
                 <Label>Início da vigência</Label>
-                <DatePicker value={form.inicio_vigencia} onChange={(value) => setField('inicio_vigencia', value)} disabled={isReadOnly} />
+                <DatePicker value={form.inicio_vigencia} onChange={(value) => setField('inicio_vigencia', value)} disabled={isInicioVigenciaReadOnly} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Possui reajuste?</Label>
@@ -2957,7 +2957,7 @@ export default function CasoForm({
                       const list = [...(timesheet.aprovadores || [])]
                       list[idx] = { ...list[idx], colaborador_id: value }
                       setTimesheet('aprovadores', list)
-                    }} disabled={isReadOnly} options={socioOptions.map((s) => ({ value: s.id, label: s.nome }))} placeholder="Selecione..." searchPlaceholder="Buscar aprovador..." emptyText="Nenhum sócio encontrado." />
+                    }} disabled={isReadOnly} options={colaboradorOptions} placeholder="Selecione..." searchPlaceholder="Buscar aprovador..." emptyText="Nenhum colaborador encontrado." />
                     {!isReadOnly && <Button type="button" variant="outline" onClick={() => {
                       const list = [...(timesheet.aprovadores || [])]
                       list.splice(idx, 1)

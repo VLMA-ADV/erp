@@ -22,6 +22,11 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import {
+  formatContratoStatusLabel,
+  normalizeContratoStatusForForm,
+  normalizeContratoStatusForToggle,
+} from '@/lib/contracts/contrato-status'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -262,21 +267,6 @@ function formatDateBr(value: string) {
   return `${d}/${m}/${y}`
 }
 
-function normalizeContratoStatus(status?: string): ContratoFormState['status'] {
-  if (status === 'validacao') return 'em_analise'
-  if (status === 'rascunho' || status === 'solicitacao' || status === 'em_analise' || status === 'ativo' || status === 'encerrado') {
-    return status
-  }
-  return 'rascunho'
-}
-
-function formatContratoStatus(status?: string) {
-  const normalized = normalizeContratoStatus(status)
-  if (normalized === 'solicitacao') return 'solicitação'
-  if (normalized === 'em_analise') return 'validação'
-  return normalized
-}
-
 function formatContratoIdentifier(numeroSequencial?: number | null) {
   return typeof numeroSequencial === 'number' && numeroSequencial > 0 ? `Contrato ${numeroSequencial}` : ''
 }
@@ -384,10 +374,6 @@ function buildInheritedReajusteVigenciaPatch(source?: Partial<CasoPayload> | nul
   }
 }
 
-function toPersistedContratoStatus(status: ContratoFormState['status']) {
-  return status === 'em_analise' ? 'validacao' : status
-}
-
 function sanitizeSingleRuleConfig(config: Record<string, any> | undefined | null) {
   const next = { ...(config || {}) }
   delete (next as any).regras_cobranca
@@ -410,6 +396,7 @@ export default function ContratoForm({
   const canWrite = hasPermission('contracts.contratos.write')
   const isEdit = !!contratoId
   const isReadOnly = viewOnly || !canWrite
+  const isInicioVigenciaReadOnly = viewOnly || (isEdit && !canWrite)
 
   const [step, setStep] = useState<StepKey>('dados')
   const [substep, setSubstep] = useState<CaseSubstepKey>('basico')
@@ -496,8 +483,11 @@ export default function ContratoForm({
     [options.colaboradores],
   )
   const aprovadorOptions = useMemo(
-    () => (options.socios || []).map((item) => ({ value: item.id, label: item.nome })),
-    [options.socios],
+    () =>
+      (options.colaboradores || [])
+        .filter((item) => item.ativo !== false)
+        .map((item) => ({ value: item.id, label: item.nome })),
+    [options.colaboradores],
   )
   const produtosMap = useMemo(
     () => new Map((options.produtos || []).map((p) => [p.id, p.nome])),
@@ -915,7 +905,7 @@ export default function ContratoForm({
             responsavel_prospeccao_id: String((contrato as any).responsavel_prospeccao_id || ''),
             canal_prospeccao: String((contrato as any).canal_prospeccao || ''),
             grupo_imposto_id: String(contrato.grupo_imposto_id || ''),
-            status: normalizeContratoStatus(contrato.status || 'rascunho'),
+            status: normalizeContratoStatusForForm(contrato.status || 'rascunho'),
             casos: casos.length
               ? casos.map((caso) => ({
                   ...emptyCaso,
@@ -2306,7 +2296,10 @@ export default function ContratoForm({
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ id: draftMeta.id, status: toPersistedContratoStatus('em_analise') }),
+          body: JSON.stringify({
+            id: draftMeta.id,
+            status: normalizeContratoStatusForToggle('em_analise') ?? 'em_analise',
+          }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {
@@ -2452,7 +2445,7 @@ export default function ContratoForm({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Dados do contrato</CardTitle>
-                <Badge>{formatContratoStatus(form.status)}</Badge>
+                <Badge>{formatContratoStatusLabel(form.status)}</Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2732,7 +2725,7 @@ export default function ContratoForm({
           <CardHeader>
             <div className={`flex items-center ${isEdit ? 'justify-between' : 'justify-start'}`}>
               <CardTitle>Dados do contrato</CardTitle>
-              {isEdit ? <Badge>{formatContratoStatus(form.status)}</Badge> : null}
+              {isEdit ? <Badge>{formatContratoStatusLabel(form.status)}</Badge> : null}
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
@@ -2831,7 +2824,7 @@ export default function ContratoForm({
             {isEdit ? (
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Input value={formatContratoStatus(form.status)} disabled />
+                <Input value={formatContratoStatusLabel(form.status)} disabled />
               </div>
             ) : null}
 
@@ -3391,7 +3384,7 @@ export default function ContratoForm({
                     <DatePicker
                       value={currentCaso.inicio_vigencia}
                       onChange={(value) => updateCurrentCaso({ inicio_vigencia: value })}
-                      disabled={isReadOnly}
+                      disabled={isInicioVigenciaReadOnly}
                     />
                   </div>
 
@@ -4612,7 +4605,7 @@ export default function ContratoForm({
                           options={aprovadorOptions}
                           placeholder="Selecione..."
                           searchPlaceholder="Buscar aprovador..."
-                          emptyText="Nenhum sócio encontrado."
+                          emptyText="Nenhum colaborador encontrado."
                           disabled={isReadOnly}
                         />
                         {!isReadOnly && (

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { normalizeContratoStatusForWrite } from "../_shared/contrato-status.ts";
 import { createAuditLog, getIpAddress, getUserAgent } from "../_shared/audit-log.ts";
 
 const corsHeaders = {
@@ -31,8 +32,9 @@ function sanitizeCaso(caso: any) {
 function sanitizeContratoPayload(payload: any) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const next = { ...payload };
-  if (next.status === "em_analise") {
-    next.status = "validacao";
+  const normalizedStatus = normalizeContratoStatusForWrite(typeof next.status === "string" ? next.status : undefined);
+  if (normalizedStatus) {
+    next.status = normalizedStatus;
   }
   if (Array.isArray(next.casos)) {
     next.casos = next.casos.map((caso: any) => sanitizeCaso(caso));
