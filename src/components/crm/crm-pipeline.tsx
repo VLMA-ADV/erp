@@ -47,6 +47,7 @@ interface PipelineCard {
   valor: number
   responsavel_interno_id: string | null
   responsavel_interno_nome: string | null
+  area_id: string | null
   observacoes: string
   etapa: EtapaKanban
   ordem: number
@@ -69,6 +70,7 @@ interface FormState {
   produto_id: string
   valor: string
   responsavel_interno_id: string
+  area_id: string
   observacoes: string
   etapa: EtapaKanban
 }
@@ -94,6 +96,7 @@ const emptyForm: FormState = {
   produto_id: '',
   valor: '',
   responsavel_interno_id: '',
+  area_id: '',
   observacoes: '',
   etapa: 'prospeccao',
 }
@@ -417,6 +420,7 @@ export default function CrmPipeline() {
       produto_id: card.produto_id || '',
       valor: String(card.valor || 0),
       responsavel_interno_id: card.responsavel_interno_id || '',
+      area_id: card.area_id || '',
       observacoes: card.observacoes || '',
       etapa: card.etapa,
     })
@@ -629,6 +633,7 @@ export default function CrmPipeline() {
         produto_id: form.produto_id || null,
         valor: form.valor || '0',
         responsavel_interno_id: form.responsavel_interno_id || null,
+        area_id: form.area_id || null,
         observacoes: form.observacoes || '',
         etapa: form.etapa,
         anexos: anexosPayload,
@@ -998,6 +1003,19 @@ export default function CrmPipeline() {
                 placeholder="Selecione o responsável"
                 searchPlaceholder="Buscar colaborador..."
                 emptyText="Nenhum colaborador encontrado."
+                disabled={saving}
+                maxVisibleOptions={7}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Centro de custo</Label>
+              <CommandSelect
+                value={form.area_id}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, area_id: value }))}
+                options={areasOptions}
+                placeholder="Selecione o centro de custo"
+                searchPlaceholder="Buscar área..."
+                emptyText="Nenhuma área encontrada."
                 disabled={saving}
                 maxVisibleOptions={7}
               />
