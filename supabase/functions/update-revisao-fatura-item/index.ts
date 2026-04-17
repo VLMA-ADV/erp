@@ -1,9 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 
+// Immutable fields in finance.revisao_fatura_itens: horas_informadas, valor_informado, data_lancamento, responsavel_fluxo_id.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
+const immutableFields = [
+  "horas_informadas",
+  "valor_informado",
+  "data_lancamento",
+  "responsavel_fluxo_id",
+] as const
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 Deno.serve(async (req) => {
@@ -62,7 +76,16 @@ Deno.serve(async (req) => {
       })
     }
 
-    const body = await req.json().catch(() => ({}))
+    const rawBody = await req.json().catch(() => ({}))
+    const body = toRecord(rawBody) ?? {}
+
+    const immutableField = immutableFields.find((field) => Object.prototype.hasOwnProperty.call(body, field))
+    if (immutableField) {
+      return new Response(JSON.stringify({ error: `Campo imutável: ${immutableField}` }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
 
     const { data, error } = await supabase.rpc("update_revisao_fatura_item", {
       p_user_id: user.id,
@@ -87,4 +110,3 @@ Deno.serve(async (req) => {
     })
   }
 })
-
