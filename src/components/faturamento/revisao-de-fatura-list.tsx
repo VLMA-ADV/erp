@@ -34,7 +34,9 @@ interface RevisaoItem {
   valorRevisado: number | null
   valorAprovado: number | null
   responsavelFluxoNome: string | null
+  responsavelRevisaoId: string | null
   responsavelRevisaoNome: string | null
+  responsavelAprovacaoId: string | null
   responsavelAprovacaoNome: string | null
   dataRevisao: string | null
   dataAprovacao: string | null
@@ -404,7 +406,9 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     valorRevisado: asOptionalNumber(pickFirstDefined(data.valor_revisado, data.snapshot_valor_revisado, data.valor)),
     valorAprovado: asOptionalNumber(pickFirstDefined(data.valor_aprovado, data.snapshot_valor_aprovado, data.valor)),
     responsavelFluxoNome: asString(pickFirstDefined(data.responsavel_fluxo_nome, snapshot.responsavel_fluxo_nome)) || null,
+    responsavelRevisaoId: asString(pickFirstDefined(data.responsavel_revisao_id, snapshot.responsavel_revisao_id)) || null,
     responsavelRevisaoNome: asString(pickFirstDefined(data.responsavel_revisao_nome, snapshot.responsavel_revisao_nome)) || null,
+    responsavelAprovacaoId: asString(pickFirstDefined(data.responsavel_aprovacao_id, snapshot.responsavel_aprovacao_id)) || null,
     responsavelAprovacaoNome: asString(pickFirstDefined(data.responsavel_aprovacao_nome, snapshot.responsavel_aprovacao_nome)) || null,
     dataRevisao: normalizeDateInput(asString(pickFirstDefined(data.data_revisao, snapshot.data_revisao))),
     dataAprovacao: normalizeDateInput(asString(pickFirstDefined(data.data_aprovacao, snapshot.data_aprovacao))),

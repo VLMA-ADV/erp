@@ -6,6 +6,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function pickFirstDefined(...values: unknown[]) {
+  for (const value of values) {
+    if (value !== null && value !== undefined) return value
+  }
+  return null
+}
+
+function normalizeRevisaoFaturaItem(item: unknown) {
+  const row = toRecord(item)
+  if (!row) return item
+
+  const snapshot = toRecord(row.snapshot) ?? {}
+
+  return {
+    ...row,
+    data_revisao: pickFirstDefined(row.data_revisao, snapshot.data_revisao),
+    data_aprovacao: pickFirstDefined(row.data_aprovacao, snapshot.data_aprovacao),
+    responsavel_revisao_id: pickFirstDefined(row.responsavel_revisao_id, snapshot.responsavel_revisao_id),
+    responsavel_aprovacao_id: pickFirstDefined(row.responsavel_aprovacao_id, snapshot.responsavel_aprovacao_id),
+    responsavel_revisao_nome: pickFirstDefined(row.responsavel_revisao_nome, snapshot.responsavel_revisao_nome),
+    responsavel_aprovacao_nome: pickFirstDefined(row.responsavel_aprovacao_nome, snapshot.responsavel_aprovacao_nome),
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
@@ -78,7 +108,11 @@ Deno.serve(async (req) => {
       })
     }
 
-    return new Response(JSON.stringify({ data: data || [] }), {
+    const normalizedData = Array.isArray(data)
+      ? data.map((item) => normalizeRevisaoFaturaItem(item))
+      : []
+
+    return new Response(JSON.stringify({ data: normalizedData }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
@@ -89,4 +123,3 @@ Deno.serve(async (req) => {
     })
   }
 })
-
