@@ -1,3 +1,6 @@
+// Deploy: manter verify_jwt=false no dashboard/CLI (mesmo padrão do projeto).
+// O gateway com verify_jwt=true rejeita sessões JWT ES256 do GoTrue;
+// a validação fica em auth.getUser() dentro do handler.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -8,6 +11,12 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -79,7 +88,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data, error } = await supabase
+    const { data: insertedMessage, error } = await supabase
       .schema("contracts")
       .from("solicitacao_mensagens")
       .insert({
@@ -97,6 +106,18 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const { data: autor } = await supabase
+      .schema("people")
+      .from("colaboradores")
+      .select("id, nome_completo")
+      .eq("id", colaborador.id)
+      .maybeSingle();
+
+    const data = {
+      ...insertedMessage,
+      autor: autor ?? null,
+    };
 
     return new Response(JSON.stringify({ data }), {
       status: 200,
