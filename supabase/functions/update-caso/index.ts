@@ -14,6 +14,69 @@ function sanitizeRuleConfig(ruleConfig: any) {
   return rest;
 }
 
+function extractDayFromDate(value: unknown): number | null {
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getUTCDate();
+}
+
+function normalizeDiaInicio(target: any, context: string): string | null {
+  if (!target || typeof target !== "object" || Array.isArray(target)) return null;
+
+  const rawDia = target.dia_inicio_faturamento;
+  if (rawDia !== undefined && rawDia !== null && rawDia !== "") {
+    const day = Number(rawDia);
+    if (!Number.isInteger(day) || day < 1 || day > 31) {
+      return `${context}: dia_inicio_faturamento deve ser inteiro entre 1 e 31`;
+    }
+    target.dia_inicio_faturamento = day;
+    return null;
+  }
+
+  const dayFromLegacyDate = extractDayFromDate(target.data_inicio_faturamento);
+  if (dayFromLegacyDate !== null) target.dia_inicio_faturamento = dayFromLegacyDate;
+  return null;
+}
+
+function normalizeDiaInicioPayload(payload: any) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return { payload };
+  const next = { ...payload };
+
+  const rootError = normalizeDiaInicio(next, "caso");
+  if (rootError) return { payload: next, error: rootError };
+
+  if (Array.isArray(next.regras_financeiras)) {
+    next.regras_financeiras = next.regras_financeiras.map((rule: any, index: number) => {
+      if (!rule || typeof rule !== "object" || Array.isArray(rule)) return rule;
+      const normalizedRule = { ...rule };
+      const ruleError = normalizeDiaInicio(normalizedRule, `regras_financeiras[${index}]`);
+      if (ruleError) throw new RangeError(ruleError);
+      return normalizedRule;
+    });
+  }
+
+  if (
+    next.regra_cobranca_config &&
+    typeof next.regra_cobranca_config === "object" &&
+    !Array.isArray(next.regra_cobranca_config) &&
+    Array.isArray(next.regra_cobranca_config.regras_cobranca)
+  ) {
+    next.regra_cobranca_config = {
+      ...next.regra_cobranca_config,
+      regras_cobranca: next.regra_cobranca_config.regras_cobranca.map((rule: any, index: number) => {
+        if (!rule || typeof rule !== "object" || Array.isArray(rule)) return rule;
+        const normalizedRule = { ...rule };
+        const ruleError = normalizeDiaInicio(normalizedRule, `regra_cobranca_config.regras_cobranca[${index}]`);
+        if (ruleError) throw new RangeError(ruleError);
+        return normalizedRule;
+      }),
+    };
+  }
+
+  return { payload: next };
+}
+
 function sanitizeCasoPayload(payload: any) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const next = { ...payload };
@@ -82,7 +145,26 @@ Deno.serve(async (req) => {
     }
 
     const { id, ...payload } = body;
-    const sanitizedPayload = sanitizeCasoPayload(payload);
+    let normalizedPayload;
+    try {
+      const normalized = normalizeDiaInicioPayload(payload);
+      if (normalized.error) {
+        return new Response(JSON.stringify({ error: normalized.error }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      normalizedPayload = normalized.payload;
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw error;
+    }
+    const sanitizedPayload = sanitizeCasoPayload(normalizedPayload);
     const { data, error } = await supabase.rpc("update_caso", {
       p_user_id: user.id,
       p_caso_id: id,
@@ -131,4 +213,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

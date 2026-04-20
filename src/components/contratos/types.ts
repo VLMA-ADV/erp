@@ -67,6 +67,7 @@ export interface CasoPayload {
   moeda: 'real' | 'euro' | 'dolar'
   tipo_cobranca_documento: 'invoice' | 'nf' | ''
   data_inicio_faturamento: string
+  dia_inicio_faturamento?: number | ''
   pagamento_dia_mes: string
   inicio_vigencia: string
   possui_reajuste?: boolean
