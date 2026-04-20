@@ -114,6 +114,7 @@ export default function SolicitacoesContratoList() {
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [areas, setAreas] = useState<AreaOption[]>([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
+  const targetSolicitacaoId = searchParams.get('solicitacao_id') || ''
 
   const clientesOptions = useMemo(
     () =>
@@ -145,13 +146,14 @@ export default function SolicitacoesContratoList() {
       const nome = (item.nome || '').toLowerCase()
       return (
         item.descricao.toLowerCase().includes(term) ||
+        item.id === targetSolicitacaoId ||
         nome.includes(term) ||
         (item.cliente_nome || '').toLowerCase().includes(term) ||
         (item.solicitante_nome || '').toLowerCase().includes(term) ||
         contratoLabel.includes(term)
       )
     })
-  }, [items, search])
+  }, [items, search, targetSolicitacaoId])
 
   const getSession = async () => {
     const supabase = createClient()
@@ -251,6 +253,11 @@ export default function SolicitacoesContratoList() {
     void fetchAreas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
+
+  useEffect(() => {
+    if (!targetSolicitacaoId) return
+    setExpandedMensagens((prev) => ({ ...prev, [targetSolicitacaoId]: true }))
+  }, [targetSolicitacaoId])
 
   useEffect(() => {
     if (!canWrite) return
