@@ -19,14 +19,36 @@ function pickFirstDefined(...values: unknown[]) {
   return null
 }
 
+function normalizeHistoricoEntry(entry: unknown) {
+  const row = toRecord(entry)
+  if (!row) return null
+
+  return {
+    id: row.id ?? null,
+    billing_item_id: row.billing_item_id ?? null,
+    role: row.role ?? null,
+    author_id: row.author_id ?? null,
+    author_name: pickFirstDefined(row.author_name, row.nome, row.nome_completo, "Usuário"),
+    horas: row.horas ?? null,
+    valor: row.valor ?? null,
+    texto: row.texto ?? null,
+    tenant_id: row.tenant_id ?? null,
+    created_at: row.created_at ?? null,
+  }
+}
+
 function normalizeRevisaoFaturaItem(item: unknown) {
   const row = toRecord(item)
   if (!row) return item
 
   const snapshot = toRecord(row.snapshot) ?? {}
+  const historico = Array.isArray(row.historico)
+    ? row.historico.map((entry) => normalizeHistoricoEntry(entry)).filter(Boolean)
+    : []
 
   return {
     ...row,
+    historico,
     data_revisao: pickFirstDefined(row.data_revisao, snapshot.data_revisao),
     data_aprovacao: pickFirstDefined(row.data_aprovacao, snapshot.data_aprovacao),
     responsavel_revisao_id: pickFirstDefined(row.responsavel_revisao_id, snapshot.responsavel_revisao_id),

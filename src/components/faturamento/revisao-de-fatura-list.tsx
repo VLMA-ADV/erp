@@ -46,6 +46,7 @@ interface RevisaoItem {
   timesheetProfissional: string
   timesheetValorHora: number
   snapshot: Record<string, unknown>
+  historico: RevisaoHistoricoEntry[]
 }
 
 interface CasoGroup {
@@ -108,6 +109,36 @@ interface CaseMetrics {
 type ReviewMode = 'default' | 'timesheet'
 type RuleFilterKey = 'all' | 'hora' | 'mensalidade' | 'exito' | 'unico' | 'outros'
 type HistoryStageKey = 'usuario' | 'revisor' | 'aprovador'
+type HistoricoRole = 'USUARIO' | 'REVISOR' | 'APROVADOR'
+
+interface RevisaoHistoricoEntry {
+  id: string
+  billingItemId: string
+  role: HistoricoRole
+  authorId: string
+  authorName: string
+  horas: number
+  valor: number
+  texto: string | null
+  tenantId: string
+  createdAt: string
+}
+
+interface HistoricalDisplayRow {
+  rowKey: string
+  stageKey: HistoryStageKey
+  label: string
+  dateText: string
+  userName: string
+  reviewerName: string
+  text: string
+  hoursText: string
+  value: number
+  rowClass: string
+  labelClass: string
+  showEdit: boolean
+  showPostergar: boolean
+}
 
 function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback
@@ -197,12 +228,29 @@ function formatDate(value: string) {
   return `${day}/${month}/${year}`
 }
 
+function formatDateTime(value: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return formatDate(value)
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function formatMoney(value: number | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0))
 }
 
 function formatHours(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatHistoryHours(value: number | null | undefined) {
+  return `${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} h`
 }
 
 function getOriginalItemHours(item: RevisaoItem) {
@@ -378,6 +426,43 @@ function parseSnapshotValueRows(item: RevisaoItem): ValueRowDraft[] {
   ]
 }
 
+function normalizeHistoricoRole(value: unknown): HistoricoRole | null {
+  if (value === 'USUARIO' || value === 'REVISOR' || value === 'APROVADOR') return value
+  return null
+}
+
+function normalizeHistorico(raw: unknown): RevisaoHistoricoEntry[] {
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .map((entry, index) => {
+      const row = toObject(entry)
+      if (!row) return null
+
+      const role = normalizeHistoricoRole(row.role)
+      const billingItemId = asString(row.billing_item_id)
+      const authorId = asString(row.author_id)
+      const createdAt = asString(row.created_at)
+
+      if (!role || !billingItemId || !authorId || !createdAt) return null
+
+      return {
+        id: asString(row.id) || `${billingItemId}:${role}:${createdAt}:${index}`,
+        billingItemId,
+        role,
+        authorId,
+        authorName: asString(row.author_name, 'Usuário'),
+        horas: asNumber(row.horas),
+        valor: asNumber(row.valor),
+        texto: asString(row.texto) || null,
+        tenantId: asString(row.tenant_id),
+        createdAt,
+      }
+    })
+    .filter((entry): entry is RevisaoHistoricoEntry => entry !== null)
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+}
+
 function normalizeItem(raw: unknown): RevisaoItem | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Record<string, unknown>
@@ -418,6 +503,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     timesheetProfissional: asString(data.timesheet_profissional),
     timesheetValorHora: asNumber(data.timesheet_valor_hora),
     snapshot,
+    historico: normalizeHistorico(data.historico),
   }
 }
 
@@ -497,6 +583,7 @@ export default function RevisaoDeFaturaList() {
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
   const [expandedContratos, setExpandedContratos] = useState<Record<string, boolean>>({})
   const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
+  const [expandedHistorico, setExpandedHistorico] = useState<Record<string, boolean>>({})
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
@@ -778,7 +865,47 @@ export default function RevisaoDeFaturaList() {
     )
   }, [tree, getLiveCaseMetrics])
 
-  const getHistoricalRows = useCallback((item: RevisaoItem, mode: ReviewMode) => {
+  const getHistoricalRows = useCallback((item: RevisaoItem, mode: ReviewMode, expanded: boolean) => {
+    if (item.historico.length > 0) {
+      const usuario = item.historico.find((entry) => entry.role === 'USUARIO') ?? item.historico[0]
+      const revisores = item.historico.filter((entry) => entry.role === 'REVISOR')
+      const aprovadores = item.historico.filter((entry) => entry.role === 'APROVADOR')
+      const aprovador = aprovadores[aprovadores.length - 1] ?? null
+      const visibleRevisores = expanded ? revisores : revisores.slice(-1)
+
+      const toDisplayRow = (entry: RevisaoHistoricoEntry, index: number): HistoricalDisplayRow => {
+        const stageKey = entry.role.toLowerCase() as HistoryStageKey
+        const isUsuario = entry.role === 'USUARIO'
+        const isRevisor = entry.role === 'REVISOR'
+
+        return {
+          rowKey: `${entry.id}:${index}`,
+          stageKey,
+          label: entry.role,
+          dateText: formatDateTime(entry.createdAt),
+          userName: entry.authorName,
+          reviewerName: isUsuario ? '-' : entry.authorName,
+          text: entry.texto || (mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)),
+          hoursText: formatHistoryHours(entry.horas),
+          value: entry.valor,
+          rowClass: isUsuario ? 'bg-white' : isRevisor ? 'bg-emerald-50/50' : 'bg-indigo-50/50',
+          labelClass: isUsuario
+            ? 'rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700'
+            : isRevisor
+              ? 'rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700'
+              : 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
+          showEdit: false,
+          showPostergar: false,
+        }
+      }
+
+      const rows = [usuario, ...visibleRevisores, ...(aprovador ? [aprovador] : [])].map(toDisplayRow)
+      return {
+        rows,
+        hiddenReviewerCount: Math.max(0, revisores.length - 1),
+      }
+    }
+
     const draft = drafts[item.id]
     const originalDate = item.timesheetDataLancamento || item.dataReferencia
     const originalUser = item.timesheetProfissional || item.responsavelFluxoNome || '-'
@@ -792,31 +919,19 @@ export default function RevisaoDeFaturaList() {
         ? draft?.timesheetRows?.[0]?.atividade || item.timesheetDescricao || 'Sem descrição'
         : draft?.valueRows?.[0]?.descricao || getRuleTitle(item)
 
-    const rows: Array<{
-      stageKey: HistoryStageKey
-      label: string
-      date: string
-      userName: string
-      reviewerName: string
-      text: string
-      minutes: number
-      value: number
-      rowClass: string
-      labelClass: string
-      showEdit: boolean
-      showPostergar: boolean
-    }> = [
+    const rows: HistoricalDisplayRow[] = [
       {
+        rowKey: 'usuario:fallback',
         stageKey: 'usuario',
         label: 'USUARIO',
-        date: originalDate,
+        dateText: formatDate(originalDate),
         userName: originalUser,
         reviewerName: item.responsavelRevisaoNome || '-',
         text: originalText,
-        minutes: hoursToMinutes(getOriginalItemHours(item)),
+        hoursText: formatHistoryHours(getOriginalItemHours(item)),
         value: getOriginalItemValue(item),
         rowClass: 'bg-white',
-        labelClass: 'text-slate-700',
+        labelClass: 'rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700',
         showEdit: true,
         showPostergar: Boolean(item.timesheetId),
       },
@@ -824,16 +939,17 @@ export default function RevisaoDeFaturaList() {
 
     if (hasReviewerHistory(item)) {
       rows.push({
+        rowKey: 'revisor:fallback',
         stageKey: 'revisor',
         label: 'REVISOR',
-        date: item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento,
+        dateText: formatDate(item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento),
         userName: reviewedUser,
         reviewerName: item.responsavelRevisaoNome || '-',
         text: reviewedText,
-        minutes: hoursToMinutes(item.horasRevisadas ?? getOriginalItemHours(item)),
+        hoursText: formatHistoryHours(item.horasRevisadas ?? getOriginalItemHours(item)),
         value: item.valorRevisado ?? getOriginalItemValue(item),
         rowClass: 'bg-emerald-50/50',
-        labelClass: 'text-emerald-700',
+        labelClass: 'rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700',
         showEdit: true,
         showPostergar: false,
       })
@@ -841,22 +957,23 @@ export default function RevisaoDeFaturaList() {
 
     if (hasApproverHistory(item)) {
       rows.push({
+        rowKey: 'aprovador:fallback',
         stageKey: 'aprovador',
         label: 'APROVADOR',
-        date: item.dataAprovacao || item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento,
+        dateText: formatDate(item.dataAprovacao || item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento),
         userName: reviewedUser,
         reviewerName: item.responsavelAprovacaoNome || item.responsavelRevisaoNome || '-',
         text: reviewedText,
-        minutes: hoursToMinutes(item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item)),
+        hoursText: formatHistoryHours(item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item)),
         value: item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item),
         rowClass: 'bg-indigo-50/50',
-        labelClass: 'text-indigo-700',
+        labelClass: 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
         showEdit: false,
         showPostergar: false,
       })
     }
 
-    return rows
+    return { rows, hiddenReviewerCount: 0 }
   }, [drafts])
 
   const syncTimesheetRow = (itemId: string, rowId: string, patch: Partial<TimesheetRowDraft>) => {
@@ -1370,11 +1487,11 @@ export default function RevisaoDeFaturaList() {
                                             <tr className="border-b text-[11px] uppercase tracking-wide text-slate-500">
                                               <th className="w-10 px-3 py-2 text-left" />
                                               <th className="px-3 py-2 text-left">Role</th>
-                                              <th className="px-3 py-2 text-left">Data</th>
-                                              <th className="px-3 py-2 text-left">Usuario</th>
-                                              <th className="px-3 py-2 text-left">Revisor</th>
+                                              <th className="px-3 py-2 text-left">Data/hora</th>
+                                              <th className="px-3 py-2 text-left">Autor</th>
+                                              <th className="px-3 py-2 text-left">Responsavel</th>
                                               <th className="px-3 py-2 text-left">Texto</th>
-                                              <th className="px-3 py-2 text-right">Min</th>
+                                              <th className="px-3 py-2 text-right">Horas</th>
                                               <th className="px-3 py-2 text-right">Valor</th>
                                               <th className="px-3 py-2 text-right">Acoes</th>
                                             </tr>
@@ -1383,80 +1500,107 @@ export default function RevisaoDeFaturaList() {
                                             {reviewRows.map(({ item, mode, key }) => {
                                               const draft = drafts[item.id]
                                               const busy = busyKey === key || busyKey === `advance:${item.id}` || busyKey === `batch:${contratoGroup.key}`
-                                              const historicalRows = getHistoricalRows(item, mode)
+                                              const historyExpanded = expandedHistorico[key] === true
+                                              const {
+                                                rows: historicalRows,
+                                                hiddenReviewerCount,
+                                              } = getHistoricalRows(item, mode, historyExpanded)
+                                              const reviewerToggleVisible = hiddenReviewerCount > 0
 
                                               return (
                                                 <Fragment key={key}>
                                                   {historicalRows.map((historyRow, historyIndex) => (
-                                                    <tr key={`${key}:${historyRow.stageKey}`} className={`border-b align-top ${historyRow.rowClass}`}>
-                                                      {historyIndex === 0 ? (
-                                                        <td rowSpan={historicalRows.length} className="px-3 py-3">
-                                                          <input
-                                                            type="checkbox"
-                                                            className="mt-1 h-4 w-4 rounded border-slate-300"
-                                                            checked={selectedItemIds.includes(item.id)}
-                                                            onChange={(event) =>
-                                                              setSelectedItemIds((prev) =>
-                                                                event.target.checked
-                                                                  ? Array.from(new Set([...prev, item.id]))
-                                                                  : prev.filter((id) => id !== item.id),
-                                                              )
-                                                            }
-                                                            disabled={!canAdvance(item.status) || busy}
-                                                          />
+                                                    <Fragment key={`${key}:${historyRow.rowKey}`}>
+                                                      <tr className={`border-b align-top ${historyRow.rowClass}`}>
+                                                        {historyIndex === 0 ? (
+                                                          <td rowSpan={historicalRows.length + (reviewerToggleVisible ? 1 : 0)} className="px-3 py-3">
+                                                            <input
+                                                              type="checkbox"
+                                                              className="mt-1 h-4 w-4 rounded border-slate-300"
+                                                              checked={selectedItemIds.includes(item.id)}
+                                                              onChange={(event) =>
+                                                                setSelectedItemIds((prev) =>
+                                                                  event.target.checked
+                                                                    ? Array.from(new Set([...prev, item.id]))
+                                                                    : prev.filter((id) => id !== item.id),
+                                                                )
+                                                              }
+                                                              disabled={!canAdvance(item.status) || busy}
+                                                            />
+                                                          </td>
+                                                        ) : null}
+                                                        <td className="px-3 py-3 text-sm font-semibold">
+                                                          <span className={historyRow.labelClass}>{historyRow.label}</span>
                                                         </td>
+                                                        <td className="px-3 py-3 text-sm text-slate-700">{historyRow.dateText}</td>
+                                                        <td className="px-3 py-3 text-sm text-slate-700">{historyRow.userName}</td>
+                                                        <td className="px-3 py-3 text-sm text-slate-700">{historyRow.reviewerName}</td>
+                                                        <td className="px-3 py-3 text-sm text-slate-700">
+                                                          <div className="max-w-[340px] whitespace-normal break-words">{historyRow.text}</div>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right text-sm text-slate-700">{historyRow.hoursText}</td>
+                                                        <td className="px-3 py-3 text-right text-sm font-medium text-slate-900">{formatMoney(historyRow.value)}</td>
+                                                        <td className="px-3 py-3">
+                                                          <div className="flex items-center justify-end gap-2">
+                                                            <Button
+                                                              size="sm"
+                                                              variant="outline"
+                                                              onClick={() => void saveAndAdvance(item, mode)}
+                                                              disabled={!canAdvance(item.status) || busy}
+                                                            >
+                                                              {busy && busyKey !== `postergar:${item.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                              OK
+                                                            </Button>
+                                                            {historyRow.showEdit ? (
+                                                              <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => setEditorKey((current) => (current === key ? null : key))}
+                                                                disabled={busy}
+                                                              >
+                                                                Editar
+                                                              </Button>
+                                                            ) : null}
+                                                            {historyRow.showPostergar ? (
+                                                              <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                                onClick={() => setPostergarConfirmId(item.id)}
+                                                                disabled={busy}
+                                                                title="Postergar para próximo mês"
+                                                              >
+                                                                {busyKey === `postergar:${item.id}` ? (
+                                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                  <Clock className="h-4 w-4" />
+                                                                )}
+                                                              </Button>
+                                                            ) : null}
+                                                          </div>
+                                                        </td>
+                                                      </tr>
+                                                      {historyIndex === 0 && reviewerToggleVisible ? (
+                                                        <tr className="border-b bg-slate-50">
+                                                          <td colSpan={8} className="px-3 py-2">
+                                                            <Button
+                                                              size="sm"
+                                                              variant="ghost"
+                                                              onClick={() =>
+                                                                setExpandedHistorico((prev) => ({
+                                                                  ...prev,
+                                                                  [key]: !historyExpanded,
+                                                                }))
+                                                              }
+                                                            >
+                                                              {historyExpanded
+                                                                ? 'Ocultar edições anteriores'
+                                                                : `Ver ${hiddenReviewerCount} edição${hiddenReviewerCount > 1 ? 'es' : ''} anterior${hiddenReviewerCount > 1 ? 'es' : ''}`}
+                                                            </Button>
+                                                          </td>
+                                                        </tr>
                                                       ) : null}
-                                                      <td className="px-3 py-3 text-sm font-semibold">
-                                                        <span className={historyRow.labelClass}>{historyRow.label}</span>
-                                                      </td>
-                                                      <td className="px-3 py-3 text-sm text-slate-700">{formatDate(historyRow.date)}</td>
-                                                      <td className="px-3 py-3 text-sm text-slate-700">{historyRow.userName}</td>
-                                                      <td className="px-3 py-3 text-sm text-slate-700">{historyRow.reviewerName}</td>
-                                                      <td className="px-3 py-3 text-sm text-slate-700">
-                                                        <div className="max-w-[340px] whitespace-normal break-words">{historyRow.text}</div>
-                                                      </td>
-                                                      <td className="px-3 py-3 text-right text-sm text-slate-700">{historyRow.minutes}</td>
-                                                      <td className="px-3 py-3 text-right text-sm font-medium text-slate-900">{formatMoney(historyRow.value)}</td>
-                                                      <td className="px-3 py-3">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                          <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => void saveAndAdvance(item, mode)}
-                                                            disabled={!canAdvance(item.status) || busy}
-                                                          >
-                                                            {busy && busyKey !== `postergar:${item.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                            OK
-                                                          </Button>
-                                                          {historyRow.showEdit ? (
-                                                            <Button
-                                                              size="sm"
-                                                              variant="ghost"
-                                                              onClick={() => setEditorKey((current) => (current === key ? null : key))}
-                                                              disabled={busy}
-                                                            >
-                                                              Editar
-                                                            </Button>
-                                                          ) : null}
-                                                          {historyRow.showPostergar ? (
-                                                            <Button
-                                                              size="sm"
-                                                              variant="ghost"
-                                                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                                                              onClick={() => setPostergarConfirmId(item.id)}
-                                                              disabled={busy}
-                                                              title="Postergar para próximo mês"
-                                                            >
-                                                              {busyKey === `postergar:${item.id}` ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                              ) : (
-                                                                <Clock className="h-4 w-4" />
-                                                              )}
-                                                            </Button>
-                                                          ) : null}
-                                                        </div>
-                                                      </td>
-                                                    </tr>
+                                                    </Fragment>
                                                   ))}
 
                                                   {editorKey === key ? (

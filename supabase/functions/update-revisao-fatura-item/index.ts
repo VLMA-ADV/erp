@@ -20,6 +20,22 @@ function toRecord(value: unknown): Record<string, unknown> | null {
     : null
 }
 
+function hasPermissionKey(
+  rows: { permission_key: string }[] | null | undefined,
+  keys: string[],
+) {
+  return (rows ?? []).some((p) => keys.includes(p.permission_key))
+}
+
+function isApprovalPayload(body: Record<string, unknown>) {
+  return (
+    Object.prototype.hasOwnProperty.call(body, "horas_aprovadas") ||
+    Object.prototype.hasOwnProperty.call(body, "valor_aprovado") ||
+    body.status === "aprovado" ||
+    body.action === "aprovar"
+  )
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
@@ -59,15 +75,22 @@ Deno.serve(async (req) => {
     }
 
     const { data: permissionsData } = await supabase.rpc("get_user_permissions", { p_user_id: user.id })
-    const hasPermission = permissionsData?.some(
-      (p: any) =>
-        p.permission_key === "finance.faturamento.review" ||
-        p.permission_key === "finance.faturamento.approve" ||
-        p.permission_key === "finance.faturamento.manage" ||
-        p.permission_key === "finance.faturamento.*" ||
-        p.permission_key === "finance.*" ||
-        p.permission_key === "*",
-    )
+    const permissionRows = (permissionsData ?? []) as { permission_key: string }[]
+    const canReview = hasPermissionKey(permissionRows, [
+      "finance.faturamento.review",
+      "finance.faturamento.manage",
+      "finance.faturamento.*",
+      "finance.*",
+      "*",
+    ])
+    const canApprove = hasPermissionKey(permissionRows, [
+      "finance.faturamento.approve",
+      "finance.faturamento.manage",
+      "finance.faturamento.*",
+      "finance.*",
+      "*",
+    ])
+    const hasPermission = canReview || canApprove
 
     if (!hasPermission) {
       return new Response(JSON.stringify({ error: "Você não tem permissão para editar revisão de fatura" }), {
@@ -87,9 +110,19 @@ Deno.serve(async (req) => {
       })
     }
 
+    if (body.role === "USUARIO") {
+      return new Response(JSON.stringify({ error: "role USUARIO não pode editar revisão" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    const role = canApprove && isApprovalPayload(body) ? "APROVADOR" : canReview ? "REVISOR" : "APROVADOR"
+    const payload = { ...body, role }
+
     const { data, error } = await supabase.rpc("update_revisao_fatura_item", {
       p_user_id: user.id,
-      p_payload: body,
+      p_payload: payload,
     })
 
     if (error) {
