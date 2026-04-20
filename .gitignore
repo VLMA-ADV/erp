@@ -83,3 +83,6 @@ scripts/.z2-chunks/emit-*.mjs
 scripts/.z2-chunks/split-*.mjs
 scripts/.z2-chunks/chunk-*.txt
 scripts/.z2-chunks/_*
+
+# Z-6 / MCP: artefatos locais de chunk (não versionar)
+supabase/migrations/.z6-build/

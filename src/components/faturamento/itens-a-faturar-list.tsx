@@ -94,6 +94,14 @@ function formatDate(value: string | null | undefined) {
   return `${day}/${month}/${year}`
 }
 
+function formatBillingReference(tipo: string | null | undefined, value: string | null | undefined) {
+  if (normalizeRuleType(tipo) === 'mensalidade' || normalizeRuleType(tipo) === 'mensalidade_processo') {
+    const day = value?.split('-')[2]
+    return day ? `dia ${Number(day)}` : '-'
+  }
+  return formatDate(value)
+}
+
 type RegraTabKey = 'todas' | 'hora' | 'mensalidade_processo' | 'mensalidade' | 'projeto' | 'projeto_parcelado' | 'exito' | 'despesa'
 
 const REGRA_TABS: Array<{ key: RegraTabKey; label: string }> = [
@@ -878,7 +886,7 @@ export default function ItensAFaturarList() {
                                         <tr key={`${caso.caso_id}-linha-${index}`} className="bg-muted/5">
                                           <td className="px-2 py-2" />
                                           <td className="px-4 py-2 pl-24 text-xs text-muted-foreground">
-                                            {(linha.descricao || linha.tipo) + ' • ' + formatDate(linha.data_referencia)}
+                                            {(linha.descricao || linha.tipo) + ' • ' + formatBillingReference(linha.tipo, linha.data_referencia)}
                                           </td>
                                           <td className="px-4 py-2 text-xs text-muted-foreground">
                                             {formatHours(linha.horas)}

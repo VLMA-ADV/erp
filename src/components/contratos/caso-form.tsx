@@ -33,6 +33,7 @@ const emptyCaso: CasoPayload = {
   moeda: 'real',
   tipo_cobranca_documento: '',
   data_inicio_faturamento: '',
+  dia_inicio_faturamento: '',
   pagamento_dia_mes: '',
   inicio_vigencia: '',
   possui_reajuste: true,
@@ -138,6 +139,7 @@ interface BillingRuleDraft {
   moeda: CasoPayload['moeda']
   tipo_cobranca_documento: CasoPayload['tipo_cobranca_documento']
   data_inicio_faturamento: string
+  dia_inicio_faturamento: number | ''
   pagamento_dia_mes: string
   inicio_vigencia: string
   periodo_reajuste: string
@@ -193,6 +195,41 @@ function formatDateBr(value: string) {
   const [y, m, d] = value.split('-')
   if (!y || !m || !d) return value
   return `${d}/${m}/${y}`
+}
+
+function normalizeDiaInicioFaturamento(value: unknown, fallbackDate?: unknown): number | '' {
+  const parseDay = (raw: unknown) => {
+    if (raw === null || raw === undefined || raw === '') return ''
+    const parsed = Number(raw)
+    if (!Number.isInteger(parsed)) return ''
+    return parsed >= 1 && parsed <= 31 ? parsed : ''
+  }
+
+  const direct = parseDay(value)
+  if (direct !== '') return direct
+
+  if (typeof fallbackDate === 'string' && fallbackDate) {
+    const [, , day] = fallbackDate.split('-')
+    return parseDay(day)
+  }
+
+  return ''
+}
+
+function validateDiaInicioFaturamento(value: number | '') {
+  return value === '' || (Number.isInteger(value) && value >= 1 && value <= 31)
+}
+
+function buildDateFromDay(baseDate: string, dayOfMonth: number | '') {
+  if (dayOfMonth === '') return baseDate || ''
+
+  const base = baseDate ? new Date(`${baseDate}T00:00:00`) : new Date()
+  if (Number.isNaN(base.getTime())) return ''
+
+  const target = new Date(base.getFullYear(), base.getMonth(), 1)
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(dayOfMonth, lastDay))
+  return formatDateToInput(target)
 }
 
 function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
@@ -393,6 +430,7 @@ export default function CasoForm({
     moeda: form.moeda,
     tipo_cobranca_documento: form.tipo_cobranca_documento,
     data_inicio_faturamento: form.data_inicio_faturamento,
+    dia_inicio_faturamento: form.dia_inicio_faturamento ?? '',
     pagamento_dia_mes: form.pagamento_dia_mes,
     inicio_vigencia: form.inicio_vigencia,
     periodo_reajuste: form.periodo_reajuste,
@@ -412,6 +450,7 @@ export default function CasoForm({
         moeda: rule.moeda,
         tipo_cobranca_documento: rule.tipo_cobranca_documento,
         data_inicio_faturamento: rule.data_inicio_faturamento,
+        dia_inicio_faturamento: rule.dia_inicio_faturamento ?? '',
         pagamento_dia_mes: rule.pagamento_dia_mes,
         inicio_vigencia: rule.inicio_vigencia,
         periodo_reajuste: rule.periodo_reajuste,
@@ -458,6 +497,7 @@ export default function CasoForm({
       moeda: form.moeda || 'real',
       tipo_cobranca_documento: '',
       data_inicio_faturamento: form.data_inicio_faturamento || '',
+      dia_inicio_faturamento: form.dia_inicio_faturamento ?? '',
       pagamento_dia_mes: form.pagamento_dia_mes || '',
       inicio_vigencia: form.inicio_vigencia || '',
       periodo_reajuste: 'nao_tem',
@@ -537,6 +577,10 @@ export default function CasoForm({
             moeda: (item.moeda || lastCase.moeda || emptyCaso.moeda) as BillingRuleDraft['moeda'],
             tipo_cobranca_documento: (item.tipo_cobranca_documento || lastCase.tipo_cobranca_documento || emptyCaso.tipo_cobranca_documento) as BillingRuleDraft['tipo_cobranca_documento'],
             data_inicio_faturamento: String(item.data_inicio_faturamento || lastCase.data_inicio_faturamento || ''),
+            dia_inicio_faturamento: normalizeDiaInicioFaturamento(
+              item.dia_inicio_faturamento,
+              item.data_inicio_faturamento || lastCase.data_inicio_faturamento,
+            ) || normalizeDiaInicioFaturamento(lastCase.dia_inicio_faturamento, lastCase.data_inicio_faturamento),
             pagamento_dia_mes: String(item.pagamento_dia_mes || lastCase.pagamento_dia_mes || ''),
             inicio_vigencia: String(item.inicio_vigencia || lastCase.inicio_vigencia || ''),
             periodo_reajuste: String(item.periodo_reajuste || lastCase.periodo_reajuste || emptyCaso.periodo_reajuste),
@@ -550,6 +594,7 @@ export default function CasoForm({
             moeda: (lastCase.moeda || emptyCaso.moeda) as BillingRuleDraft['moeda'],
             tipo_cobranca_documento: (lastCase.tipo_cobranca_documento || emptyCaso.tipo_cobranca_documento) as BillingRuleDraft['tipo_cobranca_documento'],
             data_inicio_faturamento: String(lastCase.data_inicio_faturamento || ''),
+            dia_inicio_faturamento: normalizeDiaInicioFaturamento(lastCase.dia_inicio_faturamento, lastCase.data_inicio_faturamento),
             pagamento_dia_mes: String(lastCase.pagamento_dia_mes || ''),
             inicio_vigencia: String(lastCase.inicio_vigencia || ''),
             periodo_reajuste: String(lastCase.periodo_reajuste || emptyCaso.periodo_reajuste),
@@ -713,6 +758,7 @@ export default function CasoForm({
             moeda: caso.moeda || 'real',
             tipo_cobranca_documento: caso.tipo_cobranca_documento || '',
             data_inicio_faturamento: caso.data_inicio_faturamento || '',
+            dia_inicio_faturamento: normalizeDiaInicioFaturamento(caso.dia_inicio_faturamento, caso.data_inicio_faturamento),
             pagamento_dia_mes: caso.pagamento_dia_mes ? String(caso.pagamento_dia_mes) : '',
             inicio_vigencia: caso.inicio_vigencia || '',
             possui_reajuste: caso.possui_reajuste !== false,
@@ -746,6 +792,10 @@ export default function CasoForm({
               id: item.id || createRuleId(),
               status: (item.status || 'ativo') as BillingRuleStatus,
               regra_cobranca: normalizeRegraCobranca(item.regra_cobranca as CasoPayload['regra_cobranca']),
+              dia_inicio_faturamento: normalizeDiaInicioFaturamento(
+                item.dia_inicio_faturamento,
+                item.data_inicio_faturamento || loadedForm.data_inicio_faturamento,
+              ) || loadedForm.dia_inicio_faturamento || '',
               regra_cobranca_config: sanitizeSingleRuleConfig(item.regra_cobranca_config || {}),
               indicacao_config: { ...(item.indicacao_config || loadedForm.indicacao_config || emptyCaso.indicacao_config) },
             }))
@@ -755,6 +805,7 @@ export default function CasoForm({
               moeda: loadedForm.moeda,
               tipo_cobranca_documento: loadedForm.tipo_cobranca_documento,
               data_inicio_faturamento: loadedForm.data_inicio_faturamento,
+              dia_inicio_faturamento: loadedForm.dia_inicio_faturamento ?? '',
               pagamento_dia_mes: loadedForm.pagamento_dia_mes,
               inicio_vigencia: loadedForm.inicio_vigencia,
               periodo_reajuste: loadedForm.periodo_reajuste,
@@ -785,6 +836,7 @@ export default function CasoForm({
             moeda: emptyCaso.moeda,
             tipo_cobranca_documento: emptyCaso.tipo_cobranca_documento,
             data_inicio_faturamento: emptyCaso.data_inicio_faturamento,
+            dia_inicio_faturamento: emptyCaso.dia_inicio_faturamento ?? '',
             pagamento_dia_mes: emptyCaso.pagamento_dia_mes,
             inicio_vigencia: String(inheritedPatch.inicio_vigencia || emptyCaso.inicio_vigencia),
             periodo_reajuste: String(inheritedPatch.periodo_reajuste || emptyCaso.periodo_reajuste),
@@ -893,6 +945,7 @@ export default function CasoForm({
     form.moeda,
     form.tipo_cobranca_documento,
     form.data_inicio_faturamento,
+    form.dia_inicio_faturamento,
     form.pagamento_dia_mes,
     form.inicio_vigencia,
     form.periodo_reajuste,
@@ -953,13 +1006,19 @@ export default function CasoForm({
     setRegra(`cross_sell_${field}`, value)
   }
 
+  const getBillingStartReferenceDate = () => {
+    const day = normalizeDiaInicioFaturamento(form.dia_inicio_faturamento, form.data_inicio_faturamento)
+    return buildDateFromDay(form.inicio_vigencia || form.data_inicio_faturamento, day)
+  }
+
   const setIndicacaoPeriodicidade = (periodicidade: string) => {
+    const billingStartReferenceDate = getBillingStartReferenceDate()
     setIndicacao('periodicidade', periodicidade)
     if (periodicidade === 'mensal') {
       setIndicacao('usar_dia_vencimento', true)
       setIndicacao('parcelas_pagamento', [])
       if (!indicacao.data_fim_pagamentos) {
-        setIndicacao('data_fim_pagamentos', form.inicio_vigencia || form.data_inicio_faturamento || '')
+        setIndicacao('data_fim_pagamentos', billingStartReferenceDate)
       }
       return
     }
@@ -974,7 +1033,7 @@ export default function CasoForm({
     setIndicacao('data_fim_pagamentos', '')
     setIndicacao('dia_pagamento_mensal', '')
     if (!indicacao.data_pagamento_unico) {
-      setIndicacao('data_pagamento_unico', form.inicio_vigencia || form.data_inicio_faturamento || '')
+      setIndicacao('data_pagamento_unico', billingStartReferenceDate)
     }
   }
 
@@ -997,12 +1056,13 @@ export default function CasoForm({
   }
 
   const setCrossSellPeriodicidade = (periodicidade: string) => {
+    const billingStartReferenceDate = getBillingStartReferenceDate()
     setCrossSell('periodicidade', periodicidade)
     if (periodicidade === 'mensal') {
       setCrossSell('usar_dia_vencimento', true)
       setCrossSell('parcelas_pagamento', [])
       if (!regras.cross_sell_data_fim_pagamentos) {
-        setCrossSell('data_fim_pagamentos', form.inicio_vigencia || form.data_inicio_faturamento || '')
+        setCrossSell('data_fim_pagamentos', billingStartReferenceDate)
       }
       return
     }
@@ -1018,7 +1078,7 @@ export default function CasoForm({
     setCrossSell('data_fim_pagamentos', '')
     setCrossSell('dia_pagamento_mensal', '')
     if (!String(regras.cross_sell_data_pagamento_unico || '').trim()) {
-      setCrossSell('data_pagamento_unico', form.inicio_vigencia || form.data_inicio_faturamento || '')
+      setCrossSell('data_pagamento_unico', billingStartReferenceDate)
     }
   }
 
@@ -1157,7 +1217,7 @@ export default function CasoForm({
     }
     const totalWeight = weights.reduce((acc, weight) => acc + weight, 0)
     if (!totalWeight) return
-    const baseDate = form.data_inicio_faturamento || form.inicio_vigencia || new Date().toISOString().slice(0, 10)
+    const baseDate = getBillingStartReferenceDate() || form.inicio_vigencia || new Date().toISOString().slice(0, 10)
     const parcelas = weights.map((weight, idx) => ({
       valor: (Math.round(((total * weight) / totalWeight) * 100) / 100).toFixed(2),
       data_pagamento: idx === 0 ? baseDate : '',
@@ -1322,6 +1382,9 @@ export default function CasoForm({
   }, [currentBillingRule?.regra_cobranca, form.regra_cobranca])
 
   const validateFinanceiro = (): string | null => {
+    if (!validateDiaInicioFaturamento(form.dia_inicio_faturamento ?? '')) {
+      return 'Dia de início de faturamento deve ser um inteiro entre 1 e 31'
+    }
     return null
   }
 
@@ -1634,7 +1697,7 @@ export default function CasoForm({
                 <div className="grid grid-cols-1 gap-3 md:col-span-2 md:grid-cols-2">
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Moeda</p><p className="font-medium">{form.moeda || '-'}</p></div>
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Tipo de cobrança</p><p className="font-medium">{form.tipo_cobranca_documento || '-'}</p></div>
-                  <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Data início faturamento</p><p className="font-medium">{form.data_inicio_faturamento || '-'}</p></div>
+                  <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Dia de início de faturamento</p><p className="font-medium">{form.dia_inicio_faturamento || '-'}</p></div>
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Pagamento (dia do mês)</p><p className="font-medium">{form.pagamento_dia_mes || '-'}</p></div>
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Início vigência</p><p className="font-medium">{form.inicio_vigencia || '-'}</p></div>
                   <div className="space-y-1 rounded-md border p-3"><p className="text-xs text-muted-foreground">Período reajuste</p><p className="font-medium">{form.periodo_reajuste || '-'}</p></div>
@@ -1918,8 +1981,20 @@ export default function CasoForm({
                 </NativeSelect>
               </div>
               <div className="space-y-2">
-                <Label>Data início faturamento</Label>
-                <DatePicker value={form.data_inicio_faturamento} onChange={(value) => setField('data_inicio_faturamento', value)} disabled={isReadOnly} />
+                <Label>Dia de início de faturamento</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  step={1}
+                  value={form.dia_inicio_faturamento}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setField('dia_inicio_faturamento', value === '' ? '' : Number(value))
+                  }}
+                  disabled={isReadOnly}
+                  placeholder="1 a 31"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Pagamento em (dia do mês)</Label>
