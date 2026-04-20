@@ -44,7 +44,7 @@ interface ContratoRow {
 
 interface AutorRow {
   id: string;
-  nome_completo: string | null;
+  nome: string | null;
 }
 
 function jsonRes(body: Record<string, unknown>, status = 200) {
@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
       const { data: autores, error: autoresError } = await supabase
         .schema("people")
         .from("colaboradores")
-        .select("id, nome_completo")
+        .select("id, nome")
         .in("id", autorIds);
 
       if (autoresError) {
@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
         contrato_nome: contrato?.nome_contrato ?? null,
         solicitacao_nome: solicitacao?.nome ?? solicitacao?.descricao ?? null,
         remetente_id: mensagem.autor_id,
-        remetente_nome: autor?.nome_completo ?? "Usuário",
+        remetente_nome: autor?.nome ?? "Usuário",
         mensagem_preview: preview(mensagem.mensagem),
         created_at: mensagem.created_at,
       };
