@@ -54,11 +54,15 @@ export interface ContratoFormOptions {
   }>
 }
 
+export interface RegraFinanceiraPayload extends Record<string, unknown> {
+  quantidade_sm?: number | null
+}
+
 export interface CasoPayload {
   id?: string
   status?: 'rascunho' | 'ativo' | 'inativo'
   anexos?: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }>
-  regras_financeiras?: Array<Record<string, any>>
+  regras_financeiras?: RegraFinanceiraPayload[]
   nome: string
   observacao?: string
   polo?: 'ativo' | 'passivo' | null
@@ -82,6 +86,7 @@ export interface CasoPayload {
     | 'hora_com_cap'
     | 'mensal'
     | 'mensalidade_processo'
+    | 'salario_minimo'
     | 'projeto'
     | 'projeto_parcelado'
     | 'exito'
