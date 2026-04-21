@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { CircleDollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 interface SidebarMenuConfiguracaoProps {
@@ -29,6 +30,12 @@ const configuracaoMenuItems = [
     label: 'Produtos',
     href: '/configuracao/servicos-produtos',
     permission: 'config.produtos.read',
+  },
+  {
+    label: 'Salário Mínimo',
+    href: '/configuracao/salario-minimo',
+    permission: 'config.salario_minimo.read',
+    icon: CircleDollarSign,
   },
   {
     label: 'Categorias Prest/Parc',
@@ -116,6 +123,8 @@ export default function SidebarMenuConfiguracao({
               return null
             }
 
+            const Icon = item.icon
+
             return (
               <Link
                 key={item.href}
@@ -127,6 +136,7 @@ export default function SidebarMenuConfiguracao({
                     : 'text-gray-600 hover:bg-gray-100'
                 )}
               >
+                {Icon ? <Icon className="mr-2 h-4 w-4" /> : null}
                 {item.label}
               </Link>
             )

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, CircleDollarSign, Clock3, Copy, Eye, Landmark, Layers3, Loader2, Paperclip, Pencil, Power, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -148,6 +149,7 @@ interface BillingRuleDraft {
   data_ultimo_reajuste: string
   indice_reajuste: string
   regra_cobranca: CasoPayload['regra_cobranca']
+  quantidade_sm?: number | null
   regra_cobranca_config: Record<string, any>
   pagadores_servico: CasoPayload['pagadores_servico']
   indicacao_config: CasoPayload['indicacao_config']
@@ -272,6 +274,34 @@ function cloneCasoValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+function normalizePositiveDecimal(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(String(value).replace(',', '.'))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+async function fetchSalarioMinimoAtual(): Promise<{ valor: number | string | null }> {
+  const supabase = createClient()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Sessão expirada')
+
+  const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-salario-minimo`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  const data: unknown = await response.json()
+  if (!response.ok) {
+    const message = data && typeof data === 'object' && 'error' in data ? String(data.error) : 'Erro ao carregar salário mínimo'
+    throw new Error(message)
+  }
+  return data as { valor: number | string | null }
+}
+
 function buildInheritedReajusteVigenciaPatch(source?: Partial<CasoPayload> | null): Partial<CasoPayload> {
   if (!source) return {}
 
@@ -348,6 +378,13 @@ export default function CasoForm({
   const timesheet = form.timesheet_config || {}
   const indicacao = form.indicacao_config || {}
   const modoPreco = regras.modo_preco || (regras.tabela_preco_id || regras.tabela_preco_nome ? 'tabela' : 'valor_hora')
+  const quantidadeSm = normalizePositiveDecimal(regras.quantidade_sm)
+  const salarioMinimoQuery = useQuery({
+    queryKey: ['salario-minimo-atual'],
+    queryFn: fetchSalarioMinimoAtual,
+    enabled: form.regra_cobranca === 'salario_minimo',
+  })
+  const salarioMinimoValor = normalizePositiveDecimal(salarioMinimoQuery.data?.valor)
   const crossSellEnabled = Boolean(regras.cross_sell_ativo)
   const crossSellPeriodicidade = String(regras.cross_sell_periodicidade || 'mensal')
   const crossSellModo = regras.cross_sell_modo === 'valor' ? 'valor' : 'percentual'
@@ -444,6 +481,9 @@ export default function CasoForm({
     data_ultimo_reajuste: form.data_ultimo_reajuste,
     indice_reajuste: form.indice_reajuste,
     regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
+    quantidade_sm: normalizeRegraCobranca(form.regra_cobranca) === 'salario_minimo'
+      ? normalizePositiveDecimal(form.regra_cobranca_config?.quantidade_sm)
+      : null,
     regra_cobranca_config: sanitizeSingleRuleConfig(form.regra_cobranca_config || {}),
     pagadores_servico: [...(form.pagadores_servico || [])],
     indicacao_config: { ...(form.indicacao_config || emptyCaso.indicacao_config) },
@@ -464,7 +504,10 @@ export default function CasoForm({
         data_ultimo_reajuste: rule.data_ultimo_reajuste,
         indice_reajuste: rule.indice_reajuste,
         regra_cobranca: rule.regra_cobranca,
-        regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+        regra_cobranca_config: {
+          ...sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
+          quantidade_sm: rule.quantidade_sm ?? rule.regra_cobranca_config?.quantidade_sm ?? '',
+        },
         pagadores_servico: [...(rule.pagadores_servico || [])],
         indicacao_config: { ...(rule.indicacao_config || emptyCaso.indicacao_config) },
       }
@@ -511,6 +554,7 @@ export default function CasoForm({
       data_ultimo_reajuste: '',
       indice_reajuste: 'nao_tem',
       regra_cobranca: '',
+      quantidade_sm: null,
       regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
       pagadores_servico: [],
       indicacao_config: { ...emptyCaso.indicacao_config },
@@ -577,6 +621,7 @@ export default function CasoForm({
             id: item.id || createRuleId(),
             status: (item.status || 'ativo') as BillingRuleStatus,
             regra_cobranca: normalizeRegraCobranca(item.regra_cobranca as CasoPayload['regra_cobranca']),
+            quantidade_sm: normalizePositiveDecimal(item.quantidade_sm ?? item.regra_cobranca_config?.quantidade_sm),
             regra_cobranca_config: sanitizeSingleRuleConfig(cloneCasoValue(item.regra_cobranca_config || {})),
             pagadores_servico: cloneCasoValue(item.pagadores_servico || lastCase.pagadores_servico || []),
             indicacao_config: cloneCasoValue(item.indicacao_config || lastCase.indicacao_config || emptyCaso.indicacao_config),
@@ -608,6 +653,7 @@ export default function CasoForm({
             data_ultimo_reajuste: String(lastCase.data_ultimo_reajuste || ''),
             indice_reajuste: String(lastCase.indice_reajuste || emptyCaso.indice_reajuste),
             regra_cobranca: normalizeRegraCobranca(lastCase.regra_cobranca as CasoPayload['regra_cobranca']),
+            quantidade_sm: normalizePositiveDecimal(lastCase.quantidade_sm ?? lastCase.regra_cobranca_config?.quantidade_sm),
             regra_cobranca_config: sanitizeSingleRuleConfig(cloneCasoValue(lastCase.regra_cobranca_config || {})),
             pagadores_servico: cloneCasoValue(lastCase.pagadores_servico || []),
             indicacao_config: cloneCasoValue(lastCase.indicacao_config || emptyCaso.indicacao_config),
@@ -799,6 +845,7 @@ export default function CasoForm({
               id: item.id || createRuleId(),
               status: (item.status || 'ativo') as BillingRuleStatus,
               regra_cobranca: normalizeRegraCobranca(item.regra_cobranca as CasoPayload['regra_cobranca']),
+              quantidade_sm: normalizePositiveDecimal(item.quantidade_sm ?? item.regra_cobranca_config?.quantidade_sm),
               dia_inicio_faturamento: normalizeDiaInicioFaturamento(
                 item.dia_inicio_faturamento,
                 item.data_inicio_faturamento || loadedForm.data_inicio_faturamento,
@@ -820,6 +867,7 @@ export default function CasoForm({
               data_ultimo_reajuste: loadedForm.data_ultimo_reajuste,
               indice_reajuste: loadedForm.indice_reajuste,
               regra_cobranca: normalizeRegraCobranca(loadedForm.regra_cobranca),
+              quantidade_sm: normalizePositiveDecimal(loadedForm.regra_cobranca_config?.quantidade_sm),
               regra_cobranca_config: sanitizeSingleRuleConfig(loadedForm.regra_cobranca_config || {}),
               pagadores_servico: [...(loadedForm.pagadores_servico || [])],
               indicacao_config: { ...(loadedForm.indicacao_config || emptyCaso.indicacao_config) },
@@ -851,6 +899,7 @@ export default function CasoForm({
             data_ultimo_reajuste: String(inheritedPatch.data_ultimo_reajuste || emptyCaso.data_ultimo_reajuste),
             indice_reajuste: String(inheritedPatch.indice_reajuste || emptyCaso.indice_reajuste),
             regra_cobranca: emptyCaso.regra_cobranca,
+            quantidade_sm: null,
             regra_cobranca_config: { ...emptyCaso.regra_cobranca_config },
             pagadores_servico: [],
             indicacao_config: { ...emptyCaso.indicacao_config },
@@ -1410,6 +1459,9 @@ export default function CasoForm({
     if (!validateDiaInicioFaturamento(form.dia_inicio_faturamento ?? '')) {
       return 'Dia de início de faturamento deve ser um inteiro entre 1 e 31'
     }
+    if (form.regra_cobranca === 'salario_minimo' && !normalizePositiveDecimal(regras.quantidade_sm)) {
+      return 'Informe a quantidade de SM'
+    }
     return null
   }
 
@@ -1458,6 +1510,16 @@ export default function CasoForm({
         }
         return list
       })()
+      const invalidSmRule = preparedRules.find((rule) =>
+        normalizeRegraCobranca(rule.regra_cobranca) === 'salario_minimo' &&
+        !normalizePositiveDecimal(rule.quantidade_sm ?? rule.regra_cobranca_config?.quantidade_sm)
+      )
+      if (invalidSmRule) {
+        setError('Informe a quantidade de SM')
+        toastError('Informe a quantidade de SM')
+        setLoading(false)
+        return
+      }
       const payload = {
         ...form,
         natureza_caso: String(regras.natureza_caso || ''),
@@ -1468,6 +1530,9 @@ export default function CasoForm({
         data_ultimo_reajuste: form.data_ultimo_reajuste || form.inicio_vigencia || '',
         regras_financeiras: preparedRules.map((rule) => ({
           ...rule,
+          quantidade_sm: normalizeRegraCobranca(rule.regra_cobranca) === 'salario_minimo'
+            ? normalizePositiveDecimal(rule.quantidade_sm ?? rule.regra_cobranca_config?.quantidade_sm)
+            : null,
           natureza_caso: String((rule.regra_cobranca_config || {}).natureza_caso || regras.natureza_caso || ''),
           regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
         })),
@@ -1481,6 +1546,9 @@ export default function CasoForm({
           ...sanitizeSingleRuleConfig(form.regra_cobranca_config || {}),
           regras_cobranca: preparedRules.map((rule) => ({
             ...rule,
+            quantidade_sm: normalizeRegraCobranca(rule.regra_cobranca) === 'salario_minimo'
+              ? normalizePositiveDecimal(rule.quantidade_sm ?? rule.regra_cobranca_config?.quantidade_sm)
+              : null,
             natureza_caso: String((rule.regra_cobranca_config || {}).natureza_caso || regras.natureza_caso || ''),
             regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
           })),
@@ -2134,11 +2202,20 @@ export default function CasoForm({
               ) : null}
               <div className="space-y-2">
                 <Label>Regra de cobrança</Label>
-                <NativeSelect value={form.regra_cobranca} onChange={(e) => setField('regra_cobranca', e.target.value as any)} disabled={isReadOnly}>
+                <NativeSelect
+                  value={form.regra_cobranca}
+                  onChange={(e) => {
+                    const nextRule = e.target.value as CasoPayload['regra_cobranca']
+                    setField('regra_cobranca', nextRule)
+                    if (nextRule !== 'salario_minimo') setRegra('quantidade_sm', null)
+                  }}
+                  disabled={isReadOnly}
+                >
                   <option value="">Selecione...</option>
                   <option value="hora">Hora</option>
                   <option value="mensal">Mensal</option>
                   <option value="mensalidade_processo">Mensalidade de processo</option>
+                  <option value="salario_minimo">Salário Mínimo</option>
                   <option value="projeto">Projeto</option>
                   <option value="exito">Êxito</option>
                 </NativeSelect>
@@ -2458,6 +2535,42 @@ export default function CasoForm({
                     onValueChange={(value) => setRegra('valor_mensal', value)}
                     disabled={isReadOnly}
                   />
+                </div>
+              )}
+
+              {form.regra_cobranca === 'salario_minimo' && (
+                <div className="space-y-3 md:col-span-2">
+                  <div className="border-t" />
+                  <p className="text-base font-semibold">Configuração por Salário Mínimo</p>
+                  <div className="max-w-sm space-y-2">
+                    <Label>Quantidade de SM</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={String(regras.quantidade_sm || '')}
+                      onChange={(e) => {
+                        setRegra('quantidade_sm', e.target.value)
+                        setError(null)
+                      }}
+                      disabled={isReadOnly}
+                      placeholder="Ex: 2,5"
+                    />
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                    {salarioMinimoQuery.isLoading ? (
+                      <span className="text-muted-foreground">Carregando salário mínimo atual...</span>
+                    ) : salarioMinimoQuery.isError ? (
+                      <span className="text-red-700">{salarioMinimoQuery.error.message}</span>
+                    ) : quantidadeSm && salarioMinimoValor ? (
+                      <span>
+                        {quantidadeSm.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} SM × R$ {formatAmount(salarioMinimoValor)} = R${' '}
+                        {formatAmount(quantidadeSm * salarioMinimoValor)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Informe a quantidade de SM para ver o cálculo.</span>
+                    )}
+                  </div>
                 </div>
               )}
 
