@@ -27,6 +27,7 @@ import type { CasoPayload, ContratoFormOptions } from './types'
 const emptyCaso: CasoPayload = {
   nome: '',
   observacao: '',
+  polo: null,
   servico_id: '',
   produto_id: '',
   responsavel_id: '',
@@ -218,6 +219,11 @@ function normalizeDiaInicioFaturamento(value: unknown, fallbackDate?: unknown): 
 
 function validateDiaInicioFaturamento(value: number | '') {
   return value === '' || (Number.isInteger(value) && value >= 1 && value <= 31)
+}
+
+function normalizePolo(value: unknown): CasoPayload['polo'] {
+  if (value === 'ativo' || value === 'passivo') return value
+  return null
 }
 
 function buildDateFromDay(baseDate: string, dayOfMonth: number | '') {
@@ -752,6 +758,7 @@ export default function CasoForm({
             ...emptyCaso,
             nome: caso.nome || '',
             observacao: caso.observacao || '',
+            polo: normalizePolo(caso.polo),
             servico_id: caso.servico_id || '',
             produto_id: caso.produto_id || '',
             responsavel_id: caso.responsavel_id || '',
@@ -968,6 +975,17 @@ export default function CasoForm({
       regra_cobranca_config: {
         ...prev.regra_cobranca_config,
         [field]: value,
+      },
+    }))
+  }
+
+  const setNaturezaCaso = (value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      polo: value === 'contencioso' ? prev.polo : null,
+      regra_cobranca_config: {
+        ...prev.regra_cobranca_config,
+        natureza_caso: value,
       },
     }))
   }
@@ -1389,6 +1407,9 @@ export default function CasoForm({
   }
 
   const validateBasico = (): string | null => {
+    if (String(regras.natureza_caso || '') === 'contencioso' && !form.polo) {
+      return 'Polo é obrigatório quando natureza do caso é Contencioso'
+    }
     return null
   }
 
@@ -1432,12 +1453,15 @@ export default function CasoForm({
       })()
       const payload = {
         ...form,
+        natureza_caso: String(regras.natureza_caso || ''),
+        polo: String(regras.natureza_caso || '') === 'contencioso' ? form.polo : null,
         possui_reajuste: possuiReajuste,
         possui_cap_horas: capDesejadoEnabled,
         regra_cobranca: normalizeRegraCobranca(form.regra_cobranca),
         data_ultimo_reajuste: form.data_ultimo_reajuste || form.inicio_vigencia || '',
         regras_financeiras: preparedRules.map((rule) => ({
           ...rule,
+          natureza_caso: String((rule.regra_cobranca_config || {}).natureza_caso || regras.natureza_caso || ''),
           regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
         })),
         indicacao_config: {
@@ -1450,6 +1474,7 @@ export default function CasoForm({
           ...sanitizeSingleRuleConfig(form.regra_cobranca_config || {}),
           regras_cobranca: preparedRules.map((rule) => ({
             ...rule,
+            natureza_caso: String((rule.regra_cobranca_config || {}).natureza_caso || regras.natureza_caso || ''),
             regra_cobranca_config: sanitizeSingleRuleConfig(rule.regra_cobranca_config || {}),
           })),
         },
@@ -1806,7 +1831,7 @@ export default function CasoForm({
                 <Label>Natureza do caso</Label>
                 <ChoiceCards
                   value={String(regras.natureza_caso || '')}
-                  onChange={(value) => setRegra('natureza_caso', value)}
+                  onChange={setNaturezaCaso}
                   options={[
                     { value: 'contencioso', label: 'Contencioso' },
                     { value: 'consultivo', label: 'Consultivo' },
@@ -1814,6 +1839,21 @@ export default function CasoForm({
                   disabled={isReadOnly}
                 />
               </div>
+
+              {String(regras.natureza_caso || '') === 'contencioso' ? (
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Polo</Label>
+                  <ChoiceCards
+                    value={form.polo || ''}
+                    onChange={(value) => setField('polo', normalizePolo(value))}
+                    options={[
+                      { value: 'ativo', label: 'Ativo' },
+                      { value: 'passivo', label: 'Passivo' },
+                    ]}
+                    disabled={isReadOnly}
+                  />
+                </div>
+              ) : null}
 
               <div className="space-y-2 md:col-span-2">
                 <Label>Responsável</Label>
