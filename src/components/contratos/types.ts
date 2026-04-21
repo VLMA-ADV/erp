@@ -61,6 +61,7 @@ export interface CasoPayload {
   regras_financeiras?: Array<Record<string, any>>
   nome: string
   observacao?: string
+  polo?: 'ativo' | 'passivo' | null
   servico_id?: string
   produto_id: string
   responsavel_id: string

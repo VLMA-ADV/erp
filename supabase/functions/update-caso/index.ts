@@ -3,6 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { createAuditLog, getIpAddress, getUserAgent } from "../_shared/audit-log.ts";
 import { syncCasoPossuiFlags } from "../_shared/caso-flags-sync.ts";
 
+// RF-081: polo é obrigatório quando natureza_caso === "contencioso"; caso contrário deve ser ignorado.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -74,6 +75,50 @@ function normalizeDiaInicioPayload(payload: any) {
     };
   }
 
+  return { payload: next };
+}
+
+function readNestedString(value: any, path: string[]) {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return "";
+    current = current[key];
+  }
+  return typeof current === "string" ? current : "";
+}
+
+function getEffectiveNatureza(payload: any) {
+  const firstRule = Array.isArray(payload?.regras_financeiras) ? payload.regras_financeiras[0] : null;
+  const firstConfigRule = Array.isArray(payload?.regra_cobranca_config?.regras_cobranca)
+    ? payload.regra_cobranca_config.regras_cobranca[0]
+    : null;
+
+  return [
+    payload?.natureza_caso,
+    readNestedString(payload, ["regra_cobranca_config", "natureza_caso"]),
+    firstRule?.natureza_caso,
+    readNestedString(firstRule, ["regra_cobranca_config", "natureza_caso"]),
+    firstConfigRule?.natureza_caso,
+    readNestedString(firstConfigRule, ["regra_cobranca_config", "natureza_caso"]),
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .find(Boolean) || "";
+}
+
+function normalizePoloPayload(payload: any) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return { payload };
+  const next = { ...payload };
+  const natureza = getEffectiveNatureza(next);
+  const polo = String(next.polo || "").trim().toLowerCase();
+
+  if (natureza === "contencioso") {
+    if (!polo) return { payload: next, error: "Polo é obrigatório quando natureza_caso é contencioso" };
+    if (polo !== "ativo" && polo !== "passivo") return { payload: next, error: "Polo inválido (use ativo ou passivo)" };
+    next.polo = polo;
+    return { payload: next };
+  }
+
+  next.polo = null;
   return { payload: next };
 }
 
@@ -154,7 +199,14 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      normalizedPayload = normalized.payload;
+      const poloNormalized = normalizePoloPayload(normalized.payload);
+      if (poloNormalized.error) {
+        return new Response(JSON.stringify({ error: poloNormalized.error }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      normalizedPayload = poloNormalized.payload;
     } catch (error) {
       if (error instanceof RangeError) {
         return new Response(JSON.stringify({ error: error.message }), {
