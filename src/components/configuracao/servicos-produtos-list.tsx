@@ -97,6 +97,7 @@ export default function ServicosProdutosList() {
         servicosProdutos={servicosProdutos}
         loading={loading}
         onEdit={(item) => { setEditingServicoProduto(item); setModalOpen(true) }}
+        onRefresh={fetchServicosProdutos}
       />
 
       {canWrite && (

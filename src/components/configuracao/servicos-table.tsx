@@ -13,9 +13,10 @@ interface ServicosTableProps {
   servicos: Servico[]
   loading: boolean
   onEdit: (servico: Servico) => void
+  onRefresh: () => void
 }
 
-export default function ServicosTable({ servicos, loading, onEdit }: ServicosTableProps) {
+export default function ServicosTable({ servicos, loading, onEdit, onRefresh }: ServicosTableProps) {
   const { hasPermission } = usePermissionsContext()
   const canEdit = hasPermission('config.servicos.write')
 
@@ -56,7 +57,7 @@ export default function ServicosTable({ servicos, loading, onEdit }: ServicosTab
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{servico.nome}</td>
               {canEdit && (
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <ServicosActions servico={servico} canEdit={canEdit} onEdit={onEdit} />
+                  <ServicosActions servico={servico} canEdit={canEdit} onEdit={onEdit} onRefresh={onRefresh} />
                 </td>
               )}
             </tr>

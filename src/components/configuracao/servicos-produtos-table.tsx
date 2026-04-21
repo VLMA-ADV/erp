@@ -13,9 +13,10 @@ interface ServicosProdutosTableProps {
   servicosProdutos: ServicoProduto[]
   loading: boolean
   onEdit: (servicoProduto: ServicoProduto) => void
+  onRefresh: () => void
 }
 
-export default function ServicosProdutosTable({ servicosProdutos, loading, onEdit }: ServicosProdutosTableProps) {
+export default function ServicosProdutosTable({ servicosProdutos, loading, onEdit, onRefresh }: ServicosProdutosTableProps) {
   const { hasPermission } = usePermissionsContext()
   const canEdit = hasPermission('config.produtos.write')
 
@@ -56,7 +57,12 @@ export default function ServicosProdutosTable({ servicosProdutos, loading, onEdi
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{servicoProduto.nome}</td>
               {canEdit && (
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <ServicosProdutosActions servicoProduto={servicoProduto} canEdit={canEdit} onEdit={onEdit} />
+                  <ServicosProdutosActions
+                    servicoProduto={servicoProduto}
+                    canEdit={canEdit}
+                    onEdit={onEdit}
+                    onRefresh={onRefresh}
+                  />
                 </td>
               )}
             </tr>
