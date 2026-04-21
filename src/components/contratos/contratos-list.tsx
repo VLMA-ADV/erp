@@ -233,7 +233,7 @@ export default function ContratosList() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {clienteKeys.map((clienteKey) => {
                   const group = groups[clienteKey]
-                  const isClientOpen = expandedClients[clienteKey] !== false // open by default
+                  const isClientOpen = !!expandedClients[clienteKey]
                   return (
                     <Fragment key={clienteKey}>
                       {/* Client header row */}
