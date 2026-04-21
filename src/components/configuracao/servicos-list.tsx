@@ -93,7 +93,12 @@ export default function ServicosList() {
         )}
       </div>
 
-      <ServicosTable servicos={servicos} loading={loading} onEdit={(item) => { setEditingServico(item); setModalOpen(true) }} />
+      <ServicosTable
+        servicos={servicos}
+        loading={loading}
+        onEdit={(item) => { setEditingServico(item); setModalOpen(true) }}
+        onRefresh={fetchServicos}
+      />
 
       {canWrite && (
         <ServicoModal
