@@ -969,6 +969,13 @@ export default function CasoForm({
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
+  const copyHonorariosToDespesas = () => {
+    setForm((prev) => ({
+      ...prev,
+      pagadores_despesa: (prev.pagadores_servico || []).map((pagador) => ({ ...pagador })),
+    }))
+  }
+
   const setRegra = (field: string, value: any) => {
     setForm((prev) => ({
       ...prev,
@@ -2980,6 +2987,23 @@ export default function CasoForm({
                   <div className="space-y-2">
                     <Label>Limite de adiantamento</Label>
                     <MoneyInput value={despesas.limite_adiantamento || ''} onValueChange={(value) => setDespesas('limite_adiantamento', value)} disabled={isReadOnly} />
+                  </div>
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={copyHonorariosToDespesas}
+                      disabled={isReadOnly || !form.pagadores_servico || form.pagadores_servico.length === 0}
+                      title={
+                        form.pagadores_servico?.length === 0
+                          ? 'Configure primeiro os pagadores de honorários'
+                          : 'Copia a distribuição de pagadores dos honorários'
+                      }
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copiar dados dos honorários
+                    </Button>
                   </div>
                   <RateioSlider
                     title="Pagadores da despesa (rateio)"
