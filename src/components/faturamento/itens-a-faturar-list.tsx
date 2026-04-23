@@ -1,11 +1,12 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Loader2, Send, X } from 'lucide-react'
 import {
   clearAllExpansions,
   hasAnyExpansion,
 } from '@/components/faturamento/itens-a-faturar-expansions'
+import { shouldRefetchOnVisibility } from '@/components/faturamento/itens-a-faturar-refresh'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -382,6 +383,8 @@ export default function ItensAFaturarList() {
     return () => document.removeEventListener('keydown', handler)
   }, [anyExpanded, collapseAll])
 
+  const lastFetchAtRef = useRef<number | null>(null)
+
   const getFunctionsHeaders = (accessToken: string) => {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     return {
@@ -462,6 +465,7 @@ export default function ItensAFaturarList() {
       setExpandedContratos(nextExpandedContratos)
       setExpandedCasos(nextExpandedCasos)
       setSelectedCasos({})
+      lastFetchAtRef.current = Date.now()
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar itens a faturar')
@@ -474,6 +478,25 @@ export default function ItensAFaturarList() {
   useEffect(() => {
     void loadItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const loadItemsRef = useRef(loadItems)
+  loadItemsRef.current = loadItems
+
+  useEffect(() => {
+    const handler = () => {
+      if (
+        shouldRefetchOnVisibility({
+          visibilityState: document.visibilityState,
+          lastFetchAt: lastFetchAtRef.current,
+          now: Date.now(),
+        })
+      ) {
+        void loadItemsRef.current()
+      }
+    }
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
   }, [])
 
   const filteredTree = useMemo(() => filterTreeByRule(items, regraTab), [items, regraTab])
