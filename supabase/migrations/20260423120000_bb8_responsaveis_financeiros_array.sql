@@ -1,14 +1,36 @@
 -- BB-8: modernização das RPCs public.update_cliente e public.create_cliente
 -- Adiciona parâmetro p_responsaveis_financeiros jsonb para persistir N responsáveis
--- financeiros numa única transação. Mantém fallback legacy (p_resp_fin_*) para
--- backward-compat com callers antigos.
+-- financeiros numa única transação. Mantém fallback legacy (p_resp_fin_*) dentro
+-- do corpo para backward-compat semântica.
 --
 -- Root cause: o corpo legacy fazia DELETE+INSERT de apenas um responsável (o singular).
 -- Frontend já envia array completo; o patch via syncResponsaveisFinanceiros no edge
 -- nunca foi deployado, ficando só no repo local. Esta migration atomiza a operação
 -- dentro da própria RPC.
+--
+-- IMPORTANTE: DROP explícito das assinaturas legacy antes do CREATE OR REPLACE.
+-- Como a nova assinatura tem +1 parâmetro (p_responsaveis_financeiros jsonb),
+-- o CREATE OR REPLACE sozinho cria um overload em vez de substituir. Coexistência
+-- de overloads é perigosa — PostgREST pode rotear para a legacy dependendo dos
+-- params enviados, reintroduzindo o bug.
 
 BEGIN;
+
+DROP FUNCTION IF EXISTS public.update_cliente(
+  uuid, uuid, character varying, boolean, character varying, crm.cliente_tipo,
+  character varying, character varying, character varying, character varying,
+  character varying, character varying, character varying, uuid, text, uuid[],
+  character varying, character varying, character varying, date,
+  character varying, character varying, character varying
+);
+
+DROP FUNCTION IF EXISTS public.create_cliente(
+  uuid, character varying, boolean, character varying, crm.cliente_tipo,
+  character varying, character varying, character varying, character varying,
+  character varying, character varying, character varying, uuid, text, uuid[],
+  character varying, character varying, character varying, date,
+  character varying, character varying, character varying
+);
 
 CREATE OR REPLACE FUNCTION public.update_cliente(
   p_user_id uuid,
