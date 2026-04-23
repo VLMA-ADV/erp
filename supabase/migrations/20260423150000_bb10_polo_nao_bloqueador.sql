@@ -27,6 +27,7 @@ DECLARE
   v_regra_principal jsonb;
   v_natureza text;
   v_polo_final varchar(10);
+  elem jsonb;
 BEGIN
   SELECT tenant_id INTO v_tenant_id
   FROM core.tenant_users tu
@@ -259,6 +260,7 @@ DECLARE
   v_old_polo varchar(10);
   v_natureza text;
   v_polo_final varchar(10);
+  elem jsonb;
 BEGIN
   SELECT tenant_id INTO v_tenant_id
   FROM core.tenant_users tu
