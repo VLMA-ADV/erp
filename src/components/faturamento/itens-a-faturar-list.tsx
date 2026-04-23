@@ -1,7 +1,11 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Send } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Loader2, Send, X } from 'lucide-react'
+import {
+  clearAllExpansions,
+  hasAnyExpansion,
+} from '@/components/faturamento/itens-a-faturar-expansions'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -352,6 +356,32 @@ export default function ItensAFaturarList() {
   const [regraTab, setRegraTab] = useState<RegraTabKey>('todas')
   const [selectedCasos, setSelectedCasos] = useState<Record<string, boolean>>({})
 
+  const anyExpanded = hasAnyExpansion({ expandedClientes, expandedContratos, expandedCasos })
+
+  const collapseAll = useCallback(() => {
+    const cleared = clearAllExpansions()
+    setExpandedClientes(cleared.expandedClientes)
+    setExpandedContratos(cleared.expandedContratos)
+    setExpandedCasos(cleared.expandedCasos)
+  }, [])
+
+  useEffect(() => {
+    if (!anyExpanded) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+          return
+        }
+      }
+      collapseAll()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [anyExpanded, collapseAll])
+
   const getFunctionsHeaders = (accessToken: string) => {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     return {
@@ -619,6 +649,18 @@ export default function ItensAFaturarList() {
 
       <div className="flex justify-end">
         <div className="flex items-center gap-2">
+          {anyExpanded ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={collapseAll}
+              aria-label="Fechar tudo"
+              title="Fechar tudo (ESC)"
+            >
+              <X className="mr-2 h-4 w-4" />
+              Fechar tudo
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             onClick={() => void startFlowForSelectedCases()}
