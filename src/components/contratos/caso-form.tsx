@@ -1465,10 +1465,9 @@ export default function CasoForm({
     return null
   }
 
+  // BB-10: polo vazio em contencioso deixa de bloquear o submit.
+  // Regra de negócio (contencioso → polo deve ser ativo|passivo) virou aviso inline.
   const validateBasico = (): string | null => {
-    if (String(regras.natureza_caso || '') === 'contencioso' && !form.polo) {
-      return 'Polo é obrigatório quando natureza do caso é Contencioso'
-    }
     return null
   }
 
@@ -1927,6 +1926,11 @@ export default function CasoForm({
                     ]}
                     disabled={isReadOnly}
                   />
+                  {!form.polo ? (
+                    <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                      Em casos contenciosos, selecione Ativo ou Passivo quando for possível. Você pode salvar sem preencher e definir depois.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
