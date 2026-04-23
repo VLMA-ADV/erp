@@ -481,7 +481,9 @@ export default function ItensAFaturarList() {
   }, [])
 
   const loadItemsRef = useRef(loadItems)
-  loadItemsRef.current = loadItems
+  useEffect(() => {
+    loadItemsRef.current = loadItems
+  })
 
   useEffect(() => {
     const handler = () => {
