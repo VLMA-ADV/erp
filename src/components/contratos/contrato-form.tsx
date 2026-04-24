@@ -1026,7 +1026,7 @@ export default function ContratoForm({
   ])
 
   useEffect(() => {
-    if (isEdit) return
+    if (currentCaso.data_proximo_reajuste) return
     const months = periodToMonths[currentCaso.periodo_reajuste] || 0
     if (!months) return
 
@@ -1034,7 +1034,7 @@ export default function ContratoForm({
     if (!base) return
 
     const calculated = buildNextDate(base, months)
-    if (!calculated || calculated === currentCaso.data_proximo_reajuste) return
+    if (!calculated) return
 
     updateCurrentCaso({ data_proximo_reajuste: calculated })
   }, [
@@ -1099,10 +1099,10 @@ export default function ContratoForm({
         }
       } else if (regrasCaso.encontro_periodicidade && regrasCaso.data_ultimo_encontro) {
         const months = periodToMonths[regrasCaso.encontro_periodicidade] || 0
-        if (months > 0) {
+        if (months > 0 && !regrasCaso.data_proximo_encontro) {
           const day = Number(current.pagamento_dia_mes || '0') || undefined
           const calculated = buildNextDate(regrasCaso.data_ultimo_encontro, months, day)
-          if (!isEdit || !regrasCaso.data_proximo_encontro) {
+          if (calculated) {
             if ((regrasCaso.data_proximo_encontro || '') !== calculated) {
               regrasCaso.data_proximo_encontro = calculated
               changed = true
@@ -3423,10 +3423,8 @@ export default function ContratoForm({
                         <Label>Data próximo reajuste</Label>
                         <DatePicker
                           value={currentCaso.data_proximo_reajuste}
-                          onChange={(value) => {
-                            if (isEdit) updateCurrentCaso({ data_proximo_reajuste: value })
-                          }}
-                          disabled={isReadOnly || !isEdit}
+                          onChange={(value) => updateCurrentCaso({ data_proximo_reajuste: value })}
+                          disabled={isReadOnly}
                         />
                       </div>
 
@@ -3808,7 +3806,7 @@ export default function ContratoForm({
                                   <DatePicker
                                     value={regras.data_proximo_encontro || ''}
                                     onChange={(value) => updateCurrentRegra('data_proximo_encontro', value)}
-                                    disabled={isReadOnly || !isEdit}
+                                    disabled={isReadOnly}
                                   />
                                 </div>
                               </>

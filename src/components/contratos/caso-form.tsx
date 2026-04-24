@@ -966,15 +966,11 @@ export default function CasoForm({
         }
       } else if (regras.encontro_periodicidade && regras.data_ultimo_encontro) {
         const months = periodToMonths[regras.encontro_periodicidade] || 0
-        if (months > 0) {
+        if (months > 0 && !regras.data_proximo_encontro) {
           const day = Number(prev.pagamento_dia_mes || '0') || undefined
           const calculated = buildNextDate(regras.data_ultimo_encontro, months, day)
-          if (!isEdit || !regras.data_proximo_encontro) {
-            if ((regras.data_proximo_encontro || '') !== calculated) {
-              regras.data_proximo_encontro = calculated
-              changed = true
-            }
-          }
+          regras.data_proximo_encontro = calculated
+          changed = true
         }
       }
 
@@ -2160,7 +2156,7 @@ export default function CasoForm({
                       setField('indice_reajuste', 'nao_tem')
                       setField('data_proximo_reajuste', '')
                       setField('data_ultimo_reajuste', '')
-                      if (isEdit) setManualReajusteDate(true)
+                      setManualReajusteDate(true)
                       return
                     }
                     setField('periodo_reajuste', nextPeriod)
@@ -2183,10 +2179,10 @@ export default function CasoForm({
                     <DatePicker
                       value={form.data_proximo_reajuste}
                       onChange={(value) => {
-                        if (isEdit) setManualReajusteDate(true)
+                        setManualReajusteDate(true)
                         setField('data_proximo_reajuste', value)
                       }}
-                      disabled={isReadOnly || !isEdit}
+                      disabled={isReadOnly}
                     />
                   </div>
                   <div className="space-y-2">
@@ -2507,7 +2503,7 @@ export default function CasoForm({
                             <DatePicker
                               value={regras.data_proximo_encontro || ''}
                               onChange={(value) => setRegra('data_proximo_encontro', value)}
-                              disabled={isReadOnly || !isEdit}
+                              disabled={isReadOnly}
                             />
                           </div>
                         </>
