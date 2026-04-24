@@ -297,9 +297,6 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         resp_int_email: form.resp_int_email || null,
         resp_int_whatsapp: onlyDigits(form.resp_int_whatsapp) || null,
         resp_int_data_nascimento: form.resp_int_data_nascimento || null,
-        resp_fin_nome: form.responsaveis_financeiros[0]?.nome || null,
-        resp_fin_email: form.responsaveis_financeiros[0]?.email || null,
-        resp_fin_whatsapp: onlyDigits(form.responsaveis_financeiros[0]?.whatsapp || '') || null,
         responsaveis_financeiros: form.responsaveis_financeiros
           .filter((rf) => rf.nome || rf.email || rf.whatsapp)
           .map((rf) => ({
