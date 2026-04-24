@@ -256,7 +256,7 @@ export default function CapEncontroSimple({
               <DatePicker
                 value={regras.data_proximo_encontro || ''}
                 onChange={(value) => onRegraChange('data_proximo_encontro', value)}
-                disabled={isReadOnly || !isEdit}
+                disabled={isReadOnly}
               />
             </div>
           </div>
