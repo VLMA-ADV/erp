@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { useToast } from '@/components/ui/toast'
 import AnexoModal from './anexo-modal'
+import CapEncontroSimple from './cap-encontro-simple'
 import RateioSlider from './rateio-slider'
 import type { CasoPayload, ContratoFormOptions } from './types'
 
@@ -2703,6 +2704,17 @@ export default function CasoForm({
                     />
                   </div>
                 </div>
+              )}
+
+              {form.regra_cobranca && form.regra_cobranca !== 'hora' && (
+                <CapEncontroSimple
+                  regras={regras}
+                  onRegraChange={setRegra}
+                  inicioVigencia={form.inicio_vigencia}
+                  pagamentoDiaMes={form.pagamento_dia_mes}
+                  isReadOnly={isReadOnly}
+                  isEdit={isEdit}
+                />
               )}
 
               <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
