@@ -514,6 +514,7 @@ export default function SolicitacoesContratoList() {
         <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
+              <th className="w-12 px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">#</th>
               <th className="w-8 px-4 py-3" />
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente</th>
@@ -527,18 +528,18 @@ export default function SolicitacoesContratoList() {
           <tbody className="divide-y divide-gray-100 bg-white">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Carregando solicitações...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Nenhuma solicitação encontrada.
                 </td>
               </tr>
             ) : (
-              filteredItems.map((item) => {
+              filteredItems.map((item, index) => {
                 const statusClassName =
                   item.status === 'concluida'
                     ? 'border-green-200 bg-green-100 text-green-700'
@@ -550,6 +551,9 @@ export default function SolicitacoesContratoList() {
                 return (
                   <Fragment key={item.id}>
                     <tr className="hover:bg-gray-50">
+                      <td className="w-12 px-4 py-3 text-right align-top text-xs tabular-nums text-gray-500">
+                        {index + 1}
+                      </td>
                       <td className="px-4 py-3">
                         <button
                           type="button"
@@ -618,7 +622,7 @@ export default function SolicitacoesContratoList() {
 
                     {mensagensExpanded ? (
                       <tr className="bg-slate-50/70">
-                        <td colSpan={8} className="px-6 py-4">
+                        <td colSpan={9} className="px-6 py-4">
                           <SolicitacaoMensagens solicitacaoId={item.id} />
                         </td>
                       </tr>
