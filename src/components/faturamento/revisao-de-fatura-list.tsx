@@ -275,6 +275,8 @@ function areStageNumbersEqual(left: number | null | undefined, right: number | n
 
 function hasReviewerHistory(item: RevisaoItem) {
   return (
+    item.status === 'em_aprovacao' ||
+    item.status === 'aprovado' ||
     !areStageNumbersEqual(item.horasRevisadas, getOriginalItemHours(item)) ||
     !areStageNumbersEqual(item.valorRevisado, getOriginalItemValue(item))
   )
@@ -871,6 +873,26 @@ export default function RevisaoDeFaturaList() {
       const revisores = item.historico.filter((entry) => entry.role === 'REVISOR')
       const aprovadores = item.historico.filter((entry) => entry.role === 'APROVADOR')
       const aprovador = aprovadores[aprovadores.length - 1] ?? null
+
+      const itemPassedReview =
+        item.status === 'em_aprovacao' ||
+        item.status === 'aprovado' ||
+        aprovadores.length > 0
+      if (revisores.length === 0 && itemPassedReview) {
+        const syntheticRevisor: RevisaoHistoricoEntry = {
+          id: `${item.id}:synthetic-revisor`,
+          billingItemId: item.id,
+          role: 'REVISOR',
+          authorId: '',
+          authorName: item.responsavelRevisaoNome || '-',
+          horas: item.horasRevisadas ?? getOriginalItemHours(item),
+          valor: item.valorRevisado ?? getOriginalItemValue(item),
+          texto: null,
+          tenantId: '',
+          createdAt: item.dataRevisao || usuario.createdAt,
+        }
+        revisores.push(syntheticRevisor)
+      }
       const visibleRevisores = expanded ? revisores : revisores.slice(-1)
 
       const toDisplayRow = (entry: RevisaoHistoricoEntry, index: number): HistoricalDisplayRow => {
