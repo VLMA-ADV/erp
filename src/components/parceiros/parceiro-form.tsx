@@ -214,8 +214,8 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
       setError('Você não tem permissão para realizar esta operação')
       return
     }
-    if (!form.nome_escritorio.trim() || !form.cnpj.trim()) {
-      setError('Nome do escritório e CNPJ são obrigatórios')
+    if (!form.nome_escritorio.trim()) {
+      setError('Nome do escritório é obrigatório')
       return
     }
 
@@ -231,7 +231,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
 
       const body: any = {
         nome_escritorio: form.nome_escritorio,
-        cnpj: onlyDigits(form.cnpj),
+        cnpj: onlyDigits(form.cnpj) || null,
         conta_contabil: form.conta_contabil || null,
         categoria_prestador_parceiro_id: form.categoria_prestador_parceiro_id || null,
         cep: onlyDigits(form.cep) || null,
@@ -339,7 +339,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cnpj">CNPJ *</Label>
+                  <Label htmlFor="cnpj">CNPJ</Label>
                   <Input
                     id="cnpj"
                     value={form.cnpj}
