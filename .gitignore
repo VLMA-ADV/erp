@@ -1,0 +1,88 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# netlify
+.netlify
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Supabase: Edge Functions e migrations devem ser versionados (fonte CONTRACTS.md).
+.mcp.json
+
+.cursor/
+
+# playwright output
+/test-results/
+/playwright-report/
+
+# local task notes
+/tasks/
+
+# artefatos locais de deploy / debug
+.mcp-deploy-*.json
+.tmp-*
+.next-dev-*.log
+.next-dev-*.err.log
+.next-start-*.log
+.playwright-cli/
+output/
+
+# Cursor Z-2 intermediate artefacts (non-committed helpers)
+scripts/build-z2-*.mjs
+scripts/decode-z2-*.mjs
+scripts/dump-ufi-*.mjs
+scripts/merge-ufi*.mjs
+scripts/ufi-*.txt
+scripts/z2-ufi-*.txt
+scripts/z2-get-revisao-fatura.sql
+scripts/z2-set-revisao-fatura-status.sql
+scripts/z2-update-decoded.sql
+scripts/.z2-chunks/*.sql
+scripts/.z2-chunks/*.json
+scripts/.z2-chunks/*.jsonl
+scripts/.z2-chunks/*.txt
+scripts/.z2-chunks/apply-*.json
+scripts/.z2-chunks/arg*.json
+scripts/.z2-chunks/build-apply-migration-json.mjs
+scripts/.z2-chunks/build-b64-*.mjs
+scripts/.z2-chunks/build-mcp-*.mjs
+scripts/.z2-chunks/build-wrap-sql.mjs
+scripts/.z2-chunks/emit-*.mjs
+scripts/.z2-chunks/split-*.mjs
+scripts/.z2-chunks/chunk-*.txt
+scripts/.z2-chunks/_*
+
+# Z-6 / MCP: artefatos locais de chunk (não versionar)
+supabase/migrations/.z6-build/

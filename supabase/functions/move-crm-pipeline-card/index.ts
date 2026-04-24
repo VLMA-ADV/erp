@@ -1,0 +1,102 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: permissionsData, error: permissionsError } = await supabase.rpc("get_user_permissions", {
+      p_user_id: user.id,
+    });
+
+    if (permissionsError) {
+      return new Response(JSON.stringify({ error: "Erro ao verificar permissões" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const hasPermission = permissionsData?.some((p: any) =>
+      p.permission_key === "crm.pipeline.write" ||
+      p.permission_key === "crm.pipeline.*" ||
+      p.permission_key === "crm.*" ||
+      p.permission_key === "*"
+    );
+
+    if (!hasPermission) {
+      return new Response(JSON.stringify({ error: "Você não tem permissão para editar o CRM" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const body = await req.json();
+    const { id, etapa, ordem } = body || {};
+
+    if (!id || !etapa) {
+      return new Response(JSON.stringify({ error: "ID do card e etapa são obrigatórios" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data, error } = await supabase.rpc("move_crm_pipeline_card", {
+      p_user_id: user.id,
+      p_card_id: id,
+      p_etapa: etapa,
+      p_ordem: typeof ordem === "number" ? ordem : null,
+    });
+
+    if (error) {
+      return new Response(JSON.stringify({ error: error.message, details: error.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ data }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
