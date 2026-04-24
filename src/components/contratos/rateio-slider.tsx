@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { CommandSelect } from '@/components/ui/command-select'
 
 interface OptionItem {
@@ -14,20 +15,37 @@ export interface RateioItem {
   percentual?: number | null
 }
 
-function normalizePercentuais(items: RateioItem[]): Array<{ id: string; percentual: number }> {
-  if (!items.length) return []
-  const n = items.length
-  const base = Math.floor(100 / n)
-  const remainder = 100 - base * n
-  const next = items.map((item, idx) => ({
-    id: item.id,
-    percentual: base + (idx >= n - remainder ? 1 : 0),
-  }))
-  return next
+type NormalizedItem = { id: string; percentual: number }
+
+function clamp2(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, Math.round(value * 100) / 100))
 }
 
-function safePercent(item: RateioItem) {
-  return Math.max(0, Math.min(100, Number(item.percentual) || 0))
+function parseInputPercent(raw: string): number | null {
+  const trimmed = raw.replace(',', '.').trim()
+  if (trimmed === '') return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return null
+  return clamp2(n)
+}
+
+function formatPercent(value: number): string {
+  const rounded = Math.round(value * 100) / 100
+  if (Number.isInteger(rounded)) return String(rounded)
+  return rounded.toString().replace('.', ',')
+}
+
+function distributeEvenly(items: Array<{ id: string }>): NormalizedItem[] {
+  if (!items.length) return []
+  const n = items.length
+  const base = Math.floor(10000 / n) / 100
+  const baseTotal = Math.round(base * n * 100) / 100
+  const remainder = Math.round((100 - baseTotal) * 100) / 100
+  return items.map((item, idx) => ({
+    id: item.id,
+    percentual: clamp2(idx === n - 1 ? base + remainder : base),
+  }))
 }
 
 export default function RateioSlider({
@@ -41,74 +59,84 @@ export default function RateioSlider({
   title: string
   options: OptionItem[]
   items: RateioItem[]
-  onChange: (items: Array<{ id: string; percentual: number }>) => void
+  onChange: (items: NormalizedItem[]) => void
   disabled?: boolean
   frameless?: boolean
 }) {
   const [newItemId, setNewItemId] = useState('')
-  const trackRef = useRef<HTMLDivElement>(null)
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
 
-  const normalized = useMemo(() => {
-    const sum = items.reduce((acc, item) => acc + safePercent(item), 0)
-    if (sum !== 100 && items.length > 0) return normalizePercentuais(items)
-    return items.map((i) => ({ id: i.id, percentual: safePercent(i) }))
-  }, [items])
+  const normalized: NormalizedItem[] = items.map((i) => ({
+    id: i.id,
+    percentual: clamp2(Number(i.percentual) || 0),
+  }))
 
   const total = normalized.reduce((acc, item) => acc + item.percentual, 0)
+  const totalRounded = Math.round(total * 100) / 100
+  const overLimit = totalRounded > 100 + 0.001
+  const atLimit = Math.abs(totalRounded - 100) < 0.01
 
   const itemLabel = (id: string) => options.find((o) => o.value === id)?.label || id
+  const availableToAdd = options.filter((o) => !normalized.some((i) => i.id === o.value))
 
   const addItem = () => {
     if (!newItemId) return
     if (normalized.some((i) => i.id === newItemId)) return
-    onChange(normalizePercentuais([...normalized, { id: newItemId, percentual: 0 }]))
+    const next = [...normalized, { id: newItemId, percentual: 0 }]
+    if (total < 0.01) {
+      onChange(distributeEvenly(next))
+    } else {
+      onChange(next)
+    }
     setNewItemId('')
   }
 
   const removeItem = (id: string) => {
-    const next = normalized.filter((item) => item.id !== id)
-    onChange(next.length ? normalizePercentuais(next) : [])
+    onChange(normalized.filter((item) => item.id !== id))
+    setDrafts((prev) => {
+      if (prev[id] === undefined) return prev
+      const { [id]: _removed, ...rest } = prev
+      return rest
+    })
   }
 
-  const startDragBoundary = (boundaryIndex: number, e: React.MouseEvent) => {
-    if (disabled || !trackRef.current || normalized.length < 2) return
-    e.preventDefault()
-
-    const current = [...normalized]
-    const leftIndex = boundaryIndex
-    const rightIndex = boundaryIndex + 1
-    const leftRightTotal = current[leftIndex].percentual + current[rightIndex].percentual
-    const prefixBefore = current.slice(0, leftIndex).reduce((acc, item) => acc + item.percentual, 0)
-    const rect = trackRef.current.getBoundingClientRect()
-
-    const onMove = (ev: MouseEvent) => {
-      const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left))
-      const boundaryPct = Math.round((x / rect.width) * 100)
-      const newLeft = Math.max(1, Math.min(leftRightTotal - 1, boundaryPct - prefixBefore))
-      const newRight = leftRightTotal - newLeft
-      const next = [...current]
-      next[leftIndex] = { ...next[leftIndex], percentual: newLeft }
-      next[rightIndex] = { ...next[rightIndex], percentual: newRight }
-      onChange(next)
-    }
-
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+  const handleInputChange = (id: string, value: string) => {
+    setDrafts((prev) => ({ ...prev, [id]: value }))
   }
 
-  const availableToAdd = options.filter((o) => !normalized.some((i) => i.id === o.value))
+  const commitInput = (id: string) => {
+    const raw = drafts[id]
+    if (raw === undefined) return
+    const parsed = parseInputPercent(raw)
+    onChange(
+      normalized.map((item) =>
+        item.id === id ? { ...item, percentual: parsed ?? 0 } : item
+      )
+    )
+    setDrafts((prev) => {
+      const { [id]: _removed, ...rest } = prev
+      return rest
+    })
+  }
+
+  const inputValueFor = (id: string, current: number): string => {
+    if (drafts[id] !== undefined) return drafts[id]
+    return formatPercent(current)
+  }
+
+  const totalColor = overLimit
+    ? 'text-red-700'
+    : atLimit
+      ? 'text-green-700'
+      : 'text-amber-700'
 
   return (
     <div className={frameless ? 'space-y-2' : 'space-y-2 rounded-md border p-3'}>
       <div className="flex items-center justify-between">
         <LabelText>{title}</LabelText>
-        <span className={`text-xs font-medium ${total === 100 ? 'text-green-700' : 'text-amber-700'}`}>
-          Total: {total}%
+        <span className={`text-xs font-medium ${totalColor}`}>
+          Total: {formatPercent(totalRounded)}%
+          {overLimit ? ' — excede 100%' : ''}
         </span>
       </div>
 
@@ -131,45 +159,49 @@ export default function RateioSlider({
         <p className="text-sm text-muted-foreground">Nenhum item adicionado.</p>
       ) : (
         <>
-          <div ref={trackRef} className="relative h-12 overflow-hidden rounded-md border bg-muted/30">
+          <div
+            className="relative h-12 overflow-hidden rounded-md border bg-muted/30"
+            aria-label="Visualização da divisão"
+          >
             <div className="flex h-full w-full">
               {normalized.map((item) => (
                 <div
                   key={item.id}
                   className="flex h-full items-center justify-center border-r border-white/60 bg-primary/25 px-2 text-xs font-medium"
-                  style={{ width: `${item.percentual}%` }}
-                  title={`${itemLabel(item.id)} - ${item.percentual}%`}
+                  style={{ width: `${Math.min(item.percentual, 100)}%` }}
+                  title={`${itemLabel(item.id)} - ${formatPercent(item.percentual)}%`}
                 >
                   <span className="truncate">
-                    {itemLabel(item.id)} ({item.percentual}%)
+                    {itemLabel(item.id)} ({formatPercent(item.percentual)}%)
                   </span>
                 </div>
               ))}
             </div>
-
-            {!disabled &&
-              normalized.length > 1 &&
-              normalized.slice(0, -1).map((_, idx) => {
-                const left = normalized.slice(0, idx + 1).reduce((acc, item) => acc + item.percentual, 0)
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    className="absolute top-0 h-full w-2 -translate-x-1/2 cursor-col-resize bg-primary/70"
-                    style={{ left: `${left}%` }}
-                    onMouseDown={(e) => startDragBoundary(idx, e)}
-                    aria-label={`Ajustar divisão ${idx + 1}`}
-                  />
-                )
-              })}
           </div>
 
           <div className="space-y-1">
             {normalized.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded border px-2 py-1 text-sm">
-                <span className="truncate">{itemLabel(item.id)}</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{item.percentual}%</span>
+              <div key={item.id} className="flex items-center gap-2 rounded border px-2 py-1 text-sm">
+                <span className="flex-1 truncate">{itemLabel(item.id)}</span>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={inputValueFor(item.id, item.percentual)}
+                    onChange={(e) => handleInputChange(item.id, e.target.value)}
+                    onBlur={() => commitInput(item.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        commitInput(item.id)
+                        e.currentTarget.blur()
+                      }
+                    }}
+                    className="h-8 w-20 text-right"
+                    disabled={disabled}
+                    aria-label={`Percentual de ${itemLabel(item.id)}`}
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
                   {!disabled && (
                     <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(item.id)}>
                       Remover
