@@ -44,6 +44,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/components/ui/toast'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { CasoPayload, ContratoFormOptions } from './types'
+import CapEncontroSimple from './cap-encontro-simple'
 import RateioSlider from './rateio-slider'
 
 interface PendingAnexo {
@@ -3980,6 +3981,17 @@ export default function ContratoForm({
                         />
                       </div>
                     </div>
+                  )}
+
+                  {currentCaso.regra_cobranca && currentCaso.regra_cobranca !== 'hora' && (
+                    <CapEncontroSimple
+                      regras={regras}
+                      onRegraChange={updateCurrentRegra}
+                      inicioVigencia={currentCaso.inicio_vigencia}
+                      pagamentoDiaMes={currentCaso.pagamento_dia_mes}
+                      isReadOnly={isReadOnly}
+                      isEdit={isEdit}
+                    />
                   )}
 
                   <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">

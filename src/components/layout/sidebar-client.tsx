@@ -7,6 +7,7 @@ import SidebarItem from './sidebar-item'
 import SidebarMenuPessoas from './sidebar-menu-pessoas'
 import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
 import SidebarMenuFaturamento from './sidebar-menu-faturamento'
+import SidebarMenuContratos from './sidebar-menu-contratos'
 import { Button } from '@/components/ui/button'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 
@@ -108,8 +109,25 @@ export default function SidebarClient() {
         {/* Menu Pessoas (Expansível) */}
         <SidebarMenuPessoas pathname={pathname} hasPermission={checkPermission} />
 
-        {/* Outros itens do menu (ordem: Dashboard, CRM, Solicitações, Contratos, Timesheet, Despesas) */}
-        {['/home', '/crm', '/solicitacoes-contrato', '/contratos', '/timesheet', '/despesas'].map((href) => {
+        {/* Dashboard e CRM */}
+        {['/home', '/crm'].map((href) => {
+          const item = menuItems.find((m) => m.href === href)
+          if (!item || !checkPermission(item.permission)) return null
+          return (
+            <SidebarItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              active={pathname === item.href}
+            />
+          )
+        })}
+
+        {/* Menu Contratos (Expansível — inclui Contratos e Solicitações de Contrato) */}
+        <SidebarMenuContratos pathname={pathname} hasPermission={checkPermission} />
+
+        {/* Timesheet e Despesas */}
+        {['/timesheet', '/despesas'].map((href) => {
           const item = menuItems.find((m) => m.href === href)
           if (!item || !checkPermission(item.permission)) return null
           return (

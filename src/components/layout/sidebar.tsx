@@ -6,6 +6,7 @@ import SidebarItem from './sidebar-item'
 import SidebarMenuPessoas from './sidebar-menu-pessoas'
 import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
 import SidebarMenuFaturamento from './sidebar-menu-faturamento'
+import SidebarMenuContratos from './sidebar-menu-contratos'
 
 const menuItems = [
   {
@@ -101,8 +102,10 @@ export default function Sidebar() {
         {/* Outros itens do menu */}
         {renderMenuItem('/home')}
         {renderMenuItem('/crm')}
-        {renderMenuItem('/solicitacoes-contrato')}
-        {renderMenuItem('/contratos')}
+
+        {/* Menu Contratos (Expansível — inclui Contratos e Solicitações de Contrato) */}
+        <SidebarMenuContratos pathname={pathname} hasPermission={hasPermission} />
+
         {renderMenuItem('/timesheet')}
         {renderMenuItem('/despesas')}
 
