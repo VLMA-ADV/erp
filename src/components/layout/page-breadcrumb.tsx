@@ -52,6 +52,10 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
+// Segmentos que aparecem no path mas não são rotas navegáveis (sem page.tsx próprio).
+// Linká-los produz 404 em prefetch RSC e navegação real. Renderizamos como texto.
+const NON_NAVIGABLE_SEGMENTS = new Set(['financeiro'])
+
 export default function PageBreadcrumb() {
   const pathname = usePathname()
   const parts = useMemo(() => pathname.split('/').filter(Boolean), [pathname])
@@ -125,10 +129,11 @@ export default function PageBreadcrumb() {
           const href = `/${parts.slice(0, idx + 1).join('/')}`
           const last = idx === parts.length - 1
           const label = resolvedLabels[part] || toLabel(part)
+          const nonNavigable = isUuid(part) || NON_NAVIGABLE_SEGMENTS.has(part)
           return (
             <div key={href} className="flex items-center">
               <BreadcrumbItem>
-                {last ? (
+                {last || nonNavigable ? (
                   <BreadcrumbPage>{label}</BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink href={href}>{label}</BreadcrumbLink>
