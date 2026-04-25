@@ -14,36 +14,17 @@ interface CacheData {
 }
 
 /**
- * Leitura síncrona do cache de permissões no localStorage.
- * Escaneia todas as chaves com o prefixo e retorna as permissões válidas
- * sem precisar do userId (que só está disponível via getSession, assíncrono).
- * Isso evita o flash de "Sem permissão" no primeiro render.
- */
-function syncReadCachedPermissions(): string[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const now = Date.now()
-    for (const key of Object.keys(localStorage)) {
-      if (!key.startsWith(CACHE_KEY_PREFIX)) continue
-      const raw = localStorage.getItem(key)
-      if (!raw) continue
-      const data = JSON.parse(raw) as CacheData
-      if (Array.isArray(data.permissions) && now - data.timestamp < CACHE_TTL_MS) {
-        return data.permissions
-      }
-    }
-  } catch {
-    // localStorage não disponível ou dado inválido
-  }
-  return []
-}
-
-/**
  * Hook para gerenciar permissões do usuário com cache localStorage
  * Cache é invalidado após 5 minutos ou quando a página é recarregada
+ *
+ * Nota: `permissions` inicia vazio para garantir que o primeiro render client
+ * seja idêntico ao SSR (que nunca tem acesso a localStorage). O cache síncrono
+ * anterior (`syncReadCachedPermissions`) quebrava isso e produzia React #418/#423
+ * (hydration mismatch). O cache volta a ser carregado assim que o useEffect abaixo
+ * roda — custa um micro-flash de "sem permissão" no primeiro frame.
  */
 export function usePermissions() {
-  const [permissions, setPermissions] = useState<string[]>(() => syncReadCachedPermissions())
+  const [permissions, setPermissions] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const isLoadingRef = useRef(false)
 
