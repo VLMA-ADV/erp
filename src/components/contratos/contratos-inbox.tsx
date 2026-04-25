@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 
 interface ContratosInboxMensagem {
   id: string
@@ -57,7 +58,7 @@ function contratoLabel(item: ContratosInboxMensagem) {
   return 'Sem contrato vinculado'
 }
 
-async function fetchContratosInbox(): Promise<ContratosInboxResponse> {
+async function fetchContratosInbox({ signal }: { signal?: AbortSignal } = {}): Promise<ContratosInboxResponse> {
   const supabase = createClient()
   const {
     data: { session },
@@ -66,10 +67,11 @@ async function fetchContratosInbox(): Promise<ContratosInboxResponse> {
   if (!session) return { mensagens: [], total: 0 }
 
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-contratos-inbox-mensagens?limit=10`,
     {
       method: 'GET',
+      signal,
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         ...(anonKey ? { apikey: anonKey } : {}),
@@ -97,7 +99,7 @@ export default function ContratosInbox() {
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['contratos-inbox-mensagens'],
-    queryFn: fetchContratosInbox,
+    queryFn: ({ signal }) => fetchContratosInbox({ signal }),
     staleTime: 60_000,
     enabled: canRead,
   })
