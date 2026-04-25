@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Plus, ChevronDown, ChevronRight, Percent } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ContratosActions from './contratos-actions'
@@ -48,16 +49,18 @@ export default function ContratosList() {
     }
   }, [searchParams])
 
-  const fetchItems = async () => {
+  const fetchItems = async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
+      if (signal?.aborted) return
 
-      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos`, {
+      const resp = await fetchWithRetry(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos`, {
         method: 'GET',
+        signal,
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
@@ -87,20 +90,28 @@ export default function ContratosList() {
       }
       setItems(list)
     } catch (e) {
+      // Caller cancelou (unmount/dependency change): silenciar — não setar erro
+      if (e instanceof DOMException && e.name === 'AbortError') return
       console.error(e)
       setError('Erro ao carregar contratos')
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (canRead) fetchItems()
+    if (!canRead) return
+    const ac = new AbortController()
+    fetchItems(ac.signal)
+    return () => ac.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
   useEffect(() => {
-    if (canRead) fetchItems()
+    if (!canRead) return
+    const ac = new AbortController()
+    fetchItems(ac.signal)
+    return () => ac.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, focusedContratoId])
 

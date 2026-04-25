@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 
 interface SolicitacaoContratoItem {
   id: string
@@ -46,7 +47,7 @@ function clienteLabel(item: SolicitacaoContratoItem) {
   return 'Cliente não informado'
 }
 
-async function fetchSolicitacoesAbertas(): Promise<SolicitacaoContratoItem[]> {
+async function fetchSolicitacoesAbertas({ signal }: { signal?: AbortSignal } = {}): Promise<SolicitacaoContratoItem[]> {
   const supabase = createClient()
   const {
     data: { session },
@@ -55,11 +56,12 @@ async function fetchSolicitacoesAbertas(): Promise<SolicitacaoContratoItem[]> {
   if (!session) return []
 
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-solicitacoes-contrato`,
     {
       method: 'GET',
       cache: 'no-store',
+      signal,
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         ...(anonKey ? { apikey: anonKey } : {}),
@@ -85,7 +87,7 @@ export default function SolicitacoesInbox() {
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['solicitacoes-contrato-inbox'],
-    queryFn: fetchSolicitacoesAbertas,
+    queryFn: ({ signal }) => fetchSolicitacoesAbertas({ signal }),
     staleTime: 60_000,
     enabled: canRead,
   })
