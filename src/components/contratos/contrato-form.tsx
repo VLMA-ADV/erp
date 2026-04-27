@@ -131,10 +131,16 @@ const caseSubsteps: Array<{ key: CaseSubstepKey; label: string; icon: typeof Lay
   { key: 'timesheet', label: 'Timesheet', icon: Clock3 },
 ]
 
+function normalizePolo(value: unknown): CasoPayload['polo'] {
+  if (value === 'ativo' || value === 'passivo') return value
+  return null
+}
+
 const emptyCaso: CasoPayload = {
   status: 'rascunho',
   nome: '',
   observacao: '',
+  polo: null,
   servico_id: '',
   produto_id: '',
   responsavel_id: '',
@@ -3132,7 +3138,12 @@ export default function ContratoForm({
                     <Label>Natureza do caso</Label>
                     <ChoiceCards
                       value={String(regras.natureza_caso || '')}
-                      onChange={(value) => updateCurrentRegra('natureza_caso', value)}
+                      onChange={(value) => {
+                        updateCurrentRegra('natureza_caso', value)
+                        if (value !== 'contencioso') {
+                          updateCurrentCaso({ polo: null })
+                        }
+                      }}
                       options={[
                         { value: 'contencioso', label: 'Contencioso' },
                         { value: 'consultivo', label: 'Consultivo' },
@@ -3140,6 +3151,26 @@ export default function ContratoForm({
                       disabled={isReadOnly}
                     />
                   </div>
+
+                  {String(regras.natureza_caso || '') === 'contencioso' ? (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Polo</Label>
+                      <ChoiceCards
+                        value={currentCaso.polo || ''}
+                        onChange={(value) => updateCurrentCaso({ polo: normalizePolo(value) })}
+                        options={[
+                          { value: 'ativo', label: 'Ativo' },
+                          { value: 'passivo', label: 'Passivo' },
+                        ]}
+                        disabled={isReadOnly}
+                      />
+                      {!currentCaso.polo ? (
+                        <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                          Em casos contenciosos, selecione Ativo ou Passivo quando for possível. Você pode salvar sem preencher e definir depois.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="space-y-2 md:col-span-2">
                     <Label>Responsável</Label>
