@@ -804,17 +804,33 @@ export default function ContratoForm({
         if (!session) return
         if (signal.aborted) return
 
-        const optsResp = await fetchWithRetry(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato-form-options`,
-          {
-            method: 'GET',
-            signal,
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
+        // get-contrato-form-options agrega 5 RPCs/queries internas e responde em
+        // ~1.1-1.8s (vs ~200ms de get-cargos/get-contrato). A janela longa abre
+        // espaço para "Failed to fetch" intermitente (proxy/cancel/race), reportado
+        // por Filipe em prod 25/04. Default fetchWithRetry (2 retries × 300ms backoff
+        // = ~900ms total) é insuficiente. Aumentar pra 3 retries × 600ms backoff dá
+        // ~6s no pior caso, suficiente pra edge esquentar entre tentativas.
+        let optsResp: Response
+        try {
+          optsResp = await fetchWithRetry(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato-form-options`,
+            {
+              method: 'GET',
+              retries: 3,
+              backoffMs: 600,
+              signal,
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
             },
-          },
-        )
+          )
+        } catch (optsError) {
+          if (optsError instanceof DOMException && optsError.name === 'AbortError') return
+          console.error('get-contrato-form-options failed after retries:', optsError)
+          setError('Esta tela está demorando para carregar. Recarregue (F5) para tentar novamente.')
+          return
+        }
 
         const optsData = await optsResp.json()
         if (!optsResp.ok) {

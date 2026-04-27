@@ -387,10 +387,12 @@ export default function ItensAFaturarList() {
   const lastFetchAtRef = useRef<number | null>(null)
 
   const getFunctionsHeaders = (accessToken: string) => {
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    // O header `apikey` triggera CORS preflight nas edges get-itens-a-faturar e
+    // get-despesas (causa do banner "Erro ao carregar itens a faturar" reportado
+    // por Filipe em prod 25/04). Sem ele, ambas respondem 200 normalmente —
+    // Authorization Bearer cobre a auth.
     return {
       Authorization: `Bearer ${accessToken}`,
-      ...(anonKey ? { apikey: anonKey } : {}),
       'Content-Type': 'application/json',
     }
   }
