@@ -261,6 +261,16 @@ export default function SolicitacoesContratoList() {
 
   useEffect(() => {
     if (!canWrite) return
+    if (searchParams.get('action') !== 'new') return
+
+    resetCreateForm()
+    setCreateOpen(true)
+    router.replace(pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canWrite, pathname, router, searchParams])
+
+  useEffect(() => {
+    if (!canWrite) return
     if (searchParams.get('from_crm') !== '1') return
 
     const token = [
