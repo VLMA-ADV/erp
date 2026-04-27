@@ -8,6 +8,7 @@ import {
 } from '@/components/faturamento/itens-a-faturar-expansions'
 import { shouldRefetchOnVisibility } from '@/components/faturamento/itens-a-faturar-refresh'
 import { createClient } from '@/lib/supabase/client'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
@@ -394,7 +395,7 @@ export default function ItensAFaturarList() {
     }
   }
 
-  const loadItems = async () => {
+  const loadItems = async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
@@ -403,6 +404,7 @@ export default function ItensAFaturarList() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) return
+      if (signal?.aborted) return
 
       const params = new URLSearchParams({
         data_inicio: dateStart,
@@ -410,10 +412,11 @@ export default function ItensAFaturarList() {
       })
       if (search.trim()) params.set('search', search.trim())
 
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-itens-a-faturar?${params.toString()}`,
         {
           method: 'GET',
+          signal,
           headers: {
             ...getFunctionsHeaders(session.access_token),
           },
@@ -434,10 +437,11 @@ export default function ItensAFaturarList() {
         data_fim: dateEnd,
         status: 'em_lancamento',
       })
-      const despesasResponse = await fetch(
+      const despesasResponse = await fetchWithRetry(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesas?${despesasParams.toString()}`,
         {
           method: 'GET',
+          signal,
           headers: {
             ...getFunctionsHeaders(session.access_token),
           },
@@ -446,6 +450,7 @@ export default function ItensAFaturarList() {
       const despesasPayload = await despesasResponse.json().catch(() => ({}))
       const despesasData = Array.isArray(despesasPayload?.data) ? (despesasPayload.data as DespesaFallbackItem[]) : []
 
+      if (signal?.aborted) return
       const mergedData = mergeFallbackDespesas(data, despesasData, search)
       setItems(mergedData)
 
@@ -467,16 +472,20 @@ export default function ItensAFaturarList() {
       setSelectedCasos({})
       lastFetchAtRef.current = Date.now()
     } catch (err) {
+      // Caller cancelou (unmount/dependency change): silenciar
+      if (err instanceof DOMException && err.name === 'AbortError') return
       console.error(err)
       setError('Erro ao carregar itens a faturar')
       setItems([])
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadItems()
+    const ac = new AbortController()
+    void loadItems(ac.signal)
+    return () => ac.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

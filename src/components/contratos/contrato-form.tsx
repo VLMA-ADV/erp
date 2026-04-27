@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import {
   formatContratoStatusLabel,
   normalizeContratoStatusForForm,
@@ -790,7 +791,8 @@ export default function ContratoForm({
   }
 
   useEffect(() => {
-    const fetchData = async () => {
+    const ac = new AbortController()
+    const fetchData = async (signal: AbortSignal) => {
       setInitialLoading(true)
       setError(null)
 
@@ -800,11 +802,13 @@ export default function ContratoForm({
           data: { session },
         } = await supabase.auth.getSession()
         if (!session) return
+        if (signal.aborted) return
 
-        const optsResp = await fetch(
+        const optsResp = await fetchWithRetry(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato-form-options`,
           {
             method: 'GET',
+            signal,
             headers: {
               Authorization: `Bearer ${session.access_token}`,
               'Content-Type': 'application/json',
@@ -833,10 +837,11 @@ export default function ContratoForm({
 
         if (!Array.isArray(nextOptions.cargos) || nextOptions.cargos.length === 0) {
           try {
-            const cargosResp = await fetch(
+            const cargosResp = await fetchWithRetry(
               `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-cargos`,
               {
                 method: 'GET',
+                signal,
                 headers: {
                   Authorization: `Bearer ${session.access_token}`,
                   'Content-Type': 'application/json',
@@ -850,10 +855,12 @@ export default function ContratoForm({
                 .map((item: any) => ({ id: item.id, nome: item.nome }))
             }
           } catch (cargosError) {
+            if (cargosError instanceof DOMException && cargosError.name === 'AbortError') return
             console.error('Fallback de cargos falhou', cargosError)
           }
         }
 
+        if (signal.aborted) return
         setOptions(nextOptions)
         setPriceTableCatalog(
           (nextOptions.tabelas_preco || []).map((table: any) => ({
@@ -864,10 +871,11 @@ export default function ContratoForm({
         )
 
         if (isEdit && contratoId) {
-          const contratoResp = await fetch(
+          const contratoResp = await fetchWithRetry(
             `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contrato?id=${contratoId}`,
             {
               method: 'GET',
+              signal,
               headers: {
                 Authorization: `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
@@ -964,14 +972,17 @@ export default function ContratoForm({
           }))
         }
       } catch (fetchError) {
+        // Caller cancelou (unmount/dependency change): silenciar
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return
         console.error(fetchError)
         setError('Erro ao carregar dados do contrato')
       } finally {
-        setInitialLoading(false)
+        if (!ac.signal.aborted) setInitialLoading(false)
       }
     }
 
-    fetchData()
+    fetchData(ac.signal)
+    return () => ac.abort()
   }, [isEdit, contratoId])
 
   useEffect(() => {
