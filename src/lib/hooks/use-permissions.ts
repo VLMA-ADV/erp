@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { isPermissionSatisfied } from '@/lib/permissions/permission-keys'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 
 const CACHE_KEY_PREFIX = 'permissions_cache_'
 const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutos em milissegundos
@@ -116,10 +117,10 @@ export function usePermissions() {
   }, [getCacheKey])
 
   // Função para buscar permissões da API
-  const fetchPermissions = useCallback(async (): Promise<string[]> => {
+  const fetchPermissions = useCallback(async (signal?: AbortSignal): Promise<string[]> => {
     try {
       const supabase = createClient()
-      
+
       // Obter token atualizado
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
@@ -128,13 +129,17 @@ export function usePermissions() {
         return []
       }
 
+      if (signal?.aborted) return []
+
       // Garantir que o token está atualizado
       const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
+
       if (userError || !user) {
         console.error('User error:', userError)
         return []
       }
+
+      if (signal?.aborted) return []
 
       // Obter token atualizado novamente após getUser
       const { data: { session: updatedSession } } = await supabase.auth.getSession()
@@ -146,8 +151,9 @@ export function usePermissions() {
 
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-user-permissions`
 
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         method: 'GET',
+        signal,
         headers: {
           'Authorization': `Bearer ${updatedSession.access_token}`,
           'Content-Type': 'application/json',
@@ -157,10 +163,10 @@ export function usePermissions() {
       if (response.ok) {
         const data = await response.json()
         const permissionsList = data.permissions || []
-        
+
         // Salvar no cache
         await setCachedPermissions(permissionsList)
-        
+
         return permissionsList
       } else {
         const errorText = await response.text()
@@ -174,12 +180,16 @@ export function usePermissions() {
         return []
       }
     } catch (error) {
+      // Caller cancelou (unmount/dependency change): silenciar
+      if (error instanceof DOMException && error.name === 'AbortError') return []
       console.error('Error fetching permissions:', error)
       return []
     }
   }, [setCachedPermissions])
 
   useEffect(() => {
+    const ac = new AbortController()
+
     async function loadPermissions() {
       if (isLoadingRef.current) return
       isLoadingRef.current = true
@@ -188,30 +198,37 @@ export function usePermissions() {
       try {
         // Tentar ler do cache primeiro
         const cached = await getCachedPermissions()
-        
+        if (ac.signal.aborted) return
+
         if (cached) {
           console.log('Using cached permissions')
           setPermissions(cached.permissions)
           setLoading(false)
-          
+
           // Buscar atualizações em background (sem bloquear UI)
-          fetchPermissions().then((freshPermissions) => {
+          fetchPermissions(ac.signal).then((freshPermissions) => {
+            if (ac.signal.aborted) return
             // Só atualizar se as permissões mudaram
             if (JSON.stringify(freshPermissions) !== JSON.stringify(cached.permissions)) {
               setPermissions(freshPermissions)
             }
-          }).catch(console.error)
+          }).catch((err) => {
+            if (err instanceof DOMException && err.name === 'AbortError') return
+            console.error(err)
+          })
         } else {
           // Cache não disponível ou expirado, buscar da API
           console.log('Fetching permissions from API')
-          const permissionsList = await fetchPermissions()
+          const permissionsList = await fetchPermissions(ac.signal)
+          if (ac.signal.aborted) return
           setPermissions(permissionsList)
         }
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
         console.error('Error loading permissions:', error)
         setPermissions([])
       } finally {
-        setLoading(false)
+        if (!ac.signal.aborted) setLoading(false)
         isLoadingRef.current = false
       }
     }
@@ -242,6 +259,7 @@ export function usePermissions() {
       if (document.visibilityState === 'visible') {
         // Página voltou a ficar visível, verificar se cache expirou
         getCachedPermissions().then((cached) => {
+          if (ac.signal.aborted) return
           if (!cached) {
             // Cache expirado, recarregar
             loadPermissions()
@@ -254,6 +272,7 @@ export function usePermissions() {
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
+      ac.abort()
       window.removeEventListener('storage', handleStorageChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
