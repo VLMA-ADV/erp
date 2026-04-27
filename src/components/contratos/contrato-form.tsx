@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import {
   BriefcaseBusiness,
   CheckCircle2,
@@ -134,6 +135,34 @@ const caseSubsteps: Array<{ key: CaseSubstepKey; label: string; icon: typeof Lay
 function normalizePolo(value: unknown): CasoPayload['polo'] {
   if (value === 'ativo' || value === 'passivo') return value
   return null
+}
+
+function normalizePositiveDecimal(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(String(value).replace(',', '.'))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+async function fetchSalarioMinimoAtual(): Promise<{ valor: number | string | null }> {
+  const supabase = createClient()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Sessão expirada')
+
+  const response = await fetchWithRetry(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-salario-minimo`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  const data: unknown = await response.json()
+  if (!response.ok) {
+    const message = data && typeof data === 'object' && 'error' in data ? String(data.error) : 'Erro ao carregar salário mínimo'
+    throw new Error(message)
+  }
+  return data as { valor: number | string | null }
 }
 
 const emptyCaso: CasoPayload = {
@@ -607,6 +636,13 @@ export default function ContratoForm({
     Boolean((despesas as any).reembolsavel_ativo) || (despesasSelecionadas.length > 0 && !despesasSelecionadas.includes('nao'))
   const showDespesaDetalhes = despesasReembolsaveisEnabled
   const modoPreco = regras.modo_preco || (regras.tabela_preco_id || regras.tabela_preco_nome ? 'tabela' : 'valor_hora')
+  const quantidadeSm = normalizePositiveDecimal(regras.quantidade_sm)
+  const salarioMinimoQuery = useQuery({
+    queryKey: ['salario-minimo-atual'],
+    queryFn: fetchSalarioMinimoAtual,
+    enabled: currentCaso.regra_cobranca === 'salario_minimo',
+  })
+  const salarioMinimoValor = normalizePositiveDecimal(salarioMinimoQuery.data?.valor)
   const indicacaoPagamentoEnabled =
     Boolean((indicacao as any).pagamento_indicacao_ativo) ||
     (Boolean(indicacao.pagamento_indicacao) && indicacao.pagamento_indicacao !== 'nao')
@@ -3525,6 +3561,7 @@ export default function ContratoForm({
                       <option value="hora">Hora</option>
                       <option value="mensal">Mensal</option>
                       <option value="mensalidade_processo">Mensalidade de processo</option>
+                      <option value="salario_minimo">Salário Mínimo</option>
                       <option value="projeto">Projeto</option>
                       <option value="exito">Êxito</option>
                     </NativeSelect>
@@ -3885,6 +3922,39 @@ export default function ContratoForm({
                         onValueChange={(value) => updateCurrentRegra('valor_mensal', value)}
                         disabled={isReadOnly}
                       />
+                    </div>
+                  )}
+
+                  {currentCaso.regra_cobranca === 'salario_minimo' && (
+                    <div className="space-y-3 md:col-span-2">
+                      <div className="border-t" />
+                      <p className="text-base font-semibold">Configuração por Salário Mínimo</p>
+                      <div className="max-w-sm space-y-2">
+                        <Label>Quantidade de SM</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={String(regras.quantidade_sm || '')}
+                          onChange={(e) => updateCurrentRegra('quantidade_sm', e.target.value)}
+                          disabled={isReadOnly}
+                          placeholder="Ex: 2,5"
+                        />
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                        {salarioMinimoQuery.isLoading ? (
+                          <span className="text-muted-foreground">Carregando salário mínimo atual...</span>
+                        ) : salarioMinimoQuery.isError ? (
+                          <span className="text-red-700">{salarioMinimoQuery.error.message}</span>
+                        ) : quantidadeSm && salarioMinimoValor ? (
+                          <span>
+                            {quantidadeSm.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} SM × R$ {formatAmount(salarioMinimoValor)} = R${' '}
+                            {formatAmount(quantidadeSm * salarioMinimoValor)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Informe a quantidade de SM para ver o cálculo.</span>
+                        )}
+                      </div>
                     </div>
                   )}
 
