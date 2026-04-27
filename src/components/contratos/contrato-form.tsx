@@ -176,6 +176,7 @@ const emptyCaso: CasoPayload = {
   moeda: 'real',
   tipo_cobranca_documento: '',
   data_inicio_faturamento: '',
+  dia_inicio_faturamento: '',
   pagamento_dia_mes: '',
   inicio_vigencia: '',
   periodo_reajuste: 'nao_tem',
@@ -3453,11 +3454,19 @@ export default function ContratoForm({
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Data início faturamento</Label>
-                    <DatePicker
-                      value={currentCaso.data_inicio_faturamento}
-                      onChange={(value) => updateCurrentCaso({ data_inicio_faturamento: value })}
+                    <Label>Dia de início de faturamento</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={31}
+                      step={1}
+                      value={currentCaso.dia_inicio_faturamento ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        updateCurrentCaso({ dia_inicio_faturamento: value === '' ? '' : Number(value) })
+                      }}
                       disabled={isReadOnly}
+                      placeholder="1 a 31"
                     />
                   </div>
 
