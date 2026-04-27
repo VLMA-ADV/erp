@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronDown, ChevronRight, ClipboardList, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, ClipboardList, FilePlus2, FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -83,6 +83,7 @@ export default function SolicitacoesInbox() {
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('contracts.solicitacoes.read')
+  const canWrite = hasPermission('contracts.solicitacoes.write')
   const [open, setOpen] = useState(false)
 
   const { data, isLoading, isError, error } = useQuery({
@@ -127,6 +128,15 @@ export default function SolicitacoesInbox() {
           >
             {badgeLabel}
           </Badge>
+          {canWrite ? (
+            <Button
+              size="sm"
+              onClick={() => router.push('/solicitacoes-contrato?action=new')}
+            >
+              <FilePlus2 className="mr-1 h-4 w-4" />
+              Nova solicitação
+            </Button>
+          ) : null}
           <CollapsibleTrigger asChild>
             <Button size="sm" variant="outline" disabled={(!isError && isEmpty) || isLoading}>
               {open ? <ChevronDown className="mr-1 h-4 w-4" /> : <ChevronRight className="mr-1 h-4 w-4" />}
