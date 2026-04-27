@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchCEPData } from '@/lib/utils/validation'
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { maskCEP, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/utils/masks'
 
 type ParceiroPayload = {
@@ -259,8 +260,10 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
 
       if (isEdit) body.id = parceiroId
 
-      const resp = await fetch(url, {
+      const resp = await fetchWithRetry(url, {
         method: 'POST',
+        retries: 3,
+        backoffMs: 600,
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
