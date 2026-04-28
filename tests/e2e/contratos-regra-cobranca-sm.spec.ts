@@ -267,14 +267,12 @@ test.describe('Bug A — smoke prod (sem mocks, valida bundle deployado)', () =>
 
   test('CA-1 deploy: select de regra de cobrança tem "Mensalidade de processo" e NÃO tem "Salário Mínimo" solto', async ({ page }) => {
     await login(page)
-    await page.goto(`/contratos/${PROD_CONTRATO_ID}/editar`)
+    // Caso-form standalone em modo criar: rota /contratos/<id>/casos/novo abre direto
+    // o sub-step "Dados básicos" do caso-form, com o select de regra acessível via sub-step
+    // "Regras financeiras". Mais robusto que navegar pelo contrato-form (Etapa 1 → 2 → caso).
+    await page.goto(`/contratos/${PROD_CONTRATO_ID}/casos/novo`)
     await page.waitForLoadState('networkidle')
-
-    // Avançar até o caso (contrato-form Etapa 2 → caso → Regras financeiras).
-    // Depende do estado do contrato; se o spec falhar aqui, o smoke já indica
-    // que o deploy levantou mas a UI não chega na tela esperada (sinal frágil
-    // proposital: pega bundle quebrado, não cobre lógica).
-    await page.getByRole('button', { name: /Regras financeiras/i }).first().click({ trial: true }).catch(() => undefined)
+    await page.getByRole('button', { name: /Regras financeiras/i }).first().click()
 
     const select = regraSelect(page).first()
     await expect(select).toBeVisible({ timeout: 15_000 })
