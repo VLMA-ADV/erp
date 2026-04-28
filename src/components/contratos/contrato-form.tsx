@@ -1240,12 +1240,30 @@ export default function ContratoForm({
     setForm((prev) => {
       const next = [...prev.casos]
       const current = next[selectedCaseIndex] || { ...emptyCaso }
+      const nextTopConfig = {
+        ...(current.regra_cobranca_config || {}),
+        [field]: value,
+      }
+      // Sync nested regras_financeiras[selectedFinanceRuleIndex].regra_cobranca_config —
+      // RPC update_caso lê v_regra_principal->>'natureza_caso' (regras_financeiras[0])
+      // como fonte da verdade. Sem este sync, o top-level fica em drift e a RPC
+      // ignora polo (e outros campos nested) quando user mexe na aba Dados básicos.
+      const nextRegrasFinanceiras = Array.isArray((current as any).regras_financeiras)
+        ? ((current as any).regras_financeiras as any[]).map((rule, idx) => {
+            if (idx !== selectedFinanceRuleIndex) return rule
+            return {
+              ...rule,
+              regra_cobranca_config: {
+                ...(rule?.regra_cobranca_config || {}),
+                [field]: value,
+              },
+            }
+          })
+        : (current as any).regras_financeiras
       next[selectedCaseIndex] = {
         ...current,
-        regra_cobranca_config: {
-          ...(current.regra_cobranca_config || {}),
-          [field]: value,
-        },
+        regra_cobranca_config: nextTopConfig,
+        regras_financeiras: nextRegrasFinanceiras,
       }
       return { ...prev, casos: next }
     })
