@@ -1456,9 +1456,8 @@ export default function CasoForm({
     if (!validateDiaInicioFaturamento(form.dia_inicio_faturamento ?? '')) {
       return 'Dia de início de faturamento deve ser um inteiro entre 1 e 31'
     }
-    if (form.regra_cobranca === 'salario_minimo' && !normalizePositiveDecimal(regras.quantidade_sm)) {
-      return 'Informe a quantidade de SM'
-    }
+    // Diretiva "forms soltos" (Filipe daily 27/04): SM sem quantidade NÃO bloqueia
+    // submit. Aviso visual fica no bloco "Configuração por Salário Mínimo".
     return null
   }
 
@@ -1506,16 +1505,8 @@ export default function CasoForm({
         }
         return list
       })()
-      const invalidSmRule = preparedRules.find((rule) =>
-        normalizeRegraCobranca(rule.regra_cobranca) === 'salario_minimo' &&
-        !normalizePositiveDecimal(rule.quantidade_sm ?? rule.regra_cobranca_config?.quantidade_sm)
-      )
-      if (invalidSmRule) {
-        setError('Informe a quantidade de SM')
-        toastError('Informe a quantidade de SM')
-        setLoading(false)
-        return
-      }
+      // Diretiva "forms soltos": SM sem quantidade não bloqueia submit.
+      // Aviso visual fica no bloco "Configuração por Salário Mínimo".
       const payload = {
         ...form,
         natureza_caso: String(regras.natureza_caso || ''),
