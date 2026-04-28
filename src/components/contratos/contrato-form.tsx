@@ -3578,17 +3578,24 @@ export default function ContratoForm({
                   <div className="space-y-2">
                     <Label>Regra de cobrança</Label>
                     <NativeSelect
-                      value={currentCaso.regra_cobranca}
-                      onChange={(e) =>
-                        updateCurrentCaso({ regra_cobranca: e.target.value as CasoPayload['regra_cobranca'] })
-                      }
+                      value={currentCaso.regra_cobranca === 'salario_minimo' ? 'mensalidade_processo' : currentCaso.regra_cobranca}
+                      onChange={(e) => {
+                        const nextRule = e.target.value as CasoPayload['regra_cobranca']
+                        if (nextRule !== 'salario_minimo') {
+                          updateCurrentCaso({
+                            regra_cobranca: nextRule,
+                            regra_cobranca_config: { ...(currentCaso.regra_cobranca_config || {}), quantidade_sm: null },
+                          })
+                        } else {
+                          updateCurrentCaso({ regra_cobranca: nextRule })
+                        }
+                      }}
                       disabled={isReadOnly}
                     >
                       <option value="">Selecione...</option>
                       <option value="hora">Hora</option>
                       <option value="mensal">Mensal</option>
                       <option value="mensalidade_processo">Mensalidade de processo</option>
-                      <option value="salario_minimo">Salário Mínimo</option>
                       <option value="projeto">Projeto</option>
                       <option value="exito">Êxito</option>
                     </NativeSelect>
@@ -3952,49 +3959,68 @@ export default function ContratoForm({
                     </div>
                   )}
 
-                  {currentCaso.regra_cobranca === 'salario_minimo' && (
-                    <div className="space-y-3 md:col-span-2">
-                      <div className="border-t" />
-                      <p className="text-base font-semibold">Configuração por Salário Mínimo</p>
-                      <div className="max-w-sm space-y-2">
-                        <Label>Quantidade de SM</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={String(regras.quantidade_sm || '')}
-                          onChange={(e) => updateCurrentRegra('quantidade_sm', e.target.value)}
-                          disabled={isReadOnly}
-                          placeholder="Ex: 2,5"
-                        />
-                      </div>
-                      <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                        {salarioMinimoQuery.isLoading ? (
-                          <span className="text-muted-foreground">Carregando salário mínimo atual...</span>
-                        ) : salarioMinimoQuery.isError ? (
-                          <span className="text-red-700">{salarioMinimoQuery.error.message}</span>
-                        ) : quantidadeSm && salarioMinimoValor ? (
-                          <span>
-                            {quantidadeSm.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} SM × R$ {formatAmount(salarioMinimoValor)} = R${' '}
-                            {formatAmount(quantidadeSm * salarioMinimoValor)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">Informe a quantidade de SM para ver o cálculo.</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {currentCaso.regra_cobranca === 'mensalidade_processo' && (
-                    <div className="space-y-2 md:col-span-2">
+                  {(currentCaso.regra_cobranca === 'mensalidade_processo' || currentCaso.regra_cobranca === 'salario_minimo') && (
+                    <div className="space-y-3 md:col-span-2" data-testid="bloco-mensalidade-processo">
                       <div className="border-t" />
                       <p className="text-base font-semibold">Configuração de mensalidade de processo</p>
-                      <Label>Valor mensal</Label>
-                      <MoneyInput
-                        value={regras.valor_mensal || ''}
-                        onValueChange={(value) => updateCurrentRegra('valor_mensal', value)}
+                      <ChoiceCards
+                        value={currentCaso.regra_cobranca === 'salario_minimo' ? 'salario_minimo' : 'valor'}
+                        onChange={(value) => {
+                          if (value === 'salario_minimo') {
+                            updateCurrentCaso({ regra_cobranca: 'salario_minimo' })
+                          } else {
+                            updateCurrentCaso({
+                              regra_cobranca: 'mensalidade_processo',
+                              regra_cobranca_config: { ...(currentCaso.regra_cobranca_config || {}), quantidade_sm: null },
+                            })
+                          }
+                          setError(null)
+                        }}
                         disabled={isReadOnly}
+                        options={[
+                          { value: 'valor', label: 'Valor' },
+                          { value: 'salario_minimo', label: 'Salário Mínimo' },
+                        ]}
                       />
+                      {currentCaso.regra_cobranca === 'mensalidade_processo' ? (
+                        <div className="space-y-2">
+                          <Label>Valor mensal do projeto</Label>
+                          <MoneyInput
+                            value={regras.valor_mensal || ''}
+                            onValueChange={(value) => updateCurrentRegra('valor_mensal', value)}
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="max-w-sm space-y-2">
+                            <Label>Quantidade de SM</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={String(regras.quantidade_sm || '')}
+                              onChange={(e) => updateCurrentRegra('quantidade_sm', e.target.value)}
+                              disabled={isReadOnly}
+                              placeholder="Ex: 2,5"
+                            />
+                          </div>
+                          <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                            {salarioMinimoQuery.isLoading ? (
+                              <span className="text-muted-foreground">Carregando salário mínimo atual...</span>
+                            ) : salarioMinimoQuery.isError ? (
+                              <span className="text-red-700">{salarioMinimoQuery.error.message}</span>
+                            ) : quantidadeSm && salarioMinimoValor ? (
+                              <span>
+                                {quantidadeSm.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} SM × R$ {formatAmount(salarioMinimoValor)} = R${' '}
+                                {formatAmount(quantidadeSm * salarioMinimoValor)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Informe a quantidade de SM para ver o cálculo.</span>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
