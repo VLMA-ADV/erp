@@ -67,6 +67,8 @@ const emptyCaso: CasoPayload = {
     valor_mensal: '',
     valor_projeto: '',
     parcelas: [],
+    exito_modo: 'percentual',
+    exito_valor_fixo: '',
     percentual_exito: '',
     valor_acao: '',
     valor_exito_calculado: '',
@@ -2669,47 +2671,79 @@ export default function CasoForm({
               )}
 
               {form.regra_cobranca === 'exito' && (
-                <div className="grid grid-cols-1 gap-2 md:col-span-2 md:grid-cols-3">
-                  <div className="md:col-span-3 border-t" />
-                  <p className="md:col-span-3 text-base font-semibold">Configuração de cobrança por Êxito</p>
-                  <div className="space-y-1">
-                    <Label>Porcentagem de êxito (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="Ex: 20"
-                      value={regras.percentual_exito || ''}
-                      onChange={(e) => {
-                        const percentual = Number(e.target.value || '0')
-                        const valorAcao = parseAmount(regras.valor_acao || '0')
-                        setRegra('percentual_exito', e.target.value)
-                        setRegra('valor_exito_calculado', ((valorAcao * percentual) / 100).toFixed(2))
-                      }}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Valor da ação</Label>
-                    <MoneyInput
-                      value={regras.valor_acao || ''}
-                      onValueChange={(value) => {
-                        const valorAcao = parseAmount(value || '0')
-                        const percentual = Number(regras.percentual_exito || '0')
-                        setRegra('valor_acao', value)
-                        setRegra('valor_exito_calculado', ((valorAcao * percentual) / 100).toFixed(2))
-                      }}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Data de pagamento</Label>
-                    <DatePicker
-                      value={regras.data_pagamento_exito || ''}
-                      onChange={(value) => setRegra('data_pagamento_exito', value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
+                <div className="space-y-3 md:col-span-2" data-testid="bloco-exito">
+                  <div className="border-t" />
+                  <p className="text-base font-semibold">Configuração de cobrança por Êxito</p>
+                  <ChoiceCards
+                    value={String(regras.exito_modo || 'percentual') === 'valor' ? 'valor' : 'percentual'}
+                    onChange={(value) => setRegra('exito_modo', value)}
+                    disabled={isReadOnly}
+                    options={[
+                      { value: 'percentual', label: 'Porcentagem' },
+                      { value: 'valor', label: 'Valor' },
+                    ]}
+                  />
+                  {String(regras.exito_modo || 'percentual') === 'valor' ? (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>Valor fixo do êxito</Label>
+                        <MoneyInput
+                          value={regras.exito_valor_fixo || ''}
+                          onValueChange={(value) => setRegra('exito_valor_fixo', value)}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Data de pagamento</Label>
+                        <DatePicker
+                          value={regras.data_pagamento_exito || ''}
+                          onChange={(value) => setRegra('data_pagamento_exito', value)}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                      <div className="space-y-1">
+                        <Label>Porcentagem de êxito (%)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="Ex: 20"
+                          value={regras.percentual_exito || ''}
+                          onChange={(e) => {
+                            const percentual = Number(e.target.value || '0')
+                            const valorAcao = parseAmount(regras.valor_acao || '0')
+                            setRegra('percentual_exito', e.target.value)
+                            setRegra('valor_exito_calculado', ((valorAcao * percentual) / 100).toFixed(2))
+                          }}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Valor da ação</Label>
+                        <MoneyInput
+                          value={regras.valor_acao || ''}
+                          onValueChange={(value) => {
+                            const valorAcao = parseAmount(value || '0')
+                            const percentual = Number(regras.percentual_exito || '0')
+                            setRegra('valor_acao', value)
+                            setRegra('valor_exito_calculado', ((valorAcao * percentual) / 100).toFixed(2))
+                          }}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Data de pagamento</Label>
+                        <DatePicker
+                          value={regras.data_pagamento_exito || ''}
+                          onChange={(value) => setRegra('data_pagamento_exito', value)}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
