@@ -27,6 +27,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
 interface RevisaoItem {
   id: string
@@ -68,6 +69,7 @@ interface ContratoGroupFluxo {
   key: string
   contratoId: string
   numero: number | null
+  numeroSequencial?: number | null
   nome: string
   totalHoras: number
   totalValor: number
@@ -466,9 +468,10 @@ function buildResumoCasoDialogRows(resumoCasoGroup: {
   contrato: ContratoGroupFluxo
   caso: CasoGroupFluxo
 }): ResumoCasoDialogRow[] {
-  const contratoLabel = resumoCasoGroup.contrato.numero
-    ? `${resumoCasoGroup.contrato.numero} - ${resumoCasoGroup.contrato.nome}`
-    : resumoCasoGroup.contrato.nome
+  const contratoLabel = formatContratoDisplay(
+    resumoCasoGroup.contrato.numeroSequencial ?? resumoCasoGroup.contrato.numero,
+    resumoCasoGroup.contrato.nome,
+  ).full
   const casoLabel = resumoCasoGroup.caso.numero
     ? `${resumoCasoGroup.caso.numero} - ${resumoCasoGroup.caso.nome}`
     : resumoCasoGroup.caso.nome
@@ -1151,8 +1154,7 @@ export default function FluxoDeFaturamentoList() {
                                   </button>
                                 </td>
                                 <td className="px-4 py-3 pl-10 font-medium">
-                                  {contrato.numero ? `${contrato.numero} - ` : ''}
-                                  {contrato.nome}
+                                  {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
                                 </td>
                                 <td className="px-4 py-3 text-sm">{contratoSummary.status}</td>
                                 <td className="px-4 py-3 text-sm">{contratoSummary.responsavel}</td>
@@ -1375,7 +1377,7 @@ export default function FluxoDeFaturamentoList() {
             <DialogTitle>Resumo do caso</DialogTitle>
             <DialogDescription>
               {resumoCasoGroup
-                ? `${resumoCasoGroup.cliente.nome} · ${resumoCasoGroup.contrato.numero ? `${resumoCasoGroup.contrato.numero} - ` : ''}${resumoCasoGroup.contrato.nome} · ${resumoCasoGroup.caso.numero ? `${resumoCasoGroup.caso.numero} - ` : ''}${resumoCasoGroup.caso.nome}`
+                ? `${resumoCasoGroup.cliente.nome} · ${formatContratoDisplay(resumoCasoGroup.contrato.numeroSequencial ?? resumoCasoGroup.contrato.numero, resumoCasoGroup.contrato.nome).full} · ${resumoCasoGroup.caso.numero ? `${resumoCasoGroup.caso.numero} - ` : ''}${resumoCasoGroup.caso.nome}`
                 : ''}
             </DialogDescription>
           </DialogHeader>

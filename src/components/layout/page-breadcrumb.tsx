@@ -95,9 +95,14 @@ export default function PageBreadcrumb() {
         if (!resp.ok) return
 
         const nextLabels: Record<string, string> = {}
+        // Item 5: prefere numero_sequencial (RF-064 canonical) sobre numero
+        // (bigint legacy). Após migration fix_get_contrato_retorna_numero_sequencial
+        // (PR #77) o campo sempre vem no payload.
+        const contratoSeq = payload?.data?.contrato?.numero_sequencial
         const contratoNumero = payload?.data?.contrato?.numero
-        if (contratoNumero !== null && contratoNumero !== undefined) {
-          nextLabels[contratoId] = String(contratoNumero)
+        const contratoLabel = contratoSeq ?? contratoNumero
+        if (contratoLabel !== null && contratoLabel !== undefined) {
+          nextLabels[contratoId] = String(contratoLabel)
         }
 
         const casos = payload?.data?.casos || []

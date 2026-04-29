@@ -7,6 +7,7 @@ import { Plus, ChevronDown, ChevronRight, Percent } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ContratosActions from './contratos-actions'
@@ -14,14 +15,6 @@ import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
 import { Table } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
-
-function getContratoDisplayLabel(item: Pick<ContratoListItem, 'numero_sequencial' | 'nome_contrato'>) {
-  if (typeof item.numero_sequencial === 'number' && item.numero_sequencial > 0) {
-    return `Contrato ${item.numero_sequencial}`
-  }
-  const fallback = item.nome_contrato?.trim()
-  return fallback || 'Contrato sem identificador'
-}
 
 export default function ContratosList() {
   const searchParams = useSearchParams()
@@ -82,7 +75,7 @@ export default function ContratosList() {
         list = list.filter((c) =>
           String(c.numero || '').includes(s) ||
           String(c.numero_sequencial || '').includes(s) ||
-          getContratoDisplayLabel(c).toLowerCase().includes(s) ||
+          formatContratoDisplay(c.numero_sequencial, c.nome_contrato).full.toLowerCase().includes(s) ||
           c.nome_contrato.toLowerCase().includes(s) ||
           c.cliente_nome.toLowerCase().includes(s) ||
           c.casos?.some((caso) => String(caso.numero || '').includes(s) || caso.nome.toLowerCase().includes(s)),
@@ -278,7 +271,17 @@ export default function ContratosList() {
                                 </button>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {getContratoDisplayLabel(item)}
+                                {(() => {
+                                  const display = formatContratoDisplay(item.numero_sequencial, item.nome_contrato)
+                                  return (
+                                    <>
+                                      <span>{display.primary}</span>
+                                      {display.secondary && (
+                                        <span className="ml-2 text-xs font-normal text-gray-500">— {display.secondary}</span>
+                                      )}
+                                    </>
+                                  )
+                                })()}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusPill(item.status)}`}>

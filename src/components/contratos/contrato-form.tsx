@@ -24,6 +24,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import {
   formatContratoStatusLabel,
   normalizeContratoStatusForForm,
@@ -312,10 +313,8 @@ function formatContratoIdentifier(numeroSequencial?: number | null) {
 }
 
 function getContratoDisplayName(numeroSequencial?: number | null, nomeContrato?: string | null) {
-  const identifier = formatContratoIdentifier(numeroSequencial)
-  if (identifier) return identifier
-  const fallback = String(nomeContrato || '').trim()
-  return fallback || 'Será gerado automaticamente ao salvar'
+  const display = formatContratoDisplay(numeroSequencial, nomeContrato, { fallback: '' })
+  return display.full || 'Será gerado automaticamente ao salvar'
 }
 
 function getPersistedContractName(numeroSequencial?: number | null, nomeContrato?: string | null) {

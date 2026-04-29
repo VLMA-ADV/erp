@@ -16,6 +16,7 @@ import { MoneyInput } from '@/components/ui/money-input'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
 type DespesaStatus = 'em_lancamento' | 'revisao' | 'aprovado' | 'cancelado'
 
@@ -45,6 +46,7 @@ interface DespesaItem {
 interface ContratoItem {
   id: string
   numero?: number
+  numero_sequencial?: number | null
   cliente_id?: string
   cliente_nome?: string
   nome_contrato: string
@@ -199,7 +201,7 @@ export default function DespesasList() {
       return contratos.flatMap((contrato) =>
         (contrato.casos || []).map((caso) => ({
           value: caso.id,
-          label: `${caso.numero || '-'} - ${caso.nome} (${contrato.numero || '-'} - ${contrato.nome_contrato})`,
+          label: `${caso.numero || '-'} - ${caso.nome} (${formatContratoDisplay(contrato.numero_sequencial ?? contrato.numero, contrato.nome_contrato).full})`,
         })),
       )
     }
@@ -208,7 +210,7 @@ export default function DespesasList() {
       .flatMap((contrato) =>
         (contrato.casos || []).map((caso) => ({
           value: caso.id,
-          label: `${caso.numero || '-'} - ${caso.nome} (${contrato.numero || '-'} - ${contrato.nome_contrato})`,
+          label: `${caso.numero || '-'} - ${caso.nome} (${formatContratoDisplay(contrato.numero_sequencial ?? contrato.numero, contrato.nome_contrato).full})`,
         })),
       )
   }, [contratos, filterClienteId])
