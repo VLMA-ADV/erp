@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { TIMESHEET_TEMPLATES } from './timesheet-templates'
 
 type TimesheetStatus = 'em_lancamento' | 'revisao' | 'aprovado'
@@ -56,6 +57,7 @@ interface TimesheetItem {
 interface ContratoItem {
   id: string
   numero?: number
+  numero_sequencial?: number | null
   cliente_id?: string
   cliente_nome?: string
   nome_contrato: string
@@ -146,7 +148,11 @@ export default function TimesheetList() {
   }
 
   const contratoOptions = useMemo(
-    () => contratos.map((item) => ({ value: item.id, label: `${item.numero || '-'} - ${item.nome_contrato}` })),
+    () =>
+      contratos.map((item) => ({
+        value: item.id,
+        label: formatContratoDisplay(item.numero_sequencial ?? item.numero, item.nome_contrato).full,
+      })),
     [contratos],
   )
 
@@ -180,7 +186,7 @@ export default function TimesheetList() {
       return contratos.flatMap((c) =>
         (c.casos || []).map((caso) => ({
           value: caso.id,
-          label: `${caso.numero || '-'} - ${caso.nome} (${c.numero || '-'} - ${c.nome_contrato})`,
+          label: `${caso.numero || '-'} - ${caso.nome} (${formatContratoDisplay(c.numero_sequencial ?? c.numero, c.nome_contrato).full})`,
         })),
       )
     }
