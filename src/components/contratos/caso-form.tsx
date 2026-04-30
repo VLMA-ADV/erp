@@ -24,6 +24,7 @@ import { useToast } from '@/components/ui/toast'
 import AnexoModal from './anexo-modal'
 import CapEncontroSimple from './cap-encontro-simple'
 import RateioSlider from './rateio-slider'
+import { parseCarteiraCsv, type ProcessoCarteira } from '@/lib/utils/parse-carteira-csv'
 import type { CasoPayload, ContratoFormOptions } from './types'
 
 const emptyCaso: CasoPayload = {
@@ -371,6 +372,7 @@ export default function CasoForm({
   const [selectedBillingRuleIndex, setSelectedBillingRuleIndex] = useState(0)
   const [deleteCasoOpen, setDeleteCasoOpen] = useState(false)
   const [deleteCasoLoading, setDeleteCasoLoading] = useState(false)
+  const [carteiraInvalidasCount, setCarteiraInvalidasCount] = useState(0)
 
   const isEdit = !!casoId
   const isReadOnly = viewOnly || !canWrite
@@ -2202,6 +2204,11 @@ export default function CasoForm({
                     const nextRule = e.target.value as CasoPayload['regra_cobranca']
                     setField('regra_cobranca', nextRule)
                     if (nextRule !== 'salario_minimo') setRegra('quantidade_sm', null)
+                    if (nextRule !== 'mensalidade_carteira') {
+                      setRegra('valor_mensal_carteira', null)
+                      setRegra('processos_carteira', null)
+                      setCarteiraInvalidasCount(0)
+                    }
                   }}
                   disabled={isReadOnly}
                 >
@@ -2209,6 +2216,7 @@ export default function CasoForm({
                   <option value="hora">Hora</option>
                   <option value="mensal">Mensal</option>
                   <option value="mensalidade_processo">Mensalidade de processo</option>
+                  <option value="mensalidade_carteira">Mensalidade de Carteira</option>
                   <option value="projeto">Projeto</option>
                   <option value="exito">Êxito</option>
                 </NativeSelect>
@@ -2578,6 +2586,96 @@ export default function CasoForm({
                         ) : (
                           <span className="text-muted-foreground">Informe a quantidade de SM para ver o cálculo.</span>
                         )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {form.regra_cobranca === 'mensalidade_carteira' && (
+                <div className="space-y-3 md:col-span-2" data-testid="bloco-mensalidade-carteira">
+                  <div className="border-t" />
+                  <p className="text-base font-semibold">Configuração de mensalidade de carteira</p>
+
+                  {form.parte_de_carteira_id ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                      Este caso é um processo de uma carteira. A regra de cobrança e o valor mensal são definidos pelo caso matriz.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Carteira de processos (CSV)</Label>
+                        <Input
+                          type="file"
+                          accept=".csv,text/csv"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            const reader = new FileReader()
+                            reader.onload = () => {
+                              const parsed = parseCarteiraCsv(String(reader.result || ''))
+                              setRegra('processos_carteira', parsed.validas)
+                              setCarteiraInvalidasCount(parsed.invalidas.length)
+                            }
+                            reader.readAsText(file, 'utf-8')
+                            e.target.value = ''
+                          }}
+                          disabled={isReadOnly}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Cabeçalho obrigatório com 2 colunas: número do processo e identificador. Aceita &quot;,&quot; ou &quot;;&quot; como separador.
+                        </p>
+                      </div>
+
+                      {Array.isArray(regras.processos_carteira) && regras.processos_carteira.length > 0 && (
+                        <div className="rounded-md border bg-muted/20 p-2" data-testid="preview-carteira">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-medium">
+                              {regras.processos_carteira.length} processo(s) válido(s)
+                              {carteiraInvalidasCount > 0 ? `, ${carteiraInvalidasCount} ignorado(s)` : ''}
+                            </span>
+                            {!isReadOnly && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setRegra('processos_carteira', null)
+                                  setCarteiraInvalidasCount(0)
+                                }}
+                              >
+                                Limpar
+                              </Button>
+                            )}
+                          </div>
+                          <div className="max-h-48 overflow-y-auto rounded border bg-white">
+                            <table className="w-full text-xs">
+                              <thead className="sticky top-0 bg-gray-50">
+                                <tr>
+                                  <th className="px-2 py-1 text-left">Número do processo</th>
+                                  <th className="px-2 py-1 text-left">Identificador</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(regras.processos_carteira as ProcessoCarteira[]).map((p, i) => (
+                                  <tr key={i} className="border-t">
+                                    <td className="px-2 py-1 font-mono">{p.numero_processo || '-'}</td>
+                                    <td className="px-2 py-1">{p.identificador}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="max-w-sm space-y-2">
+                        <Label>Valor mensal da carteira</Label>
+                        <MoneyInput
+                          value={regras.valor_mensal_carteira || ''}
+                          onValueChange={(value) => setRegra('valor_mensal_carteira', value)}
+                          disabled={isReadOnly}
+                        />
                       </div>
                     </>
                   )}

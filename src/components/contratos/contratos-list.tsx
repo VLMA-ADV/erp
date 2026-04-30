@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ContratosActions from './contratos-actions'
@@ -317,7 +318,16 @@ export default function ContratosList() {
                                         {item.casos?.length ? (
                                           item.casos.map((caso) => (
                                             <tr key={caso.id}>
-                                              <td className="px-4 py-3 text-sm text-gray-900">{caso.numero || '-'} - {caso.nome}</td>
+                                              <td className="px-4 py-3 text-sm text-gray-900">
+                                                <span className="inline-flex items-center gap-1">
+                                                  <span>{caso.numero || '-'} - {caso.nome}</span>
+                                                  {caso.parte_de_carteira_id ? (
+                                                    <Badge className="ml-1 bg-white text-[10px] font-normal text-gray-700">Processo da carteira</Badge>
+                                                  ) : (caso.processos_carteira_count ?? 0) > 0 ? (
+                                                    <Badge className="ml-1 bg-white text-[10px] font-normal text-gray-700">Carteira ({caso.processos_carteira_count})</Badge>
+                                                  ) : null}
+                                                </span>
+                                              </td>
                                               <td className="px-4 py-3 text-sm text-gray-700">{caso.produto_nome || '-'}</td>
                                               <td className="px-4 py-3 text-sm text-gray-700">{caso.responsavel_nome || '-'}</td>
                                               <td className="px-4 py-3 text-sm">
