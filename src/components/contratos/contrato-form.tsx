@@ -138,6 +138,22 @@ function normalizePolo(value: unknown): CasoPayload['polo'] {
   return null
 }
 
+/**
+ * Normaliza canal_prospeccao para o value das options do <select> (lowercase,
+ * sem acento). Defensivo contra dados legados que possam ter chegado ao DB
+ * com case/acento divergente do enum visual (ex: "Indicação" vs "indicacao").
+ */
+function normalizeCanalProspeccao(value: unknown): string {
+  if (!value) return ''
+  const v = String(value)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase()
+  const valid = ['internet', 'campanha', 'site', 'telefone', 'indicacao']
+  return valid.includes(v) ? v : ''
+}
+
 function normalizePositiveDecimal(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const parsed = Number(String(value).replace(',', '.'))
@@ -972,7 +988,7 @@ export default function ContratoForm({
             numero_sequencial: loadedNumeroSequencial,
             forma_entrada: (contrato.forma_entrada || '') as 'organico' | 'prospeccao' | '',
             responsavel_prospeccao_id: String((contrato as any).responsavel_prospeccao_id || ''),
-            canal_prospeccao: String((contrato as any).canal_prospeccao || ''),
+            canal_prospeccao: normalizeCanalProspeccao((contrato as any).canal_prospeccao),
             grupo_imposto_id: String(contrato.grupo_imposto_id || ''),
             status: normalizeContratoStatusForForm(contrato.status || 'rascunho'),
             casos: casos.length
