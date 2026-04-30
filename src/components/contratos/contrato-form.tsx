@@ -25,6 +25,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { parseCarteiraCsv, type ProcessoCarteira } from '@/lib/utils/parse-carteira-csv'
 import {
   formatContratoStatusLabel,
   normalizeContratoStatusForForm,
@@ -505,6 +506,7 @@ export default function ContratoForm({
   const [pendingCaseAnexos, setPendingCaseAnexos] = useState<Record<number, PendingAnexo[]>>({})
   const [selectedFinanceRuleByCase, setSelectedFinanceRuleByCase] = useState<Record<string, number>>({})
   const [origemSolicitacaoDescricao, setOrigemSolicitacaoDescricao] = useState('')
+  const [carteiraInvalidasByCase, setCarteiraInvalidasByCase] = useState<Record<number, number>>({})
 
   const clienteOptions = useMemo(
     () => (options.clientes || []).map((cliente) => ({ value: cliente.id, label: cliente.nome })),
@@ -1776,6 +1778,24 @@ export default function ContratoForm({
     const numero = (caso as any)?.numero
     return numero ? `${numero} - ${nome}` : nome
   }
+  const getCarteiraBadge = (caso: CasoPayload | undefined) => {
+    if (caso?.parte_de_carteira_id) {
+      return (
+        <Badge className="ml-1 bg-white text-[10px] font-normal text-gray-700">
+          Processo da carteira
+        </Badge>
+      )
+    }
+    const count = caso?.processos_carteira_count
+    if (typeof count === 'number' && count > 0) {
+      return (
+        <Badge className="ml-1 bg-white text-[10px] font-normal text-gray-700">
+          Carteira ({count})
+        </Badge>
+      )
+    }
+    return null
+  }
   const sortedCaseRefs = useMemo(() => {
     return form.casos
       .map((caso, idx) => ({ caso, idx }))
@@ -2633,7 +2653,10 @@ export default function ContratoForm({
                       size="sm"
                       onClick={() => setSelectedCaseIndex(idx)}
                     >
-                      {getCasoCardLabel(caso, idx)}
+                      <span className="inline-flex items-center gap-1">
+                        {getCasoCardLabel(caso, idx)}
+                        {getCarteiraBadge(caso)}
+                      </span>
                     </Button>
                   )
                   return isCasoRascunho(caso) ? (
@@ -3088,6 +3111,7 @@ export default function ContratoForm({
                   >
                     <span className="inline-flex items-center gap-1">
                       {getCasoCardLabel(caso, idx)}
+                      {getCarteiraBadge(caso)}
                       {draft ? <Pencil className="h-3.5 w-3.5" /> : null}
                     </span>
                   </Button>
@@ -3598,14 +3622,21 @@ export default function ContratoForm({
                       value={currentCaso.regra_cobranca === 'salario_minimo' ? 'mensalidade_processo' : currentCaso.regra_cobranca}
                       onChange={(e) => {
                         const nextRule = e.target.value as CasoPayload['regra_cobranca']
-                        if (nextRule !== 'salario_minimo') {
-                          updateCurrentCaso({
-                            regra_cobranca: nextRule,
-                            regra_cobranca_config: { ...(currentCaso.regra_cobranca_config || {}), quantidade_sm: null },
+                        const baseConfig = { ...(currentCaso.regra_cobranca_config || {}) }
+                        if (nextRule !== 'salario_minimo') baseConfig.quantidade_sm = null
+                        if (nextRule !== 'mensalidade_carteira') {
+                          baseConfig.valor_mensal_carteira = null
+                          baseConfig.processos_carteira = null
+                          setCarteiraInvalidasByCase((prev) => {
+                            const next = { ...prev }
+                            delete next[selectedCaseIndex]
+                            return next
                           })
-                        } else {
-                          updateCurrentCaso({ regra_cobranca: nextRule })
                         }
+                        updateCurrentCaso({
+                          regra_cobranca: nextRule,
+                          regra_cobranca_config: baseConfig,
+                        })
                       }}
                       disabled={isReadOnly}
                     >
@@ -3613,6 +3644,7 @@ export default function ContratoForm({
                       <option value="hora">Hora</option>
                       <option value="mensal">Mensal</option>
                       <option value="mensalidade_processo">Mensalidade de processo</option>
+                      <option value="mensalidade_carteira">Mensalidade de Carteira</option>
                       <option value="projeto">Projeto</option>
                       <option value="exito">Êxito</option>
                     </NativeSelect>
@@ -4035,6 +4067,102 @@ export default function ContratoForm({
                             ) : (
                               <span className="text-muted-foreground">Informe a quantidade de SM para ver o cálculo.</span>
                             )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {currentCaso.regra_cobranca === 'mensalidade_carteira' && (
+                    <div className="space-y-3 md:col-span-2" data-testid="bloco-mensalidade-carteira">
+                      <div className="border-t" />
+                      <p className="text-base font-semibold">Configuração de mensalidade de carteira</p>
+
+                      {currentCaso.parte_de_carteira_id ? (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                          Este caso é um processo de uma carteira. A regra de cobrança e o valor mensal são definidos pelo caso matriz.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <Label>Carteira de processos (CSV)</Label>
+                            <Input
+                              type="file"
+                              accept=".csv,text/csv"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                const reader = new FileReader()
+                                reader.onload = () => {
+                                  const parsed = parseCarteiraCsv(String(reader.result || ''))
+                                  updateCurrentRegra('processos_carteira', parsed.validas)
+                                  setCarteiraInvalidasByCase((prev) => ({ ...prev, [selectedCaseIndex]: parsed.invalidas.length }))
+                                }
+                                reader.readAsText(file, 'utf-8')
+                                e.target.value = ''
+                              }}
+                              disabled={isReadOnly}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Cabeçalho obrigatório com 2 colunas: número do processo e identificador. Aceita &quot;,&quot; ou &quot;;&quot; como separador.
+                            </p>
+                          </div>
+
+                          {Array.isArray(regras.processos_carteira) && regras.processos_carteira.length > 0 && (
+                            <div className="rounded-md border bg-muted/20 p-2" data-testid="preview-carteira">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className="text-xs font-medium">
+                                  {regras.processos_carteira.length} processo(s) válido(s)
+                                  {(carteiraInvalidasByCase[selectedCaseIndex] || 0) > 0
+                                    ? `, ${carteiraInvalidasByCase[selectedCaseIndex]} ignorado(s)`
+                                    : ''}
+                                </span>
+                                {!isReadOnly && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      updateCurrentRegra('processos_carteira', null)
+                                      setCarteiraInvalidasByCase((prev) => {
+                                        const next = { ...prev }
+                                        delete next[selectedCaseIndex]
+                                        return next
+                                      })
+                                    }}
+                                  >
+                                    Limpar
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="max-h-48 overflow-y-auto rounded border bg-white">
+                                <table className="w-full text-xs">
+                                  <thead className="sticky top-0 bg-gray-50">
+                                    <tr>
+                                      <th className="px-2 py-1 text-left">Número do processo</th>
+                                      <th className="px-2 py-1 text-left">Identificador</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(regras.processos_carteira as ProcessoCarteira[]).map((p, i) => (
+                                      <tr key={i} className="border-t">
+                                        <td className="px-2 py-1 font-mono">{p.numero_processo || '-'}</td>
+                                        <td className="px-2 py-1">{p.identificador}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="max-w-sm space-y-2">
+                            <Label>Valor mensal da carteira</Label>
+                            <MoneyInput
+                              value={regras.valor_mensal_carteira || ''}
+                              onValueChange={(value) => updateCurrentRegra('valor_mensal_carteira', value)}
+                              disabled={isReadOnly}
+                            />
                           </div>
                         </>
                       )}
