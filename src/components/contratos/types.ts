@@ -29,6 +29,9 @@ export interface CasoListItem {
   status?: 'rascunho' | 'ativo' | 'inativo'
   ativo: boolean
   created_at: string
+  parte_de_carteira_id?: string | null
+  processos_carteira_count?: number
+  regra_cobranca?: string | null
 }
 
 export interface ContratoFormOptions {
@@ -87,6 +90,7 @@ export interface CasoPayload {
     | 'mensal'
     | 'mensalidade_processo'
     | 'salario_minimo'
+    | 'mensalidade_carteira'
     | 'projeto'
     | 'projeto_parcelado'
     | 'exito'
@@ -98,6 +102,8 @@ export interface CasoPayload {
   pagadores_despesa: Array<{ cliente_id: string; percentual?: number | null }>
   timesheet_config: Record<string, any>
   indicacao_config: Record<string, any>
+  parte_de_carteira_id?: string | null
+  processos_carteira_count?: number
 }
 
 export interface ContratoPayload {
