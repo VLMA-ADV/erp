@@ -195,7 +195,7 @@ test.describe('Mensalidade de Carteira (route-mock)', () => {
     await expect(bloco.getByText('Valor mensal da carteira')).toBeVisible()
   })
 
-  test('CA-2: upload de CSV com 3 válidas + 1 inválida mostra preview e contador', async ({ page }) => {
+  test('CA-2: upload de CSV (1 coluna) com 3 válidas + 1 vazia mostra preview e contador', async ({ page }) => {
     await setupCommonMocks(page, {
       id: MOCK_CASO_ID,
       nome: 'Caso Mock',
@@ -210,11 +210,11 @@ test.describe('Mensalidade de Carteira (route-mock)', () => {
     await expect(bloco).toBeVisible()
 
     const csvContent = [
-      'numero_processo;identificador',
-      '0001234-56.2024.8.26.0100;João da Silva',
-      '0007890-12.2024.8.26.0100;Maria Souza',
-      '0003344-77.2024.8.26.0100;Empresa XYZ',
-      '0009999-99.2024.8.26.0100;',
+      'nome do caso',
+      'João da Silva',
+      'Maria Souza',
+      'Empresa XYZ',
+      '',
     ].join('\n')
 
     await bloco.locator('input[type="file"]').setInputFiles({
@@ -225,10 +225,12 @@ test.describe('Mensalidade de Carteira (route-mock)', () => {
 
     const preview = page.getByTestId('preview-carteira')
     await expect(preview).toBeVisible()
-    await expect(preview.getByText(/3 processo\(s\) válido\(s\), 1 ignorado\(s\)/)).toBeVisible()
+    await expect(preview.getByText(/3 processo\(s\) válido\(s\)/)).toBeVisible()
     await expect(preview.getByText('João da Silva')).toBeVisible()
     await expect(preview.getByText('Maria Souza')).toBeVisible()
     await expect(preview.getByText('Empresa XYZ')).toBeVisible()
+    // Coluna "Nome do caso" passa a ser a única coluna do preview.
+    await expect(preview.getByRole('columnheader', { name: 'Nome do caso' })).toBeVisible()
   })
 
   test('CA-3: caso filho (parte_de_carteira_id setado) renderiza aviso âmbar e bloqueia upload', async ({ page }) => {
@@ -263,7 +265,7 @@ test.describe('Mensalidade de Carteira (route-mock)', () => {
     await gotoFinanceiro(page)
 
     const bloco = page.getByTestId('bloco-mensalidade-carteira')
-    const csvContent = ['numero_processo,identificador', '0001-01,A', '0002-02,B'].join('\n')
+    const csvContent = ['nome do caso', 'Caso Alfa', 'Caso Beta'].join('\n')
     await bloco.locator('input[type="file"]').setInputFiles({
       name: 'carteira.csv',
       mimeType: 'text/csv',
@@ -272,7 +274,7 @@ test.describe('Mensalidade de Carteira (route-mock)', () => {
 
     const preview = page.getByTestId('preview-carteira')
     await expect(preview).toBeVisible()
-    await expect(preview.getByText('A')).toBeVisible()
+    await expect(preview.getByRole('cell', { name: 'Caso Alfa' })).toBeVisible()
 
     await preview.getByRole('button', { name: 'Limpar' }).click()
     await expect(page.getByTestId('preview-carteira')).toHaveCount(0)
