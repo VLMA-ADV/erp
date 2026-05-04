@@ -20,6 +20,7 @@ import {
   Paperclip,
   Pencil,
   Loader2,
+  Copy,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -1298,6 +1299,18 @@ export default function ContratoForm({
           ...(current.despesas_config || {}),
           [field]: value,
         },
+      }
+      return { ...prev, casos: next }
+    })
+  }
+
+  const copyHonorariosToDespesasInCurrentCaso = () => {
+    setForm((prev) => {
+      const next = [...prev.casos]
+      const current = next[selectedCaseIndex] || { ...emptyCaso }
+      next[selectedCaseIndex] = {
+        ...current,
+        pagadores_despesa: (current.pagadores_servico || []).map((pagador) => ({ ...pagador })),
       }
       return { ...prev, casos: next }
     })
@@ -4097,6 +4110,14 @@ export default function ContratoForm({
                                   const parsed = parseCarteiraCsv(String(reader.result || ''))
                                   updateCurrentRegra('processos_carteira', parsed.validas)
                                   setCarteiraInvalidasByCase((prev) => ({ ...prev, [selectedCaseIndex]: parsed.invalidas.length }))
+                                  if (regras.modo_valor_carteira === 'por_unidade') {
+                                    const unit = normalizePositiveDecimal(regras.valor_unitario_processo)
+                                    if (unit !== null && parsed.validas.length > 0) {
+                                      updateCurrentRegra('valor_mensal_carteira', String((unit * parsed.validas.length).toFixed(2)))
+                                    } else {
+                                      updateCurrentRegra('valor_mensal_carteira', '')
+                                    }
+                                  }
                                 }
                                 reader.readAsText(file, 'utf-8')
                                 e.target.value = ''
@@ -4129,6 +4150,9 @@ export default function ContratoForm({
                                         delete next[selectedCaseIndex]
                                         return next
                                       })
+                                      if (regras.modo_valor_carteira === 'por_unidade') {
+                                        updateCurrentRegra('valor_mensal_carteira', '')
+                                      }
                                     }}
                                   >
                                     Limpar
@@ -4156,14 +4180,78 @@ export default function ContratoForm({
                             </div>
                           )}
 
-                          <div className="max-w-sm space-y-2">
-                            <Label>Valor mensal da carteira</Label>
-                            <MoneyInput
-                              value={regras.valor_mensal_carteira || ''}
-                              onValueChange={(value) => updateCurrentRegra('valor_mensal_carteira', value)}
+                          <div className="space-y-2">
+                            <Label>Modo de cobrança</Label>
+                            <ChoiceCards
+                              value={regras.modo_valor_carteira === 'por_unidade' ? 'por_unidade' : 'fixo'}
+                              onChange={(value) => {
+                                updateCurrentRegra('modo_valor_carteira', value)
+                                if (value === 'fixo') {
+                                  updateCurrentRegra('valor_unitario_processo', '')
+                                }
+                              }}
                               disabled={isReadOnly}
+                              options={[
+                                { value: 'fixo', label: 'Valor fixo' },
+                                { value: 'por_unidade', label: 'Por unidade' },
+                              ]}
                             />
                           </div>
+
+                          {(regras.modo_valor_carteira !== 'por_unidade') ? (
+                            <div className="max-w-sm space-y-2">
+                              <Label>Valor mensal da carteira</Label>
+                              <MoneyInput
+                                value={regras.valor_mensal_carteira || ''}
+                                onValueChange={(value) => updateCurrentRegra('valor_mensal_carteira', value)}
+                                disabled={isReadOnly}
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <div className="max-w-sm space-y-2">
+                                <Label>Valor unitário por processo</Label>
+                                <MoneyInput
+                                  value={regras.valor_unitario_processo || ''}
+                                  onValueChange={(value) => {
+                                    updateCurrentRegra('valor_unitario_processo', value)
+                                    const unit = normalizePositiveDecimal(value)
+                                    const qty = Array.isArray(regras.processos_carteira)
+                                      ? regras.processos_carteira.length
+                                      : 0
+                                    if (unit !== null && qty > 0) {
+                                      updateCurrentRegra('valor_mensal_carteira', String((unit * qty).toFixed(2)))
+                                    } else {
+                                      updateCurrentRegra('valor_mensal_carteira', '')
+                                    }
+                                  }}
+                                  disabled={isReadOnly}
+                                />
+                              </div>
+                              <div className="max-w-sm rounded-md border bg-muted/20 p-3 text-sm">
+                                {(() => {
+                                  const unit = normalizePositiveDecimal(regras.valor_unitario_processo)
+                                  const qty = Array.isArray(regras.processos_carteira)
+                                    ? regras.processos_carteira.length
+                                    : 0
+                                  const total = unit !== null && qty > 0 ? unit * qty : null
+                                  const fmt = (n: number) =>
+                                    n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                  return (
+                                    <div className="space-y-1">
+                                      <div className="text-xs text-muted-foreground">Valor mensal calculado</div>
+                                      <div className="font-medium">
+                                        {qty} processo(s) × R$ {unit !== null ? fmt(unit) : '0,00'} ={' '}
+                                        <span className="font-semibold">
+                                          R$ {total !== null ? fmt(total) : '0,00'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -4812,6 +4900,24 @@ export default function ContratoForm({
                           onValueChange={(value) => updateCurrentDespesas('limite_adiantamento', value)}
                           disabled={isReadOnly}
                         />
+                      </div>
+
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={copyHonorariosToDespesasInCurrentCaso}
+                          disabled={isReadOnly || !currentCaso.pagadores_servico || currentCaso.pagadores_servico.length === 0}
+                          title={
+                            currentCaso.pagadores_servico?.length === 0
+                              ? 'Configure primeiro os pagadores de honorários'
+                              : 'Copia a distribuição de pagadores dos honorários'
+                          }
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar dados dos honorários
+                        </Button>
                       </div>
 
                       <div className="space-y-2">

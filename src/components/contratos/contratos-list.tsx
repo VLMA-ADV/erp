@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, ChevronDown, ChevronRight, Percent } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
@@ -15,12 +15,9 @@ import ContratosActions from './contratos-actions'
 import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
 import { Table } from '@/components/ui/table'
-import { useToast } from '@/components/ui/toast'
-
 export default function ContratosList() {
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissionsContext()
-  const { success: toastSuccess, error: toastError } = useToast()
   const canRead = hasPermission('contracts.contratos.read')
   const canWrite = hasPermission('contracts.contratos.write')
 
@@ -31,7 +28,6 @@ export default function ContratosList() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [focusedContratoId, setFocusedContratoId] = useState('')
-  const [aplicandoReajustes, setAplicandoReajustes] = useState(false)
 
   useEffect(() => {
     const searchFromQuery = searchParams.get('search') || ''
@@ -109,40 +105,6 @@ export default function ContratosList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, focusedContratoId])
 
-  const aplicarReajustesPendentes = async () => {
-    try {
-      setAplicandoReajustes(true)
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        toastError('Sessão expirada. Faça login novamente.')
-        return
-      }
-      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/aplicar-reajuste`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      })
-      const payload = await resp.json().catch(() => ({}))
-      if (!resp.ok) {
-        toastError(typeof payload.error === 'string' ? payload.error : 'Falha ao aplicar reajustes')
-        return
-      }
-      const result = payload.data as { casos_reajustados?: number; detalhe?: unknown } | undefined
-      const n = typeof result?.casos_reajustados === 'number' ? result.casos_reajustados : 0
-      toastSuccess(n > 0 ? `Reajustes aplicados: ${n} caso(s).` : 'Nenhum caso elegível para reajuste no momento.')
-      void fetchItems()
-    } catch (e) {
-      console.error(e)
-      toastError('Erro ao aplicar reajustes')
-    } finally {
-      setAplicandoReajustes(false)
-    }
-  }
-
   if (!canRead) {
     return (
       <div className="rounded-md bg-red-50 p-4">
@@ -186,15 +148,6 @@ export default function ContratosList() {
 
         {canWrite && (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={aplicandoReajustes}
-              onClick={() => void aplicarReajustesPendentes()}
-            >
-              <Percent className="mr-2 h-4 w-4" />
-              {aplicandoReajustes ? 'Aplicando…' : 'Aplicar reajustes pendentes'}
-            </Button>
             <Link href="/contratos/novo">
               <Button>
                 <Plus className="mr-2 h-4 w-4" />

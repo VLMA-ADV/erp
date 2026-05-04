@@ -6,7 +6,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown, ChevronRight, FilePlus2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
-import { maskCNPJ, onlyDigits } from '@/lib/utils/masks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -101,8 +100,6 @@ export default function SolicitacoesContratoList() {
   const [createOpen, setCreateOpen] = useState(false)
   const [nomeSolicitacao, setNomeSolicitacao] = useState('')
   const [descricaoSolicitacao, setDescricaoSolicitacao] = useState('')
-  const [nomeClienteNovo, setNomeClienteNovo] = useState('')
-  const [cnpjClienteNovo, setCnpjClienteNovo] = useState('')
   const [centroCustoId, setCentroCustoId] = useState('')
   const [pendingAnexos, setPendingAnexos] = useState<PendingSolicitacaoAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
@@ -133,9 +130,6 @@ export default function SolicitacoesContratoList() {
       })),
     [areas],
   )
-
-  const hasSelectedCliente = selectedClienteId.trim().length > 0
-  const hasNomeClienteNovo = nomeClienteNovo.trim().length > 0
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -278,8 +272,6 @@ export default function SolicitacoesContratoList() {
       searchParams.get('cliente_id') || '',
       searchParams.get('nome') || '',
       searchParams.get('descricao') || '',
-      searchParams.get('nome_cliente_novo') || '',
-      searchParams.get('cnpj_cliente_novo') || '',
       searchParams.get('centro_custo_id') || '',
     ].join('|')
 
@@ -288,8 +280,6 @@ export default function SolicitacoesContratoList() {
     setNomeSolicitacao(searchParams.get('nome') || '')
     setDescricaoSolicitacao(searchParams.get('descricao') || '')
     setSelectedClienteId(searchParams.get('cliente_id') || '')
-    setNomeClienteNovo(searchParams.get('nome_cliente_novo') || '')
-    setCnpjClienteNovo(maskCNPJ(searchParams.get('cnpj_cliente_novo') || ''))
     setCentroCustoId(searchParams.get('centro_custo_id') || '')
     setPendingAnexos([])
     setCrmCardIdPrefill(searchParams.get('crm_card_id') || '')
@@ -303,8 +293,6 @@ export default function SolicitacoesContratoList() {
     setNomeSolicitacao('')
     setDescricaoSolicitacao('')
     setSelectedClienteId('')
-    setNomeClienteNovo('')
-    setCnpjClienteNovo('')
     setCentroCustoId('')
     setPendingAnexos([])
     setCrmCardIdPrefill('')
@@ -392,8 +380,6 @@ export default function SolicitacoesContratoList() {
           nome: nomeSolicitacao.trim(),
           descricao: descricaoSolicitacao.trim(),
           cliente_id: selectedClienteId || null,
-          nome_cliente_novo: nomeClienteNovo.trim() || null,
-          cnpj_cliente_novo: onlyDigits(cnpjClienteNovo) || null,
           centro_custo_id: centroCustoId || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
         }),
@@ -658,22 +644,16 @@ export default function SolicitacoesContratoList() {
             creatingCliente={creatingCliente}
             descricaoSolicitacao={descricaoSolicitacao}
             disabled={submitting}
-            hasNomeClienteNovo={hasNomeClienteNovo}
-            hasSelectedCliente={hasSelectedCliente}
-            nomeClienteNovo={nomeClienteNovo}
             nomeSolicitacao={nomeSolicitacao}
             onAddFiles={onAddFiles}
             onCentroCustoChange={setCentroCustoId}
-            onCnpjClienteNovoChange={setCnpjClienteNovo}
             onCreateCliente={(value) => void createClienteOnDemand(value)}
             onDescricaoSolicitacaoChange={setDescricaoSolicitacao}
-            onNomeClienteNovoChange={setNomeClienteNovo}
             onNomeSolicitacaoChange={setNomeSolicitacao}
             onRemovePendingAnexo={(index) => setPendingAnexos((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
             onSelectedClienteIdChange={setSelectedClienteId}
             pendingAnexos={pendingAnexos}
             selectedClienteId={selectedClienteId}
-            cnpjClienteNovo={cnpjClienteNovo}
           />
 
           <DialogFooter>

@@ -34,7 +34,7 @@ function timesheetStatusLabel(status: string): string {
 }
 
 function canEditTimesheetInList(status: string) {
-  return status === 'em_lancamento' || status === 'aprovado'
+  return status === 'em_lancamento' || status === 'revisao'
 }
 
 interface TimesheetItem {
