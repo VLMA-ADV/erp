@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { maskCNPJ } from '@/lib/utils/masks'
 
 export interface PendingSolicitacaoAnexo {
   nome: string
@@ -20,22 +19,16 @@ interface Props {
   creatingCliente: boolean
   descricaoSolicitacao: string
   disabled?: boolean
-  hasNomeClienteNovo: boolean
-  hasSelectedCliente: boolean
-  nomeClienteNovo: string
   nomeSolicitacao: string
   onAddFiles: (files: FileList | null) => void
   onCentroCustoChange: (value: string) => void
-  onCnpjClienteNovoChange: (value: string) => void
   onCreateCliente: ((value: string) => void) | undefined
   onDescricaoSolicitacaoChange: (value: string) => void
-  onNomeClienteNovoChange: (value: string) => void
   onNomeSolicitacaoChange: (value: string) => void
   onRemovePendingAnexo: (index: number) => void
   onSelectedClienteIdChange: (value: string) => void
   pendingAnexos: PendingSolicitacaoAnexo[]
   selectedClienteId: string
-  cnpjClienteNovo: string
 }
 
 export default function SolicitacaoContratoFormFields({
@@ -45,22 +38,16 @@ export default function SolicitacaoContratoFormFields({
   creatingCliente,
   descricaoSolicitacao,
   disabled = false,
-  hasNomeClienteNovo,
-  hasSelectedCliente,
-  nomeClienteNovo,
   nomeSolicitacao,
   onAddFiles,
   onCentroCustoChange,
-  onCnpjClienteNovoChange,
   onCreateCliente,
   onDescricaoSolicitacaoChange,
-  onNomeClienteNovoChange,
   onNomeSolicitacaoChange,
   onRemovePendingAnexo,
   onSelectedClienteIdChange,
   pendingAnexos,
   selectedClienteId,
-  cnpjClienteNovo,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -75,36 +62,16 @@ export default function SolicitacaoContratoFormFields({
           emptyText="Nenhum cliente encontrado"
           onCreateOption={onCreateCliente}
           createOptionLabel={creatingCliente ? 'Cadastrando' : 'Cadastrar cliente'}
-          disabled={creatingCliente || disabled || hasNomeClienteNovo}
+          disabled={creatingCliente || disabled}
         />
       </div>
 
       <div className="space-y-2">
-        <Label>Nome do cliente novo</Label>
-        <Input
-          value={nomeClienteNovo}
-          onChange={(event) => onNomeClienteNovoChange(event.target.value)}
-          placeholder="Preencha apenas se o cliente ainda não existir"
-          disabled={disabled || hasSelectedCliente}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label>CNPJ do cliente novo</Label>
-        <Input
-          value={cnpjClienteNovo}
-          onChange={(event) => onCnpjClienteNovoChange(maskCNPJ(event.target.value))}
-          placeholder="00.000.000/0000-00"
-          disabled={disabled || hasSelectedCliente}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label>Nome do contrato</Label>
+        <Label>Nome do caso</Label>
         <Input
           value={nomeSolicitacao}
           onChange={(event) => onNomeSolicitacaoChange(event.target.value)}
-          placeholder="Nome da solicitação/contrato"
+          placeholder="Nome do caso"
           disabled={disabled}
         />
       </div>

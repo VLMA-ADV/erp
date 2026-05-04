@@ -835,6 +835,7 @@ export default function CasoForm({
             pagadores_despesa: caso.pagadores_despesa || [],
             timesheet_config: caso.timesheet_config || emptyCaso.timesheet_config,
             indicacao_config: caso.indicacao_config || emptyCaso.indicacao_config,
+            parte_de_carteira_id: (caso as any).parte_de_carteira_id ?? null,
           }
           setForm(loadedForm)
           const rulesFromColumn = Array.isArray((caso as any)?.regras_financeiras)
@@ -2616,6 +2617,14 @@ export default function CasoForm({
                               const parsed = parseCarteiraCsv(String(reader.result || ''))
                               setRegra('processos_carteira', parsed.validas)
                               setCarteiraInvalidasCount(parsed.invalidas.length)
+                              if (regras.modo_valor_carteira === 'por_unidade') {
+                                const unit = normalizePositiveDecimal(regras.valor_unitario_processo)
+                                if (unit !== null && parsed.validas.length > 0) {
+                                  setRegra('valor_mensal_carteira', String((unit * parsed.validas.length).toFixed(2)))
+                                } else {
+                                  setRegra('valor_mensal_carteira', '')
+                                }
+                              }
                             }
                             reader.readAsText(file, 'utf-8')
                             e.target.value = ''
@@ -2623,7 +2632,7 @@ export default function CasoForm({
                           disabled={isReadOnly}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Cabeçalho obrigatório com 2 colunas: número do processo e identificador. Aceita &quot;,&quot; ou &quot;;&quot; como separador.
+                          CSV com uma coluna única (cabeçalho opcional &quot;nome do caso&quot;). Cada linha vira um processo da carteira. Aceita &quot;,&quot; ou &quot;;&quot; como separador.
                         </p>
                       </div>
 
@@ -2642,6 +2651,9 @@ export default function CasoForm({
                                 onClick={() => {
                                   setRegra('processos_carteira', null)
                                   setCarteiraInvalidasCount(0)
+                                  if (regras.modo_valor_carteira === 'por_unidade') {
+                                    setRegra('valor_mensal_carteira', '')
+                                  }
                                 }}
                               >
                                 Limpar
@@ -2652,15 +2664,20 @@ export default function CasoForm({
                             <table className="w-full text-xs">
                               <thead className="sticky top-0 bg-gray-50">
                                 <tr>
-                                  <th className="px-2 py-1 text-left">Número do processo</th>
-                                  <th className="px-2 py-1 text-left">Identificador</th>
+                                  <th className="px-2 py-1 text-left">Nome do caso</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {(regras.processos_carteira as ProcessoCarteira[]).map((p, i) => (
                                   <tr key={i} className="border-t">
-                                    <td className="px-2 py-1 font-mono">{p.numero_processo || '-'}</td>
-                                    <td className="px-2 py-1">{p.identificador}</td>
+                                    <td className="px-2 py-1">
+                                      {p.identificador}
+                                      {p.numero_processo ? (
+                                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                                          {p.numero_processo}
+                                        </span>
+                                      ) : null}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -2669,14 +2686,78 @@ export default function CasoForm({
                         </div>
                       )}
 
-                      <div className="max-w-sm space-y-2">
-                        <Label>Valor mensal da carteira</Label>
-                        <MoneyInput
-                          value={regras.valor_mensal_carteira || ''}
-                          onValueChange={(value) => setRegra('valor_mensal_carteira', value)}
+                      <div className="space-y-2">
+                        <Label>Modo de cobrança</Label>
+                        <ChoiceCards
+                          value={regras.modo_valor_carteira === 'por_unidade' ? 'por_unidade' : 'fixo'}
+                          onChange={(value) => {
+                            setRegra('modo_valor_carteira', value)
+                            if (value === 'fixo') {
+                              setRegra('valor_unitario_processo', '')
+                            }
+                          }}
                           disabled={isReadOnly}
+                          options={[
+                            { value: 'fixo', label: 'Valor fixo' },
+                            { value: 'por_unidade', label: 'Por unidade' },
+                          ]}
                         />
                       </div>
+
+                      {(regras.modo_valor_carteira !== 'por_unidade') ? (
+                        <div className="max-w-sm space-y-2">
+                          <Label>Valor mensal da carteira</Label>
+                          <MoneyInput
+                            value={regras.valor_mensal_carteira || ''}
+                            onValueChange={(value) => setRegra('valor_mensal_carteira', value)}
+                            disabled={isReadOnly}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="max-w-sm space-y-2">
+                            <Label>Valor unitário por processo</Label>
+                            <MoneyInput
+                              value={regras.valor_unitario_processo || ''}
+                              onValueChange={(value) => {
+                                setRegra('valor_unitario_processo', value)
+                                const unit = normalizePositiveDecimal(value)
+                                const qty = Array.isArray(regras.processos_carteira)
+                                  ? regras.processos_carteira.length
+                                  : 0
+                                if (unit !== null && qty > 0) {
+                                  setRegra('valor_mensal_carteira', String((unit * qty).toFixed(2)))
+                                } else {
+                                  setRegra('valor_mensal_carteira', '')
+                                }
+                              }}
+                              disabled={isReadOnly}
+                            />
+                          </div>
+                          <div className="max-w-sm rounded-md border bg-muted/20 p-3 text-sm">
+                            {(() => {
+                              const unit = normalizePositiveDecimal(regras.valor_unitario_processo)
+                              const qty = Array.isArray(regras.processos_carteira)
+                                ? regras.processos_carteira.length
+                                : 0
+                              const total = unit !== null && qty > 0 ? unit * qty : null
+                              const fmt = (n: number) =>
+                                n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              return (
+                                <div className="space-y-1">
+                                  <div className="text-xs text-muted-foreground">Valor mensal calculado</div>
+                                  <div className="font-medium">
+                                    {qty} processo(s) × R$ {unit !== null ? fmt(unit) : '0,00'} ={' '}
+                                    <span className="font-semibold">
+                                      R$ {total !== null ? fmt(total) : '0,00'}
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
