@@ -85,4 +85,39 @@ describe('parseCarteiraCsv', () => {
     expect(parseCarteiraCsv('')).toEqual({ validas: [], invalidas: [] })
     expect(parseCarteiraCsv('\n\n\n')).toEqual({ validas: [], invalidas: [] })
   })
+
+  // Formato 1 coluna (daily 04/05) — uma única coluna com nome do caso.
+  it('parses single-column CSV with header "nome do caso"', () => {
+    const csv = ['nome do caso', 'Adilson x Coritiba RJ', 'João Silva (trabalhista)'].join('\n')
+    const result = parseCarteiraCsv(csv)
+    expect(result.validas).toHaveLength(2)
+    expect(result.invalidas).toHaveLength(0)
+    expect(result.validas[0]).toEqual({
+      numero_processo: '',
+      identificador: 'Adilson x Coritiba RJ',
+    })
+    expect(result.validas[1].identificador).toBe('João Silva (trabalhista)')
+  })
+
+  it('parses single-column CSV without header (positional fallback)', () => {
+    const csv = ['Adilson x Coritiba RJ', 'João Silva', 'Empresa XYZ'].join('\n')
+    const result = parseCarteiraCsv(csv)
+    expect(result.validas).toHaveLength(3)
+    expect(result.validas.map((p) => p.identificador)).toEqual([
+      'Adilson x Coritiba RJ',
+      'João Silva',
+      'Empresa XYZ',
+    ])
+    expect(result.validas.every((p) => p.numero_processo === '')).toBe(true)
+  })
+
+  it('parses single-column CSV with alias headers (caso, identificador, nome)', () => {
+    const variantes = ['caso', 'identificador', 'nome', 'NOME DO CASO']
+    for (const header of variantes) {
+      const csv = [header, 'Caso Teste'].join('\n')
+      const result = parseCarteiraCsv(csv)
+      expect(result.validas, `header ${header}`).toHaveLength(1)
+      expect(result.validas[0].identificador).toBe('Caso Teste')
+    }
+  })
 })

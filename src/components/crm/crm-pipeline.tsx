@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Download, Edit3, GripVertical, MoveRight, Plus, UserPlus, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
-import { maskCNPJ, onlyDigits } from '@/lib/utils/masks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -169,8 +168,6 @@ export default function CrmPipeline() {
   const [solicitacaoNome, setSolicitacaoNome] = useState('')
   const [solicitacaoDescricao, setSolicitacaoDescricao] = useState('')
   const [solicitacaoClienteId, setSolicitacaoClienteId] = useState('')
-  const [solicitacaoNomeClienteNovo, setSolicitacaoNomeClienteNovo] = useState('')
-  const [solicitacaoCnpjClienteNovo, setSolicitacaoCnpjClienteNovo] = useState('')
   const [solicitacaoCentroCustoId, setSolicitacaoCentroCustoId] = useState('')
   const [solicitacaoAnexos, setSolicitacaoAnexos] = useState<PendingSolicitacaoAnexo[]>([])
   const [creatingSolicitacaoCliente, setCreatingSolicitacaoCliente] = useState(false)
@@ -396,9 +393,6 @@ export default function CrmPipeline() {
     [areas],
   )
 
-  const hasSolicitacaoClienteSelecionado = solicitacaoClienteId.trim().length > 0
-  const hasSolicitacaoClienteNovo = solicitacaoNomeClienteNovo.trim().length > 0
-
   const resetDialog = () => {
     setForm(emptyForm)
     setExistingAnexos([])
@@ -459,8 +453,6 @@ export default function CrmPipeline() {
     setSolicitacaoNome('')
     setSolicitacaoDescricao('')
     setSolicitacaoClienteId('')
-    setSolicitacaoNomeClienteNovo('')
-    setSolicitacaoCnpjClienteNovo('')
     setSolicitacaoCentroCustoId('')
     setSolicitacaoAnexos([])
   }
@@ -558,8 +550,6 @@ export default function CrmPipeline() {
           nome: solicitacaoNome.trim(),
           descricao: solicitacaoDescricao.trim(),
           cliente_id: solicitacaoClienteId || null,
-          nome_cliente_novo: solicitacaoNomeClienteNovo.trim() || null,
-          cnpj_cliente_novo: onlyDigits(solicitacaoCnpjClienteNovo) || null,
           centro_custo_id: solicitacaoCentroCustoId || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
         }),
@@ -1150,13 +1140,9 @@ export default function CrmPipeline() {
             creatingCliente={creatingSolicitacaoCliente}
             descricaoSolicitacao={solicitacaoDescricao}
             disabled={solicitacaoSubmitting}
-            hasNomeClienteNovo={hasSolicitacaoClienteNovo}
-            hasSelectedCliente={hasSolicitacaoClienteSelecionado}
-            nomeClienteNovo={solicitacaoNomeClienteNovo}
             nomeSolicitacao={solicitacaoNome}
             onAddFiles={handleSelectSolicitacaoFiles}
             onCentroCustoChange={setSolicitacaoCentroCustoId}
-            onCnpjClienteNovoChange={setSolicitacaoCnpjClienteNovo}
             onCreateCliente={
               canWrite
                 ? (value) =>
@@ -1168,13 +1154,11 @@ export default function CrmPipeline() {
                 : undefined
             }
             onDescricaoSolicitacaoChange={setSolicitacaoDescricao}
-            onNomeClienteNovoChange={setSolicitacaoNomeClienteNovo}
             onNomeSolicitacaoChange={setSolicitacaoNome}
             onRemovePendingAnexo={(index) => setSolicitacaoAnexos((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
             onSelectedClienteIdChange={setSolicitacaoClienteId}
             pendingAnexos={solicitacaoAnexos}
             selectedClienteId={solicitacaoClienteId}
-            cnpjClienteNovo={solicitacaoCnpjClienteNovo}
           />
 
           <DialogFooter>

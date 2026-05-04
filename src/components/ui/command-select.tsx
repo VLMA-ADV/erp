@@ -91,8 +91,9 @@ export function CommandSelect({
   }, [filteredOptions])
 
   const canCreateOption = useMemo(() => {
+    if (!onCreateOption) return false
     const normalized = query.trim().toLowerCase()
-    if (!onCreateOption || !normalized) return false
+    if (!normalized) return true
     return !options.some((option) => option.label.trim().toLowerCase() === normalized)
   }, [onCreateOption, options, query])
 
@@ -154,13 +155,24 @@ export function CommandSelect({
                   <CommandItem
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
-                      onCreateOption?.(query.trim())
+                      const trimmed = query.trim()
+                      if (!trimmed) return
+                      onCreateOption?.(trimmed)
                       setOpen(false)
                       setQuery('')
                     }}
                   >
-                    <span className="font-medium">{createOptionLabel}</span>
-                    <span className="ml-1 truncate">&quot;{query.trim()}&quot;</span>
+                    <span className="mr-1 text-base font-semibold leading-none">+</span>
+                    {query.trim() ? (
+                      <>
+                        <span className="font-medium">{createOptionLabel}</span>
+                        <span className="ml-1 truncate">&quot;{query.trim()}&quot;</span>
+                      </>
+                    ) : (
+                      <span className="font-medium text-muted-foreground">
+                        {createOptionLabel} (digite o nome acima)
+                      </span>
+                    )}
                   </CommandItem>
                 </CommandGroup>
               ) : null}
