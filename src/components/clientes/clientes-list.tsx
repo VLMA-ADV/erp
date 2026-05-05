@@ -18,50 +18,53 @@ export interface ClienteListItem {
   created_at: string
 }
 
+interface ListClientesPayload {
+  data: ClienteListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+const PAGE_LIMIT = 5000
+
 export default function ClientesList() {
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('crm.clientes.read')
 
   const [items, setItems] = useState<ClienteListItem[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  const fetchItems = async () => {
+  const fetchItems = async (searchTerm: string) => {
     try {
       setLoading(true)
       setError(null)
       const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-clientes`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      )
-
-      const data = await response.json()
-      if (!response.ok) {
-        setError(data.error || 'Erro ao carregar clientes')
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        setError('Sessão expirada')
         return
       }
 
-      let list = (data.data || []) as ClienteListItem[]
-      if (search) {
-        const s = search.toLowerCase()
-        list = list.filter(
-          (c) =>
-            c.nome?.toLowerCase().includes(s) ||
-            (c.cnpj || '').toLowerCase().includes(s)
-        )
+      const { data, error: rpcErr } = await supabase.rpc('list_clientes_paginated', {
+        p_user_id: user.id,
+        p_limit: PAGE_LIMIT,
+        p_offset: 0,
+        p_search: searchTerm.trim() || null,
+      })
+
+      if (rpcErr) {
+        setError(rpcErr.message || 'Erro ao carregar clientes')
+        return
       }
-      setItems(list)
+
+      const payload = (data ?? { data: [], total: 0 }) as ListClientesPayload
+      setItems(Array.isArray(payload.data) ? payload.data : [])
+      setTotal(typeof payload.total === 'number' ? payload.total : 0)
     } catch (e) {
       console.error(e)
       setError('Erro ao carregar clientes')
@@ -71,14 +74,10 @@ export default function ClientesList() {
   }
 
   useEffect(() => {
-    if (canRead) fetchItems()
+    if (!canRead) return
+    void fetchItems(search)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRead])
-
-  useEffect(() => {
-    if (canRead) fetchItems()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  }, [canRead, search])
 
   if (!canRead) {
     return (
@@ -105,11 +104,16 @@ export default function ClientesList() {
           placeholder="Buscar por nome ou CNPJ..."
           className="max-w-md"
         />
-        <ClientesCsvUpload onComplete={fetchItems} />
+        <ClientesCsvUpload onComplete={() => void fetchItems(search)} />
       </div>
 
-      <ClientesTable items={items} loading={loading} onRefresh={fetchItems} />
+      {!loading && total > items.length ? (
+        <p className="text-xs text-gray-500">
+          Mostrando {items.length} de {total} clientes. Refine a busca para encontrar mais.
+        </p>
+      ) : null}
+
+      <ClientesTable items={items} loading={loading} onRefresh={() => void fetchItems(search)} />
     </div>
   )
 }
-
