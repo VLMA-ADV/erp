@@ -71,8 +71,9 @@ async function setupBaseMocks(page: Page) {
       body: JSON.stringify(permissionsResponse()),
     })
   })
-  // Plan C: inbox lê via supabase-js → /rest/v1/solicitacao_mensagens (schema contracts).
-  await page.route('**/rest/v1/solicitacao_mensagens**', async (route: Route) => {
+  // F-fix: inbox lê via RPC list_mensagens_avulsas_inbox (SECURITY DEFINER).
+  // PR #89 usava SELECT cross-schema, bateu em 42501 em prod.
+  await page.route('**/rest/v1/rpc/list_mensagens_avulsas_inbox', async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

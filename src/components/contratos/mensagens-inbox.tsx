@@ -21,9 +21,12 @@ interface MensagemAvulsaItem {
   id: string
   mensagem: string
   created_at: string
-  autor: { id: string; nome_completo: string | null } | null
-  cliente: { id: string; nome: string | null } | null
-  caso: { id: string; nome: string | null } | null
+  cliente_id: string | null
+  caso_id: string | null
+  autor_id: string | null
+  cliente_nome: string | null
+  caso_nome: string | null
+  autor_nome: string | null
 }
 
 interface ClienteOption {
@@ -68,80 +71,27 @@ async function fileToBase64(file: File): Promise<string> {
   return parts[1] || ''
 }
 
-interface MensagemRow {
-  id: string
-  mensagem: string
-  created_at: string
-  cliente_id: string | null
-  caso_id: string | null
-  autor_id: string | null
-}
-
 async function fetchMensagensAvulsas(
   _opts: { signal?: AbortSignal } = {},
 ): Promise<MensagemAvulsaItem[]> {
   const supabase = createClient()
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  if (!session) return []
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
 
-  // Plan C: SELECT direto via supabase-js cross-schema (mesmo pattern de
-  // list-contratos-inbox-mensagens em main, que usa schema('contracts')).
-  // RLS de contracts.solicitacao_mensagens isola por tenant.
-  const { data: mensagensRaw, error: mensagensError } = await supabase
-    .schema('contracts')
-    .from('solicitacao_mensagens')
-    .select('id, mensagem, created_at, cliente_id, caso_id, autor_id')
-    .is('solicitacao_id', null)
-    .order('created_at', { ascending: false })
-    .limit(PREVIEW_LIMIT)
+  // F-fix: SELECT cross-schema (PR #89) batia em 42501 "permission denied for schema contracts".
+  // RPC SECURITY DEFINER list_mensagens_avulsas_inbox faz JOIN cliente/caso/autor internamente.
+  const { data, error } = await supabase.rpc('list_mensagens_avulsas_inbox', {
+    p_user_id: user.id,
+    p_limit: PREVIEW_LIMIT,
+  })
 
-  if (mensagensError) {
-    throw new Error(mensagensError.message || 'Erro ao carregar mensagens')
+  if (error) {
+    throw new Error(error.message || 'Erro ao carregar mensagens')
   }
 
-  const rows = (mensagensRaw ?? []) as MensagemRow[]
-  if (rows.length === 0) return []
-
-  const clienteIds = Array.from(new Set(rows.map((r) => r.cliente_id).filter((id): id is string => !!id)))
-  const casoIds = Array.from(new Set(rows.map((r) => r.caso_id).filter((id): id is string => !!id)))
-  const autorIds = Array.from(new Set(rows.map((r) => r.autor_id).filter((id): id is string => !!id)))
-
-  const [clientesQ, casosQ, autoresQ] = await Promise.all([
-    clienteIds.length
-      ? supabase.schema('crm').from('clientes').select('id, nome').in('id', clienteIds)
-      : Promise.resolve({ data: [], error: null }),
-    casoIds.length
-      ? supabase.schema('contracts').from('casos').select('id, nome').in('id', casoIds)
-      : Promise.resolve({ data: [], error: null }),
-    autorIds.length
-      ? supabase.schema('people').from('colaboradores').select('id, nome').in('id', autorIds)
-      : Promise.resolve({ data: [], error: null }),
-  ])
-
-  const clientesMap = new Map(
-    ((clientesQ.data ?? []) as { id: string; nome: string | null }[]).map((c) => [c.id, c]),
-  )
-  const casosMap = new Map(
-    ((casosQ.data ?? []) as { id: string; nome: string | null }[]).map((c) => [c.id, c]),
-  )
-  const autoresMap = new Map(
-    ((autoresQ.data ?? []) as { id: string; nome: string | null }[]).map((c) => [c.id, c]),
-  )
-
-  return rows.map((m) => ({
-    id: m.id,
-    mensagem: m.mensagem,
-    created_at: m.created_at,
-    autor: m.autor_id
-      ? { id: m.autor_id, nome_completo: autoresMap.get(m.autor_id)?.nome ?? null }
-      : null,
-    cliente: m.cliente_id
-      ? { id: m.cliente_id, nome: clientesMap.get(m.cliente_id)?.nome ?? null }
-      : null,
-    caso: m.caso_id ? { id: m.caso_id, nome: casosMap.get(m.caso_id)?.nome ?? null } : null,
-  }))
+  return (data ?? []) as MensagemAvulsaItem[]
 }
 
 export default function MensagensInbox() {
@@ -449,14 +399,14 @@ export default function MensagensInbox() {
                   >
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-sm font-semibold text-slate-900">
-                        {item.autor?.nome_completo ?? 'Autor desconhecido'}
+                        {item.autor_nome ?? 'Autor desconhecido'}
                       </span>
                       <span className="text-xs text-slate-400">•</span>
                       <span className="text-xs text-slate-500">{formatRelativeDate(item.created_at)}</span>
                     </div>
                     <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      {item.cliente?.nome ?? 'Cliente —'}
-                      {item.caso?.nome ? ` · ${item.caso.nome}` : ''}
+                      {item.cliente_nome ?? 'Cliente —'}
+                      {item.caso_nome ? ` · ${item.caso_nome}` : ''}
                     </p>
                     <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.mensagem}</p>
                   </div>
