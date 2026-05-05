@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import ContratosList from '@/components/contratos/contratos-list'
 import ContratosDashboard from '@/components/contratos/contratos-dashboard'
 import ContratosInbox from '@/components/contratos/contratos-inbox'
+import MensagensInbox from '@/components/contratos/mensagens-inbox'
 import SolicitacoesInbox from '@/components/contratos/solicitacoes-inbox'
 
 export const dynamic = 'force-dynamic'
@@ -21,6 +22,9 @@ export default async function ContratosPage() {
       </div>
       <div className="mb-4">
         <SolicitacoesInbox />
+      </div>
+      <div className="mb-4">
+        <MensagensInbox />
       </div>
       <div className="mb-4">
         <ContratosInbox />
