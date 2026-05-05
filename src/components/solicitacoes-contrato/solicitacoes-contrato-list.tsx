@@ -371,33 +371,36 @@ export default function SolicitacoesContratoList() {
               })),
             )
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-solicitacao-contrato`, {
-        method: 'POST',
-        headers: {
-          ...getFunctionsHeaders(session.access_token),
-        },
-        body: JSON.stringify({
+      // Daily 04/05 22:03: solicitação NÃO cria contrato auto. Bypassa o edge
+      // (que tem fallback defensivo criando contrato) e chama RPC direto.
+      // Edge create-solicitacao-contrato fica intocada (limit Free Supabase).
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toastError('Sessão expirada. Faça login novamente.')
+        return
+      }
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc('create_solicitacao_contrato', {
+        p_user_id: user.id,
+        p_payload: {
           nome: nomeSolicitacao.trim(),
           descricao: descricaoSolicitacao.trim(),
           cliente_id: selectedClienteId || null,
           centro_custo_id: centroCustoId || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
-        }),
+        },
       })
 
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const errMsg =
-          typeof payload?.error === 'string' && payload.error.trim().length > 0
-            ? payload.error
-            : `Erro ao criar solicitação (HTTP ${response.status})`
-        const details =
-          typeof payload?.details === 'string' && payload.details.trim().length > 0 ? ` — ${payload.details}` : ''
-        toastError(`${errMsg}${details}`)
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao criar solicitação')
         return
       }
 
-      const solicitacaoId = typeof payload?.data?.id === 'string' ? (payload.data.id as string) : ''
+      const solicitacaoId =
+        rpcData && typeof (rpcData as Record<string, unknown>).id === 'string'
+          ? ((rpcData as Record<string, unknown>).id as string)
+          : ''
 
       if (crmCardIdPrefill && solicitacaoId) {
         try {
