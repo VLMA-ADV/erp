@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
 interface SolicitacaoContratoItem {
   id: string
@@ -22,6 +23,7 @@ interface SolicitacaoContratoItem {
   status: 'aberta' | 'concluida' | 'cancelada'
   cliente_nome: string | null
   contrato_numero: number | null
+  contrato_numero_sequencial: number | null
   contrato_nome: string | null
   solicitante_nome: string | null
   created_at: string
@@ -44,8 +46,11 @@ function pendingLabel(total: number) {
 
 function clienteLabel(item: SolicitacaoContratoItem) {
   if (item.cliente_nome) return item.cliente_nome
+  if (item.contrato_numero_sequencial || item.contrato_nome) {
+    return formatContratoDisplay(item.contrato_numero_sequencial, item.contrato_nome).full
+  }
   if (item.contrato_numero && item.contrato_nome) {
-    return `${item.contrato_numero} - ${item.contrato_nome}`
+    return `Contrato ${item.contrato_numero} - ${item.contrato_nome}`
   }
   return 'Cliente não informado'
 }
