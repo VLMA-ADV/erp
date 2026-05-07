@@ -362,6 +362,8 @@ export default function CasoForm({
   const [newPriceTableName, setNewPriceTableName] = useState('')
   const [priceTableDialogOpen, setPriceTableDialogOpen] = useState(false)
   const [priceTableSaving, setPriceTableSaving] = useState(false)
+  const [newCargoName, setNewCargoName] = useState('')
+  const [creatingCargo, setCreatingCargo] = useState(false)
   const [anexoModalOpen, setAnexoModalOpen] = useState(false)
   const [caseAnexos, setCaseAnexos] = useState<CasoAnexoItem[]>([])
   const [contractCases, setContractCases] = useState<Array<Record<string, any>>>([])
@@ -1415,6 +1417,58 @@ export default function CasoForm({
       setError('Erro ao salvar tabela de preço')
     } finally {
       setPriceTableSaving(false)
+    }
+  }
+
+  const createCargoInline = async () => {
+    const nome = newCargoName.trim()
+    if (!nome) return
+    const codigo = nome
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 32)
+    try {
+      setCreatingCargo(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-cargo`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ nome, codigo, nivel: null }),
+        },
+      )
+      const data = await resp.json()
+      if (!resp.ok) {
+        setError(data.error || 'Erro ao criar cargo')
+        return
+      }
+      const novo = data.data || data
+      const novoCargo = { id: novo.id, nome: novo.nome || nome }
+      setOptions((prev) => ({ ...prev, cargos: [...(prev.cargos || []), novoCargo] }))
+      const novoItem: TabelaPrecoItem = {
+        cargo_id: novoCargo.id,
+        cargo_nome: novoCargo.nome,
+        valor_hora: '',
+        valor_hora_excedente: '',
+      }
+      setRegra('tabela_preco_itens', [...(regras.tabela_preco_itens || []), novoItem])
+      setNewCargoName('')
+      success('Cargo criado e adicionado à tabela')
+      setError(null)
+    } catch (e) {
+      console.error(e)
+      setError('Erro ao criar cargo')
+    } finally {
+      setCreatingCargo(false)
     }
   }
 
@@ -3709,6 +3763,30 @@ export default function CasoForm({
                   ))}
                 </TableBody>
               </Table>
+              {!isReadOnly && (
+                <div className="space-y-1 border-t pt-3">
+                  <Label>Adicionar novo cargo</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCargoName}
+                      onChange={(e) => setNewCargoName(e.target.value)}
+                      placeholder="Ex.: Sócio Diretor, Sócio 2"
+                      disabled={creatingCargo}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={createCargoInline}
+                      disabled={creatingCargo || !newCargoName.trim()}
+                    >
+                      {creatingCargo ? 'Criando...' : 'Criar e incluir'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O cargo será cadastrado em Configuração → Cargos e adicionado a esta tabela.
+                  </p>
+                </div>
+              )}
             </div>
             {!isReadOnly && (
               <div className="flex justify-end gap-2">
