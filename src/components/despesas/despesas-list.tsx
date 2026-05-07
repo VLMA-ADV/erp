@@ -24,6 +24,7 @@ interface DespesaItem {
   id: string
   contrato_id: string
   contrato_numero: number | null
+  contrato_numero_sequencial?: number | null
   contrato_nome: string
   caso_id: string
   caso_numero: number | null
@@ -584,7 +585,7 @@ export default function DespesasList() {
                     {item.caso_numero ? `${item.caso_numero} - ` : ''}
                     {item.caso_nome || '-'}
                     <div className="text-xs text-muted-foreground">
-                      Contrato {item.contrato_numero ? `${item.contrato_numero} - ` : ''}{item.contrato_nome || '-'}
+                      {formatContratoDisplay(item.contrato_numero_sequencial ?? null, item.contrato_nome).full}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">{item.categoria || '-'}</td>
