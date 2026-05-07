@@ -172,6 +172,7 @@ const periodToMonths: Record<string, number> = {
   mensal: 1,
   bimestral: 2,
   trimestral: 3,
+  quadrimestral: 4,
   semestral: 6,
   anual: 12,
 }
@@ -941,7 +942,10 @@ export default function CasoForm({
 
   useEffect(() => {
     if (form.regra_cobranca !== 'hora') return
-    const hasCapDesejado = Boolean(regras.cap_desejado_enabled) || String(regras.cap_desejado_horas || '').trim() !== ''
+    const hasCapDesejado =
+      Boolean(regras.cap_desejado_enabled) ||
+      String(regras.cap_desejado_horas || '').trim() !== '' ||
+      String(regras.cap_desejado_data_alvo || '').trim() !== ''
     if (!hasCapDesejado) return
     setForm((prev) => ({
       ...prev,
@@ -949,9 +953,10 @@ export default function CasoForm({
         ...(prev.regra_cobranca_config || {}),
         cap_desejado_enabled: false,
         cap_desejado_horas: '',
+        cap_desejado_data_alvo: '',
       },
     }))
-  }, [form.regra_cobranca, regras.cap_desejado_enabled, regras.cap_desejado_horas])
+  }, [form.regra_cobranca, regras.cap_desejado_enabled, regras.cap_desejado_horas, regras.cap_desejado_data_alvo])
 
   useEffect(() => {
     setForm((prev) => {
@@ -2230,6 +2235,7 @@ export default function CasoForm({
                     if (value === 'nao') {
                       setRegra('cap_desejado_enabled', false)
                       setRegra('cap_desejado_horas', '')
+                      setRegra('cap_desejado_data_alvo', '')
                       return
                     }
                     setRegra('cap_desejado_enabled', true)
@@ -2246,18 +2252,31 @@ export default function CasoForm({
                 ) : null}
               </div>
               {capDesejadoEnabled ? (
-                <div className="space-y-2">
-                  <Label>Cap desejado (Quantidade de horas)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={String(regras.cap_desejado_horas || '')}
-                    onChange={(e) => setRegra('cap_desejado_horas', e.target.value)}
-                    disabled={isReadOnly || form.regra_cobranca === 'hora'}
-                    placeholder="Ex: 120"
-                  />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label>Cap desejado (Quantidade de horas)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={String(regras.cap_desejado_horas || '')}
+                      onChange={(e) => setRegra('cap_desejado_horas', e.target.value)}
+                      disabled={isReadOnly || form.regra_cobranca === 'hora'}
+                      placeholder="Ex: 120"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cap desejado de tempo (data alvo)</Label>
+                    <DatePicker
+                      value={regras.cap_desejado_data_alvo || ''}
+                      onChange={(value) => setRegra('cap_desejado_data_alvo', value)}
+                      disabled={isReadOnly || form.regra_cobranca === 'hora'}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Ex.: 6 meses a partir do início do projeto. Avisar nesta data.
+                    </p>
+                  </div>
+                </>
               ) : null}
 
               {form.regra_cobranca === 'hora' && (
@@ -2491,6 +2510,7 @@ export default function CasoForm({
                               <option value="mensal">Encontro mensal</option>
                               <option value="bimestral">Encontro bimestral</option>
                               <option value="trimestral">Encontro trimestral</option>
+                              <option value="quadrimestral">Encontro quadrimestral</option>
                               <option value="semestral">Encontro semestral</option>
                               <option value="anual">Encontro anual</option>
                             </NativeSelect>
@@ -3375,6 +3395,25 @@ export default function CasoForm({
                 />
               </div>
               <div className="space-y-2">
+                <Label>Modo de seleção de revisores</Label>
+                <ChoiceCards
+                  value={timesheet.revisores_modo === 'auto_centro_custo' ? 'auto_centro_custo' : 'manual'}
+                  onChange={(value) => setTimesheet('revisores_modo', value)}
+                  options={[
+                    { value: 'manual', label: 'Lista manual' },
+                    { value: 'auto_centro_custo', label: 'Automático por centro de custo' },
+                  ]}
+                  disabled={isReadOnly}
+                />
+                {timesheet.revisores_modo === 'auto_centro_custo' ? (
+                  <p className="text-xs text-muted-foreground">
+                    Os revisores serão definidos automaticamente conforme o centro de custo dos colaboradores
+                    que lançarem horas. Cada coordenador revisa apenas os lançamentos da sua área.
+                  </p>
+                ) : null}
+              </div>
+              {timesheet.revisores_modo !== 'auto_centro_custo' && (
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Revisores</Label>
                   {!isReadOnly && <Button type="button" variant="outline" size="sm" onClick={addRevisor}>Adicionar</Button>}
@@ -3412,6 +3451,7 @@ export default function CasoForm({
                   </div>
                 ))}
               </div>
+              )}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Aprovadores</Label>
