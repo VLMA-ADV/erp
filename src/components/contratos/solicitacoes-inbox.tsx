@@ -2,13 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronDown, ChevronRight, ClipboardList, FilePlus2, FileText } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ClipboardList, FilePlus2, FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Tooltip } from '@/components/ui/tooltip'
+import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
@@ -23,6 +25,7 @@ interface SolicitacaoContratoItem {
   contrato_nome: string | null
   solicitante_nome: string | null
   created_at: string
+  lido_at?: string | null
 }
 
 const PREVIEW_LIMIT = 5
@@ -76,15 +79,18 @@ async function fetchSolicitacoesAbertas({ signal }: { signal?: AbortSignal } = {
   }
 
   const list = Array.isArray(payload.data) ? (payload.data as SolicitacaoContratoItem[]) : []
-  return list.filter((item) => item.status === 'aberta')
+  return list.filter((item) => item.status === 'aberta' && !item.lido_at)
 }
 
 export default function SolicitacoesInbox() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { hasPermission } = usePermissionsContext()
+  const { error: toastError } = useToast()
   const canRead = hasPermission('contracts.solicitacoes.read')
   const canWrite = hasPermission('contracts.solicitacoes.write')
   const [open, setOpen] = useState(false)
+  const [markingId, setMarkingId] = useState<string | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['solicitacoes-contrato-inbox'],
@@ -92,6 +98,28 @@ export default function SolicitacoesInbox() {
     staleTime: 60_000,
     enabled: canRead,
   })
+
+  const handleMarkAsRead = async (solicitacaoId: string) => {
+    try {
+      setMarkingId(solicitacaoId)
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      const { error: rpcError } = await supabase.rpc('mark_solicitacao_as_read', {
+        p_user_id: user.id,
+        p_solicitacao_id: solicitacaoId,
+      })
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao marcar como lida')
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: ['solicitacoes-contrato-inbox'] })
+    } finally {
+      setMarkingId(null)
+    }
+  }
 
   if (!canRead) return null
 
@@ -157,15 +185,17 @@ export default function SolicitacoesInbox() {
           ) : (
             <div className="space-y-2">
               {preview.map((item) => (
-                <button
+                <div
                   key={item.id}
-                  type="button"
-                  className="w-full rounded-xl border bg-white p-3 text-left shadow-sm transition hover:border-amber-200 hover:bg-amber-50/40"
-                  onClick={() =>
-                    router.push(`/solicitacoes-contrato?solicitacao_id=${encodeURIComponent(item.id)}`)
-                  }
+                  className="flex items-start gap-2 rounded-xl border bg-white p-3 shadow-sm transition hover:border-amber-200 hover:bg-amber-50/40"
                 >
-                  <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="flex flex-1 gap-3 text-left"
+                    onClick={() =>
+                      router.push(`/solicitacoes-contrato?solicitacao_id=${encodeURIComponent(item.id)}`)
+                    }
+                  >
                     <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
                       <FileText className="h-4 w-4" />
                     </div>
@@ -183,8 +213,26 @@ export default function SolicitacoesInbox() {
                       </p>
                       <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.descricao}</p>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  {canWrite ? (
+                    <Tooltip content="Marcar como lida">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0"
+                        disabled={markingId === item.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleMarkAsRead(item.id)
+                        }}
+                        aria-label="Marcar como lida"
+                      >
+                        <Check className="h-4 w-4 text-green-600" />
+                      </Button>
+                    </Tooltip>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}
