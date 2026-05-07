@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronDown, ChevronRight, FilePlus2, MessageSquare } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, FilePlus2, MessageSquare } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -27,6 +28,7 @@ interface MensagemAvulsaItem {
   cliente_nome: string | null
   caso_nome: string | null
   autor_nome: string | null
+  lido_at?: string | null
 }
 
 interface ClienteOption {
@@ -85,6 +87,7 @@ async function fetchMensagensAvulsas(
   const { data, error } = await supabase.rpc('list_mensagens_avulsas_inbox', {
     p_user_id: user.id,
     p_limit: PREVIEW_LIMIT,
+    p_only_unread: true,
   })
 
   if (error) {
@@ -103,6 +106,7 @@ export default function MensagensInbox() {
   const canCreateCliente = hasPermission('crm.clientes.write')
 
   const [open, setOpen] = useState(false)
+  const [markingId, setMarkingId] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -264,6 +268,28 @@ export default function MensagensInbox() {
     }
   }
 
+  const handleMarkAsRead = async (mensagemId: string) => {
+    try {
+      setMarkingId(mensagemId)
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      const { error: rpcError } = await supabase.rpc('mark_mensagem_as_read', {
+        p_user_id: user.id,
+        p_mensagem_id: mensagemId,
+      })
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao marcar como lida')
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: ['mensagens-avulsas-inbox'] })
+    } finally {
+      setMarkingId(null)
+    }
+  }
+
   const submitMensagem = async () => {
     if (!mensagem.trim()) {
       toastError('Mensagem é obrigatória')
@@ -395,20 +421,37 @@ export default function MensagensInbox() {
                 {mensagens.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-xl border bg-white p-3 shadow-sm transition hover:border-sky-200"
+                    className="flex items-start gap-2 rounded-xl border bg-white p-3 shadow-sm transition hover:border-sky-200"
                   >
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="text-sm font-semibold text-slate-900">
-                        {item.autor_nome ?? 'Autor desconhecido'}
-                      </span>
-                      <span className="text-xs text-slate-400">•</span>
-                      <span className="text-xs text-slate-500">{formatRelativeDate(item.created_at)}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-sm font-semibold text-slate-900">
+                          {item.autor_nome ?? 'Autor desconhecido'}
+                        </span>
+                        <span className="text-xs text-slate-400">•</span>
+                        <span className="text-xs text-slate-500">{formatRelativeDate(item.created_at)}</span>
+                      </div>
+                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                        {item.cliente_nome ?? 'Cliente —'}
+                        {item.caso_nome ? ` · ${item.caso_nome}` : ''}
+                      </p>
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.mensagem}</p>
                     </div>
-                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      {item.cliente_nome ?? 'Cliente —'}
-                      {item.caso_nome ? ` · ${item.caso_nome}` : ''}
-                    </p>
-                    <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.mensagem}</p>
+                    {canWrite ? (
+                      <Tooltip content="Marcar como lida">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0"
+                          disabled={markingId === item.id}
+                          onClick={() => void handleMarkAsRead(item.id)}
+                          aria-label="Marcar como lida"
+                        >
+                          <Check className="h-4 w-4 text-green-600" />
+                        </Button>
+                      </Tooltip>
+                    ) : null}
                   </div>
                 ))}
               </div>
