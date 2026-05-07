@@ -9,6 +9,7 @@ import {
 import { shouldRefetchOnVisibility } from '@/components/faturamento/itens-a-faturar-refresh'
 import { createClient } from '@/lib/supabase/client'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
@@ -38,6 +39,7 @@ interface CasoAgrupado {
 interface ContratoAgrupado {
   contrato_id: string
   contrato_numero: number | null
+  contrato_numero_sequencial: number | null
   contrato_nome: string
   total_horas: string
   total_valor: string
@@ -60,6 +62,7 @@ interface DespesaFallbackItem {
   cliente_nome: string
   contrato_id: string
   contrato_numero: number | null
+  contrato_numero_sequencial?: number | null
   contrato_nome: string
   caso_id: string
   caso_numero: number | null
@@ -263,6 +266,7 @@ function mergeFallbackDespesas(
       contrato = {
         contrato_id: despesa.contrato_id,
         contrato_numero: despesa.contrato_numero ?? null,
+        contrato_numero_sequencial: despesa.contrato_numero_sequencial ?? null,
         contrato_nome: despesa.contrato_nome || 'Contrato sem nome',
         total_horas: '0.00',
         total_valor: '0.00',
@@ -866,7 +870,7 @@ export default function ItensAFaturarList() {
                                   ) : (
                                     <ChevronRight className="h-4 w-4" />
                                   )}
-                                  {contrato.contrato_numero ? `${contrato.contrato_numero} - ` : ''}{contrato.contrato_nome}
+                                  {formatContratoDisplay(contrato.contrato_numero_sequencial, contrato.contrato_nome).full}
                                 </button>
                               </td>
                               <td className="px-4 py-3">{formatHours(contrato.total_horas)}</td>
@@ -884,7 +888,7 @@ export default function ItensAFaturarList() {
                                       void startFlow(
                                         'contrato',
                                         contrato.contrato_id,
-                                        `Contrato ${contrato.contrato_numero ? `${contrato.contrato_numero} - ` : ''}${contrato.contrato_nome}`,
+                                        formatContratoDisplay(contrato.contrato_numero_sequencial, contrato.contrato_nome).full,
                                       )
                                     }
                                   >
