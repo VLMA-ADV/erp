@@ -9,6 +9,7 @@ const periodToMonths: Record<string, number> = {
   mensal: 1,
   bimestral: 2,
   trimestral: 3,
+  quadrimestral: 4,
   semestral: 6,
   anual: 12,
 }
@@ -242,6 +243,7 @@ export default function CapEncontroSimple({
               <option value="mensal">Encontro mensal</option>
               <option value="bimestral">Encontro bimestral</option>
               <option value="trimestral">Encontro trimestral</option>
+              <option value="quadrimestral">Encontro quadrimestral</option>
               <option value="semestral">Encontro semestral</option>
               <option value="anual">Encontro anual</option>
             </NativeSelect>

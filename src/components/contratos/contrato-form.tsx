@@ -488,6 +488,8 @@ export default function ContratoForm({
   const [newPriceTableName, setNewPriceTableName] = useState('')
   const [priceTableDialogOpen, setPriceTableDialogOpen] = useState(false)
   const [priceTableSaving, setPriceTableSaving] = useState(false)
+  const [newCargoName, setNewCargoName] = useState('')
+  const [creatingCargo, setCreatingCargo] = useState(false)
   const [deleteDraftOpen, setDeleteDraftOpen] = useState(false)
   const [deleteDraftLoading, setDeleteDraftLoading] = useState(false)
   const [draftContratoId, setDraftContratoId] = useState<string | null>(contratoId ?? null)
@@ -1138,7 +1140,10 @@ export default function ContratoForm({
 
   useEffect(() => {
     if (currentCaso.regra_cobranca !== 'hora') return
-    const hasCapDesejado = Boolean(regras.cap_desejado_enabled) || String(regras.cap_desejado_horas || '').trim() !== ''
+    const hasCapDesejado =
+      Boolean(regras.cap_desejado_enabled) ||
+      String(regras.cap_desejado_horas || '').trim() !== '' ||
+      String(regras.cap_desejado_data_alvo || '').trim() !== ''
     if (!hasCapDesejado) return
 
     setForm((prev) => {
@@ -1147,7 +1152,9 @@ export default function ContratoForm({
       if (!current) return prev
       const currentRegras = { ...(current.regra_cobranca_config || {}) }
       const currentHasCapDesejado =
-        Boolean(currentRegras.cap_desejado_enabled) || String(currentRegras.cap_desejado_horas || '').trim() !== ''
+        Boolean(currentRegras.cap_desejado_enabled) ||
+        String(currentRegras.cap_desejado_horas || '').trim() !== '' ||
+        String(currentRegras.cap_desejado_data_alvo || '').trim() !== ''
       if (!currentHasCapDesejado) return prev
 
       next[selectedCaseIndex] = {
@@ -1156,6 +1163,7 @@ export default function ContratoForm({
           ...currentRegras,
           cap_desejado_enabled: false,
           cap_desejado_horas: '',
+          cap_desejado_data_alvo: '',
         },
       }
       return { ...prev, casos: next }
@@ -1164,6 +1172,7 @@ export default function ContratoForm({
     currentCaso.regra_cobranca,
     regras.cap_desejado_enabled,
     regras.cap_desejado_horas,
+    regras.cap_desejado_data_alvo,
     selectedCaseIndex,
   ])
 
@@ -1549,6 +1558,58 @@ export default function ContratoForm({
       setError('Erro ao salvar tabela de preço')
     } finally {
       setPriceTableSaving(false)
+    }
+  }
+
+  const createCargoInline = async () => {
+    const nome = newCargoName.trim()
+    if (!nome) return
+    const codigo = nome
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 32)
+    try {
+      setCreatingCargo(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-cargo`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ nome, codigo, nivel: null }),
+        },
+      )
+      const data = await resp.json()
+      if (!resp.ok) {
+        setError(data.error || 'Erro ao criar cargo')
+        return
+      }
+      const novo = data.data || data
+      const novoCargo = { id: novo.id, nome: novo.nome || nome }
+      setOptions((prev) => ({ ...prev, cargos: [...(prev.cargos || []), novoCargo] }))
+      const novoItem: TabelaPrecoItem = {
+        cargo_id: novoCargo.id,
+        cargo_nome: novoCargo.nome,
+        valor_hora: '',
+        valor_hora_excedente: '',
+      }
+      updateCurrentRegra('tabela_preco_itens', [...(regras.tabela_preco_itens || []), novoItem])
+      setNewCargoName('')
+      success('Cargo criado e adicionado à tabela')
+      setError(null)
+    } catch (e) {
+      console.error(e)
+      setError('Erro ao criar cargo')
+    } finally {
+      setCreatingCargo(false)
     }
   }
 
@@ -3671,6 +3732,7 @@ export default function ContratoForm({
                         if (value === 'nao') {
                           updateCurrentRegra('cap_desejado_enabled', false)
                           updateCurrentRegra('cap_desejado_horas', '')
+                          updateCurrentRegra('cap_desejado_data_alvo', '')
                           return
                         }
                         updateCurrentRegra('cap_desejado_enabled', true)
@@ -3689,18 +3751,31 @@ export default function ContratoForm({
                     ) : null}
                   </div>
                   {capDesejadoEnabled ? (
-                    <div className="space-y-2">
-                      <Label>Cap desejado (Quantidade de horas)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={String(regras.cap_desejado_horas || '')}
-                        onChange={(e) => updateCurrentRegra('cap_desejado_horas', e.target.value)}
-                        disabled={isReadOnly || currentCaso.regra_cobranca === 'hora'}
-                        placeholder="Ex: 120"
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label>Cap desejado (Quantidade de horas)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={String(regras.cap_desejado_horas || '')}
+                          onChange={(e) => updateCurrentRegra('cap_desejado_horas', e.target.value)}
+                          disabled={isReadOnly || currentCaso.regra_cobranca === 'hora'}
+                          placeholder="Ex: 120"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Cap desejado de tempo (data alvo)</Label>
+                        <DatePicker
+                          value={regras.cap_desejado_data_alvo || ''}
+                          onChange={(value) => updateCurrentRegra('cap_desejado_data_alvo', value)}
+                          disabled={isReadOnly || currentCaso.regra_cobranca === 'hora'}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Ex.: 6 meses a partir do início do projeto. Avisar nesta data.
+                        </p>
+                      </div>
+                    </>
                   ) : null}
 
                   {currentCaso.regra_cobranca === 'hora' && (
@@ -4962,6 +5037,27 @@ export default function ContratoForm({
                   </div>
 
                   <div className="space-y-2">
+                    <Label>Modo de seleção de revisores</Label>
+                    <ChoiceCards
+                      value={timesheet.revisores_modo === 'auto_centro_custo' ? 'auto_centro_custo' : 'manual'}
+                      onChange={(value) => updateCurrentTimesheet('revisores_modo', value)}
+                      disabled={isReadOnly}
+                      columns={2}
+                      options={[
+                        { value: 'manual', label: 'Lista manual' },
+                        { value: 'auto_centro_custo', label: 'Automático por centro de custo' },
+                      ]}
+                    />
+                    {timesheet.revisores_modo === 'auto_centro_custo' ? (
+                      <p className="text-xs text-muted-foreground">
+                        Os revisores serão definidos automaticamente conforme o centro de custo dos colaboradores
+                        que lançarem horas. Cada coordenador revisa apenas os lançamentos da sua área.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {timesheet.revisores_modo !== 'auto_centro_custo' && (
+                  <div className="space-y-2">
                     <div className="mb-2 flex items-center justify-between">
                       <Label>Revisores</Label>
                       {!isReadOnly && (
@@ -5033,6 +5129,7 @@ export default function ContratoForm({
                       </div>
                     ))}
                   </div>
+                  )}
 
                   <div className="space-y-2">
                     <div className="mb-2 flex items-center justify-between">
@@ -5361,6 +5458,31 @@ export default function ContratoForm({
                     ))}
                   </TableBody>
                 </Table>
+              )}
+
+              {!isReadOnly && (
+                <div className="space-y-1 border-t pt-3">
+                  <Label>Adicionar novo cargo</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCargoName}
+                      onChange={(e) => setNewCargoName(e.target.value)}
+                      placeholder="Ex.: Sócio Diretor, Sócio 2"
+                      disabled={creatingCargo}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={createCargoInline}
+                      disabled={creatingCargo || !newCargoName.trim()}
+                    >
+                      {creatingCargo ? 'Criando...' : 'Criar e incluir'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O cargo será cadastrado em Configuração → Cargos e adicionado a esta tabela.
+                  </p>
+                </div>
               )}
             </div>
             {!isReadOnly && (
