@@ -71,7 +71,8 @@ interface FormState {
   contrato_id: string
   caso_id: string
   data_lancamento: string
-  minutos: string
+  horas_componente: string
+  minutos_componente: string
   descricao: string
 }
 
@@ -80,7 +81,8 @@ const emptyForm: FormState = {
   contrato_id: '',
   caso_id: '',
   data_lancamento: '',
-  minutos: '0',
+  horas_componente: '0',
+  minutos_componente: '0',
   descricao: '',
 }
 
@@ -90,10 +92,24 @@ function toMinutes(horas: string | number | null | undefined) {
   return String(Math.round(parsed * 60))
 }
 
-function toHoursFromMinutes(minutos: string) {
+function toHoursFromMinutes(minutos: number | string) {
   const parsed = Number(minutos || 0)
   if (Number.isNaN(parsed) || parsed < 0) return '0'
   return String((parsed / 60).toFixed(2))
+}
+
+function splitMinutosTotal(total: number | string | null | undefined) {
+  const parsed = Number(total || 0)
+  if (Number.isNaN(parsed) || parsed < 0) return { horas: '0', minutos: '0' }
+  const inteiro = Math.floor(parsed)
+  return { horas: String(Math.floor(inteiro / 60)), minutos: String(inteiro % 60) }
+}
+
+function computeMinutosTotal(horas: string, minutos: string) {
+  const h = Math.max(0, Math.floor(Number(horas || 0)))
+  const mRaw = Math.max(0, Math.floor(Number(minutos || 0)))
+  const m = Math.min(mRaw, 60)
+  return h * 60 + m
 }
 
 function applyTemplatePlaceholders(
@@ -321,13 +337,16 @@ export default function TimesheetList() {
 
   const openEdit = (item: TimesheetItem) => {
     const contrato = contratos.find((c) => c.id === item.contrato_id)
+    const totalMinutos = item.duracao_minutos != null ? Number(item.duracao_minutos) : Number(toMinutes(item.horas))
+    const split = splitMinutosTotal(totalMinutos)
     setForm({
       id: item.id,
       cliente_id: contrato?.cliente_id || '',
       contrato_id: item.contrato_id,
       caso_id: item.caso_id,
       data_lancamento: item.data_lancamento,
-      minutos: item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas),
+      horas_componente: split.horas,
+      minutos_componente: split.minutos,
       descricao: item.descricao || '',
     })
     setTemplateCategoria('')
@@ -341,9 +360,9 @@ export default function TimesheetList() {
       return
     }
 
-    const minutos = Number(form.minutos || 0)
-    if (Number.isNaN(minutos) || minutos <= 0) {
-      toastError('Informe os minutos do lançamento')
+    const minutos = computeMinutosTotal(form.horas_componente, form.minutos_componente)
+    if (minutos <= 0) {
+      toastError('Informe a duração do lançamento (horas e/ou minutos)')
       return
     }
 
@@ -363,7 +382,7 @@ export default function TimesheetList() {
           contrato_id: form.contrato_id,
           caso_id: form.caso_id,
           data_lancamento: form.data_lancamento,
-          horas: toHoursFromMinutes(form.minutos),
+          horas: toHoursFromMinutes(minutos),
           duracao_minutos: minutos,
           descricao: form.descricao,
         }),
@@ -577,15 +596,44 @@ export default function TimesheetList() {
             </div>
 
             <div className="space-y-2">
-              <Label>Minutos</Label>
-              <Input
-                type="number"
-                step="1"
-                min="0"
-                value={form.minutos}
-                onChange={(event) => setForm((prev) => ({ ...prev, minutos: event.target.value }))}
-                placeholder="Ex: 90"
-              />
+              <Label>Duração</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={form.horas_componente}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, horas_componente: event.target.value }))
+                    }
+                    placeholder="Horas"
+                    aria-label="Horas"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Horas</p>
+                </div>
+                <div>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="60"
+                    value={form.minutos_componente}
+                    onChange={(event) => {
+                      const raw = event.target.value
+                      const numeric = Number(raw)
+                      const clamped = Number.isFinite(numeric) ? Math.min(Math.max(numeric, 0), 60) : 0
+                      setForm((prev) => ({
+                        ...prev,
+                        minutos_componente: raw === '' ? '' : String(clamped),
+                      }))
+                    }}
+                    placeholder="Minutos"
+                    aria-label="Minutos"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Minutos (0 a 60)</p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2 md:col-span-2">

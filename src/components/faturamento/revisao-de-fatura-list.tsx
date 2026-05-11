@@ -1274,6 +1274,26 @@ export default function RevisaoDeFaturaList() {
         </Alert>
       ) : null}
 
+      <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-3">
+        {ruleButtons.map((button) => (
+          <button
+            key={button.key}
+            type="button"
+            onClick={() => setRuleFilter(button.key)}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors ${
+              ruleFilter === button.key
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <span>{button.label}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs ${ruleFilter === button.key ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>
+              {button.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-3 md:grid-cols-4">
         <div className="space-y-1">
           <label className="text-sm font-medium">Cliente</label>
@@ -1320,26 +1340,6 @@ export default function RevisaoDeFaturaList() {
             {loading ? 'Atualizando...' : 'Aplicar filtros'}
           </Button>
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-3">
-        {ruleButtons.map((button) => (
-          <button
-            key={button.key}
-            type="button"
-            onClick={() => setRuleFilter(button.key)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors ${
-              ruleFilter === button.key
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            <span>{button.label}</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${ruleFilter === button.key ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>
-              {button.count}
-            </span>
-          </button>
-        ))}
       </div>
 
       <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3 text-sm">
@@ -1564,25 +1564,33 @@ export default function RevisaoDeFaturaList() {
                                                         <td className="px-3 py-3 text-right text-sm font-medium text-slate-900">{formatMoney(historyRow.value)}</td>
                                                         <td className="px-3 py-3">
                                                           <div className="flex items-center justify-end gap-2">
-                                                            <Button
-                                                              size="sm"
-                                                              variant="outline"
-                                                              onClick={() => void saveAndAdvance(item, mode)}
-                                                              disabled={!canAdvance(item.status) || busy}
-                                                            >
-                                                              {busy && busyKey !== `postergar:${item.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                              OK
-                                                            </Button>
-                                                            {historyRow.showEdit ? (
-                                                              <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                onClick={() => setEditorKey((current) => (current === key ? null : key))}
-                                                                disabled={busy}
-                                                              >
-                                                                Editar
-                                                              </Button>
-                                                            ) : null}
+                                                            {(() => {
+                                                              const isActorRow =
+                                                                (item.status === 'em_revisao' && historyRow.stageKey === 'usuario') ||
+                                                                (item.status === 'em_aprovacao' && historyRow.stageKey === 'revisor')
+                                                              if (!isActorRow) return null
+                                                              return (
+                                                                <>
+                                                                  <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() => void saveAndAdvance(item, mode)}
+                                                                    disabled={!canAdvance(item.status) || busy}
+                                                                  >
+                                                                    {busy && busyKey !== `postergar:${item.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                                    OK
+                                                                  </Button>
+                                                                  <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    onClick={() => setEditorKey((current) => (current === key ? null : key))}
+                                                                    disabled={busy}
+                                                                  >
+                                                                    Editar
+                                                                  </Button>
+                                                                </>
+                                                              )
+                                                            })()}
                                                             {historyRow.showPostergar ? (
                                                               <Button
                                                                 size="sm"
