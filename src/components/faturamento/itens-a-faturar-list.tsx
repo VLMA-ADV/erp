@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Send, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Loader2, Send, X } from 'lucide-react'
 import {
   clearAllExpansions,
   hasAnyExpansion,
@@ -13,6 +13,7 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -361,6 +362,13 @@ export default function ItensAFaturarList() {
   const [sendingTarget, setSendingTarget] = useState<string | null>(null)
   const [regraTab, setRegraTab] = useState<RegraTabKey>('todas')
   const [selectedCasos, setSelectedCasos] = useState<Record<string, boolean>>({})
+  const [postergarTarget, setPostergarTarget] = useState<{
+    casoId: string
+    casoNome: string
+    extrato: CasoAgrupado['extrato']
+  } | null>(null)
+  const [postergarDate, setPostergarDate] = useState<string>('')
+  const [postergarSubmitting, setPostergarSubmitting] = useState(false)
 
   const anyExpanded = hasAnyExpansion({ expandedClientes, expandedContratos, expandedCasos })
 
@@ -587,6 +595,87 @@ export default function ItensAFaturarList() {
       toastError(`Erro ao enviar ${label} para revisão`)
     } finally {
       setSendingTarget(null)
+    }
+  }
+
+  const openPostergar = (caso: CasoAgrupado) => {
+    setPostergarTarget({
+      casoId: caso.caso_id,
+      casoNome: caso.caso_nome,
+      extrato: Array.isArray(caso.extrato) ? caso.extrato : [],
+    })
+    setPostergarDate('')
+  }
+
+  const closePostergar = () => {
+    if (postergarSubmitting) return
+    setPostergarTarget(null)
+    setPostergarDate('')
+  }
+
+  const confirmPostergar = async () => {
+    if (!postergarTarget) return
+    if (!postergarDate) {
+      toastError('Selecione a nova data de faturamento.')
+      return
+    }
+    const timesheetIds = (postergarTarget.extrato || [])
+      .filter((linha) => {
+        const tipo = (linha.tipo || '').trim().toLowerCase()
+        return Boolean(linha.origem_id) && (tipo === 'timesheet' || tipo === 'hora')
+      })
+      .map((linha) => linha.origem_id as string)
+
+    if (timesheetIds.length === 0) {
+      toastError('Este caso não tem lançamentos de timesheet postergáveis.')
+      return
+    }
+
+    try {
+      setPostergarSubmitting(true)
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+
+      let okCount = 0
+      let failCount = 0
+      for (const timesheetId of timesheetIds) {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-timesheet`,
+          {
+            method: 'POST',
+            headers: {
+              ...getFunctionsHeaders(session.access_token),
+            },
+            body: JSON.stringify({
+              id: timesheetId,
+              periodo_faturamento: postergarDate,
+            }),
+          },
+        )
+        if (response.ok) okCount += 1
+        else failCount += 1
+      }
+
+      if (okCount > 0) {
+        const [year, month, day] = postergarDate.split('-')
+        const label = day && month && year ? `${day}/${month}/${year}` : postergarDate
+        success(`${okCount} lançamento(s) postergado(s) para ${label}.`)
+      }
+      if (failCount > 0) {
+        toastError(`${failCount} lançamento(s) não puderam ser postergados.`)
+      }
+
+      setPostergarTarget(null)
+      setPostergarDate('')
+      await loadItems()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao postergar lançamentos.')
+    } finally {
+      setPostergarSubmitting(false)
     }
   }
 
@@ -940,26 +1029,40 @@ export default function ItensAFaturarList() {
                                       <td className="px-4 py-3 text-muted-foreground">{caso.total_itens}</td>
                                       <td className="px-4 py-3 text-right text-muted-foreground">{formatMoney(caso.total_valor)}</td>
                                       <td className="px-4 py-3 text-right">
-                                        <Tooltip content={sendingTarget === caso.caso_id ? 'Enviando caso...' : 'Enviar caso'}>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            disabled={!!sendingTarget}
-                                            onClick={() =>
-                                              void startFlow(
-                                                'caso',
-                                                caso.caso_id,
-                                                `Caso ${caso.caso_numero ? `${caso.caso_numero} - ` : ''}${caso.caso_nome}`,
-                                              )
-                                            }
-                                          >
-                                            {sendingTarget === caso.caso_id ? (
-                                              <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                              <Send className="h-4 w-4" />
-                                            )}
-                                          </Button>
-                                        </Tooltip>
+                                        <div className="flex items-center justify-end gap-1">
+                                          <Tooltip content="Postergar fatura">
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                              disabled={!!sendingTarget || postergarSubmitting}
+                                              onClick={() => openPostergar(caso)}
+                                              aria-label="Postergar fatura"
+                                            >
+                                              <Clock className="h-4 w-4" />
+                                            </Button>
+                                          </Tooltip>
+                                          <Tooltip content={sendingTarget === caso.caso_id ? 'Enviando caso...' : 'Enviar caso'}>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              disabled={!!sendingTarget}
+                                              onClick={() =>
+                                                void startFlow(
+                                                  'caso',
+                                                  caso.caso_id,
+                                                  `Caso ${caso.caso_numero ? `${caso.caso_numero} - ` : ''}${caso.caso_nome}`,
+                                                )
+                                              }
+                                            >
+                                              {sendingTarget === caso.caso_id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                              ) : (
+                                                <Send className="h-4 w-4" />
+                                              )}
+                                            </Button>
+                                          </Tooltip>
+                                        </div>
                                       </td>
                                     </tr>
 
@@ -995,6 +1098,49 @@ export default function ItensAFaturarList() {
           </tbody>
         </Table>
       </div>
+
+      <Dialog
+        open={postergarTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closePostergar()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Postergar fatura</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Selecione a nova data para os lançamentos do caso{' '}
+              <strong className="text-slate-900">{postergarTarget?.casoNome}</strong>.
+            </p>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Nova data de faturamento</label>
+              <DatePicker value={postergarDate} onChange={setPostergarDate} />
+            </div>
+            <p className="text-xs text-slate-400">
+              Os lançamentos serão movidos para o período da data escolhida e reaparecerão na lista nesse novo período.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closePostergar} disabled={postergarSubmitting}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => void confirmPostergar()}
+              disabled={postergarSubmitting || !postergarDate}
+            >
+              {postergarSubmitting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Clock className="mr-2 h-4 w-4" />
+              )}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
