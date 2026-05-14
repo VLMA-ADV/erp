@@ -107,7 +107,15 @@ interface CaseMetrics {
 }
 
 type ReviewMode = 'default' | 'timesheet'
-type RuleFilterKey = 'all' | 'hora' | 'mensalidade' | 'exito' | 'unico' | 'outros'
+type RuleFilterKey =
+  | 'all'
+  | 'hora'
+  | 'mensalidade_processo'
+  | 'mensalidade'
+  | 'projeto'
+  | 'projeto_parcelado'
+  | 'exito'
+  | 'despesa'
 type HistoryStageKey = 'usuario' | 'revisor' | 'aprovador'
 type HistoricoRole = 'USUARIO' | 'REVISOR' | 'APROVADOR'
 
@@ -331,29 +339,36 @@ function getRuleTitle(item: RevisaoItem) {
   return item.regraNome || 'Regra financeira'
 }
 
-function getRuleFilterKey(item: RevisaoItem): RuleFilterKey {
+function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
+  if (item.origemTipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
   if (item.origemTipo === 'timesheet' || kind === 'hora' || kind === 'hora_com_cap') return 'hora'
-  if (kind === 'mensal' || kind === 'mensalidade_processo') return 'mensalidade'
+  if (kind === 'mensalidade_processo') return 'mensalidade_processo'
+  if (kind === 'mensal') return 'mensalidade'
+  if (kind === 'projeto') return 'projeto'
+  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado') return 'projeto_parcelado'
   if (kind === 'exito') return 'exito'
-  if (kind === 'projeto' || kind === 'projeto_parcelado' || kind === 'unico') return 'unico'
-  return 'outros'
+  return null
 }
 
 function getRuleFilterLabel(key: RuleFilterKey) {
   switch (key) {
     case 'all':
-      return 'Todos'
+      return 'Todas'
     case 'hora':
       return 'Horas'
+    case 'mensalidade_processo':
+      return 'Mensalidade de processo'
     case 'mensalidade':
       return 'Mensalidade'
+    case 'projeto':
+      return 'Projeto'
+    case 'projeto_parcelado':
+      return 'Projeto parcelado'
     case 'exito':
-      return 'Exito'
-    case 'unico':
-      return 'Unico'
-    default:
-      return 'Outros'
+      return 'Êxito'
+    case 'despesa':
+      return 'Despesas'
   }
 }
 
@@ -838,15 +853,22 @@ export default function RevisaoDeFaturaList() {
     const counts = new Map<RuleFilterKey, number>()
     for (const row of allRows) {
       const key = getRuleFilterKey(row.item)
+      if (!key) continue
       counts.set(key, (counts.get(key) || 0) + 1)
     }
 
-    const orderedKeys: RuleFilterKey[] = ['hora', 'mensalidade', 'exito', 'unico', 'outros']
+    const orderedKeys: RuleFilterKey[] = [
+      'hora',
+      'mensalidade_processo',
+      'mensalidade',
+      'projeto',
+      'projeto_parcelado',
+      'exito',
+      'despesa',
+    ]
     return [
       { key: 'all' as RuleFilterKey, label: getRuleFilterLabel('all'), count: allRows.length },
-      ...orderedKeys
-        .filter((key) => (counts.get(key) || 0) > 0)
-        .map((key) => ({ key, label: getRuleFilterLabel(key), count: counts.get(key) || 0 })),
+      ...orderedKeys.map((key) => ({ key, label: getRuleFilterLabel(key), count: counts.get(key) || 0 })),
     ]
   }, [allRows])
 
