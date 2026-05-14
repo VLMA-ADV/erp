@@ -69,6 +69,22 @@ interface ClienteGroup {
   contratos: ContratoGroup[]
 }
 
+interface ContratoOption {
+  id: string
+  numero?: number | null
+  numero_sequencial?: number | null
+  cliente_id?: string | null
+  cliente_nome?: string | null
+  nome_contrato?: string | null
+  status?: string | null
+  casos?: Array<{ id: string; numero?: number | null; nome: string }>
+}
+
+interface ColaboradorOption {
+  id: string
+  nome: string
+}
+
 interface TimesheetRowDraft {
   id: string
   dataLancamento: string
@@ -604,6 +620,8 @@ export default function RevisaoDeFaturaList() {
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
+  const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
+  const [colaboradores, setColaboradores] = useState<ColaboradorOption[]>([])
 
   const canRead =
     hasPermission('finance.faturamento.read') ||
@@ -705,9 +723,62 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  const loadAllContratos = async () => {
+    try {
+      const accessToken = await getSessionToken()
+      if (!accessToken) return
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-contratos?_ts=${Date.now()}`,
+        {
+          method: 'GET',
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) return
+      const list = Array.isArray(payload.data) ? (payload.data as ContratoOption[]) : []
+      setAllContratos(list)
+    } catch (loadError) {
+      console.error('loadAllContratos', loadError)
+    }
+  }
+
+  const loadColaboradores = async () => {
+    try {
+      const accessToken = await getSessionToken()
+      if (!accessToken) return
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-colaboradores?page=1&limit=500&_ts=${Date.now()}`,
+        {
+          method: 'GET',
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) return
+      const raw = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.colaboradores) ? payload.colaboradores : []
+      const normalized: ColaboradorOption[] = raw
+        .map((entry: any) => ({ id: asString(entry?.id), nome: asString(entry?.nome) }))
+        .filter((entry: ColaboradorOption) => entry.id && entry.nome)
+      setColaboradores(normalized)
+    } catch (loadError) {
+      console.error('loadColaboradores', loadError)
+    }
+  }
+
   useEffect(() => {
     if (!canRead) return
     void loadItems()
+    void loadAllContratos()
+    void loadColaboradores()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -763,6 +834,25 @@ export default function RevisaoDeFaturaList() {
   const caseOptions = useMemo<CommandSelectOption[]>(() => {
     const seen = new Set<string>()
     const options: CommandSelectOption[] = []
+
+    for (const contrato of allContratos) {
+      const contratoLabel = (() => {
+        const numero = contrato.numero_sequencial ?? contrato.numero ?? null
+        const nome = contrato.nome_contrato || 'Contrato sem nome'
+        const cliente = contrato.cliente_nome ? ` — ${contrato.cliente_nome}` : ''
+        return numero ? `${numero} - ${nome}${cliente}` : `${nome}${cliente}`
+      })()
+      for (const caso of contrato.casos || []) {
+        if (!caso?.id || seen.has(caso.id)) continue
+        seen.add(caso.id)
+        options.push({
+          value: caso.id,
+          label: caso.numero ? `${caso.numero} - ${caso.nome}` : caso.nome,
+          group: contratoLabel,
+        })
+      }
+    }
+
     for (const item of items) {
       if (!item.casoId || seen.has(item.casoId)) continue
       seen.add(item.casoId)
@@ -772,10 +862,22 @@ export default function RevisaoDeFaturaList() {
         group: item.contratoNumero ? `${item.contratoNumero} - ${item.contratoNome}` : item.contratoNome,
       })
     }
+
     return options
-  }, [items])
+  }, [allContratos, items])
 
   const caseLabelById = useMemo(() => new Map(caseOptions.map((option) => [option.value, option.label])), [caseOptions])
+
+  const colaboradorOptions = useMemo<CommandSelectOption[]>(() => {
+    const seen = new Set<string>()
+    const options: CommandSelectOption[] = []
+    for (const colaborador of colaboradores) {
+      if (!colaborador.nome || seen.has(colaborador.nome)) continue
+      seen.add(colaborador.nome)
+      options.push({ value: colaborador.nome, label: colaborador.nome })
+    }
+    return options
+  }, [colaboradores])
 
   const getLiveItemHours = useCallback((item: RevisaoItem, mode: ReviewMode) => {
     const draft = drafts[item.id]
@@ -1714,18 +1816,15 @@ export default function RevisaoDeFaturaList() {
                                                               <div className="grid gap-3 md:grid-cols-2">
                                                                 <div className="md:col-span-2">
                                                                   <label className="mb-1 block text-xs text-slate-500">Caso</label>
-                                                                  <select
+                                                                  <CommandSelect
                                                                     value={draft?.casoId || item.casoId}
-                                                                    onChange={(event) => updateDraft(item.id, { casoId: event.target.value })}
-                                                                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                                                    onValueChange={(value) => updateDraft(item.id, { casoId: value })}
+                                                                    options={caseOptions}
+                                                                    placeholder="Selecione o caso"
+                                                                    searchPlaceholder="Buscar caso ou contrato..."
+                                                                    emptyText="Nenhum caso encontrado."
                                                                     disabled={busy}
-                                                                  >
-                                                                    {caseOptions.map((option) => (
-                                                                      <option key={option.value} value={option.value}>
-                                                                        {option.label}
-                                                                      </option>
-                                                                    ))}
-                                                                  </select>
+                                                                  />
                                                                 </div>
 
                                                                 {mode === 'timesheet' ? (
@@ -1734,14 +1833,21 @@ export default function RevisaoDeFaturaList() {
                                                                       const revisedMinutes = hoursToMinutes(parseDecimalInput(row.horasRevisadas || row.horasIniciais))
                                                                       const revisedValue =
                                                                         parseDecimalInput(row.horasRevisadas || row.horasIniciais) * parseDecimalInput(row.valorHora)
+                                                                      const rowProfissionalOptions = row.profissional && !colaboradorOptions.some((option) => option.value === row.profissional)
+                                                                        ? [{ value: row.profissional, label: row.profissional }, ...colaboradorOptions]
+                                                                        : colaboradorOptions
                                                                       return (
                                                                         <div key={row.id} className="rounded-lg border p-3">
                                                                           <div className="grid gap-3 md:grid-cols-2">
                                                                             <div>
                                                                               <label className="mb-1 block text-xs text-slate-500">Profissional</label>
-                                                                              <Input
+                                                                              <CommandSelect
                                                                                 value={row.profissional}
-                                                                                onChange={(event) => syncTimesheetRow(item.id, row.id, { profissional: event.target.value })}
+                                                                                onValueChange={(value) => syncTimesheetRow(item.id, row.id, { profissional: value })}
+                                                                                options={rowProfissionalOptions}
+                                                                                placeholder="Selecione o profissional"
+                                                                                searchPlaceholder="Buscar colaborador..."
+                                                                                emptyText="Nenhum colaborador encontrado."
                                                                                 disabled={busy}
                                                                               />
                                                                             </div>
@@ -1774,14 +1880,26 @@ export default function RevisaoDeFaturaList() {
                                                                   </div>
                                                                 ) : (
                                                                   <>
-                                                                    <div>
-                                                                      <label className="mb-1 block text-xs text-slate-500">Profissional</label>
-                                                                      <Input
-                                                                        value={draft?.profissional || ''}
-                                                                        onChange={(event) => updateDraft(item.id, { profissional: event.target.value })}
-                                                                        disabled={busy}
-                                                                      />
-                                                                    </div>
+                                                                    {(() => {
+                                                                      const currentProfissional = draft?.profissional || ''
+                                                                      const profissionalSelectOptions = currentProfissional && !colaboradorOptions.some((option) => option.value === currentProfissional)
+                                                                        ? [{ value: currentProfissional, label: currentProfissional }, ...colaboradorOptions]
+                                                                        : colaboradorOptions
+                                                                      return (
+                                                                        <div>
+                                                                          <label className="mb-1 block text-xs text-slate-500">Profissional</label>
+                                                                          <CommandSelect
+                                                                            value={currentProfissional}
+                                                                            onValueChange={(value) => updateDraft(item.id, { profissional: value })}
+                                                                            options={profissionalSelectOptions}
+                                                                            placeholder="Selecione o profissional"
+                                                                            searchPlaceholder="Buscar colaborador..."
+                                                                            emptyText="Nenhum colaborador encontrado."
+                                                                            disabled={busy}
+                                                                          />
+                                                                        </div>
+                                                                      )
+                                                                    })()}
                                                                     <div>
                                                                       <label className="mb-1 block text-xs text-slate-500">Minutos</label>
                                                                       <Input
