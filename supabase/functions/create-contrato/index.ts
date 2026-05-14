@@ -129,45 +129,19 @@ Deno.serve(async (req) => {
     }
     payload.nome_contrato = normalizeContractName(payload);
 
-    // Tenta criar; se nome duplicado, adiciona sufixo incremental
-    let data: any = null;
-    let lastError: any = null;
-    const originalName = payload.nome_contrato;
-    const MAX_RETRIES = 5;
+    const { data: rpcData, error: rpcError } = await supabase.rpc("create_contrato", {
+      p_user_id: user.id,
+      p_payload: payload,
+    });
 
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      if (attempt > 0) {
-        payload.nome_contrato = `${originalName} (${attempt + 1})`;
-      }
-      const result = await supabase.rpc("create_contrato", {
-        p_user_id: user.id,
-        p_payload: payload,
-      });
-      if (!result.error) {
-        data = result.data;
-        lastError = null;
-        break;
-      }
-      if (result.error.message?.includes("idx_contratos_tenant_nome_unique")) {
-        lastError = result.error;
-        continue;
-      }
-      // Outro erro — retorna imediatamente
-      return new Response(JSON.stringify({ error: result.error.message, details: result.error.message }), {
+    if (rpcError) {
+      return new Response(JSON.stringify({ error: rpcError.message, details: rpcError.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (lastError) {
-      return new Response(JSON.stringify({
-        error: `Já existe um contrato com o nome "${originalName}". Por favor, escolha outro nome.`,
-        details: lastError.message,
-      }), {
-        status: 409,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    let data: any = rpcData;
 
     if (data?.id) {
       const hydratedContrato = await hydrateCreatedContrato(supabase, data.id);
