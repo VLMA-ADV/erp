@@ -146,8 +146,52 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
+    const avulsasOnly = url.searchParams.get("avulsas") === "1";
     const limit = clampLimit(url.searchParams.get("limit"));
     const since = parseSince(url.searchParams.get("since"));
+
+    if (avulsasOnly) {
+      const { data: avulsasData, error: avulsasError } = await supabase.rpc(
+        "list_mensagens_avulsas_inbox",
+        { p_user_id: user.id, p_limit: limit },
+      );
+      if (avulsasError) {
+        return jsonRes({ error: avulsasError.message }, 500);
+      }
+      type AvulsaRow = {
+        id: string;
+        mensagem: string;
+        created_at: string;
+        cliente_id: string | null;
+        caso_id: string | null;
+        autor_id: string | null;
+        cliente_nome: string | null;
+        caso_nome: string | null;
+        autor_nome: string | null;
+      };
+      const items = (Array.isArray(avulsasData) ? avulsasData : []) as AvulsaRow[];
+      const mensagensResponse = items.map((item) => ({
+        id: item.id,
+        solicitacao_id: null,
+        contrato_id: null,
+        contrato_codigo: null,
+        contrato_nome: null,
+        solicitacao_nome: item.caso_nome ?? item.cliente_nome ?? null,
+        remetente_id: item.autor_id,
+        remetente_nome: item.autor_nome ?? "Usuário",
+        mensagem_preview: preview(item.mensagem),
+        created_at: item.created_at,
+        cliente_id: item.cliente_id,
+        caso_id: item.caso_id,
+        cliente_nome: item.cliente_nome,
+        caso_nome: item.caso_nome,
+      }));
+      return jsonRes({
+        mensagens: mensagensResponse,
+        total: mensagensResponse.length,
+        avulsas: true,
+      });
+    }
 
     let countQuery = supabase
       .schema("contracts")
