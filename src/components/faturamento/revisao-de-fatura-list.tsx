@@ -214,6 +214,20 @@ function hoursToMinutes(value: number | null | undefined) {
   return Math.max(0, Math.round(Number(value || 0) * 60))
 }
 
+function splitMinutosTotal(total: number | string | null | undefined) {
+  const parsed = Number(total || 0)
+  if (Number.isNaN(parsed) || parsed < 0) return { horas: '0', minutos: '0' }
+  const inteiro = Math.floor(parsed)
+  return { horas: String(Math.floor(inteiro / 60)), minutos: String(inteiro % 60) }
+}
+
+function computeMinutosFromHHMM(horas: string, minutos: string) {
+  const h = Math.max(0, Math.floor(Number(horas || 0)))
+  const mRaw = Math.max(0, Math.floor(Number(minutos || 0)))
+  const m = Math.min(mRaw, 60)
+  return h * 60 + m
+}
+
 function normalizeDateInput(value: string) {
   if (!value) return ''
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
@@ -1852,13 +1866,38 @@ export default function RevisaoDeFaturaList() {
                                                                               />
                                                                             </div>
                                                                             <div>
-                                                                              <label className="mb-1 block text-xs text-slate-500">Minutos</label>
-                                                                              <Input
-                                                                                value={String(revisedMinutes)}
-                                                                                onChange={(event) => syncTimesheetRow(item.id, row.id, { horasRevisadas: minutesToHoursString(event.target.value) })}
-                                                                                inputMode="numeric"
-                                                                                disabled={busy}
-                                                                              />
+                                                                              <label className="mb-1 block text-xs text-slate-500">Duração</label>
+                                                                              {(() => {
+                                                                                const split = splitMinutosTotal(revisedMinutes)
+                                                                                const syncHHMM = (h: string, m: string) => {
+                                                                                  const totalMin = computeMinutosFromHHMM(h, m)
+                                                                                  syncTimesheetRow(item.id, row.id, { horasRevisadas: minutesToHoursString(String(totalMin)) })
+                                                                                }
+                                                                                return (
+                                                                                  <div className="flex items-center gap-2">
+                                                                                    <Input
+                                                                                      value={split.horas}
+                                                                                      onChange={(event) => syncHHMM(sanitizeMinutesInput(event.target.value), split.minutos)}
+                                                                                      inputMode="numeric"
+                                                                                      placeholder="h"
+                                                                                      disabled={busy}
+                                                                                      className="w-16 text-center"
+                                                                                      aria-label="Horas"
+                                                                                    />
+                                                                                    <span className="text-xs text-slate-500">h</span>
+                                                                                    <Input
+                                                                                      value={split.minutos}
+                                                                                      onChange={(event) => syncHHMM(split.horas, sanitizeMinutesInput(event.target.value))}
+                                                                                      inputMode="numeric"
+                                                                                      placeholder="min"
+                                                                                      disabled={busy}
+                                                                                      className="w-16 text-center"
+                                                                                      aria-label="Minutos"
+                                                                                    />
+                                                                                    <span className="text-xs text-slate-500">min</span>
+                                                                                  </div>
+                                                                                )
+                                                                              })()}
                                                                             </div>
                                                                             <div className="md:col-span-2">
                                                                               <label className="mb-1 block text-xs text-slate-500">Texto</label>
