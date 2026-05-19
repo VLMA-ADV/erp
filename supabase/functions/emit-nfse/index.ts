@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
     const ref = `vlma-${Date.now()}`
 
     const codigoMunicipio = Deno.env.get("FOCUS_NFE_CODIGO_MUNICIPIO") ?? "4106902" // Curitiba
+    const nfseEndpoint = Deno.env.get("FOCUS_NFE_ENDPOINT") ?? "nfsen" // nfse | nfsen (Curitiba usa NFS-e Nacional)
 
     const nfsePayload: Record<string, unknown> = {
       prestador: {
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
       },
     }
 
-    const focusResp = await fetch(`${focusBase}/v2/nfse?ref=${ref}`, {
+    const focusResp = await fetch(`${focusBase}/v2/${nfseEndpoint}?ref=${ref}`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${btoa(focusToken + ":")}`,
