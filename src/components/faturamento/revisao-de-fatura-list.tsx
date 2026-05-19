@@ -1352,6 +1352,7 @@ export default function RevisaoDeFaturaList() {
 
       success('Item avançado com sucesso.')
       await loadItems()
+      void loadApprovedItems()
       return true
     } catch (advanceError) {
       console.error(advanceError)
