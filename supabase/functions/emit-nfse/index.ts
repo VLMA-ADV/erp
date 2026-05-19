@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
 
     // Calcular valor total e discriminação
     const valorTotal = items.reduce((sum: number, item: any) => {
-      return sum + Number(item.valor_aprovado ?? item.valor_revisado ?? item.valor ?? 0)
+      return sum + Number(item.valor_aprovado ?? item.valor_revisado ?? 0)
     }, 0)
 
     const discriminacaoSet = new Set<string>()
@@ -97,10 +97,13 @@ Deno.serve(async (req) => {
 
     const ref = `vlma-${Date.now()}`
 
+    const codigoMunicipio = Deno.env.get("FOCUS_NFE_CODIGO_MUNICIPIO") ?? "4106902" // Curitiba
+
     const nfsePayload: Record<string, unknown> = {
       prestador: {
         cnpj: cnpjPrestador,
         inscricao_municipal: inscricaoMunicipal,
+        codigo_municipio: codigoMunicipio,
       },
       servico: {
         valor_servicos: valorTotal.toFixed(2),
