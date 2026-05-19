@@ -100,19 +100,16 @@ Deno.serve(async (req) => {
     const codigoMunicipio = Deno.env.get("FOCUS_NFE_CODIGO_MUNICIPIO") ?? "4106902" // Curitiba
     const nfseEndpoint = Deno.env.get("FOCUS_NFE_ENDPOINT") ?? "nfsen" // nfse | nfsen (Curitiba usa NFS-e Nacional)
 
+    // Payload NFS-e Nacional (/v2/nfsen): campos no nível raiz, não aninhados em prestador
     const nfsePayload: Record<string, unknown> = {
-      prestador: {
-        cnpj: cnpjPrestador,
-        inscricao_municipal: inscricaoMunicipal,
-        codigo_municipio: codigoMunicipio,
-      },
-      servico: {
-        valor_servicos: valorTotal.toFixed(2),
-        discriminacao,
-        item_lista_servico: itemListaServico,
-        aliquota,
-        ...(codigoTributario ? { codigo_tributario_municipio: codigoTributario } : {}),
-      },
+      cnpj_prestador: cnpjPrestador,
+      inscricao_municipal_prestador: inscricaoMunicipal,
+      codigo_municipio_prestador: codigoMunicipio,
+      valor_servicos: valorTotal.toFixed(2),
+      discriminacao,
+      codigo_item_lista_servico: itemListaServico,
+      aliquota_iss: aliquota,
+      ...(codigoTributario ? { codigo_tributario_municipio: codigoTributario } : {}),
     }
 
     const focusResp = await fetch(`${focusBase}/v2/${nfseEndpoint}?ref=${ref}`, {
