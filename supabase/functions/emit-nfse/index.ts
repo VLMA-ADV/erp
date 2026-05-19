@@ -55,21 +55,13 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Buscar itens aprovados (finance schema exposto via migration 20260519110000)
-    let query = supabase
-      .schema("finance")
-      .from("billing_items")
-      .select("id, contrato_id, caso_id, valor_aprovado, valor_revisado, valor, snapshot, status")
-      .eq("tenant_id", tenantId as string)
-      .eq("status", "aprovado")
+    // Buscar itens aprovados via RPC (evita schema routing do PostgREST)
+    const { data: items, error: itemsError } = await supabase.rpc("get_billing_items_aprovados", {
+      p_tenant_id:   tenantId as string,
+      p_contrato_id: contrato_id   ?? null,
+      p_item_ids:    billing_item_ids?.length ? billing_item_ids : null,
+    })
 
-    if (contrato_id) {
-      query = query.eq("contrato_id", contrato_id)
-    } else {
-      query = query.in("id", billing_item_ids!)
-    }
-
-    const { data: items, error: itemsError } = await query
     if (itemsError || !items || items.length === 0) {
       return new Response(JSON.stringify({ error: "Nenhum item aprovado encontrado para este contrato" }), {
         status: 404,
@@ -78,7 +70,7 @@ Deno.serve(async (req) => {
     }
 
     // Calcular valor total e discriminação
-    const valorTotal = items.reduce((sum, item: any) => {
+    const valorTotal = items.reduce((sum: number, item: any) => {
       return sum + Number(item.valor_aprovado ?? item.valor_revisado ?? item.valor ?? 0)
     }, 0)
 
@@ -132,27 +124,22 @@ Deno.serve(async (req) => {
     const accepted = focusResp.status === 201 || focusResp.status === 200
     const focusStatus = accepted ? "pendente" : "erro"
 
-    // Registrar nota em billing_notes
-    const { data: noteData } = await supabase
-      .schema("finance")
-      .from("billing_notes")
-      .insert({
-        tenant_id: tenantId as string,
-        contrato_id: (items[0] as any).contrato_id,
-        tipo_documento: "nota_fiscal_servico",
-        status: accepted ? "gerado" : "cancelado",
-        focus_ref: ref,
-        focus_status: focusStatus,
-        metadata: {
-          focus_response: focusBody,
-          item_ids: items.map((i: any) => i.id),
-          valor_total: valorTotal,
-          discriminacao,
-        },
-        created_by: user.id,
-      })
-      .select("id")
-      .single()
+    // Registrar nota via RPC (evita schema routing do PostgREST)
+    const { data: noteId } = await supabase.rpc("insert_billing_note", {
+      p_tenant_id:      tenantId as string,
+      p_contrato_id:    (items[0] as any).contrato_id,
+      p_tipo_documento: "nota_fiscal_servico",
+      p_status:         accepted ? "gerado" : "cancelado",
+      p_focus_ref:      ref,
+      p_focus_status:   focusStatus,
+      p_metadata:       {
+        focus_response: focusBody,
+        item_ids:       items.map((i: any) => i.id),
+        valor_total:    valorTotal,
+        discriminacao,
+      },
+      p_created_by: user.id,
+    })
 
     if (!accepted) {
       return new Response(
@@ -166,8 +153,8 @@ Deno.serve(async (req) => {
         ok: true,
         ref,
         focus_status: focusStatus,
-        nota_id: noteData?.id ?? null,
-        valor_total: valorTotal,
+        nota_id:      noteId ?? null,
+        valor_total:  valorTotal,
         focus_response: focusBody,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
