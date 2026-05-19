@@ -33,17 +33,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Resolve tenant
-    const { data: tenantUser } = await supabase
-      .schema("core")
-      .from("tenant_users")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .eq("status", "ativo")
-      .limit(1)
-      .single()
-
-    if (!tenantUser) {
+    // Resolve tenant via RPC (core schema não exposto no PostgREST)
+    const { data: tenantId, error: tenantError } = await supabase.rpc("get_tenant_for_user", { p_user_id: user.id })
+    if (tenantError || !tenantId) {
       return new Response(JSON.stringify({ error: "Usuário não associado a tenant" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -63,12 +55,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Buscar itens aprovados
+    // Buscar itens aprovados (finance schema exposto via migration 20260519110000)
     let query = supabase
       .schema("finance")
       .from("billing_items")
       .select("id, contrato_id, caso_id, valor_aprovado, valor_revisado, valor, snapshot, status")
-      .eq("tenant_id", tenantUser.tenant_id)
+      .eq("tenant_id", tenantId as string)
       .eq("status", "aprovado")
 
     if (contrato_id) {
@@ -145,7 +137,7 @@ Deno.serve(async (req) => {
       .schema("finance")
       .from("billing_notes")
       .insert({
-        tenant_id: tenantUser.tenant_id,
+        tenant_id: tenantId as string,
         contrato_id: (items[0] as any).contrato_id,
         tipo_documento: "nota_fiscal_servico",
         status: accepted ? "gerado" : "cancelado",
