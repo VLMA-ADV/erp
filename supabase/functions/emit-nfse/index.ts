@@ -105,6 +105,7 @@ Deno.serve(async (req) => {
       cnpj_prestador: cnpjPrestador,
       inscricao_municipal_prestador: inscricaoMunicipal,
       codigo_municipio_prestador: codigoMunicipio,
+      codigo_municipio_emissora: codigoMunicipio,
       valor_servicos: valorTotal.toFixed(2),
       discriminacao,
       codigo_item_lista_servico: itemListaServico,
