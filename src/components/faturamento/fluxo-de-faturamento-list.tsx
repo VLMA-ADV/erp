@@ -8,6 +8,7 @@ import {
   DollarSign,
   Eye,
   Loader2,
+  Pencil,
   Send,
   Undo2,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ import {
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
@@ -98,6 +100,8 @@ interface ResumoCasoDialogRow {
   horasInformadas: number | null
   horasRevisadas: number | null
   valorFinal: number | null
+  billingItemId: string | null
+  timesheetId: string | null
 }
 
 function toObject(value: unknown): Record<string, unknown> | null {
@@ -445,6 +449,7 @@ function parseTimesheetRowsForDialog(item: RevisaoItem) {
       const row = toObject(entry)
       if (!row) return null
       return {
+        timesheetId: asText(row.id) || null,
         data: asText(row.data_lancamento),
         profissional: asText(row.profissional),
         atividade: asText(row.atividade ?? row.descricao),
@@ -504,6 +509,8 @@ function buildResumoCasoDialogRows(resumoCasoGroup: {
           Number.isFinite(row.horasRevisadas) && Number.isFinite(row.valorHora)
             ? row.horasRevisadas * row.valorHora
             : null,
+        billingItemId: itemRow.id,
+        timesheetId: row.timesheetId,
       }))
     }
 
@@ -520,6 +527,8 @@ function buildResumoCasoDialogRows(resumoCasoGroup: {
         horasInformadas: itemRow.horas_informadas,
         horasRevisadas: itemRow.horas_revisadas,
         valorFinal: getEffectiveValue(itemRow),
+        billingItemId: itemRow.id,
+        timesheetId: null,
       },
     ]
   })
@@ -548,6 +557,13 @@ export default function FluxoDeFaturamentoList() {
   const [transferItemId, setTransferItemId] = useState<string | null>(null)
   const [transferCasoId, setTransferCasoId] = useState('')
   const [transferring, setTransferring] = useState(false)
+
+  const [editAtividadeTarget, setEditAtividadeTarget] = useState<
+    | { billingItemId: string; timesheetId: string; profissional: string; data: string }
+    | null
+  >(null)
+  const [editAtividadeTexto, setEditAtividadeTexto] = useState('')
+  const [savingAtividade, setSavingAtividade] = useState(false)
 
   const loadContratosEmRevisao = async () => {
     try {
@@ -903,6 +919,52 @@ export default function FluxoDeFaturamentoList() {
       toastError('Erro ao devolver para revisão')
     } finally {
       setDevolvendo(false)
+    }
+  }
+
+  const abrirEdicaoAtividade = (row: ResumoCasoDialogRow) => {
+    if (!row.billingItemId || !row.timesheetId) return
+    setEditAtividadeTarget({
+      billingItemId: row.billingItemId,
+      timesheetId: row.timesheetId,
+      profissional: row.profissional,
+      data: row.data,
+    })
+    setEditAtividadeTexto(row.atividade === '—' ? '' : row.atividade)
+  }
+
+  const salvarEdicaoAtividade = async () => {
+    if (!editAtividadeTarget) return
+    setSavingAtividade(true)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) {
+        toastError('Sessão expirada. Recarregue a página.')
+        return
+      }
+
+      const { error: rpcError } = await supabase.rpc('atualizar_atividade_billing_item_snapshot', {
+        p_user_id: session.user.id,
+        p_billing_item_id: editAtividadeTarget.billingItemId,
+        p_timesheet_id: editAtividadeTarget.timesheetId,
+        p_atividade: editAtividadeTexto,
+      })
+
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao salvar atividade')
+        return
+      }
+
+      success('Atividade atualizada.')
+      setEditAtividadeTarget(null)
+      setEditAtividadeTexto('')
+      await loadContratosEmRevisao()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao salvar atividade')
+    } finally {
+      setSavingAtividade(false)
     }
   }
 
@@ -1396,6 +1458,7 @@ export default function FluxoDeFaturamentoList() {
                     <th className="px-3 py-2 text-right">Horas informadas</th>
                     <th className="px-3 py-2 text-right">Horas revisadas</th>
                     <th className="px-3 py-2 text-right">Valor final</th>
+                    <th className="px-3 py-2 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1412,11 +1475,25 @@ export default function FluxoDeFaturamentoList() {
                         <td className="px-3 py-2 text-right">{formatNullableHours(row.horasInformadas)}</td>
                         <td className="px-3 py-2 text-right">{formatNullableHours(row.horasRevisadas)}</td>
                         <td className="px-3 py-2 text-right">{formatNullableMoney(row.valorFinal)}</td>
+                        <td className="px-3 py-2 text-center">
+                          {row.timesheetId ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => abrirEdicaoAtividade(row)}
+                              title="Editar texto da atividade"
+                              className="h-7 w-7 p-0"
+                              disabled={devolvendo}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={11} className="px-3 py-6 text-center text-muted-foreground">
                         Nenhum item encontrado para este caso.
                       </td>
                     </tr>
@@ -1441,6 +1518,56 @@ export default function FluxoDeFaturamentoList() {
             >
               {devolvendo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Undo2 className="mr-2 h-4 w-4" />}
               Devolver para revisão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!editAtividadeTarget}
+        onOpenChange={(open) => {
+          if (!open && !savingAtividade) {
+            setEditAtividadeTarget(null)
+            setEditAtividadeTexto('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar atividade</DialogTitle>
+            <DialogDescription>
+              {editAtividadeTarget
+                ? `${editAtividadeTarget.profissional} · ${editAtividadeTarget.data}`
+                : ''}
+              <span className="mt-1 block text-xs text-amber-700">
+                Apenas o texto da atividade é alterado. Valor, horas e responsáveis permanecem inalterados.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label className="text-xs font-medium text-slate-600">Texto da atividade</label>
+            <Textarea
+              value={editAtividadeTexto}
+              onChange={(event) => setEditAtividadeTexto(event.target.value)}
+              rows={6}
+              disabled={savingAtividade}
+              placeholder="Descrição da atividade..."
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditAtividadeTarget(null)
+                setEditAtividadeTexto('')
+              }}
+              disabled={savingAtividade}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={() => void salvarEdicaoAtividade()} disabled={savingAtividade}>
+              {savingAtividade ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>
