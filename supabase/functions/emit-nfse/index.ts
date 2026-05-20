@@ -10,6 +10,17 @@ function digits(v: string | null | undefined): string {
   return (v ?? "").replace(/\D/g, "")
 }
 
+// Retorna data ISO em BRT (-03:00) com buffer de segundos no passado.
+// Necessário porque a SPED valida que data_emissao <= timestamp do processamento;
+// quando enviada em UTC com `Z`, o servidor SPED pode interpretar como futuro
+// pela diferença de fuso/relógio. Erro E0008 observado em homologação Curitiba.
+function isoBrt(secondsAgo: number = 60): string {
+  const ms = Date.now() - secondsAgo * 1000 - 3 * 60 * 60 * 1000
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}-03:00`
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
@@ -78,9 +89,12 @@ Deno.serve(async (req) => {
     const focusBase = cfg.focus_env === "production" ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br"
     const ref = `vlma-${tenantId}-${contrato_id}-${Date.now()}`
 
+    const dataEmissao = isoBrt(60) // 60s no passado em BRT (-03:00) — evita erro E0008 SPED
+    const dataCompetencia = dataEmissao.slice(0, 10)
+
     const nfsePayload: Record<string, unknown> = {
-      data_emissao: new Date().toISOString(),
-      data_competencia: new Date().toISOString().slice(0, 10),
+      data_emissao: dataEmissao,
+      data_competencia: dataCompetencia,
       serie_dps: cfg.serie_dps,
       numero_dps: String(numeroDps ?? 1),
 
