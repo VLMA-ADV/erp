@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Clock, FileText, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Eye, FileText, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissions } from '@/lib/hooks/use-permissions'
+import NfsePreviewDialog from './nfse-preview-dialog'
 
 interface RevisaoItem {
   id: string
@@ -639,6 +640,7 @@ export default function RevisaoDeFaturaList() {
   const [approvedItems, setApprovedItems] = useState<RevisaoItem[]>([])
   const [emittingNfse, setEmittingNfse] = useState<string | null>(null)
   const [nfseResult, setNfseResult] = useState<{ ref: string; valor_total: number; focus_response: Record<string, unknown> } | null>(null)
+  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string; itemIds: string[] } | null>(null)
 
   const canRead =
     hasPermission('finance.faturamento.read') ||
@@ -2140,15 +2142,29 @@ export default function RevisaoDeFaturaList() {
                         {group.items.length} item(ns) · {valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      className="bg-green-700 hover:bg-green-800 text-white"
-                      disabled={isBusy}
-                      onClick={() => void emitNfse(contratoId, group.items.map((i) => i.id))}
-                    >
-                      {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                      Emitir NFS-e
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                        onClick={() => setNfsePreview({
+                          contratoId,
+                          label: `${group.numero ? `${group.numero} — ` : ''}${group.nome}`,
+                          itemIds: group.items.map((i) => i.id),
+                        })}
+                      >
+                        <Eye className="mr-2 h-4 w-4" /> Visualizar prévia
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-green-700 hover:bg-green-800 text-white"
+                        disabled={isBusy}
+                        onClick={() => void emitNfse(contratoId, group.items.map((i) => i.id))}
+                      >
+                        {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                        Emitir NFS-e
+                      </Button>
+                    </div>
                   </div>
                 )
               })}
@@ -2156,6 +2172,20 @@ export default function RevisaoDeFaturaList() {
           </div>
         )
       })()}
+
+      {/* Dialog: prévia rascunho NFS-e (camada anterior pedida pelo Filipe) */}
+      <NfsePreviewDialog
+        open={nfsePreview !== null}
+        contratoId={nfsePreview?.contratoId ?? null}
+        contratoLabel={nfsePreview?.label}
+        onClose={() => setNfsePreview(null)}
+        onConfirmEmit={() => {
+          if (!nfsePreview) return
+          const { contratoId, itemIds } = nfsePreview
+          setNfsePreview(null)
+          void emitNfse(contratoId, itemIds)
+        }}
+      />
 
       {/* Dialog: resultado da emissão Focus NFe */}
       <Dialog open={nfseResult !== null} onOpenChange={(open) => { if (!open) setNfseResult(null) }}>
