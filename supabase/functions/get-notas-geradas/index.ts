@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
     let notesQuery = supabase
       .schema("finance")
       .from("billing_notes")
-      .select("id, numero, status, tipo_documento, arquivo_nome, arquivo_url, metadata, created_at, created_by, billing_batch_id, contrato_id, caso_id")
+      .select("id, numero, status, tipo_documento, arquivo_nome, arquivo_url, metadata, created_at, created_by, billing_batch_id, contrato_id, caso_id, focus_ref, focus_status")
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .limit(limit)
@@ -192,6 +192,8 @@ Deno.serve(async (req) => {
         caso_id: note.caso_id,
         caso_numero: caso?.numero ?? null,
         caso_nome: caso?.nome ?? null,
+        focus_ref: note.focus_ref ?? null,
+        focus_status: note.focus_status ?? null,
       }
     })
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Loader2, Search } from 'lucide-react'
+import { Loader2, RefreshCw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,8 @@ interface NotaGerada {
   contrato_nome: string | null
   caso_numero: number | null
   caso_nome: string | null
+  focus_ref: string | null
+  focus_status: string | null
 }
 
 const tipoDocumentoOptions = [
@@ -82,6 +84,14 @@ function getContractCaseLabel(note: NotaGerada) {
   return `${contrato} • ${caso}`
 }
 
+function getFocusStatusColor(focusStatus: string | null) {
+  if (!focusStatus) return ''
+  if (focusStatus === 'autorizada') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (focusStatus === 'rejeitada' || focusStatus === 'erro') return 'border-red-200 bg-red-50 text-red-700'
+  if (focusStatus === 'cancelada') return 'border-gray-200 bg-gray-50 text-gray-700'
+  return 'border-amber-200 bg-amber-50 text-amber-800' // pendente, processando_autorizacao, etc.
+}
+
 export default function NotasGeradasList() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -90,6 +100,7 @@ export default function NotasGeradasList() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState('')
+  const [refreshingNote, setRefreshingNote] = useState<string | null>(null)
 
   const loadNotes = async (isRefresh = false) => {
     try {
@@ -172,6 +183,30 @@ export default function NotasGeradasList() {
     }, 0)
   }
 
+  const refreshNfseStatus = async (note: NotaGerada) => {
+    if (!note.focus_ref) return
+    try {
+      setRefreshingNote(note.id)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-nfse-status?ref=${encodeURIComponent(note.focus_ref)}`,
+        { headers: { Authorization: `Bearer ${session.access_token}` } },
+      )
+      const payload = await response.json().catch(() => ({}))
+      const novoStatus = payload?.focus?.status as string | undefined
+      if (novoStatus && novoStatus !== note.focus_status) {
+        setNotes((prev) => prev.map((n) => (n.id === note.id ? { ...n, focus_status: novoStatus } : n)))
+      }
+    } catch (err) {
+      console.error('refreshNfseStatus', err)
+    } finally {
+      setRefreshingNote(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <form onSubmit={handleSubmitFilters} className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-4">
@@ -234,6 +269,7 @@ export default function NotasGeradasList() {
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Contrato / Caso</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Lote</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Arquivo</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">NFS-e Focus</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Metadados</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gerado em</th>
             </tr>
@@ -241,7 +277,7 @@ export default function NotasGeradasList() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
                   <span className="inline-flex items-center">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Carregando notas geradas...
@@ -250,7 +286,7 @@ export default function NotasGeradasList() {
               </tr>
             ) : notes.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
                   Nenhuma nota encontrada para os filtros informados.
                 </td>
               </tr>
@@ -278,6 +314,30 @@ export default function NotasGeradasList() {
                       </a>
                     ) : (
                       <span className="text-gray-500">-</span>
+                    )}
+                  </td>
+                  <td className="p-2 text-xs">
+                    {note.focus_ref ? (
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={getFocusStatusColor(note.focus_status)}>{note.focus_status || '—'}</Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0"
+                          title="Atualizar status no Focus NFe"
+                          onClick={() => void refreshNfseStatus(note)}
+                          disabled={refreshingNote === note.id}
+                        >
+                          {refreshingNote === note.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">—</span>
                     )}
                   </td>
                   <td className="p-2 text-xs text-gray-600">{formatMetadata(note.metadata)}</td>

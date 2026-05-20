@@ -625,6 +625,23 @@ export default function RevisaoDeFaturaList() {
   const [approvedItems, setApprovedItems] = useState<RevisaoItem[]>([])
   const [emittingNfse, setEmittingNfse] = useState<string | null>(null)
   const [nfseResult, setNfseResult] = useState<{ ref: string; valor_total: number; focus_response: Record<string, unknown> } | null>(null)
+  const [nfsePreview, setNfsePreview] = useState<{
+    contratoId: string
+    itemIds: string[]
+    loading: boolean
+    valorBruto: number
+    aliquotaIss: number
+    valorIss: number
+    tipoTomador: 'pj' | 'pf' | null
+    pctFederais: number
+    pctEstaduais: number
+    pctMunicipais: number
+    valorLiquido: number
+    tomadorNome: string
+    contratoNome: string
+    grupoNome: string | null
+    grupoMissing: boolean
+  } | null>(null)
 
   const canRead =
     hasPermission('finance.faturamento.read') ||
@@ -797,6 +814,77 @@ export default function RevisaoDeFaturaList() {
     } catch (loadError) {
       console.error('loadApprovedItems', loadError)
     }
+  }
+
+  const openNfsePreview = async (contratoId: string, itemIds: string[]) => {
+    try {
+      const supabase = createClient()
+      const contratoApprovedItems = approvedItems.filter((i) => i.contratoId === contratoId)
+      const valorBruto = contratoApprovedItems.reduce((s, i) => s + Number(i.valorAprovado ?? i.valorRevisado ?? 0), 0)
+      setNfsePreview({
+        contratoId,
+        itemIds,
+        loading: true,
+        valorBruto,
+        aliquotaIss: 0,
+        valorIss: 0,
+        tipoTomador: null,
+        pctFederais: 0,
+        pctEstaduais: 0,
+        pctMunicipais: 0,
+        valorLiquido: valorBruto,
+        tomadorNome: contratoApprovedItems[0]?.clienteNome || '',
+        contratoNome: contratoApprovedItems[0]?.contratoNome || '',
+        grupoNome: null,
+        grupoMissing: false,
+      })
+
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: tenantId } = await supabase.rpc('get_tenant_for_user', { p_user_id: user?.id })
+      const { data: dataset } = await supabase.rpc('get_billing_items_aprovados_full', {
+        p_tenant_id: tenantId,
+        p_contrato_id: contratoId,
+      })
+
+      const grupo = (dataset?.grupo_imposto || null) as any
+      const tomador = (dataset?.tomador || null) as any
+      const aliquotaIss = Number(grupo?.aliquota_iss ?? 0)
+      const pctFederais = Number(grupo?.pct_trib_federais ?? 0)
+      const pctEstaduais = Number(grupo?.pct_trib_estaduais ?? 0)
+      const pctMunicipais = Number(grupo?.pct_trib_municipais ?? 0)
+      const valorIss = Math.round(valorBruto * aliquotaIss) / 100
+      const valorLiquido = Math.round((valorBruto - valorIss) * 100) / 100
+      const tipoTomador = tomador?.cnpj && String(tomador.cnpj).replace(/\D/g, '').length === 14 ? 'pj' : 'pf'
+
+      setNfsePreview({
+        contratoId,
+        itemIds,
+        loading: false,
+        valorBruto,
+        aliquotaIss,
+        valorIss,
+        tipoTomador,
+        pctFederais,
+        pctEstaduais,
+        pctMunicipais,
+        valorLiquido,
+        tomadorNome: tomador?.nome || contratoApprovedItems[0]?.clienteNome || '',
+        contratoNome: contratoApprovedItems[0]?.contratoNome || '',
+        grupoNome: grupo?.nome || null,
+        grupoMissing: !grupo || !grupo.codigo_nbs || !grupo.aliquota_iss,
+      })
+    } catch (err) {
+      console.error('openNfsePreview', err)
+      toastError('Erro ao carregar preview da NFS-e')
+      setNfsePreview(null)
+    }
+  }
+
+  const confirmAndEmitNfse = async () => {
+    if (!nfsePreview) return
+    const { contratoId, itemIds } = nfsePreview
+    setNfsePreview(null)
+    await emitNfse(contratoId, itemIds)
   }
 
   const emitNfse = async (contratoId: string, itemIds: string[]) => {
@@ -2106,10 +2194,10 @@ export default function RevisaoDeFaturaList() {
                       size="sm"
                       className="bg-green-700 hover:bg-green-800 text-white"
                       disabled={isBusy}
-                      onClick={() => void emitNfse(contratoId, group.items.map((i) => i.id))}
+                      onClick={() => void openNfsePreview(contratoId, group.items.map((i) => i.id))}
                     >
                       {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                      Emitir NFS-e
+                      Calcular e emitir NFS-e
                     </Button>
                   </div>
                 )
@@ -2118,6 +2206,89 @@ export default function RevisaoDeFaturaList() {
           </div>
         )
       })()}
+
+      {/* Dialog: preview de valor líquido antes de emitir */}
+      <Dialog open={nfsePreview !== null} onOpenChange={(open) => { if (!open) setNfsePreview(null) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-slate-700" />
+              Revisão antes da emissão da NFS-e
+            </DialogTitle>
+          </DialogHeader>
+          {nfsePreview && (
+            <div className="space-y-3 text-sm">
+              {nfsePreview.loading ? (
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Carregando dados fiscais...
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border bg-slate-50 p-3">
+                    <p className="text-xs text-slate-500">Tomador</p>
+                    <p className="font-medium text-slate-900">{nfsePreview.tomadorNome}</p>
+                    <p className="text-xs text-slate-500 mt-2">Contrato</p>
+                    <p className="font-medium text-slate-900">{nfsePreview.contratoNome}</p>
+                    <p className="text-xs text-slate-500 mt-2">Grupo de impostos</p>
+                    <p className="text-slate-900">{nfsePreview.grupoNome || <span className="text-red-600">— não configurado —</span>}</p>
+                    <p className="text-xs text-slate-500 mt-2">Tipo do tomador (inferido pelo CNPJ/CPF)</p>
+                    <p className="text-slate-900 uppercase">{nfsePreview.tipoTomador || '—'}</p>
+                  </div>
+
+                  {nfsePreview.grupoMissing ? (
+                    <Alert className="border-red-300 bg-red-50 text-red-700">
+                      <AlertTitle>Contrato sem grupo de impostos configurado</AlertTitle>
+                      <AlertDescription>
+                        Selecione um grupo de impostos no contrato com `aliquota_iss`, `codigo_nbs` e `codigo_tributacao_nacional_iss` preenchidos antes de emitir.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <div className="rounded-lg border bg-white p-3">
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-slate-600">Valor bruto dos serviços</span>
+                        <span className="font-semibold text-slate-900">
+                          {nfsePreview.valorBruto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-slate-600">
+                          ISS retido ({nfsePreview.aliquotaIss.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%)
+                        </span>
+                        <span className="text-red-600">
+                          - {nfsePreview.valorIss.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </div>
+                      <div className="border-t pt-2 mt-1 flex justify-between text-base">
+                        <span className="font-semibold text-slate-900">Valor líquido estimado</span>
+                        <span className="font-bold text-emerald-700">
+                          {nfsePreview.valorLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </div>
+                      <div className="mt-3 rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
+                        <p className="font-medium">Informativo IBPT (Lei 12.741):</p>
+                        <p>Tributos federais: {nfsePreview.pctFederais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}% · estaduais: {nfsePreview.pctEstaduais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}% · municipais: {nfsePreview.pctMunicipais.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%</p>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500 italic">
+                        Retenções adicionais (IRRF, INSS, PIS/COFINS/CSLL) variam conforme regime e limites de PF/PJ — a definir com financeiro. O ISS acima é a única retenção aplicada no XML enviado ao Focus NFe.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          <DialogFooter className="flex justify-between gap-2">
+            <Button variant="outline" onClick={() => setNfsePreview(null)}>Cancelar</Button>
+            <Button
+              className="bg-green-700 hover:bg-green-800 text-white"
+              disabled={!nfsePreview || nfsePreview.loading || nfsePreview.grupoMissing}
+              onClick={() => void confirmAndEmitNfse()}
+            >
+              <FileText className="mr-2 h-4 w-4" /> Confirmar e emitir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: resultado da emissão Focus NFe */}
       <Dialog open={nfseResult !== null} onOpenChange={(open) => { if (!open) setNfseResult(null) }}>
@@ -2136,7 +2307,7 @@ export default function RevisaoDeFaturaList() {
                 <p className="text-green-700">Valor: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
               </div>
               <p className="text-xs text-slate-500">
-                A nota foi enviada à Focus NFe em modo homologação. Consulte o painel da Focus NFe para acompanhar o status.
+                A nota foi enviada à Focus NFe em modo homologação. Consulte em <a href="/financeiro/notas-geradas" className="underline text-blue-700">Notas geradas</a> ou no painel da Focus NFe.
               </p>
             </div>
           )}
