@@ -4,11 +4,12 @@
 
 @layer base {
   :root {
-    /* Surfaces (Stripe canvas/canvas-soft adaptados) */
+    /* Surfaces (Stripe canvas/canvas-soft/canvas-cream) */
     --background: 0 0% 100%;             /* #ffffff canvas */
     --canvas: 0 0% 100%;
     --canvas-soft: 214 50% 97%;          /* #f6f9fc cool off-white */
-    --foreground: 212 64% 14%;           /* #0d253d ink — VLMA navy */
+    --canvas-cream: 38 67% 90%;          /* #f5e9d4 warm cream band */
+    --foreground: 212 64% 14%;           /* #0d253d ink */
     --card: 0 0% 100%;
     --card-foreground: 212 64% 14%;
     --popover: 0 0% 100%;
@@ -19,9 +20,16 @@
     --ink-secondary: 213 35% 24%;        /* #273951 */
     --ink-mute: 217 16% 47%;             /* #64748d helper/caption */
 
-    /* Primary = VLMA navy (mais sério que indigo do Stripe) */
-    --primary: 212 64% 14%;              /* #0d253d ink */
+    /* Primary = Stripe indigo elétrico (#533afd) — CTA assinatura */
+    --primary: 247 98% 61%;              /* #533afd */
     --primary-foreground: 0 0% 100%;
+    --primary-deep: 244 67% 52%;         /* #4434d4 hover */
+    --primary-press: 242 53% 36%;        /* #2e2b8c pressed */
+    --primary-soft-bg: 240 92% 86%;      /* #b9b9f9 soft pill bg */
+    --primary-soft-fg: 244 67% 52%;      /* #4434d4 soft pill text */
+
+    /* Brand dark (featured surfaces, sidebar fundo) */
+    --brand-dark: 237 49% 22%;           /* #1c1e54 */
 
     /* Secondary = canvas-soft (botão neutro sobre claro) */
     --secondary: 214 50% 97%;
@@ -31,8 +39,8 @@
     --muted: 214 50% 97%;
     --muted-foreground: 217 16% 47%;
 
-    /* Accent = teal-navy sutil (single brand accent) */
-    --accent: 199 56% 25%;               /* #1c4e64 */
+    /* Accent = teal-navy sutil */
+    --accent: 199 56% 25%;
     --accent-foreground: 0 0% 100%;
 
     /* Destructive = ruby Stripe (#ea2261) */
@@ -44,7 +52,7 @@
     --hairline: 214 23% 91%;
     --input: 210 47% 76%;                /* #a8c3de form border */
     --hairline-input: 210 47% 76%;
-    --ring: 212 64% 14%;                 /* focus = primary */
+    --ring: 247 98% 61%;                 /* focus = primary indigo */
 
     --radius: 0.75rem;                   /* 12px (Stripe rounded.lg para cards) */
   }
@@ -53,6 +61,7 @@
     --background: 214 50% 6%;
     --canvas: 214 50% 6%;
     --canvas-soft: 213 35% 12%;
+    --canvas-cream: 38 30% 20%;
     --foreground: 0 0% 98%;
     --card: 214 50% 6%;
     --card-foreground: 0 0% 98%;
@@ -63,8 +72,14 @@
     --ink-secondary: 214 23% 80%;
     --ink-mute: 217 16% 60%;
 
-    --primary: 0 0% 98%;
-    --primary-foreground: 212 64% 14%;
+    --primary: 247 98% 68%;
+    --primary-foreground: 0 0% 100%;
+    --primary-deep: 244 67% 60%;
+    --primary-press: 242 53% 45%;
+    --primary-soft-bg: 240 50% 25%;
+    --primary-soft-fg: 240 92% 86%;
+    --brand-dark: 237 49% 18%;
+
     --secondary: 213 35% 14%;
     --secondary-foreground: 0 0% 98%;
     --muted: 213 35% 14%;
@@ -77,7 +92,7 @@
     --hairline: 213 35% 18%;
     --input: 213 35% 22%;
     --hairline-input: 213 35% 22%;
-    --ring: 0 0% 98%;
+    --ring: 247 98% 68%;
   }
 }
 
@@ -119,5 +134,27 @@
     letter-spacing: 0.075em;
     text-transform: uppercase;
     color: hsl(var(--ink-mute));
+  }
+
+  /* Gradient mesh atmosphere — assinatura visual Stripe.
+     Cream → sherbet orange → lavanda → indigo → ruby, no terço superior. */
+  .gradient-mesh {
+    background-image:
+      radial-gradient(at 5% 0%, hsl(38 80% 88% / 0.95) 0px, transparent 55%),
+      radial-gradient(at 28% 0%, hsl(24 90% 84% / 0.85) 0px, transparent 55%),
+      radial-gradient(at 52% 0%, hsl(265 65% 90% / 0.85) 0px, transparent 55%),
+      radial-gradient(at 76% 0%, hsl(247 95% 80% / 0.75) 0px, transparent 55%),
+      radial-gradient(at 100% 0%, hsl(343 81% 78% / 0.75) 0px, transparent 55%);
+    background-repeat: no-repeat;
+    background-size: 100% 60vh;
+    background-position: top center;
+  }
+
+  /* Cream band Stripe — empty states, onboarding, callouts cálidos */
+  .cream-band {
+    background-color: hsl(var(--canvas-cream));
+    color: hsl(var(--ink));
+    border-radius: var(--radius);
+    padding: 2rem;
   }
 }

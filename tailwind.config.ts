@@ -29,7 +29,12 @@ const config = {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          deep: "hsl(var(--primary-deep))",
+          press: "hsl(var(--primary-press))",
+          "soft-bg": "hsl(var(--primary-soft-bg))",
+          "soft-fg": "hsl(var(--primary-soft-fg))",
         },
+        "brand-dark": "hsl(var(--brand-dark))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -62,6 +67,7 @@ const config = {
         canvas: {
           DEFAULT: "hsl(var(--canvas))",
           soft: "hsl(var(--canvas-soft))",
+          cream: "hsl(var(--canvas-cream))",
         },
         hairline: {
           DEFAULT: "hsl(var(--hairline))",
