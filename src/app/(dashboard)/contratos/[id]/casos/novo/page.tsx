@@ -17,11 +17,12 @@ export default async function NovoCasoPage({
   if (!session) redirect('/login')
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Novo Caso</h1>
-        <p className="mt-2 text-gray-600">Cadastre um novo caso para o contrato</p>
-      </div>
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">OPERAÇÃO</span>
+        <h1 className="mt-2 display-lg text-ink">Novo Caso</h1>
+        <p className="mt-2 text-sm text-ink-mute">Cadastre um novo caso para o contrato</p>
+      </header>
       <CasoForm contratoId={id} />
     </div>
   )

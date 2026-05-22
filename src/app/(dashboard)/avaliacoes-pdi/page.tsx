@@ -14,22 +14,23 @@ export default async function AvaliacoesPDIPage() {
   if (!session) redirect('/login')
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Avaliações PDI</h1>
-        <p className="mt-2 text-gray-600">
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">PESSOAS</span>
+        <h1 className="mt-2 display-lg text-ink">Avaliações PDI</h1>
+        <p className="mt-2 text-sm text-ink-mute">
           Plano de Desenvolvimento Individual — avaliações de desempenho por colaborador.
         </p>
-      </div>
+      </header>
       <Card>
         <CardHeader>
           <CardTitle>Em desenvolvimento</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-gray-600">
+          <p className="text-sm text-ink-mute">
             A listagem centralizada de avaliações PDI será implementada em uma próxima sprint.
           </p>
-          <p className="text-gray-600">
+          <p className="text-sm text-ink-mute">
             Por enquanto, acesse o PDI de cada colaborador individualmente em{' '}
             <Link href="/pessoas/colaboradores" className="text-primary underline underline-offset-2">
               Pessoas → Colaboradores

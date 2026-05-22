@@ -13,11 +13,12 @@ export default async function SolicitacoesContratoPage() {
   if (!session) redirect('/login')
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Solicitações de Contrato</h1>
-        <p className="mt-2 text-gray-600">Gerencie solicitações de abertura de contrato</p>
-      </div>
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">OPERAÇÃO</span>
+        <h1 className="mt-2 display-lg text-ink">Solicitações de Contrato</h1>
+        <p className="mt-2 text-sm text-ink-mute">Gerencie solicitações de abertura de contrato</p>
+      </header>
       <SolicitacoesContratoList />
     </div>
   )
