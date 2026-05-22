@@ -2,7 +2,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils/cn'
 
 const Sidebar = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement>>(({ className, ...props }, ref) => (
-  <aside ref={ref} className={cn('sticky top-0 flex h-screen min-h-0 w-64 flex-col overflow-hidden border-r bg-gray-50 p-4', className)} {...props} />
+  <aside ref={ref} className={cn('sticky top-0 flex h-screen min-h-0 w-64 flex-col overflow-hidden border-r border-hairline bg-canvas-soft p-4', className)} {...props} />
 ))
 Sidebar.displayName = 'Sidebar'
 
@@ -17,7 +17,7 @@ const SidebarContent = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLEl
 SidebarContent.displayName = 'SidebarContent'
 
 const SidebarFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('mt-4 shrink-0 border-t pt-4', className)} {...props} />
+  <div ref={ref} className={cn('mt-4 shrink-0 border-t border-hairline pt-4', className)} {...props} />
 ))
 SidebarFooter.displayName = 'SidebarFooter'
 

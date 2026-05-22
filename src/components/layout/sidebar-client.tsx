@@ -74,10 +74,10 @@ export default function SidebarClient() {
     return (
       <Sidebar>
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded mb-4"></div>
+          <div className="h-8 bg-hairline rounded mb-4"></div>
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 bg-gray-200 rounded"></div>
+              <div key={i} className="h-10 bg-hairline rounded"></div>
             ))}
           </div>
         </div>
@@ -99,8 +99,9 @@ export default function SidebarClient() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <h1 className="text-xl font-bold text-gray-900">ERP-VLMA</h1>
-        <p className="text-sm text-gray-500">Versão 1.0.0</p>
+        <span className="text-eyebrow">VLMA</span>
+        <h1 className="mt-1 text-lg font-light text-ink">ERP</h1>
+        <p className="text-xs text-ink-mute">Versão 1.0.0</p>
       </SidebarHeader>
       <SidebarContent>
         {/* Menu Configuração (Expansível) */}

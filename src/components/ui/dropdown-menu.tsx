@@ -23,7 +23,7 @@ export function DropdownMenu({
         {items.map((item) => (
           <button
             key={item.label}
-            className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+            className="w-full rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-canvas-soft"
             onClick={() => {
               item.onSelect()
               setOpen(false)

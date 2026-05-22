@@ -34,12 +34,12 @@ export function SonnerProvider({ children }: { children: React.ReactNode }) {
         {items.map((item) => (
           <div
             key={item.id}
-            className={`min-w-56 rounded-md border px-3 py-2 text-sm shadow ${
+            className={`min-w-56 rounded-md border px-3 py-2 text-sm shadow-lift-2 ${
               item.type === 'success'
-                ? 'border-green-200 bg-green-50 text-green-800'
+                ? 'border-accent/30 bg-accent/10 text-accent'
                 : item.type === 'error'
-                ? 'border-red-200 bg-red-50 text-red-800'
-                : 'border-gray-200 bg-white text-gray-800'
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                : 'border-hairline bg-canvas text-ink'
             }`}
           >
             {item.message}

@@ -179,8 +179,8 @@ export default function ResetPasswordForm() {
   if (tokenValid === false) {
     return (
       <div className="mt-8 space-y-6">
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error || 'Link inválido ou expirado. Solicite um novo link de recuperação.'}</p>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{error || 'Link inválido ou expirado. Solicite um novo link de recuperação.'}</p>
         </div>
       </div>
     )
@@ -223,8 +223,8 @@ export default function ResetPasswordForm() {
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 

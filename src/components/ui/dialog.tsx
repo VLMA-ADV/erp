@@ -70,7 +70,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       <div
         ref={ref}
         className={cn(
-          'relative z-50 w-full max-w-lg bg-white rounded-lg shadow-lg p-6',
+          'relative z-50 w-full max-w-lg bg-canvas rounded-lg shadow-lift-2 border border-hairline p-6',
           'max-h-[90vh] overflow-y-auto',
           className
         )}
@@ -107,7 +107,7 @@ const DialogTitle = React.forwardRef<HTMLHeadingElement, DialogTitleProps>(
   ({ className, ...props }, ref) => (
     <h2
       ref={ref}
-      className={cn('text-lg font-semibold leading-none tracking-tight', className)}
+      className={cn('text-xl font-light leading-tight tracking-tight text-ink', className)}
       {...props}
     />
   )
@@ -118,7 +118,7 @@ const DialogDescription = React.forwardRef<HTMLParagraphElement, DialogDescripti
   ({ className, ...props }, ref) => (
     <p
       ref={ref}
-      className={cn('text-sm text-gray-500', className)}
+      className={cn('text-sm text-ink-mute', className)}
       {...props}
     />
   )
