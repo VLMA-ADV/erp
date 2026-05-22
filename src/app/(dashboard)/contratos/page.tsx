@@ -15,24 +15,19 @@ export default async function ContratosPage() {
   if (!session) redirect('/login')
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Contratos</h1>
-        <p className="mt-2 text-gray-600">Gerencie contratos e seus casos vinculados</p>
-      </div>
-      <div className="mb-4">
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">Operação</span>
+        <h1 className="mt-2 display-lg text-ink">Contratos</h1>
+        <p className="mt-2 text-sm text-ink-mute">Gerencie contratos e seus casos vinculados.</p>
+      </header>
+      <div className="space-y-6">
         <SolicitacoesInbox />
-      </div>
-      <div className="mb-4">
         <MensagensInbox />
-      </div>
-      <div className="mb-4">
         <ContratosInbox />
-      </div>
-      <div className="mb-4">
         <ContratosDashboard />
+        <ContratosList />
       </div>
-      <ContratosList />
     </div>
   )
 }

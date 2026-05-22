@@ -17,6 +17,9 @@ const config = {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -51,11 +54,34 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        ink: {
+          DEFAULT: "hsl(var(--ink))",
+          secondary: "hsl(var(--ink-secondary))",
+          mute: "hsl(var(--ink-mute))",
+        },
+        canvas: {
+          DEFAULT: "hsl(var(--canvas))",
+          soft: "hsl(var(--canvas-soft))",
+        },
+        hairline: {
+          DEFAULT: "hsl(var(--hairline))",
+          input: "hsl(var(--hairline-input))",
+        },
       },
       borderRadius: {
+        sm: "calc(var(--radius) - 6px)",
+        md: "calc(var(--radius) - 4px)",
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        xl: "calc(var(--radius) + 4px)",
+        pill: "9999px",
+      },
+      spacing: {
+        "xxs": "2px",
+        "xs": "4px",
+      },
+      boxShadow: {
+        "lift-1": "0 1px 3px rgba(0, 55, 112, 0.08)",
+        "lift-2": "0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04)",
       },
       keyframes: {
         "accordion-down": {

@@ -11,17 +11,17 @@ export default function ClientesPageClient() {
     hasPermission('crm.clientes.write')
 
   return (
-    <div className="mb-6 flex items-center justify-between">
+    <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-3xl font-bold">Clientes</h1>
-        <p className="mt-2 text-gray-600">Gerencie os clientes</p>
+        <span className="text-eyebrow">Pessoas</span>
+        <h1 className="mt-2 display-lg text-ink">Clientes</h1>
+        <p className="mt-2 text-sm text-ink-mute">Gerencie os clientes do escritório.</p>
       </div>
       {canCreate && (
         <Link href="/pessoas/clientes/novo">
-          <Button>Novo Cliente</Button>
+          <Button size="lg">Novo cliente</Button>
         </Link>
       )}
-    </div>
+    </header>
   )
 }
-

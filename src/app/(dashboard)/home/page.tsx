@@ -12,9 +12,12 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <h1 className="text-3xl font-bold">Dashboard</h1>
-      <p className="mt-4 text-gray-600">Bem-vindo ao ERP-VLMA</p>
+    <div className="container mx-auto px-6 py-16">
+      <span className="text-eyebrow">VLMA · ERP</span>
+      <h1 className="mt-3 display-xl text-ink">Dashboard</h1>
+      <p className="mt-4 max-w-prose text-base text-ink-mute">
+        Bem-vindo ao sistema da Voa Legal Marcas e Advocacia.
+      </p>
     </div>
   )
 }
