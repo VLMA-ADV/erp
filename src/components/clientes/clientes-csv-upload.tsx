@@ -113,7 +113,7 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
           </DialogHeader>
 
           <div className="space-y-4">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-mute">
               Colunas aceitas: <strong>nome</strong> e <strong>cnpj</strong>. Colunas extras são ignoradas. O lote é processado de forma transacional.
             </p>
 
@@ -128,8 +128,8 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
                   if (droppedFile) handleFile(droppedFile)
                 }}
               >
-                <FileText className="mx-auto mb-2 h-8 w-8 text-slate-400" />
-                <p className="text-sm text-slate-600">Arraste um CSV aqui ou clique para selecionar</p>
+                <FileText className="mx-auto mb-2 h-8 w-8 text-ink-mute" />
+                <p className="text-sm text-ink-mute">Arraste um CSV aqui ou clique para selecionar</p>
                 <input
                   ref={inputRef}
                   type="file"
@@ -148,7 +148,7 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
                 <div className="flex items-center gap-2 text-sm">
                   <FileText className="h-4 w-4 text-blue-500" />
                   <span>{file.name}</span>
-                  <span className="text-slate-500">- {rows.length} cliente(s) encontrado(s)</span>
+                  <span className="text-ink-mute">- {rows.length} cliente(s) encontrado(s)</span>
                   <Button variant="ghost" size="sm" onClick={reset} disabled={importing}>
                     <X className="h-3 w-3" />
                   </Button>
@@ -157,7 +157,7 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
                 {rows.length > 0 ? (
                   <div className="max-h-40 overflow-y-auto rounded border text-xs">
                     <table className="w-full">
-                      <thead className="sticky top-0 bg-slate-50">
+                      <thead className="sticky top-0 bg-canvas-soft">
                         <tr>
                           <th className="p-2 text-left font-medium">#</th>
                           <th className="p-2 text-left font-medium">Nome</th>
@@ -167,14 +167,14 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
                       <tbody>
                         {rows.slice(0, 10).map((row, index) => (
                           <tr key={`${row.cnpj}_${index}`} className="border-t">
-                            <td className="p-2 text-slate-400">{index + 1}</td>
+                            <td className="p-2 text-ink-mute">{index + 1}</td>
                             <td className="p-2">{row.nome}</td>
                             <td className="p-2 font-mono">{row.cnpj}</td>
                           </tr>
                         ))}
                         {rows.length > 10 ? (
                           <tr className="border-t">
-                            <td colSpan={3} className="p-2 text-center text-slate-400">
+                            <td colSpan={3} className="p-2 text-center text-ink-mute">
                               ... e mais {rows.length - 10} linha(s)
                             </td>
                           </tr>
@@ -187,7 +187,7 @@ export default function ClientesCsvUpload({ onComplete }: Props) {
             ) : null}
 
             {errors.length > 0 ? (
-              <div className="rounded bg-red-50 p-3 text-sm text-red-700">
+              <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 <p className="mb-1 font-medium">{errors.length} erro(s) encontrados</p>
                 <ul className="list-disc space-y-0.5 pl-4">
                   {errors.map((error) => (

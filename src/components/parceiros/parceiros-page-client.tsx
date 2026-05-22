@@ -13,8 +13,8 @@ export default function ParceirosPageClient() {
   return (
     <div className="mb-6 flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold">Parceiros</h1>
-        <p className="mt-2 text-gray-600">Gerencie os parceiros (escritorios externos)</p>
+        <h1 className="display-lg text-ink">Parceiros</h1>
+        <p className="mt-2 text-ink-mute">Gerencie os parceiros (escritorios externos)</p>
       </div>
       {canCreate && (
         <Link href="/pessoas/parceiros/novo">

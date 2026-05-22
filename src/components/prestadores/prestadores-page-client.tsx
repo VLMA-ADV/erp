@@ -24,8 +24,8 @@ export default function PrestadoresPageClient({
   return (
     <div className="mb-6 flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold">{title}</h1>
-        <p className="mt-2 text-gray-600">{description}</p>
+        <h1 className="display-lg text-ink">{title}</h1>
+        <p className="mt-2 text-ink-mute">{description}</p>
       </div>
       {canCreate && (
         <Link href={`${basePath}/novo`}>

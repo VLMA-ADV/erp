@@ -105,7 +105,7 @@ function statusClassName(status: string) {
   if (status === 'revisao') return 'border-blue-200 bg-blue-50 text-blue-700'
   if (status === 'cancelado') return 'border-red-200 bg-red-50 text-red-700'
   if (status === 'em_lancamento') return 'border-amber-200 bg-amber-50 text-amber-700'
-  return 'border-slate-200 bg-slate-50 text-slate-700'
+  return 'border-hairline bg-canvas-soft text-ink-secondary'
 }
 
 function formatMoney(value: number | string | null | undefined) {
@@ -476,7 +476,7 @@ export default function DespesasList() {
   return (
     <div className="space-y-4">
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-800">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Erro</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -550,20 +550,20 @@ export default function DespesasList() {
 
       <div className="overflow-hidden rounded-md border bg-white">
         <Table className="w-full min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-canvas-soft">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Data</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Categoria</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Arquivo</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Data</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Caso</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Categoria</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Descrição</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Valor</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Arquivo</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-hairline">
             {loading ? (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">

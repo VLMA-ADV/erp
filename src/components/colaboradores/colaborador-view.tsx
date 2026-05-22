@@ -120,8 +120,8 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
 
   if (error) {
     return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">{error}</p>
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+        <p className="text-sm text-destructive">{error}</p>
       </div>
     )
   }
@@ -135,7 +135,7 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{colaborador.nome}</h1>
+        <h1 className="display-md text-ink">{colaborador.nome}</h1>
         {canEdit && (
           <Button
             variant="outline"
@@ -163,20 +163,20 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Nome Completo</p>
+                  <p className="text-sm font-medium text-ink-mute">Nome Completo</p>
                   <p className="text-sm">{colaborador.nome}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">E-mail</p>
+                  <p className="text-sm font-medium text-ink-mute">E-mail</p>
                   <p className="text-sm">{colaborador.email}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">CPF</p>
+                  <p className="text-sm font-medium text-ink-mute">CPF</p>
                   <p className="text-sm">{colaborador.cpf}</p>
                 </div>
                 {colaborador.data_nascimento && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Data de Nascimento</p>
+                    <p className="text-sm font-medium text-ink-mute">Data de Nascimento</p>
                     <p className="text-sm">
                       {new Date(colaborador.data_nascimento).toLocaleDateString('pt-BR')}
                     </p>
@@ -184,7 +184,7 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                 )}
                 {colaborador.data_entrada && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Data de Entrada</p>
+                    <p className="text-sm font-medium text-ink-mute">Data de Entrada</p>
                     <p className="text-sm">
                       {new Date(colaborador.data_entrada).toLocaleDateString('pt-BR')}
                     </p>
@@ -192,25 +192,25 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                 )}
                 {colaborador.data_saida && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Data de Saída</p>
+                    <p className="text-sm font-medium text-ink-mute">Data de Saída</p>
                     <p className="text-sm">
                       {new Date(colaborador.data_saida).toLocaleDateString('pt-BR')}
                     </p>
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Categoria</p>
+                  <p className="text-sm font-medium text-ink-mute">Categoria</p>
                   <p className="text-sm capitalize">{colaborador.categoria}</p>
                 </div>
                 {colaborador.oab && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">OAB</p>
+                    <p className="text-sm font-medium text-ink-mute">OAB</p>
                     <p className="text-sm">{colaborador.oab}</p>
                   </div>
                 )}
                 {colaborador.whatsapp && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">WhatsApp</p>
+                    <p className="text-sm font-medium text-ink-mute">WhatsApp</p>
                     <p className="text-sm">{colaborador.whatsapp}</p>
                   </div>
                 )}
@@ -218,44 +218,44 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                   <>
                     {colaborador.cep && (
                       <div>
-                        <p className="text-sm font-medium text-gray-500">CEP</p>
+                        <p className="text-sm font-medium text-ink-mute">CEP</p>
                         <p className="text-sm">{colaborador.cep}</p>
                       </div>
                     )}
                     {colaborador.rua && (
                       <div>
-                        <p className="text-sm font-medium text-gray-500">Rua</p>
+                        <p className="text-sm font-medium text-ink-mute">Rua</p>
                         <p className="text-sm">{colaborador.rua}</p>
                       </div>
                     )}
                     {colaborador.numero && (
                       <div>
-                        <p className="text-sm font-medium text-gray-500">Número</p>
+                        <p className="text-sm font-medium text-ink-mute">Número</p>
                         <p className="text-sm">{colaborador.numero}</p>
                       </div>
                     )}
                     {colaborador.complemento && (
                       <div>
-                        <p className="text-sm font-medium text-gray-500">Complemento</p>
+                        <p className="text-sm font-medium text-ink-mute">Complemento</p>
                         <p className="text-sm">{colaborador.complemento}</p>
                       </div>
                     )}
                     {colaborador.cidade && (
                       <div>
-                        <p className="text-sm font-medium text-gray-500">Cidade</p>
+                        <p className="text-sm font-medium text-ink-mute">Cidade</p>
                         <p className="text-sm">{colaborador.cidade}</p>
                       </div>
                     )}
                     {colaborador.estado && (
                       <div>
-                        <p className="text-sm font-medium text-gray-500">Estado</p>
+                        <p className="text-sm font-medium text-ink-mute">Estado</p>
                         <p className="text-sm">{colaborador.estado}</p>
                       </div>
                     )}
                   </>
                 )}
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Status</p>
+                  <p className="text-sm font-medium text-ink-mute">Status</p>
                   <span
                     className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                       colaborador.ativo
@@ -281,31 +281,31 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
               <div className="grid grid-cols-2 gap-4">
                 {colaborador.cargos && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Cargo</p>
+                    <p className="text-sm font-medium text-ink-mute">Cargo</p>
                     <p className="text-sm">{colaborador.cargos.nome}</p>
                   </div>
                 )}
                 {colaborador.areas && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Centro de custo</p>
+                    <p className="text-sm font-medium text-ink-mute">Centro de custo</p>
                     <p className="text-sm">{colaborador.areas.nome}</p>
                   </div>
                 )}
                 {colaborador.adicional && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Adicional</p>
+                    <p className="text-sm font-medium text-ink-mute">Adicional</p>
                     <p className="text-sm capitalize">{colaborador.adicional}</p>
                   </div>
                 )}
                 {colaborador.percentual_adicional && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Percentual Adicional</p>
+                    <p className="text-sm font-medium text-ink-mute">Percentual Adicional</p>
                     <p className="text-sm font-tabular">{colaborador.percentual_adicional}%</p>
                   </div>
                 )}
                 {colaborador.salario && (
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Salário</p>
+                    <p className="text-sm font-medium text-ink-mute">Salário</p>
                     <p className="text-sm font-tabular">
                       {new Intl.NumberFormat('pt-BR', {
                         style: 'currency',
@@ -318,7 +318,7 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
 
               {colaborador.colaboradores_beneficios && colaborador.colaboradores_beneficios.length > 0 && (
                 <div className="mt-6">
-                  <p className="text-sm font-medium text-gray-500 mb-2">Benefícios</p>
+                  <p className="text-sm font-medium text-ink-mute mb-2">Benefícios</p>
                   <ul className="list-disc list-inside space-y-1">
                     {colaborador.colaboradores_beneficios.map((beneficio: any, index: number) => (
                       <li key={index} className="text-sm capitalize">
@@ -346,31 +346,31 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                 <div className="grid grid-cols-2 gap-4">
                   {colaborador.banco && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Banco</p>
+                      <p className="text-sm font-medium text-ink-mute">Banco</p>
                       <p className="text-sm">{colaborador.banco}</p>
                     </div>
                   )}
                   {colaborador.agencia && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Agência</p>
+                      <p className="text-sm font-medium text-ink-mute">Agência</p>
                       <p className="text-sm">{colaborador.agencia}</p>
                     </div>
                   )}
                   {colaborador.conta_com_digito && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Conta com Dígito</p>
+                      <p className="text-sm font-medium text-ink-mute">Conta com Dígito</p>
                       <p className="text-sm">{colaborador.conta_com_digito}</p>
                     </div>
                   )}
                   {colaborador.chave_pix && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Chave PIX</p>
+                      <p className="text-sm font-medium text-ink-mute">Chave PIX</p>
                       <p className="text-sm">{colaborador.chave_pix}</p>
                     </div>
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">Nenhum dado bancário cadastrado</p>
+                <p className="text-sm text-ink-mute">Nenhum dado bancário cadastrado</p>
               )}
             </CardContent>
           </Card>
@@ -385,12 +385,12 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
             <CardContent>
               {userRoles.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Roles Atribuídas:</h3>
+                  <h3 className="text-sm font-semibold text-ink-secondary mb-2">Roles Atribuídas:</h3>
                   <div className="flex flex-wrap gap-2">
                     {userRoles.map((role: any) => (
                       <span
                         key={role.role_id || role.id}
-                        className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800"
+                        className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-primary-soft-bg text-primary-soft-fg"
                       >
                         {role.role_nome || role.nome}
                       </span>
@@ -412,7 +412,7 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
 
                     return (
                       <div key={categoria} className="space-y-2">
-                        <h3 className="text-lg font-semibold text-gray-900 capitalize">
+                        <h3 className="text-lg font-semibold text-ink capitalize">
                           {categoria === 'dashboard' ? 'Dashboard' :
                            categoria === 'crm' ? 'CRM' :
                            categoria === 'people' ? 'Pessoas' :
@@ -441,7 +441,7 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                                   d="M5 13l4 4L19 7"
                                 />
                               </svg>
-                              <span className="text-sm text-gray-700">
+                              <span className="text-sm text-ink-secondary">
                                 {perm.descricao || perm.chave}
                               </span>
                             </div>
@@ -451,13 +451,13 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                     )
                   })}
                   {colaboradorPermissionIds.length === 0 && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-ink-mute">
                       Nenhuma permissão atribuída ao colaborador.
                     </p>
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-ink-mute">
                   Nenhuma permissão disponível ou não foi possível carregar as permissões.
                 </p>
               )}

@@ -184,17 +184,17 @@ export default function NfsePreviewDialog({
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-blue-700" />
+            <FileText className="h-5 w-5 text-primary" />
             Prévia da NFS-e (rascunho) — {contratoLabel || 'contrato'}
           </DialogTitle>
         </DialogHeader>
 
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-slate-600">
+          <div className="flex items-center justify-center gap-2 py-12 text-ink-mute">
             <Loader2 className="h-5 w-5 animate-spin" /> Carregando dados fiscais...
           </div>
         ) : error ? (
-          <Alert className="border-red-300 bg-red-50 text-red-700">
+          <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
             <AlertTitle>Erro</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
@@ -212,32 +212,32 @@ export default function NfsePreviewDialog({
             </Alert>
 
             {/* Cabeçalho NFS-e */}
-            <div className="rounded-lg border border-slate-300 bg-white p-4">
-              <div className="border-b border-slate-200 pb-2 mb-2">
-                <p className="text-xs uppercase tracking-wide text-slate-500">PRESTADOR DE SERVIÇOS</p>
-                <p className="font-semibold text-slate-900">{data.prestador.nome}</p>
-                <p className="text-xs text-slate-600">
+            <div className="rounded-lg border border-hairline bg-white p-4">
+              <div className="border-b border-hairline pb-2 mb-2">
+                <p className="text-xs uppercase tracking-wide text-ink-mute">PRESTADOR DE SERVIÇOS</p>
+                <p className="font-semibold text-ink">{data.prestador.nome}</p>
+                <p className="text-xs text-ink-mute">
                   CNPJ {formatCnpjCpf(data.prestador.cnpj)} · IM {data.prestador.inscricaoMunicipal} · {data.prestador.municipio}
                 </p>
-                <p className="text-xs text-slate-500">{data.prestador.endereco}</p>
+                <p className="text-xs text-ink-mute">{data.prestador.endereco}</p>
               </div>
 
-              <div className="border-b border-slate-200 pb-2 mb-2">
-                <p className="text-xs uppercase tracking-wide text-slate-500">TOMADOR DOS SERVIÇOS</p>
-                <p className="font-semibold text-slate-900">{data.tomador?.nome || '—'}</p>
-                <p className="text-xs text-slate-600">
+              <div className="border-b border-hairline pb-2 mb-2">
+                <p className="text-xs uppercase tracking-wide text-ink-mute">TOMADOR DOS SERVIÇOS</p>
+                <p className="font-semibold text-ink">{data.tomador?.nome || '—'}</p>
+                <p className="text-xs text-ink-mute">
                   {data.tomador?.tipo === 'pessoa_juridica' ? 'CNPJ' : 'CPF'} {formatCnpjCpf(data.tomador?.cnpj)} · Tipo {tipoTomador}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-mute">
                   {data.tomador?.rua || '—'}, {data.tomador?.numero || '—'}
                   {data.tomador?.complemento ? `, ${data.tomador.complemento}` : ''} — {data.tomador?.bairro || '—'} · CEP {formatCep(data.tomador?.cep)} · {data.tomador?.cidade || '—'}/{data.tomador?.estado || '—'}
                 </p>
               </div>
 
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">DISCRIMINAÇÃO DOS SERVIÇOS</p>
+                <p className="text-xs uppercase tracking-wide text-ink-mute">DISCRIMINAÇÃO DOS SERVIÇOS</p>
                 <table className="w-full text-xs mt-1">
-                  <thead className="text-left text-slate-500">
+                  <thead className="text-left text-ink-mute">
                     <tr>
                       <th className="py-1">Descrição</th>
                       <th className="py-1 text-right">Itens</th>
@@ -246,18 +246,18 @@ export default function NfsePreviewDialog({
                   </thead>
                   <tbody>
                     {Array.from(itensPorCaso.values()).map((c) => (
-                      <tr key={c.caso} className="border-t border-slate-100">
-                        <td className="py-1 text-slate-700">
+                      <tr key={c.caso} className="border-t border-hairline">
+                        <td className="py-1 text-ink-secondary">
                           <div>{c.caso}</div>
                           {c.descricoes.size > 0 && (
-                            <div className="text-xs text-slate-500 italic">
+                            <div className="text-xs text-ink-mute italic">
                               {Array.from(c.descricoes).slice(0, 2).join('; ')}
                               {c.descricoes.size > 2 && '…'}
                             </div>
                           )}
                         </td>
-                        <td className="py-1 text-right text-slate-700 font-tabular">{c.count}</td>
-                        <td className="py-1 text-right text-slate-900 font-medium font-tabular">{fmtMoney(c.valor)}</td>
+                        <td className="py-1 text-right text-ink-secondary font-tabular">{c.count}</td>
+                        <td className="py-1 text-right text-ink font-medium font-tabular">{fmtMoney(c.valor)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -266,10 +266,10 @@ export default function NfsePreviewDialog({
             </div>
 
             {/* Breakdown de impostos */}
-            <div className="rounded-lg border border-slate-300 bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">RETENÇÕES E IMPOSTOS</p>
+            <div className="rounded-lg border border-hairline bg-white p-4">
+              <p className="text-xs uppercase tracking-wide text-ink-mute mb-2">RETENÇÕES E IMPOSTOS</p>
               <table className="w-full text-sm">
-                <thead className="text-xs text-slate-500 text-left">
+                <thead className="text-xs text-ink-mute text-left">
                   <tr>
                     <th className="py-1">Imposto</th>
                     <th className="py-1 text-right">Alíquota</th>
@@ -278,38 +278,38 @@ export default function NfsePreviewDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t border-slate-100">
-                    <td className="py-1 font-medium text-slate-900">ISS</td>
+                  <tr className="border-t border-hairline">
+                    <td className="py-1 font-medium text-ink">ISS</td>
                     <td className="py-1 text-right font-tabular">{fmtPct(aliquotaIss)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">- {fmtMoney(valorIss)}</td>
-                    <td className="py-1 text-right text-xs text-slate-500">municipal · fiscal</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">municipal · fiscal</td>
                   </tr>
-                  <tr className="border-t border-slate-100">
-                    <td className="py-1 text-slate-700">IRRF</td>
+                  <tr className="border-t border-hairline">
+                    <td className="py-1 text-ink-secondary">IRRF</td>
                     <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.irrf)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorIrrf)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
-                  <tr className="border-t border-slate-100">
-                    <td className="py-1 text-slate-700">INSS</td>
+                  <tr className="border-t border-hairline">
+                    <td className="py-1 text-ink-secondary">INSS</td>
                     <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.inss)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorInss)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
-                  <tr className="border-t border-slate-100">
-                    <td className="py-1 text-slate-700">PIS</td>
+                  <tr className="border-t border-hairline">
+                    <td className="py-1 text-ink-secondary">PIS</td>
                     <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.pis)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorPis)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
-                  <tr className="border-t border-slate-100">
-                    <td className="py-1 text-slate-700">COFINS</td>
+                  <tr className="border-t border-hairline">
+                    <td className="py-1 text-ink-secondary">COFINS</td>
                     <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.cofins)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorCofins)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
-                  <tr className="border-t border-slate-100">
-                    <td className="py-1 text-slate-700">CSLL</td>
+                  <tr className="border-t border-hairline">
+                    <td className="py-1 text-ink-secondary">CSLL</td>
                     <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.csll)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorCsll)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
@@ -317,7 +317,7 @@ export default function NfsePreviewDialog({
                 </tbody>
               </table>
               {!retencoesAtivas && (
-                <p className="mt-2 text-xs text-slate-500 italic">
+                <p className="mt-2 text-xs text-ink-mute italic">
                   {tipoTomador === 'PF'
                     ? '* Tomador é pessoa física — IRRF/INSS/PIS/COFINS/CSLL não são retidos na origem.'
                     : `* Valor bruto abaixo do limite mínimo de R$ ${ALIQUOTAS_PADRAO.retencaoMinimaPJ.toLocaleString('pt-BR')} para retenções PJ.`}
@@ -326,17 +326,17 @@ export default function NfsePreviewDialog({
             </div>
 
             {/* Total */}
-            <div className="rounded-lg border-2 border-slate-300 bg-slate-50 p-4">
+            <div className="rounded-lg border-2 border-hairline bg-canvas-soft p-4">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Valor bruto dos serviços</span>
-                <span className="font-semibold text-slate-900 font-tabular">{fmtMoney(valorBruto)}</span>
+                <span className="text-ink-mute">Valor bruto dos serviços</span>
+                <span className="font-semibold text-ink font-tabular">{fmtMoney(valorBruto)}</span>
               </div>
               <div className="flex justify-between text-sm mt-1">
-                <span className="text-slate-600">Total de retenções</span>
+                <span className="text-ink-mute">Total de retenções</span>
                 <span className="text-red-600 font-tabular">- {fmtMoney(totalRetencoes)}</span>
               </div>
-              <div className="border-t border-slate-300 mt-2 pt-2 flex justify-between items-end">
-                <span className="text-base font-semibold text-slate-900">VALOR LÍQUIDO A RECEBER</span>
+              <div className="border-t border-hairline mt-2 pt-2 flex justify-between items-end">
+                <span className="text-base font-semibold text-ink">VALOR LÍQUIDO A RECEBER</span>
                 <span className="text-2xl font-bold text-emerald-700 font-tabular">{fmtMoney(valorLiquido)}</span>
               </div>
             </div>

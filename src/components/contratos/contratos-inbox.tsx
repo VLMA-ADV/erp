@@ -115,12 +115,12 @@ export default function ContratosInbox() {
     <Collapsible open={open} onOpenChange={setOpen} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Inbox className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Atualizações recentes de solicitações</p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="text-sm font-semibold text-ink">Atualizações recentes de solicitações</p>
+            <p className="mt-1 text-sm text-ink-mute">
               Mensagens enviadas pelos usuários em solicitações vinculadas a contratos.
             </p>
           </div>
@@ -130,10 +130,10 @@ export default function ContratosInbox() {
           <Badge
             className={
               isError
-                ? 'border-red-200 bg-red-50 text-red-700'
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
                 : total > 0
-                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
+                  ? 'border-primary/30 bg-primary-soft-bg text-primary-soft-fg'
+                  : 'border-hairline bg-canvas-soft text-ink-mute'
             }
           >
             {badgeLabel}
@@ -148,13 +148,13 @@ export default function ContratosInbox() {
       </div>
 
       <CollapsibleContent>
-        <div className="border-t bg-slate-50/70 p-3">
+        <div className="border-t bg-canvas-soft/70 p-3">
           {isError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error instanceof Error ? error.message : 'Erro ao carregar mensagens recentes'}
             </div>
           ) : mensagens.length === 0 ? (
-            <div className="rounded-lg border bg-white p-4 text-sm text-slate-500">Nenhuma mensagem recente</div>
+            <div className="rounded-lg border bg-white p-4 text-sm text-ink-mute">Nenhuma mensagem recente</div>
           ) : (
             <div className="space-y-2">
               {mensagens.map((mensagem) => (
@@ -167,22 +167,22 @@ export default function ContratosInbox() {
                   }
                 >
                   <div className="flex gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-canvas-soft text-xs font-semibold text-ink-secondary">
                       {getInitials(mensagem.remetente_nome)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="text-sm font-semibold text-slate-900">{mensagem.remetente_nome}</span>
-                        <span className="text-xs text-slate-400">•</span>
-                        <span className="text-xs text-slate-500">{formatRelativeDate(mensagem.created_at)}</span>
+                        <span className="text-sm font-semibold text-ink">{mensagem.remetente_nome}</span>
+                        <span className="text-xs text-ink-mute">•</span>
+                        <span className="text-xs text-ink-mute">{formatRelativeDate(mensagem.created_at)}</span>
                       </div>
-                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-ink-mute">
                         {contratoLabel(mensagem)}
                         {mensagem.solicitacao_nome ? ` → ${mensagem.solicitacao_nome}` : ''}
                       </p>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-700">{mensagem.mensagem_preview}</p>
+                      <p className="mt-2 line-clamp-2 text-sm text-ink-secondary">{mensagem.mensagem_preview}</p>
                     </div>
-                    <MessageSquare className="mt-1 h-4 w-4 shrink-0 text-slate-300" />
+                    <MessageSquare className="mt-1 h-4 w-4 shrink-0 text-ink-mute" />
                   </div>
                 </button>
               ))}

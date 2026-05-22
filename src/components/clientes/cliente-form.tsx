@@ -333,8 +333,8 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
 
   if (!canWrite) {
     return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+        <p className="text-sm text-destructive">
           Você não tem permissão para criar/editar clientes
         </p>
       </div>
@@ -346,7 +346,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 rounded bg-gray-200"></div>
+            <div key={i} className="h-10 rounded bg-hairline"></div>
           ))}
         </div>
       </div>
@@ -356,8 +356,8 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   return (
     <div className="space-y-8">
       {(error || optionsError) && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error || optionsError}</p>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{error || optionsError}</p>
         </div>
       )}
 
@@ -390,7 +390,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                         setForm({ ...form, cliente_estrangeiro: e.target.checked })
                       }
                     />
-                    <span className="text-sm text-gray-700">Sim</span>
+                    <span className="text-sm text-ink-secondary">Sim</span>
                   </div>
                 </div>
                 {!form.cliente_estrangeiro && (
@@ -504,7 +504,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                     id="rua"
                     value={form.rua}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-canvas-soft cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, rua: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -523,7 +523,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                     id="cidade"
                     value={form.cidade}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-canvas-soft cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, cidade: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -535,7 +535,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                     value={form.estado}
                     maxLength={2}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-canvas-soft cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, estado: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
                   />
@@ -605,9 +605,9 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 ) : (
                   <div className="mt-4 space-y-2">
                     {segmentos.length === 0 ? (
-                      <p className="text-sm text-gray-500">Nenhum segmento cadastrado</p>
+                      <p className="text-sm text-ink-mute">Nenhum segmento cadastrado</p>
                     ) : (
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-ink-mute">
                         Nenhum segmento ativo encontrado. Ative um segmento em Configuração &gt; Segmentos Econômicos.
                       </p>
                     )}
@@ -691,7 +691,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 {form.responsaveis_financeiros.map((rf, idx) => (
                   <div key={idx} className="rounded-md border p-4">
                     <div className="mb-3 flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-600">Responsável {idx + 1}</span>
+                      <span className="text-sm font-medium text-ink-mute">Responsável {idx + 1}</span>
                       {form.responsaveis_financeiros.length > 1 && (
                         <Button
                           type="button"

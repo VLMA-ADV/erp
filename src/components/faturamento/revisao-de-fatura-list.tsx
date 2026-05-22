@@ -1111,7 +1111,7 @@ export default function RevisaoDeFaturaList() {
           value: entry.valor,
           rowClass: isUsuario ? 'bg-white' : isRevisor ? 'bg-emerald-50/50' : 'bg-indigo-50/50',
           labelClass: isUsuario
-            ? 'rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700'
+            ? 'rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary'
             : isRevisor
               ? 'rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700'
               : 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
@@ -1152,7 +1152,7 @@ export default function RevisaoDeFaturaList() {
         hoursText: formatHistoryHours(getOriginalItemHours(item)),
         value: getOriginalItemValue(item),
         rowClass: 'bg-white',
-        labelClass: 'rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700',
+        labelClass: 'rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary',
         showEdit: true,
         showPostergar: Boolean(item.timesheetId),
       },
@@ -1458,8 +1458,8 @@ export default function RevisaoDeFaturaList() {
 
   if (!canRead) {
     return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">Você não tem permissão para visualizar a revisão de faturamento.</p>
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+        <p className="text-sm text-destructive">Você não tem permissão para visualizar a revisão de faturamento.</p>
       </div>
     )
   }
@@ -1467,7 +1467,7 @@ export default function RevisaoDeFaturaList() {
   return (
     <div className="space-y-4">
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-700">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -1481,12 +1481,12 @@ export default function RevisaoDeFaturaList() {
             onClick={() => setRuleFilter(button.key)}
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors ${
               ruleFilter === button.key
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-hairline bg-canvas-soft text-ink-secondary hover:border-hairline'
             }`}
           >
             <span>{button.label}</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${ruleFilter === button.key ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>
+            <span className={`rounded-full px-2 py-0.5 text-xs ${ruleFilter === button.key ? 'bg-white/20 text-white' : 'bg-white text-ink-mute'}`}>
               {button.count}
             </span>
           </button>
@@ -1580,22 +1580,22 @@ export default function RevisaoDeFaturaList() {
 
             return (
               <section key={clienteGroup.key} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-                <div className="border-b bg-slate-50 px-4 py-3">
+                <div className="border-b bg-canvas-soft px-4 py-3">
                   <button
                     type="button"
                     className="flex w-full items-center justify-between gap-3 text-left"
                     onClick={() => setExpandedClientes((prev) => ({ ...prev, [clienteGroup.key]: !clienteExpanded }))}
                   >
                     <div className="flex items-center gap-2">
-                      {clienteExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+                      {clienteExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">{clienteGroup.nome}</p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-sm font-semibold text-ink">{clienteGroup.nome}</p>
+                        <p className="text-xs text-ink-mute">
                           {clienteTotals.itens} item(ns) | {formatHours(clienteTotals.horas)} h
                         </p>
                       </div>
                     </div>
-                    <p className="text-sm font-semibold text-slate-900 font-tabular">{formatMoney(clienteTotals.valor)}</p>
+                    <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(clienteTotals.valor)}</p>
                   </button>
                 </div>
 
@@ -1619,7 +1619,7 @@ export default function RevisaoDeFaturaList() {
                       const selectedCount = contractRowIds.filter((id) => selectedItemIds.includes(id)).length
 
                       return (
-                        <div key={`${clienteGroup.key}-${contratoGroup.key}`} className="rounded-xl border border-slate-200">
+                        <div key={`${clienteGroup.key}-${contratoGroup.key}`} className="rounded-xl border border-hairline">
                           <div className="border-b bg-white px-4 py-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <button
@@ -1627,23 +1627,23 @@ export default function RevisaoDeFaturaList() {
                                 className="flex items-center gap-2 text-left"
                                 onClick={() => setExpandedContratos((prev) => ({ ...prev, [contratoGroup.key]: !contratoExpanded }))}
                               >
-                                {contratoExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+                                {contratoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
                                 <div>
-                                  <p className="text-sm font-semibold text-slate-900">
+                                  <p className="text-sm font-semibold text-ink">
                                     {contratoGroup.numero ? `${contratoGroup.numero} - ` : ''}
                                     {contratoGroup.nome}
                                   </p>
-                                  <p className="text-xs text-slate-500">
+                                  <p className="text-xs text-ink-mute">
                                     {contratoTotals.itens} item(ns) | {formatHours(contratoTotals.horas)} h
                                   </p>
                                 </div>
                               </button>
 
                               <div className="flex flex-wrap items-center gap-3">
-                                <label className="flex items-center gap-2 text-xs text-slate-600">
+                                <label className="flex items-center gap-2 text-xs text-ink-mute">
                                   <input
                                     type="checkbox"
-                                    className="h-4 w-4 rounded border-slate-300"
+                                    className="h-4 w-4 rounded border-hairline"
                                     checked={allSelected}
                                     onChange={(event) => {
                                       const checked = event.target.checked
@@ -1665,7 +1665,7 @@ export default function RevisaoDeFaturaList() {
                                   {busyKey === `batch:${contratoGroup.key}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                   Aprovar selecionados
                                 </Button>
-                                <p className="text-sm font-semibold text-slate-900 font-tabular">{formatMoney(contratoTotals.valor)}</p>
+                                <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(contratoTotals.valor)}</p>
                               </div>
                             </div>
                           </div>
@@ -1678,26 +1678,26 @@ export default function RevisaoDeFaturaList() {
                                 const reviewRows = getReviewRows(casoGroup)
 
                                 return (
-                                  <div key={`${contratoGroup.key}-${casoGroup.key}`} className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60">
-                                    <div className="border-b border-slate-200 px-4 py-3">
+                                  <div key={`${contratoGroup.key}-${casoGroup.key}`} className="rounded-xl border border-dashed border-hairline bg-canvas-soft/60">
+                                    <div className="border-b border-hairline px-4 py-3">
                                       <button
                                         type="button"
                                         className="flex w-full items-center justify-between gap-3 text-left"
                                         onClick={() => setExpandedCasos((prev) => ({ ...prev, [casoGroup.key]: !casoExpanded }))}
                                       >
                                         <div className="flex items-center gap-2">
-                                          {casoExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+                                          {casoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
                                           <div>
-                                            <p className="text-sm font-semibold text-slate-800">
+                                            <p className="text-sm font-semibold text-ink-secondary">
                                               {casoGroup.numero ? `${casoGroup.numero} - ` : ''}
                                               {casoGroup.nome}
                                             </p>
-                                            <p className="text-xs text-slate-500">
+                                            <p className="text-xs text-ink-mute">
                                               {caseMetrics.itemCount} item(ns) | {formatHours(caseMetrics.totalHoras)} h
                                             </p>
                                           </div>
                                         </div>
-                                        <p className="text-sm font-semibold text-slate-900 font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
+                                        <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
                                       </button>
                                     </div>
 
@@ -1705,7 +1705,7 @@ export default function RevisaoDeFaturaList() {
                                       <div className="px-3 py-3">
                                         <Table className="min-w-[1120px]">
                                           <thead className="bg-white">
-                                            <tr className="border-b text-[11px] uppercase tracking-wide text-slate-500">
+                                            <tr className="border-b text-[11px] uppercase tracking-wide text-ink-mute">
                                               <th className="w-10 px-3 py-2 text-left" />
                                               <th className="px-3 py-2 text-left">Role</th>
                                               <th className="px-3 py-2 text-left">Data/hora</th>
@@ -1737,7 +1737,7 @@ export default function RevisaoDeFaturaList() {
                                                           <td rowSpan={historicalRows.length + (reviewerToggleVisible ? 1 : 0)} className="px-3 py-3">
                                                             <input
                                                               type="checkbox"
-                                                              className="mt-1 h-4 w-4 rounded border-slate-300"
+                                                              className="mt-1 h-4 w-4 rounded border-hairline"
                                                               checked={selectedItemIds.includes(item.id)}
                                                               onChange={(event) =>
                                                                 setSelectedItemIds((prev) =>
@@ -1753,14 +1753,14 @@ export default function RevisaoDeFaturaList() {
                                                         <td className="px-3 py-3 text-sm font-semibold">
                                                           <span className={historyRow.labelClass}>{historyRow.label}</span>
                                                         </td>
-                                                        <td className="px-3 py-3 text-sm text-slate-700">{historyRow.dateText}</td>
-                                                        <td className="px-3 py-3 text-sm text-slate-700">{historyRow.userName}</td>
-                                                        <td className="px-3 py-3 text-sm text-slate-700">{historyRow.reviewerName}</td>
-                                                        <td className="px-3 py-3 text-sm text-slate-700">
+                                                        <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.dateText}</td>
+                                                        <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.userName}</td>
+                                                        <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.reviewerName}</td>
+                                                        <td className="px-3 py-3 text-sm text-ink-secondary">
                                                           <div className="max-w-[340px] whitespace-normal break-words">{historyRow.text}</div>
                                                         </td>
-                                                        <td className="px-3 py-3 text-right text-sm text-slate-700 font-tabular">{historyRow.hoursText}</td>
-                                                        <td className="px-3 py-3 text-right text-sm font-medium text-slate-900 font-tabular">{formatMoney(historyRow.value)}</td>
+                                                        <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">{historyRow.hoursText}</td>
+                                                        <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">{formatMoney(historyRow.value)}</td>
                                                         <td className="px-3 py-3">
                                                           <div className="flex items-center justify-end gap-2">
                                                             {(() => {
@@ -1794,7 +1794,7 @@ export default function RevisaoDeFaturaList() {
                                                               <Button
                                                                 size="sm"
                                                                 variant="ghost"
-                                                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                                className="text-primary hover:text-primary-deep hover:bg-primary-soft-bg"
                                                                 onClick={() => setPostergarConfirmId(item.id)}
                                                                 disabled={busy}
                                                                 title="Postergar para próximo mês"
@@ -1810,7 +1810,7 @@ export default function RevisaoDeFaturaList() {
                                                         </td>
                                                       </tr>
                                                       {historyIndex === 0 && reviewerToggleVisible ? (
-                                                        <tr className="border-b bg-slate-50">
+                                                        <tr className="border-b bg-canvas-soft">
                                                           <td colSpan={8} className="px-3 py-2">
                                                             <Button
                                                               size="sm"
@@ -1833,13 +1833,13 @@ export default function RevisaoDeFaturaList() {
                                                   ))}
 
                                                   {editorKey === key ? (
-                                                    <tr className="border-b bg-slate-50/60">
+                                                    <tr className="border-b bg-canvas-soft/60">
                                                       <td colSpan={9} className="px-4 py-4">
                                                         <div className="space-y-4 rounded-xl border bg-white p-4">
                                                           <div className="flex flex-wrap items-center justify-between gap-3">
                                                             <div>
-                                                              <p className="text-sm font-semibold text-slate-900">Historico do lancamento</p>
-                                                              <p className="text-xs text-slate-500">
+                                                              <p className="text-sm font-semibold text-ink">Historico do lancamento</p>
+                                                              <p className="text-xs text-ink-mute">
                                                                 O bloco do usuario permanece read-only; a edicao abaixo alimenta a linha de revisor ou aprovador.
                                                               </p>
                                                             </div>
@@ -1858,39 +1858,39 @@ export default function RevisaoDeFaturaList() {
                                                           </div>
 
                                                           <div className="grid gap-3 lg:grid-cols-2">
-                                                            <div className="space-y-3 rounded-xl bg-slate-50 p-3">
-                                                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Usuario</p>
+                                                            <div className="space-y-3 rounded-xl bg-canvas-soft p-3">
+                                                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">Usuario</p>
                                                               <div className="grid gap-3 md:grid-cols-2">
                                                                 <div>
-                                                                  <p className="text-xs text-slate-500">Caso</p>
-                                                                  <p className="text-sm text-slate-800">{caseLabelById.get(item.casoId) || casoGroup.nome}</p>
+                                                                  <p className="text-xs text-ink-mute">Caso</p>
+                                                                  <p className="text-sm text-ink-secondary">{caseLabelById.get(item.casoId) || casoGroup.nome}</p>
                                                                 </div>
                                                                 <div>
-                                                                  <p className="text-xs text-slate-500">Profissional</p>
-                                                                  <p className="text-sm text-slate-800">{item.timesheetProfissional || item.responsavelFluxoNome || '-'}</p>
+                                                                  <p className="text-xs text-ink-mute">Profissional</p>
+                                                                  <p className="text-sm text-ink-secondary">{item.timesheetProfissional || item.responsavelFluxoNome || '-'}</p>
                                                                 </div>
                                                                 <div className="md:col-span-2">
-                                                                  <p className="text-xs text-slate-500">Texto</p>
-                                                                  <p className="text-sm text-slate-800">{mode === 'timesheet' ? item.timesheetDescricao || '-' : getRuleTitle(item)}</p>
+                                                                  <p className="text-xs text-ink-mute">Texto</p>
+                                                                  <p className="text-sm text-ink-secondary">{mode === 'timesheet' ? item.timesheetDescricao || '-' : getRuleTitle(item)}</p>
                                                                 </div>
                                                                 <div>
-                                                                  <p className="text-xs text-slate-500">Minutos</p>
-                                                                  <p className="text-sm text-slate-800">{hoursToMinutes(getOriginalItemHours(item))}</p>
+                                                                  <p className="text-xs text-ink-mute">Minutos</p>
+                                                                  <p className="text-sm text-ink-secondary">{hoursToMinutes(getOriginalItemHours(item))}</p>
                                                                 </div>
                                                                 <div>
-                                                                  <p className="text-xs text-slate-500">Valor</p>
-                                                                  <p className="text-sm text-slate-800 font-tabular">{formatMoney(getOriginalItemValue(item))}</p>
+                                                                  <p className="text-xs text-ink-mute">Valor</p>
+                                                                  <p className="text-sm text-ink-secondary font-tabular">{formatMoney(getOriginalItemValue(item))}</p>
                                                                 </div>
                                                               </div>
                                                             </div>
 
-                                                            <div className="space-y-3 rounded-xl border border-slate-200 p-3">
-                                                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                            <div className="space-y-3 rounded-xl border border-hairline p-3">
+                                                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
                                                                 {item.status === 'em_aprovacao' ? 'Aprovador' : 'Revisor'}
                                                               </p>
                                                               <div className="grid gap-3 md:grid-cols-2">
                                                                 <div className="md:col-span-2">
-                                                                  <label className="mb-1 block text-xs text-slate-500">Caso</label>
+                                                                  <label className="mb-1 block text-xs text-ink-mute">Caso</label>
                                                                   <CommandSelect
                                                                     value={draft?.casoId || item.casoId}
                                                                     onValueChange={(value) => updateDraft(item.id, { casoId: value })}
@@ -1915,7 +1915,7 @@ export default function RevisaoDeFaturaList() {
                                                                         <div key={row.id} className="rounded-lg border p-3">
                                                                           <div className="grid gap-3 md:grid-cols-2">
                                                                             <div>
-                                                                              <label className="mb-1 block text-xs text-slate-500">Profissional</label>
+                                                                              <label className="mb-1 block text-xs text-ink-mute">Profissional</label>
                                                                               <CommandSelect
                                                                                 value={row.profissional}
                                                                                 onValueChange={(value) => syncTimesheetRow(item.id, row.id, { profissional: value })}
@@ -1927,7 +1927,7 @@ export default function RevisaoDeFaturaList() {
                                                                               />
                                                                             </div>
                                                                             <div>
-                                                                              <label className="mb-1 block text-xs text-slate-500">Duração</label>
+                                                                              <label className="mb-1 block text-xs text-ink-mute">Duração</label>
                                                                               {(() => {
                                                                                 const split = splitMinutosTotal(revisedMinutes)
                                                                                 const syncHHMM = (h: string, m: string) => {
@@ -1945,7 +1945,7 @@ export default function RevisaoDeFaturaList() {
                                                                                       className="w-16 text-center"
                                                                                       aria-label="Horas"
                                                                                     />
-                                                                                    <span className="text-xs text-slate-500">h</span>
+                                                                                    <span className="text-xs text-ink-mute">h</span>
                                                                                     <Input
                                                                                       value={split.minutos}
                                                                                       onChange={(event) => syncHHMM(split.horas, sanitizeMinutesInput(event.target.value))}
@@ -1955,13 +1955,13 @@ export default function RevisaoDeFaturaList() {
                                                                                       className="w-16 text-center"
                                                                                       aria-label="Minutos"
                                                                                     />
-                                                                                    <span className="text-xs text-slate-500">min</span>
+                                                                                    <span className="text-xs text-ink-mute">min</span>
                                                                                   </div>
                                                                                 )
                                                                               })()}
                                                                             </div>
                                                                             <div className="md:col-span-2">
-                                                                              <label className="mb-1 block text-xs text-slate-500">Texto</label>
+                                                                              <label className="mb-1 block text-xs text-ink-mute">Texto</label>
                                                                               <Textarea
                                                                                 value={row.atividade}
                                                                                 onChange={(event) => syncTimesheetRow(item.id, row.id, { atividade: event.target.value })}
@@ -1970,8 +1970,8 @@ export default function RevisaoDeFaturaList() {
                                                                               />
                                                                             </div>
                                                                             <div>
-                                                                              <p className="text-xs text-slate-500">Valor recalculado</p>
-                                                                              <p className="mt-2 text-sm font-medium text-slate-900 font-tabular">{formatMoney(revisedValue)}</p>
+                                                                              <p className="text-xs text-ink-mute">Valor recalculado</p>
+                                                                              <p className="mt-2 text-sm font-medium text-ink font-tabular">{formatMoney(revisedValue)}</p>
                                                                             </div>
                                                                           </div>
                                                                         </div>
@@ -1987,7 +1987,7 @@ export default function RevisaoDeFaturaList() {
                                                                         : colaboradorOptions
                                                                       return (
                                                                         <div>
-                                                                          <label className="mb-1 block text-xs text-slate-500">Profissional</label>
+                                                                          <label className="mb-1 block text-xs text-ink-mute">Profissional</label>
                                                                           <CommandSelect
                                                                             value={currentProfissional}
                                                                             onValueChange={(value) => updateDraft(item.id, { profissional: value })}
@@ -2001,7 +2001,7 @@ export default function RevisaoDeFaturaList() {
                                                                       )
                                                                     })()}
                                                                     <div>
-                                                                      <label className="mb-1 block text-xs text-slate-500">Minutos</label>
+                                                                      <label className="mb-1 block text-xs text-ink-mute">Minutos</label>
                                                                       <Input
                                                                         value={String(hoursToMinutes(parseDecimalInput(draft?.horas || '0')))}
                                                                         onChange={(event) => {
@@ -2024,7 +2024,7 @@ export default function RevisaoDeFaturaList() {
                                                                       />
                                                                     </div>
                                                                     <div className="md:col-span-2">
-                                                                      <label className="mb-1 block text-xs text-slate-500">Texto</label>
+                                                                      <label className="mb-1 block text-xs text-ink-mute">Texto</label>
                                                                       <Textarea
                                                                         value={draft?.valueRows?.[0]?.descricao || ''}
                                                                         onChange={(event) => {
@@ -2037,8 +2037,8 @@ export default function RevisaoDeFaturaList() {
                                                                       />
                                                                     </div>
                                                                     <div>
-                                                                      <p className="text-xs text-slate-500">Valor revisado</p>
-                                                                      <p className="mt-2 text-sm font-medium text-slate-900 font-tabular">{formatMoney(getLiveItemValue(item, 'default'))}</p>
+                                                                      <p className="text-xs text-ink-mute">Valor revisado</p>
+                                                                      <p className="mt-2 text-sm font-medium text-ink font-tabular">{formatMoney(getLiveItemValue(item, 'default'))}</p>
                                                                     </div>
                                                                   </>
                                                                 )}
@@ -2077,10 +2077,10 @@ export default function RevisaoDeFaturaList() {
           <DialogHeader>
             <DialogTitle>Postergar lançamento</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink-mute">
             Mover este lançamento para o faturamento do próximo mês?
           </p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-ink-mute">
             O item será removido da lista atual e reaparecerá no período seguinte.
           </p>
           <DialogFooter>
@@ -2089,7 +2089,7 @@ export default function RevisaoDeFaturaList() {
             </Button>
             <Button
               variant="default"
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-primary hover:bg-primary-deep text-primary-foreground"
               onClick={() => {
                 const confirmId = postergarConfirmId
                 setPostergarConfirmId(null)
@@ -2135,10 +2135,10 @@ export default function RevisaoDeFaturaList() {
                 return (
                   <div key={contratoId} className="flex items-center justify-between rounded-lg border border-green-200 bg-white px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-ink">
                         {group.numero ? `${group.numero} — ` : ''}{group.nome}
                       </p>
-                      <p className="text-xs text-slate-500 font-tabular">
+                      <p className="text-xs text-ink-mute font-tabular">
                         {group.items.length} item(ns) · {valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </p>
                     </div>
@@ -2146,7 +2146,7 @@ export default function RevisaoDeFaturaList() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                        className="border-hairline text-ink-secondary hover:bg-canvas-soft"
                         onClick={() => setNfsePreview({
                           contratoId,
                           label: `${group.numero ? `${group.numero} — ` : ''}${group.nome}`,
@@ -2203,7 +2203,7 @@ export default function RevisaoDeFaturaList() {
                 <p className="mt-1 text-green-700">Referência: <span className="font-mono">{nfseResult.ref}</span></p>
                 <p className="text-green-700 font-tabular">Valor: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-mute">
                 A nota foi enviada à Focus NFe em modo homologação. Consulte o painel da Focus NFe para acompanhar o status.
               </p>
             </div>

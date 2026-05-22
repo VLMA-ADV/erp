@@ -472,7 +472,7 @@ export default function SolicitacoesContratoList() {
 
   if (!canRead) {
     return (
-      <Alert className="border-red-200 bg-red-50 text-red-700">
+      <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
         <AlertTitle>Atenção</AlertTitle>
         <AlertDescription>Você não tem permissão para visualizar solicitações de contrato.</AlertDescription>
       </Alert>
@@ -482,7 +482,7 @@ export default function SolicitacoesContratoList() {
   return (
     <div className="space-y-4">
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-700">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -511,20 +511,20 @@ export default function SolicitacoesContratoList() {
 
       <div className="overflow-x-auto rounded-md border">
         <Table className="w-full min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-canvas-soft">
             <tr>
-              <th className="w-12 px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">#</th>
+              <th className="w-12 px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">#</th>
               <th className="w-8 px-4 py-3" />
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Solicitante</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Contrato</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Anexos</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Descrição</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Solicitante</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Contrato</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Anexos</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+          <tbody className="divide-y divide-hairline bg-white">
             {loading ? (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -549,15 +549,15 @@ export default function SolicitacoesContratoList() {
 
                 return (
                   <Fragment key={item.id}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="w-12 px-4 py-3 text-right align-top text-xs tabular-nums text-gray-500">
+                    <tr className="hover:bg-canvas-soft">
+                      <td className="w-12 px-4 py-3 text-right align-top text-xs tabular-nums text-ink-mute">
                         {index + 1}
                       </td>
                       <td className="px-4 py-3">
                         <button
                           type="button"
                           onClick={() => setExpandedMensagens((prev) => ({ ...prev, [item.id]: !mensagensExpanded }))}
-                          className="text-slate-400 hover:text-slate-700"
+                          className="text-ink-mute hover:text-ink-secondary"
                           title="Ver mensagens"
                         >
                           {mensagensExpanded
@@ -566,21 +566,21 @@ export default function SolicitacoesContratoList() {
                         </button>
                       </td>
                       <td className="px-4 py-3 align-top text-sm">
-                        <p className="font-medium text-gray-900">{item.nome || item.descricao}</p>
+                        <p className="font-medium text-ink">{item.nome || item.descricao}</p>
                         {item.descricao && item.descricao !== item.nome ? (
                           <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.descricao}</p>
                         ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.cliente_nome || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.solicitante_nome || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-ink-secondary">{item.cliente_nome || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-ink-secondary">{item.solicitante_nome || '-'}</td>
                       <td className="px-4 py-3">
                         <Badge className={statusClassName}>{item.status}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-ink-secondary">
                         {item.contrato_id ? `${item.contrato_numero || '-'} - ${item.contrato_nome || '-'}` : '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-ink-secondary">
                         {item.anexos?.length ? (
                           <div className="space-y-1">
                             {item.anexos.map((anexo) => (
@@ -620,7 +620,7 @@ export default function SolicitacoesContratoList() {
                     </tr>
 
                     {mensagensExpanded ? (
-                      <tr className="bg-slate-50/70">
+                      <tr className="bg-canvas-soft/70">
                         <td colSpan={9} className="px-6 py-4">
                           <SolicitacaoMensagens solicitacaoId={item.id} />
                         </td>

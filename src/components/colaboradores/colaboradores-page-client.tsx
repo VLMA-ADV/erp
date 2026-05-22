@@ -12,8 +12,8 @@ export default function ColaboradoresPageClient() {
   return (
     <div className="mb-6 flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold">Colaboradores</h1>
-        <p className="mt-2 text-gray-600">Gerencie os colaboradores do sistema</p>
+        <h1 className="display-lg text-ink">Colaboradores</h1>
+        <p className="mt-2 text-ink-mute">Gerencie os colaboradores do sistema</p>
       </div>
       {canCreate && (
         <Link href="/pessoas/colaboradores/novo">
