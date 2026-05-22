@@ -7,6 +7,7 @@ import {
   ChevronRight,
   DollarSign,
   Eye,
+  FileText,
   Loader2,
   Pencil,
   Send,
@@ -30,6 +31,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import NfsePreviewDialog from './nfse-preview-dialog'
 
 interface RevisaoItem {
   id: string
@@ -565,6 +567,16 @@ export default function FluxoDeFaturamentoList() {
   const [editAtividadeTexto, setEditAtividadeTexto] = useState('')
   const [savingAtividade, setSavingAtividade] = useState(false)
 
+  // NFS-e: prévia + emissão direto do Fluxo de Faturamento (PR Filipe 22/05)
+  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string } | null>(null)
+  const [emittingNfse, setEmittingNfse] = useState<string | null>(null)
+  const [nfseResult, setNfseResult] = useState<{
+    ref: string
+    valor_total: number
+    focus_status: string
+    nota_id: string | null
+  } | null>(null)
+
   const loadContratosEmRevisao = async () => {
     try {
       setLoading(true)
@@ -832,6 +844,47 @@ export default function FluxoDeFaturamentoList() {
   const faturarSingleItem = async (itemId: string) => {
     setFaturandoItemId(itemId)
     await faturarItemIds([itemId])
+  }
+
+  // Dispara emissão real da NFS-e via edge emit-nfse. Usado quando o usuário
+  // confirma na prévia OU clica direto no botão $ ao lado do "Prévia" na linha do caso.
+  const emitNfse = async (contratoId: string, label: string) => {
+    try {
+      setEmittingNfse(contratoId)
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) {
+        toastError('Sessão expirada — faça login novamente.')
+        return
+      }
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/emit-nfse`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ contrato_id: contratoId }),
+      })
+      const payload = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        toastError(payload.error || 'Focus NFe recusou a emissão')
+        return
+      }
+      setNfseResult({
+        ref: String(payload.ref),
+        valor_total: Number(payload.valor_total),
+        focus_status: String(payload.focus_status ?? 'pendente'),
+        nota_id: payload.nota_id ?? null,
+      })
+      success(`NFS-e enviada para Focus NFe (${label}). Status: ${payload.focus_status}`)
+    } catch (e) {
+      console.error('emitNfse', e)
+      toastError('Erro ao emitir NFS-e')
+    } finally {
+      setEmittingNfse(null)
+    }
   }
 
   const handleTransferCaso = async () => {
@@ -1294,15 +1347,49 @@ export default function FluxoDeFaturamentoList() {
                                           {formatMoney(caseMetrics.totalValor)}
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => setResumoCasoKey(casoG.key)}
-                                            disabled={casoG.itens.length === 0}
-                                          >
-                                            <Eye className="mr-1 h-3.5 w-3.5" />
-                                            Visualizar
-                                          </Button>
+                                          <div className="flex items-center justify-end gap-1">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => setResumoCasoKey(casoG.key)}
+                                              disabled={casoG.itens.length === 0}
+                                              title="Ver detalhes dos itens do caso"
+                                            >
+                                              <Eye className="mr-1 h-3.5 w-3.5" />
+                                              Resumo
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                              onClick={() => setNfsePreview({
+                                                contratoId: contrato.contratoId,
+                                                label: formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full,
+                                              })}
+                                              disabled={casoG.itens.length === 0}
+                                              title="Visualizar prévia da NFS-e (rascunho) deste contrato"
+                                            >
+                                              <FileText className="mr-1 h-3.5 w-3.5" />
+                                              Prévia NFS-e
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              className="bg-green-700 hover:bg-green-800 text-white"
+                                              onClick={() => void emitNfse(
+                                                contrato.contratoId,
+                                                formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full,
+                                              )}
+                                              disabled={casoG.itens.length === 0 || emittingNfse === contrato.contratoId}
+                                              title="Emitir NFS-e via Focus NFe para todos os itens aprovados deste contrato"
+                                            >
+                                              {emittingNfse === contrato.contratoId ? (
+                                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                              ) : (
+                                                <DollarSign className="mr-1 h-3.5 w-3.5" />
+                                              )}
+                                              Emitir NFS-e
+                                            </Button>
+                                          </div>
                                         </td>
                                       </tr>
 
@@ -1612,6 +1699,55 @@ export default function FluxoDeFaturamentoList() {
               {transferring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
               Transferir
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: prévia da NFS-e (rascunho) — abre via botão "Prévia NFS-e" na linha do caso */}
+      <NfsePreviewDialog
+        open={nfsePreview !== null}
+        contratoId={nfsePreview?.contratoId ?? null}
+        contratoLabel={nfsePreview?.label}
+        onClose={() => setNfsePreview(null)}
+        onConfirmEmit={() => {
+          if (!nfsePreview) return
+          const { contratoId, label } = nfsePreview
+          setNfsePreview(null)
+          void emitNfse(contratoId, label)
+        }}
+      />
+
+      {/* Dialog: resultado da emissão Focus NFe */}
+      <Dialog open={nfseResult !== null} onOpenChange={(open) => { if (!open) setNfseResult(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-700">
+              <FileText className="h-5 w-5" />
+              NFS-e enviada para processamento
+            </DialogTitle>
+          </DialogHeader>
+          {nfseResult && (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg bg-green-50 border border-green-200 p-3">
+                <p className="font-medium text-green-800">Status: {nfseResult.focus_status}</p>
+                <p className="mt-1 text-green-700 text-xs">
+                  Referência: <span className="font-mono">{nfseResult.ref}</span>
+                </p>
+                <p className="text-green-700">
+                  Valor bruto: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </p>
+              </div>
+              <p className="text-xs text-slate-500">
+                A nota foi enviada à Focus NFe. Consulte em{' '}
+                <a href="/financeiro/notas-geradas" className="underline text-blue-700">
+                  Notas geradas
+                </a>{' '}
+                pra acompanhar autorização da prefeitura.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNfseResult(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
