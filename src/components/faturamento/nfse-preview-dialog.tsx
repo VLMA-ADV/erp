@@ -423,7 +423,7 @@ export default function NfsePreviewDialog({
                 <p>
                   <strong>Grupo de impostos:</strong> {grupoNome}
                   {data.grupoImposto?.nome && data.grupoImposto.nome !== grupoNome && (
-                    <span className="text-amber-700"> (contrato configurado como "{data.grupoImposto.nome}" — usando fallback)</span>
+                    <span className="text-amber-700"> (contrato configurado como &quot;{data.grupoImposto.nome}&quot; — usando fallback)</span>
                   )}
                 </p>
                 <p className="text-slate-500">{grupoFromDb?.descricao || regraFallback.observacao}</p>
