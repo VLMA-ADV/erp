@@ -1550,7 +1550,7 @@ export default function RevisaoDeFaturaList() {
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
           </span>
         </div>
-        <div className="font-semibold">{formatMoney(totals.valor)}</div>
+        <div className="font-semibold font-tabular">{formatMoney(totals.valor)}</div>
       </div>
 
       {loading ? (
@@ -1595,7 +1595,7 @@ export default function RevisaoDeFaturaList() {
                         </p>
                       </div>
                     </div>
-                    <p className="text-sm font-semibold text-slate-900">{formatMoney(clienteTotals.valor)}</p>
+                    <p className="text-sm font-semibold text-slate-900 font-tabular">{formatMoney(clienteTotals.valor)}</p>
                   </button>
                 </div>
 
@@ -1665,7 +1665,7 @@ export default function RevisaoDeFaturaList() {
                                   {busyKey === `batch:${contratoGroup.key}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                   Aprovar selecionados
                                 </Button>
-                                <p className="text-sm font-semibold text-slate-900">{formatMoney(contratoTotals.valor)}</p>
+                                <p className="text-sm font-semibold text-slate-900 font-tabular">{formatMoney(contratoTotals.valor)}</p>
                               </div>
                             </div>
                           </div>
@@ -1697,7 +1697,7 @@ export default function RevisaoDeFaturaList() {
                                             </p>
                                           </div>
                                         </div>
-                                        <p className="text-sm font-semibold text-slate-900">{formatMoney(caseMetrics.totalValor)}</p>
+                                        <p className="text-sm font-semibold text-slate-900 font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
                                       </button>
                                     </div>
 
@@ -1759,8 +1759,8 @@ export default function RevisaoDeFaturaList() {
                                                         <td className="px-3 py-3 text-sm text-slate-700">
                                                           <div className="max-w-[340px] whitespace-normal break-words">{historyRow.text}</div>
                                                         </td>
-                                                        <td className="px-3 py-3 text-right text-sm text-slate-700">{historyRow.hoursText}</td>
-                                                        <td className="px-3 py-3 text-right text-sm font-medium text-slate-900">{formatMoney(historyRow.value)}</td>
+                                                        <td className="px-3 py-3 text-right text-sm text-slate-700 font-tabular">{historyRow.hoursText}</td>
+                                                        <td className="px-3 py-3 text-right text-sm font-medium text-slate-900 font-tabular">{formatMoney(historyRow.value)}</td>
                                                         <td className="px-3 py-3">
                                                           <div className="flex items-center justify-end gap-2">
                                                             {(() => {
@@ -1879,7 +1879,7 @@ export default function RevisaoDeFaturaList() {
                                                                 </div>
                                                                 <div>
                                                                   <p className="text-xs text-slate-500">Valor</p>
-                                                                  <p className="text-sm text-slate-800">{formatMoney(getOriginalItemValue(item))}</p>
+                                                                  <p className="text-sm text-slate-800 font-tabular">{formatMoney(getOriginalItemValue(item))}</p>
                                                                 </div>
                                                               </div>
                                                             </div>
@@ -1971,7 +1971,7 @@ export default function RevisaoDeFaturaList() {
                                                                             </div>
                                                                             <div>
                                                                               <p className="text-xs text-slate-500">Valor recalculado</p>
-                                                                              <p className="mt-2 text-sm font-medium text-slate-900">{formatMoney(revisedValue)}</p>
+                                                                              <p className="mt-2 text-sm font-medium text-slate-900 font-tabular">{formatMoney(revisedValue)}</p>
                                                                             </div>
                                                                           </div>
                                                                         </div>
@@ -2038,7 +2038,7 @@ export default function RevisaoDeFaturaList() {
                                                                     </div>
                                                                     <div>
                                                                       <p className="text-xs text-slate-500">Valor revisado</p>
-                                                                      <p className="mt-2 text-sm font-medium text-slate-900">{formatMoney(getLiveItemValue(item, 'default'))}</p>
+                                                                      <p className="mt-2 text-sm font-medium text-slate-900 font-tabular">{formatMoney(getLiveItemValue(item, 'default'))}</p>
                                                                     </div>
                                                                   </>
                                                                 )}
@@ -2138,7 +2138,7 @@ export default function RevisaoDeFaturaList() {
                       <p className="text-sm font-semibold text-slate-900">
                         {group.numero ? `${group.numero} — ` : ''}{group.nome}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 font-tabular">
                         {group.items.length} item(ns) · {valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </p>
                     </div>
@@ -2201,7 +2201,7 @@ export default function RevisaoDeFaturaList() {
               <div className="rounded-lg bg-green-50 p-3">
                 <p className="font-medium text-green-800">Status: Pendente (aguardando prefeitura)</p>
                 <p className="mt-1 text-green-700">Referência: <span className="font-mono">{nfseResult.ref}</span></p>
-                <p className="text-green-700">Valor: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                <p className="text-green-700 font-tabular">Valor: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
               </div>
               <p className="text-xs text-slate-500">
                 A nota foi enviada à Focus NFe em modo homologação. Consulte o painel da Focus NFe para acompanhar o status.

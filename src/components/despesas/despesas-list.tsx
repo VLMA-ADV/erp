@@ -592,7 +592,7 @@ export default function DespesasList() {
                   <td className="px-4 py-3 text-sm">
                     <p className="line-clamp-2">{item.descricao || '-'}</p>
                   </td>
-                  <td className="px-4 py-3 text-right text-sm">{formatMoney(item.valor)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-tabular">{formatMoney(item.valor)}</td>
                   <td className="px-4 py-3 text-sm">{item.arquivo_nome || '-'}</td>
                   <td className="px-4 py-3 text-sm">
                     <Badge className={statusClassName(item.status)}>{formatStatus(item.status)}</Badge>

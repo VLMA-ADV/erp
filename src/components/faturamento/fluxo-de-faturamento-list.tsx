@@ -1034,7 +1034,7 @@ export default function FluxoDeFaturamentoList() {
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
           </span>
         </div>
-        <div className="text-sm font-semibold">{formatMoney(totals.valor)}</div>
+        <div className="text-sm font-semibold font-tabular">{formatMoney(totals.valor)}</div>
       </div>
 
       <div className="flex justify-end">
@@ -1149,9 +1149,9 @@ export default function FluxoDeFaturamentoList() {
                         <td className="px-4 py-3 font-semibold">{cliente.nome}</td>
                         <td className="px-4 py-3 text-sm">{clienteSummary.status}</td>
                         <td className="px-4 py-3 text-sm">{clienteSummary.responsavel}</td>
-                        <td className="px-4 py-3">{cliente.itemCount}</td>
-                        <td className="px-4 py-3">{formatHours(cliente.totalHoras)}</td>
-                        <td className="px-4 py-3 text-right">{formatMoney(cliente.totalValor)}</td>
+                        <td className="px-4 py-3 font-tabular">{cliente.itemCount}</td>
+                        <td className="px-4 py-3 font-tabular">{formatHours(cliente.totalHoras)}</td>
+                        <td className="px-4 py-3 text-right font-tabular">{formatMoney(cliente.totalValor)}</td>
                         <td className="px-4 py-3 text-right text-muted-foreground">—</td>
                       </tr>
 
@@ -1220,9 +1220,9 @@ export default function FluxoDeFaturamentoList() {
                                 </td>
                                 <td className="px-4 py-3 text-sm">{contratoSummary.status}</td>
                                 <td className="px-4 py-3 text-sm">{contratoSummary.responsavel}</td>
-                                <td className="px-4 py-3">{metrics.n}</td>
-                                <td className="px-4 py-3">{formatHours(metrics.h)}</td>
-                                <td className="px-4 py-3 text-right">{formatMoney(metrics.v)}</td>
+                                <td className="px-4 py-3 font-tabular">{metrics.n}</td>
+                                <td className="px-4 py-3 font-tabular">{formatHours(metrics.h)}</td>
+                                <td className="px-4 py-3 text-right font-tabular">{formatMoney(metrics.v)}</td>
                                 <td className="px-4 py-3 text-right text-muted-foreground">—</td>
                               </tr>
 
@@ -1286,11 +1286,11 @@ export default function FluxoDeFaturamentoList() {
                                         <td className="px-4 py-3 text-sm text-muted-foreground">
                                           {casoSummary.responsavel}
                                         </td>
-                                        <td className="px-4 py-3 text-muted-foreground">{caseMetrics.itemCount}</td>
-                                        <td className="px-4 py-3 text-muted-foreground">
+                                        <td className="px-4 py-3 text-muted-foreground font-tabular">{caseMetrics.itemCount}</td>
+                                        <td className="px-4 py-3 text-muted-foreground font-tabular">
                                           {formatHours(caseMetrics.totalHoras)}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-muted-foreground">
+                                        <td className="px-4 py-3 text-right text-muted-foreground font-tabular">
                                           {formatMoney(caseMetrics.totalValor)}
                                         </td>
                                         <td className="px-4 py-3 text-right">
@@ -1367,8 +1367,8 @@ export default function FluxoDeFaturamentoList() {
                                                         <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
-                                                        <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
-                                                        <td className="px-3 py-2 text-right text-sm">
+                                                        <td className="px-3 py-2 text-sm font-tabular">{formatHours(detalhe.horas)}</td>
+                                                        <td className="px-3 py-2 text-right text-sm font-tabular">
                                                           {formatMoney(detalhe.valor)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right">
@@ -1472,9 +1472,9 @@ export default function FluxoDeFaturamentoList() {
                         <td className="px-3 py-2">{row.atividade}</td>
                         <td className="px-3 py-2">{row.revisor}</td>
                         <td className="px-3 py-2">{row.aprovador}</td>
-                        <td className="px-3 py-2 text-right">{formatNullableHours(row.horasInformadas)}</td>
-                        <td className="px-3 py-2 text-right">{formatNullableHours(row.horasRevisadas)}</td>
-                        <td className="px-3 py-2 text-right">{formatNullableMoney(row.valorFinal)}</td>
+                        <td className="px-3 py-2 text-right font-tabular">{formatNullableHours(row.horasInformadas)}</td>
+                        <td className="px-3 py-2 text-right font-tabular">{formatNullableHours(row.horasRevisadas)}</td>
+                        <td className="px-3 py-2 text-right font-tabular">{formatNullableMoney(row.valorFinal)}</td>
                         <td className="px-3 py-2 text-center">
                           {row.timesheetId ? (
                             <Button

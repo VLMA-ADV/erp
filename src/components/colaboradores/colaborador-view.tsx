@@ -300,13 +300,13 @@ export default function ColaboradorView({ colaboradorId }: ColaboradorViewProps)
                 {colaborador.percentual_adicional && (
                   <div>
                     <p className="text-sm font-medium text-gray-500">Percentual Adicional</p>
-                    <p className="text-sm">{colaborador.percentual_adicional}%</p>
+                    <p className="text-sm font-tabular">{colaborador.percentual_adicional}%</p>
                   </div>
                 )}
                 {colaborador.salario && (
                   <div>
                     <p className="text-sm font-medium text-gray-500">Salário</p>
-                    <p className="text-sm">
+                    <p className="text-sm font-tabular">
                       {new Intl.NumberFormat('pt-BR', {
                         style: 'currency',
                         currency: 'BRL',

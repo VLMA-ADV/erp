@@ -256,8 +256,8 @@ export default function NfsePreviewDialog({
                             </div>
                           )}
                         </td>
-                        <td className="py-1 text-right text-slate-700">{c.count}</td>
-                        <td className="py-1 text-right text-slate-900 font-medium">{fmtMoney(c.valor)}</td>
+                        <td className="py-1 text-right text-slate-700 font-tabular">{c.count}</td>
+                        <td className="py-1 text-right text-slate-900 font-medium font-tabular">{fmtMoney(c.valor)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -280,38 +280,38 @@ export default function NfsePreviewDialog({
                 <tbody>
                   <tr className="border-t border-slate-100">
                     <td className="py-1 font-medium text-slate-900">ISS</td>
-                    <td className="py-1 text-right">{fmtPct(aliquotaIss)}</td>
-                    <td className="py-1 text-right text-red-600">- {fmtMoney(valorIss)}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(aliquotaIss)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">- {fmtMoney(valorIss)}</td>
                     <td className="py-1 text-right text-xs text-slate-500">municipal · fiscal</td>
                   </tr>
                   <tr className="border-t border-slate-100">
                     <td className="py-1 text-slate-700">IRRF</td>
-                    <td className="py-1 text-right">{fmtPct(ALIQUOTAS_PADRAO.irrf)}</td>
-                    <td className="py-1 text-right text-red-600">{retencoesAtivas ? `- ${fmtMoney(valorIrrf)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.irrf)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorIrrf)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
                   <tr className="border-t border-slate-100">
                     <td className="py-1 text-slate-700">INSS</td>
-                    <td className="py-1 text-right">{fmtPct(ALIQUOTAS_PADRAO.inss)}</td>
-                    <td className="py-1 text-right text-red-600">{retencoesAtivas ? `- ${fmtMoney(valorInss)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.inss)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorInss)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
                   <tr className="border-t border-slate-100">
                     <td className="py-1 text-slate-700">PIS</td>
-                    <td className="py-1 text-right">{fmtPct(ALIQUOTAS_PADRAO.pis)}</td>
-                    <td className="py-1 text-right text-red-600">{retencoesAtivas ? `- ${fmtMoney(valorPis)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.pis)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorPis)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
                   <tr className="border-t border-slate-100">
                     <td className="py-1 text-slate-700">COFINS</td>
-                    <td className="py-1 text-right">{fmtPct(ALIQUOTAS_PADRAO.cofins)}</td>
-                    <td className="py-1 text-right text-red-600">{retencoesAtivas ? `- ${fmtMoney(valorCofins)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.cofins)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorCofins)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
                   <tr className="border-t border-slate-100">
                     <td className="py-1 text-slate-700">CSLL</td>
-                    <td className="py-1 text-right">{fmtPct(ALIQUOTAS_PADRAO.csll)}</td>
-                    <td className="py-1 text-right text-red-600">{retencoesAtivas ? `- ${fmtMoney(valorCsll)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.csll)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorCsll)}` : '— não aplicado'}</td>
                     <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
                   </tr>
                 </tbody>
@@ -329,15 +329,15 @@ export default function NfsePreviewDialog({
             <div className="rounded-lg border-2 border-slate-300 bg-slate-50 p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Valor bruto dos serviços</span>
-                <span className="font-semibold text-slate-900">{fmtMoney(valorBruto)}</span>
+                <span className="font-semibold text-slate-900 font-tabular">{fmtMoney(valorBruto)}</span>
               </div>
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-slate-600">Total de retenções</span>
-                <span className="text-red-600">- {fmtMoney(totalRetencoes)}</span>
+                <span className="text-red-600 font-tabular">- {fmtMoney(totalRetencoes)}</span>
               </div>
               <div className="border-t border-slate-300 mt-2 pt-2 flex justify-between items-end">
                 <span className="text-base font-semibold text-slate-900">VALOR LÍQUIDO A RECEBER</span>
-                <span className="text-2xl font-bold text-emerald-700">{fmtMoney(valorLiquido)}</span>
+                <span className="text-2xl font-bold text-emerald-700 font-tabular">{fmtMoney(valorLiquido)}</span>
               </div>
             </div>
 

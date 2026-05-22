@@ -242,7 +242,7 @@ export default function ContratosList() {
                                   {formatContractStatus(item.status)}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.casos?.length || 0}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-tabular">{item.casos?.length || 0}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
                                 <ContratosActions
                                   contratoId={item.id}

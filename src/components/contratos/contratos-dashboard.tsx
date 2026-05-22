@@ -49,7 +49,7 @@ function MiniBarChart({ title, items }: { title: string; items: DashboardListIte
               <div key={`${title}-${item.nome}`} className="space-y-1">
                 <div className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="truncate text-gray-600">{item.nome}</span>
-                  <span className="font-medium text-gray-900">{item.total}</span>
+                  <span className="font-medium text-gray-900 font-tabular">{item.total}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-100">
                   <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${width}%` }} />
@@ -162,15 +162,15 @@ export default function ContratosDashboard() {
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           <div className="rounded-xl border bg-white p-3 shadow-sm">
             <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Contratos</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.total_contratos}</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900 font-tabular">{data.total_contratos}</p>
           </div>
           <div className="rounded-xl border bg-white p-3 shadow-sm">
             <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Casos</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.total_casos}</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900 font-tabular">{data.total_casos}</p>
           </div>
           <div className="rounded-xl border bg-white p-3 shadow-sm">
             <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Reajuste 2026</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.com_reajuste_2026}</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900 font-tabular">{data.com_reajuste_2026}</p>
           </div>
         </div>
 

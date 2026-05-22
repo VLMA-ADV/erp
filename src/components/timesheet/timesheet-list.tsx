@@ -513,7 +513,7 @@ export default function TimesheetList() {
                       <p className="text-muted-foreground">{item.caso_numero || '-'} - {item.caso_nome}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{item.descricao || '-'}</p>
                     </td>
-                    <td className="px-4 py-3 text-sm">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
+                    <td className="px-4 py-3 text-sm font-tabular">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
                     <td className="px-4 py-3 text-sm">
                       <Badge className={statusClassName}>{timesheetStatusLabel(item.status)}</Badge>
                     </td>
