@@ -7,17 +7,70 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-// Placeholder de aliquotas — a definir com Jessica (financeiro Voa Legal)
-// Valores tipicos para advocacia em Curitiba/PR.
-const ALIQUOTAS_PADRAO = {
-  iss: 3.5,
-  irrf: 1.5, // PJ acima de R$ 666,67
-  inss: 11, // PJ servico de natureza tecnica
-  pis: 0.65,
-  cofins: 3,
-  csll: 1, // PJ acima de R$ 5.000 acumulado mes
-  // Limite minimo para retencao quando tomador e PJ
-  retencaoMinimaPJ: 666.67,
+// Lista oficial do contador Guilherme (mensagem WhatsApp 21/05 16:24):
+//   COFINS 3,00% (mínimo cálculo R$ 215,34, mínimo retenção R$ 6,46)
+//   CSLL   1,00% (mínimo cálculo R$ 215,34, mínimo retenção R$ 2,15)
+//   PIS    0,65% (mínimo cálculo R$ 215,34, mínimo retenção R$ 1,40)
+//   IRRF   1,50% (mínimo cálculo R$ 666,67, mínimo retenção R$ 10,00)
+// Sem INSS — confirmado pelo contador que VLMA não retém INSS na fonte.
+const ALIQUOTAS_VOA_LEGAL = {
+  iss: { aliquota: 3.5, label: 'ISS' }, // municipal Curitiba, fiscal real
+  irrf: { aliquota: 1.5, minCalc: 666.67, minRet: 10, label: 'IRRF' },
+  pis: { aliquota: 0.65, minCalc: 215.34, minRet: 1.4, label: 'PIS' },
+  cofins: { aliquota: 3, minCalc: 215.34, minRet: 6.46, label: 'COFINS' },
+  csll: { aliquota: 1, minCalc: 215.34, minRet: 2.15, label: 'CSLL' },
+}
+
+// 7 Grupos de impostos da VLMA (mensagem contador 21/05 16:24 + decisão Filipe na call 20/05):
+type GrupoImpostoNome = 'PJ Nacional' | 'PF Nacional' | 'Estrangeiro' | 'IRRF' | 'PJ sem mínimo' | 'IRRF sem mínimo' | 'Sem IRRF'
+
+interface RegraGrupo {
+  retem: { irrf: boolean; pis: boolean; cofins: boolean; csll: boolean }
+  respeitaMinimo: boolean
+  observacao: string
+}
+
+const REGRAS_GRUPOS: Record<GrupoImpostoNome, RegraGrupo> = {
+  'PJ Nacional': {
+    retem: { irrf: true, pis: true, cofins: true, csll: true },
+    respeitaMinimo: true,
+    observacao: 'Retenção dos 4 impostos respeitando valor mínimo',
+  },
+  'PF Nacional': {
+    retem: { irrf: false, pis: false, cofins: false, csll: false },
+    respeitaMinimo: false,
+    observacao: 'Sem retenções',
+  },
+  Estrangeiro: {
+    retem: { irrf: false, pis: false, cofins: false, csll: false },
+    respeitaMinimo: false,
+    observacao: 'Sem retenções',
+  },
+  IRRF: {
+    retem: { irrf: true, pis: false, cofins: false, csll: false },
+    respeitaMinimo: true,
+    observacao: 'Apenas IRRF, respeitando valor mínimo',
+  },
+  'PJ sem mínimo': {
+    retem: { irrf: true, pis: true, cofins: true, csll: true },
+    respeitaMinimo: false,
+    observacao: 'Retenção dos 4 impostos, independente de valor',
+  },
+  'IRRF sem mínimo': {
+    retem: { irrf: true, pis: false, cofins: false, csll: false },
+    respeitaMinimo: false,
+    observacao: 'Apenas IRRF, independente de valor',
+  },
+  'Sem IRRF': {
+    retem: { irrf: false, pis: true, cofins: true, csll: true },
+    respeitaMinimo: true,
+    observacao: 'COFINS + CSLL + PIS (sem IRRF)',
+  },
+}
+
+function inferGrupoFallback(tipoTomador: 'PF' | 'PJ' | null): GrupoImpostoNome {
+  if (tipoTomador === 'PF') return 'PF Nacional'
+  return 'PJ Nacional'
 }
 
 function fmtMoney(value: number): string {
@@ -149,18 +202,74 @@ export default function NfsePreviewDialog({
   }
 
   const valorBruto = data?.itens.reduce((s, i) => s + Number(i.valor ?? 0), 0) ?? 0
-  const aliquotaIss = Number(data?.grupoImposto?.aliquota_iss ?? ALIQUOTAS_PADRAO.iss)
+  const aliquotaIss = Number(data?.grupoImposto?.aliquota_iss ?? ALIQUOTAS_VOA_LEGAL.iss.aliquota)
   const tipoTomador =
     data?.tomador?.cnpj && String(data.tomador.cnpj).replace(/\D/g, '').length === 14 ? 'PJ' : 'PF'
-  const retencoesAtivas = tipoTomador === 'PJ' && valorBruto >= ALIQUOTAS_PADRAO.retencaoMinimaPJ
+
+  // Determina o grupo de impostos do contrato.
+  // Preferência: dados do banco (colunas retem_* + aliquota_* + min_*).
+  // Fallback: REGRAS_GRUPOS hardcoded por nome (compatibilidade com grupos antigos sem colunas).
+  const grupoFromDb = data?.grupoImposto
+  const grupoNomeRaw = grupoFromDb?.nome as string | undefined
+  const grupoNome: GrupoImpostoNome = (grupoNomeRaw && REGRAS_GRUPOS[grupoNomeRaw as GrupoImpostoNome])
+    ? (grupoNomeRaw as GrupoImpostoNome)
+    : inferGrupoFallback(tipoTomador)
+  const regraFallback = REGRAS_GRUPOS[grupoNome]
+
+  // Helper que prefere o valor do banco se preenchido, senão usa o fallback hardcoded.
+  const grupoConfig = {
+    retemIrrf: grupoFromDb?.retem_irrf ?? regraFallback.retem.irrf,
+    retemPis: grupoFromDb?.retem_pis ?? regraFallback.retem.pis,
+    retemCofins: grupoFromDb?.retem_cofins ?? regraFallback.retem.cofins,
+    retemCsll: grupoFromDb?.retem_csll ?? regraFallback.retem.csll,
+    respeitaMinimo: grupoFromDb?.respeita_minimo ?? regraFallback.respeitaMinimo,
+    aliquotaIrrf: Number(grupoFromDb?.aliquota_irrf ?? ALIQUOTAS_VOA_LEGAL.irrf.aliquota),
+    aliquotaPis: Number(grupoFromDb?.aliquota_pis ?? ALIQUOTAS_VOA_LEGAL.pis.aliquota),
+    aliquotaCofins: Number(grupoFromDb?.aliquota_cofins ?? ALIQUOTAS_VOA_LEGAL.cofins.aliquota),
+    aliquotaCsll: Number(grupoFromDb?.aliquota_csll ?? ALIQUOTAS_VOA_LEGAL.csll.aliquota),
+    minCalcIrrf: Number(grupoFromDb?.min_calc_irrf ?? ALIQUOTAS_VOA_LEGAL.irrf.minCalc),
+    minCalcPisCofinsCsll: Number(grupoFromDb?.min_calc_pis_cofins_csll ?? ALIQUOTAS_VOA_LEGAL.pis.minCalc),
+    minRetIrrf: Number(grupoFromDb?.min_ret_irrf ?? ALIQUOTAS_VOA_LEGAL.irrf.minRet),
+    minRetPis: Number(grupoFromDb?.min_ret_pis ?? ALIQUOTAS_VOA_LEGAL.pis.minRet),
+    minRetCofins: Number(grupoFromDb?.min_ret_cofins ?? ALIQUOTAS_VOA_LEGAL.cofins.minRet),
+    minRetCsll: Number(grupoFromDb?.min_ret_csll ?? ALIQUOTAS_VOA_LEGAL.csll.minRet),
+  }
+
+  // Calcula retenção respeitando o min_calc/min_ret específicos de cada imposto.
+  const calcRetencao = (imp: 'irrf' | 'pis' | 'cofins' | 'csll'): { valor: number; aplicado: boolean; motivo?: string } => {
+    const retem = imp === 'irrf' ? grupoConfig.retemIrrf
+      : imp === 'pis' ? grupoConfig.retemPis
+      : imp === 'cofins' ? grupoConfig.retemCofins
+      : grupoConfig.retemCsll
+    if (!retem) return { valor: 0, aplicado: false, motivo: 'não aplica neste grupo' }
+
+    const aliquota = imp === 'irrf' ? grupoConfig.aliquotaIrrf
+      : imp === 'pis' ? grupoConfig.aliquotaPis
+      : imp === 'cofins' ? grupoConfig.aliquotaCofins
+      : grupoConfig.aliquotaCsll
+
+    const minCalc = imp === 'irrf' ? grupoConfig.minCalcIrrf : grupoConfig.minCalcPisCofinsCsll
+    const minRet = imp === 'irrf' ? grupoConfig.minRetIrrf
+      : imp === 'pis' ? grupoConfig.minRetPis
+      : imp === 'cofins' ? grupoConfig.minRetCofins
+      : grupoConfig.minRetCsll
+
+    if (grupoConfig.respeitaMinimo && valorBruto < minCalc) {
+      return { valor: 0, aplicado: false, motivo: `bruto < mín. R$ ${minCalc.toLocaleString('pt-BR')}` }
+    }
+    const valor = Math.round(valorBruto * aliquota) / 100
+    if (grupoConfig.respeitaMinimo && valor < minRet) {
+      return { valor: 0, aplicado: false, motivo: `retenção < mín. R$ ${minRet.toLocaleString('pt-BR')}` }
+    }
+    return { valor, aplicado: true }
+  }
 
   const valorIss = Math.round(valorBruto * aliquotaIss) / 100
-  const valorIrrf = retencoesAtivas ? Math.round(valorBruto * ALIQUOTAS_PADRAO.irrf) / 100 : 0
-  const valorInss = retencoesAtivas ? Math.round(valorBruto * ALIQUOTAS_PADRAO.inss) / 100 : 0
-  const valorPis = retencoesAtivas ? Math.round(valorBruto * ALIQUOTAS_PADRAO.pis) / 100 : 0
-  const valorCofins = retencoesAtivas ? Math.round(valorBruto * ALIQUOTAS_PADRAO.cofins) / 100 : 0
-  const valorCsll = retencoesAtivas ? Math.round(valorBruto * ALIQUOTAS_PADRAO.csll) / 100 : 0
-  const totalRetencoes = valorIss + valorIrrf + valorInss + valorPis + valorCofins + valorCsll
+  const retIrrf = calcRetencao('irrf')
+  const retPis = calcRetencao('pis')
+  const retCofins = calcRetencao('cofins')
+  const retCsll = calcRetencao('csll')
+  const totalRetencoes = valorIss + retIrrf.valor + retPis.valor + retCofins.valor + retCsll.valor
   const valorLiquido = Math.round((valorBruto - totalRetencoes) * 100) / 100
 
   // IBPT (Lei 12.741) — defaults da Voa Legal
@@ -286,43 +395,39 @@ export default function NfsePreviewDialog({
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">IRRF</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.irrf)}</td>
-                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorIrrf)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
-                  </tr>
-                  <tr className="border-t border-hairline">
-                    <td className="py-1 text-ink-secondary">INSS</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.inss)}</td>
-                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorInss)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.irrf.aliquota)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retIrrf.aplicado ? `- ${fmtMoney(retIrrf.valor)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{retIrrf.motivo || 'contador'}</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">PIS</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.pis)}</td>
-                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorPis)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.pis.aliquota)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retPis.aplicado ? `- ${fmtMoney(retPis.valor)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{retPis.motivo || 'contador'}</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">COFINS</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.cofins)}</td>
-                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorCofins)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.cofins.aliquota)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retCofins.aplicado ? `- ${fmtMoney(retCofins.valor)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{retCofins.motivo || 'contador'}</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">CSLL</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_PADRAO.csll)}</td>
-                    <td className="py-1 text-right text-red-600 font-tabular">{retencoesAtivas ? `- ${fmtMoney(valorCsll)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-amber-700">a confirmar</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.csll.aliquota)}</td>
+                    <td className="py-1 text-right text-red-600 font-tabular">{retCsll.aplicado ? `- ${fmtMoney(retCsll.valor)}` : '— não aplicado'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{retCsll.motivo || 'contador'}</td>
                   </tr>
                 </tbody>
               </table>
-              {!retencoesAtivas && (
-                <p className="mt-2 text-xs text-ink-mute italic">
-                  {tipoTomador === 'PF'
-                    ? '* Tomador é pessoa física — IRRF/INSS/PIS/COFINS/CSLL não são retidos na origem.'
-                    : `* Valor bruto abaixo do limite mínimo de R$ ${ALIQUOTAS_PADRAO.retencaoMinimaPJ.toLocaleString('pt-BR')} para retenções PJ.`}
+              <div className="mt-2 rounded-md bg-canvas-soft border border-hairline p-2 text-xs text-ink-secondary">
+                <p>
+                  <strong>Grupo de impostos:</strong> {grupoNome}
+                  {data.grupoImposto?.nome && data.grupoImposto.nome !== grupoNome && (
+                    <span className="text-amber-700"> (contrato configurado como &quot;{data.grupoImposto.nome}&quot; — usando fallback)</span>
+                  )}
                 </p>
-              )}
+                <p className="text-ink-mute">{grupoFromDb?.descricao || regraFallback.observacao}</p>
+              </div>
             </div>
 
             {/* Total */}
