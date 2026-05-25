@@ -13,11 +13,12 @@ export default async function SalarioMinimoPage() {
   if (!session) redirect('/login')
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Salário Mínimo</h1>
-        <p className="mt-2 text-gray-600">Configure o valor manual usado nas regras de cobrança por SM.</p>
-      </div>
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">CONFIGURAÇÃO</span>
+        <h1 className="mt-2 display-lg text-ink">Salário Mínimo</h1>
+        <p className="mt-2 text-sm text-ink-mute">Configure o valor manual usado nas regras de cobrança por SM.</p>
+      </header>
       <SalarioMinimoForm />
     </div>
   )

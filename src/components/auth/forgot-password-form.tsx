@@ -45,8 +45,8 @@ export default function ForgotPasswordForm() {
   if (success) {
     return (
       <div className="mt-8 space-y-6">
-        <div className="rounded-md bg-green-50 p-4">
-          <p className="text-sm text-green-800">
+        <div className="rounded-md border border-accent/30 bg-accent/10 p-4">
+          <p className="text-sm text-accent">
             Se o e-mail informado estiver cadastrado, você receberá um link para redefinir sua senha.
           </p>
         </div>

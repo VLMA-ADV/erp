@@ -201,7 +201,7 @@ export default function SalarioMinimoForm() {
 
   if (!canRead) {
     return (
-      <Alert className="border-red-200 bg-red-50 text-red-800">
+      <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
         <AlertDescription>Sem permissão</AlertDescription>
       </Alert>
     )
@@ -221,7 +221,7 @@ export default function SalarioMinimoForm() {
               Carregando valor atual...
             </div>
           ) : atualQuery.isError ? (
-            <Alert className="border-red-200 bg-red-50 text-red-800">
+            <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
               <AlertDescription>{atualQuery.error.message}</AlertDescription>
             </Alert>
           ) : (
@@ -237,7 +237,7 @@ export default function SalarioMinimoForm() {
           )}
 
           {formError ? (
-            <Alert className="border-red-200 bg-red-50 text-red-800">
+            <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
               <AlertDescription>{formError}</AlertDescription>
             </Alert>
           ) : null}
@@ -273,7 +273,7 @@ export default function SalarioMinimoForm() {
               Carregando histórico...
             </div>
           ) : historicoQuery.isError ? (
-            <Alert className="border-red-200 bg-red-50 text-red-800">
+            <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
               <AlertDescription>{historicoQuery.error.message}</AlertDescription>
             </Alert>
           ) : history.length === 0 ? (

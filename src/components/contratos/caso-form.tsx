@@ -2654,7 +2654,7 @@ export default function CasoForm({
                         ) : salarioMinimoQuery.isError ? (
                           <span className="text-red-700">{salarioMinimoQuery.error.message}</span>
                         ) : quantidadeSm && salarioMinimoValor ? (
-                          <span>
+                          <span className="font-tabular">
                             {quantidadeSm.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} SM × R$ {formatAmount(salarioMinimoValor)} = R${' '}
                             {formatAmount(quantidadeSm * salarioMinimoValor)}
                           </span>
@@ -2820,7 +2820,7 @@ export default function CasoForm({
                               return (
                                 <div className="space-y-1">
                                   <div className="text-xs text-muted-foreground">Valor mensal calculado</div>
-                                  <div className="font-medium">
+                                  <div className="font-medium font-tabular">
                                     {qty} processo(s) × R$ {unit !== null ? fmt(unit) : '0,00'} ={' '}
                                     <span className="font-semibold">
                                       R$ {total !== null ? fmt(total) : '0,00'}

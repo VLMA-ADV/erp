@@ -13,11 +13,12 @@ export default async function UsuariosAdminPage() {
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Gestão de Usuários</h1>
-        <p className="mt-2 text-gray-600">Ferramentas administrativas de acesso</p>
-      </div>
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">CONFIGURAÇÃO</span>
+        <h1 className="mt-2 display-lg text-ink">Gestão de Usuários</h1>
+        <p className="mt-2 text-sm text-ink-mute">Ferramentas administrativas de acesso</p>
+      </header>
       <ResetSenhaAdmin />
     </div>
   )

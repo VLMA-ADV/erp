@@ -737,7 +737,7 @@ export default function CrmPipeline() {
 
   if (!canRead) {
     return (
-      <Alert className="border-red-200 bg-red-50 text-red-700">
+      <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
         <AlertTitle>Sem permissão</AlertTitle>
         <AlertDescription>Você não tem permissão para visualizar o módulo CRM.</AlertDescription>
       </Alert>
@@ -748,8 +748,8 @@ export default function CrmPipeline() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Pipeline de CRM</h2>
-          <p className="text-sm text-slate-600">Total de cards: {cards.length} • Valor potencial: {formatMoney(totalValor)}</p>
+          <h2 className="text-lg font-semibold text-ink">Pipeline de CRM</h2>
+          <p className="text-sm text-ink-mute">Total de cards: {cards.length} • Valor potencial: {formatMoney(totalValor)}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => void loadAll()} disabled={loading}>
@@ -769,7 +769,7 @@ export default function CrmPipeline() {
       </div>
 
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-700">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Erro</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -782,7 +782,7 @@ export default function CrmPipeline() {
             return (
               <div
                 key={etapa.key}
-                className="rounded-lg border bg-slate-50 p-3"
+                className="rounded-lg border bg-canvas-soft p-3"
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                   event.preventDefault()
@@ -793,8 +793,8 @@ export default function CrmPipeline() {
                 }}
               >
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-800">{etapa.label}</h3>
-                  <Badge className="border-slate-200 bg-slate-100 text-slate-700">{etapaCards.length}</Badge>
+                  <h3 className="text-sm font-semibold text-ink-secondary">{etapa.label}</h3>
+                  <Badge className="border-hairline bg-canvas-soft text-ink-secondary">{etapaCards.length}</Badge>
                 </div>
 
                 <div className="space-y-2">
@@ -814,21 +814,21 @@ export default function CrmPipeline() {
                           className="min-w-0 text-left"
                           onClick={() => handleOpenEdit(card)}
                         >
-                          <p className="truncate text-sm font-semibold text-slate-900">{card.cliente_nome}</p>
-                          <p className="truncate text-xs text-slate-500">
+                          <p className="truncate text-sm font-semibold text-ink">{card.cliente_nome}</p>
+                          <p className="truncate text-xs text-ink-mute">
                             {[card.servico_nome, card.produto_nome].filter(Boolean).join(' • ') || 'Sem serviço/produto'}
                           </p>
                         </button>
-                        {canWrite ? <GripVertical className="h-4 w-4 shrink-0 text-slate-400" /> : null}
+                        {canWrite ? <GripVertical className="h-4 w-4 shrink-0 text-ink-mute" /> : null}
                       </div>
 
-                      <div className="space-y-1 text-xs text-slate-600">
-                        <p className="font-medium text-slate-900">{formatMoney(card.valor)}</p>
+                      <div className="space-y-1 text-xs text-ink-mute">
+                        <p className="font-medium text-ink">{formatMoney(card.valor)}</p>
                         <p className="truncate">
                           <UserRound className="mr-1 inline h-3 w-3" />
                           {card.responsavel_interno_nome || 'Sem responsável'}
                         </p>
-                        <p className="text-[11px] text-slate-500">Atualizado em {formatDateTime(card.updated_at)}</p>
+                        <p className="text-[11px] text-ink-mute">Atualizado em {formatDateTime(card.updated_at)}</p>
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-1">
@@ -873,7 +873,7 @@ export default function CrmPipeline() {
                   ))}
 
                   {etapaCards.length === 0 ? (
-                    <div className="rounded-md border border-dashed bg-white/70 p-4 text-center text-xs text-slate-500">
+                    <div className="rounded-md border border-dashed bg-white/70 p-4 text-center text-xs text-ink-mute">
                       Nenhum card nesta etapa
                     </div>
                   ) : null}
@@ -1035,14 +1035,14 @@ export default function CrmPipeline() {
 
             {existingAnexos.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-700">Anexos já enviados</p>
+                <p className="text-xs font-medium text-ink-secondary">Anexos já enviados</p>
                 {existingAnexos.map((anexo) => {
                   const markedToRemove = removeAnexoIds.includes(anexo.id)
                   return (
                     <div key={anexo.id} className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs">
                       <div className="min-w-0">
-                        <p className={`truncate font-medium ${markedToRemove ? 'line-through text-slate-400' : ''}`}>{anexo.nome}</p>
-                        <p className="truncate text-slate-500">{anexo.arquivo_nome}</p>
+                        <p className={`truncate font-medium ${markedToRemove ? 'line-through text-ink-mute' : ''}`}>{anexo.nome}</p>
+                        <p className="truncate text-ink-mute">{anexo.arquivo_nome}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         <Button
@@ -1074,7 +1074,7 @@ export default function CrmPipeline() {
 
             {newAnexos.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-700">Novos anexos</p>
+                <p className="text-xs font-medium text-ink-secondary">Novos anexos</p>
                 {newAnexos.map((anexo) => (
                   <div key={anexo.id} className="grid grid-cols-1 gap-2 rounded border p-2 md:grid-cols-[1fr_auto]">
                     <div className="space-y-1">
@@ -1085,7 +1085,7 @@ export default function CrmPipeline() {
                         disabled={saving}
                         className="h-8"
                       />
-                      <p className="truncate text-xs text-slate-500">{anexo.file.name}</p>
+                      <p className="truncate text-xs text-ink-mute">{anexo.file.name}</p>
                     </div>
                     <Button
                       type="button"
@@ -1100,7 +1100,7 @@ export default function CrmPipeline() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-slate-500">Nenhum novo anexo selecionado.</p>
+              <p className="text-xs text-ink-mute">Nenhum novo anexo selecionado.</p>
             )}
           </div>
 

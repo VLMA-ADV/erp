@@ -1034,7 +1034,7 @@ export default function FluxoDeFaturamentoList() {
   return (
     <div className="space-y-4">
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-700">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -1087,7 +1087,7 @@ export default function FluxoDeFaturamentoList() {
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
           </span>
         </div>
-        <div className="text-sm font-semibold">{formatMoney(totals.valor)}</div>
+        <div className="text-sm font-semibold font-tabular">{formatMoney(totals.valor)}</div>
       </div>
 
       <div className="flex justify-end">
@@ -1117,7 +1117,7 @@ export default function FluxoDeFaturamentoList() {
         </Tabs>
         <div className="overflow-hidden rounded-md border bg-white">
           <Table className="w-full min-w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-canvas-soft">
               <tr>
                 <th className="w-10 px-2 py-3 text-left">
                   <input
@@ -1138,16 +1138,16 @@ export default function FluxoDeFaturamentoList() {
                   />
                 </th>
                 <th className="w-10 px-2 py-3" />
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente / Contrato / Caso</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Responsável atual</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Itens</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Horas</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Valor</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente / Contrato / Caso</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Responsável atual</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Itens</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Horas</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Valor</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-hairline">
               {loadingContratos ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -1202,9 +1202,9 @@ export default function FluxoDeFaturamentoList() {
                         <td className="px-4 py-3 font-semibold">{cliente.nome}</td>
                         <td className="px-4 py-3 text-sm">{clienteSummary.status}</td>
                         <td className="px-4 py-3 text-sm">{clienteSummary.responsavel}</td>
-                        <td className="px-4 py-3">{cliente.itemCount}</td>
-                        <td className="px-4 py-3">{formatHours(cliente.totalHoras)}</td>
-                        <td className="px-4 py-3 text-right">{formatMoney(cliente.totalValor)}</td>
+                        <td className="px-4 py-3 font-tabular">{cliente.itemCount}</td>
+                        <td className="px-4 py-3 font-tabular">{formatHours(cliente.totalHoras)}</td>
+                        <td className="px-4 py-3 text-right font-tabular">{formatMoney(cliente.totalValor)}</td>
                         <td className="px-4 py-3 text-right text-muted-foreground">—</td>
                       </tr>
 
@@ -1273,9 +1273,9 @@ export default function FluxoDeFaturamentoList() {
                                 </td>
                                 <td className="px-4 py-3 text-sm">{contratoSummary.status}</td>
                                 <td className="px-4 py-3 text-sm">{contratoSummary.responsavel}</td>
-                                <td className="px-4 py-3">{metrics.n}</td>
-                                <td className="px-4 py-3">{formatHours(metrics.h)}</td>
-                                <td className="px-4 py-3 text-right">{formatMoney(metrics.v)}</td>
+                                <td className="px-4 py-3 font-tabular">{metrics.n}</td>
+                                <td className="px-4 py-3 font-tabular">{formatHours(metrics.h)}</td>
+                                <td className="px-4 py-3 text-right font-tabular">{formatMoney(metrics.v)}</td>
                                 <td className="px-4 py-3 text-right text-muted-foreground">—</td>
                               </tr>
 
@@ -1339,11 +1339,11 @@ export default function FluxoDeFaturamentoList() {
                                         <td className="px-4 py-3 text-sm text-muted-foreground">
                                           {casoSummary.responsavel}
                                         </td>
-                                        <td className="px-4 py-3 text-muted-foreground">{caseMetrics.itemCount}</td>
-                                        <td className="px-4 py-3 text-muted-foreground">
+                                        <td className="px-4 py-3 text-muted-foreground font-tabular">{caseMetrics.itemCount}</td>
+                                        <td className="px-4 py-3 text-muted-foreground font-tabular">
                                           {formatHours(caseMetrics.totalHoras)}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-muted-foreground">
+                                        <td className="px-4 py-3 text-right text-muted-foreground font-tabular">
                                           {formatMoney(caseMetrics.totalValor)}
                                         </td>
                                         <td className="px-4 py-3 text-right">
@@ -1398,33 +1398,33 @@ export default function FluxoDeFaturamentoList() {
                                           <td colSpan={9} className="bg-muted/20 px-4 py-3">
                                             <div className="rounded-md border bg-white">
                                               <Table className="w-full min-w-full">
-                                                <thead className="bg-gray-50">
+                                                <thead className="bg-canvas-soft">
                                                   <tr>
                                                     <th className="w-10 px-3 py-2 text-left" />
-                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
                                                       Regra / tipo
                                                     </th>
-                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
                                                       Referência
                                                     </th>
-                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
                                                       Status
                                                     </th>
-                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
                                                       Responsável
                                                     </th>
-                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
                                                       Horas
                                                     </th>
-                                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-ink-mute">
                                                       Valor
                                                     </th>
-                                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">
+                                                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-ink-mute">
                                                       Ações
                                                     </th>
                                                   </tr>
                                                 </thead>
-                                                <tbody className="divide-y divide-gray-100">
+                                                <tbody className="divide-y divide-hairline">
                                                   {casoG.itens.map((itemRow) => {
                                                     const detalhe = itemToDetalhe(itemRow)
                                                     const canBill = isDetalheFaturavel(detalhe)
@@ -1454,8 +1454,8 @@ export default function FluxoDeFaturamentoList() {
                                                         <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
-                                                        <td className="px-3 py-2 text-sm">{formatHours(detalhe.horas)}</td>
-                                                        <td className="px-3 py-2 text-right text-sm">
+                                                        <td className="px-3 py-2 text-sm font-tabular">{formatHours(detalhe.horas)}</td>
+                                                        <td className="px-3 py-2 text-right text-sm font-tabular">
                                                           {formatMoney(detalhe.valor)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right">
@@ -1533,7 +1533,7 @@ export default function FluxoDeFaturamentoList() {
           <div className="max-h-[60vh] overflow-y-auto py-2">
             <div className="overflow-x-auto rounded-md border">
               <Table className="w-full min-w-[1240px] text-xs">
-                <thead className="bg-gray-50">
+                <thead className="bg-canvas-soft">
                   <tr>
                     <th className="px-3 py-2 text-left">Contrato</th>
                     <th className="px-3 py-2 text-left">Caso</th>
@@ -1559,9 +1559,9 @@ export default function FluxoDeFaturamentoList() {
                         <td className="px-3 py-2">{row.atividade}</td>
                         <td className="px-3 py-2">{row.revisor}</td>
                         <td className="px-3 py-2">{row.aprovador}</td>
-                        <td className="px-3 py-2 text-right">{formatNullableHours(row.horasInformadas)}</td>
-                        <td className="px-3 py-2 text-right">{formatNullableHours(row.horasRevisadas)}</td>
-                        <td className="px-3 py-2 text-right">{formatNullableMoney(row.valorFinal)}</td>
+                        <td className="px-3 py-2 text-right font-tabular">{formatNullableHours(row.horasInformadas)}</td>
+                        <td className="px-3 py-2 text-right font-tabular">{formatNullableHours(row.horasRevisadas)}</td>
+                        <td className="px-3 py-2 text-right font-tabular">{formatNullableMoney(row.valorFinal)}</td>
                         <td className="px-3 py-2 text-center">
                           {row.timesheetId ? (
                             <Button
@@ -1632,7 +1632,7 @@ export default function FluxoDeFaturamentoList() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
-            <label className="text-xs font-medium text-slate-600">Texto da atividade</label>
+            <label className="text-xs font-medium text-ink-mute">Texto da atividade</label>
             <Textarea
               value={editAtividadeTexto}
               onChange={(event) => setEditAtividadeTexto(event.target.value)}

@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils/cn'
 
 const Alert = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} role="alert" className={cn('relative w-full rounded-lg border px-4 py-3 text-sm', className)} {...props} />
+    <div ref={ref} role="alert" className={cn('relative w-full rounded-lg border border-hairline bg-canvas-soft text-ink px-4 py-3 text-sm', className)} {...props} />
   ),
 )
 Alert.displayName = 'Alert'

@@ -410,7 +410,7 @@ export default function TimesheetList() {
 
   if (!canRead) {
     return (
-      <Alert className="border-red-200 bg-red-50 text-red-700">
+      <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
         <AlertTitle>Atenção</AlertTitle>
         <AlertDescription>Você não tem permissão para visualizar timesheets.</AlertDescription>
       </Alert>
@@ -420,7 +420,7 @@ export default function TimesheetList() {
   return (
     <div className="space-y-4">
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-700">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -476,17 +476,17 @@ export default function TimesheetList() {
 
       <div className="overflow-x-auto rounded-md border">
         <Table className="w-full min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-canvas-soft">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Data</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Contrato/Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Minutos</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Lançado por</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Data</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Contrato/Caso</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Minutos</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Lançado por</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+          <tbody className="divide-y divide-hairline bg-white">
             {loading ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">Carregando...</td>
@@ -513,7 +513,7 @@ export default function TimesheetList() {
                       <p className="text-muted-foreground">{item.caso_numero || '-'} - {item.caso_nome}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{item.descricao || '-'}</p>
                     </td>
-                    <td className="px-4 py-3 text-sm">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
+                    <td className="px-4 py-3 text-sm font-tabular">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
                     <td className="px-4 py-3 text-sm">
                       <Badge className={statusClassName}>{timesheetStatusLabel(item.status)}</Badge>
                     </td>

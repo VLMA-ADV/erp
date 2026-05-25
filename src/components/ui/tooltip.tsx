@@ -20,10 +20,10 @@ export function Tooltip({ children, content, side = 'top' }: TooltipProps) {
   }
 
   const arrowClasses = {
-    top: 'top-full left-1/2 -translate-x-1/2 border-t-gray-900',
-    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-gray-900',
-    left: 'left-full top-1/2 -translate-y-1/2 border-l-gray-900',
-    right: 'right-full top-1/2 -translate-y-1/2 border-r-gray-900',
+    top: 'top-full left-1/2 -translate-x-1/2 border-t-ink',
+    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-ink',
+    left: 'left-full top-1/2 -translate-y-1/2 border-l-ink',
+    right: 'right-full top-1/2 -translate-y-1/2 border-r-ink',
   }
 
   return (
@@ -36,7 +36,7 @@ export function Tooltip({ children, content, side = 'top' }: TooltipProps) {
       {isVisible && (
         <div
           className={cn(
-            'absolute z-50 px-2 py-1 text-xs text-white bg-gray-900 rounded shadow-lg whitespace-nowrap pointer-events-none',
+            'absolute z-50 px-2 py-1 text-xs text-canvas bg-ink rounded shadow-lift-2 whitespace-nowrap pointer-events-none',
             sideClasses[side]
           )}
         >

@@ -732,7 +732,7 @@ export default function ItensAFaturarList() {
   return (
     <div className="space-y-4">
       {error ? (
-        <Alert className="border-red-200 bg-red-50 text-red-700">
+        <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -763,7 +763,7 @@ export default function ItensAFaturarList() {
           <span className="mr-4">Itens: <strong className="text-foreground">{totals.itens}</strong></span>
           <span>Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong></span>
         </div>
-        <div className="text-sm font-semibold">{formatMoney(totals.valor)}</div>
+        <div className="text-sm font-semibold font-tabular">{formatMoney(totals.valor)}</div>
       </div>
 
       <Tabs value={regraTab} defaultValue="todas" onValueChange={(value) => setRegraTab(value as RegraTabKey)}>
@@ -806,7 +806,7 @@ export default function ItensAFaturarList() {
 
       <div className="overflow-hidden rounded-md border bg-white">
         <Table className="w-full min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-canvas-soft">
             <tr>
               <th className="w-10 px-2 py-3 text-left">
                 <input
@@ -829,14 +829,14 @@ export default function ItensAFaturarList() {
                   }}
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Cliente / Contrato / Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Horas em aberto</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Itens</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Valor em aberto</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Ações</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente / Contrato / Caso</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Horas em aberto</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Itens</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Valor em aberto</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-hairline">
             {loading ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -889,9 +889,9 @@ export default function ItensAFaturarList() {
                           {cliente.cliente_nome}
                         </button>
                       </td>
-                      <td className="px-4 py-3">{formatHours(cliente.total_horas)}</td>
-                      <td className="px-4 py-3">{cliente.total_itens}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatMoney(cliente.total_valor)}</td>
+                      <td className="px-4 py-3 font-tabular">{formatHours(cliente.total_horas)}</td>
+                      <td className="px-4 py-3 font-tabular">{cliente.total_itens}</td>
+                      <td className="px-4 py-3 text-right font-semibold font-tabular">{formatMoney(cliente.total_valor)}</td>
                       <td className="px-4 py-3 text-right">
                         <Tooltip content={sendingTarget === cliente.cliente_id ? 'Enviando cliente...' : 'Enviar cliente'}>
                           <Button
@@ -962,9 +962,9 @@ export default function ItensAFaturarList() {
                                   {formatContratoDisplay(contrato.contrato_numero_sequencial, contrato.contrato_nome).full}
                                 </button>
                               </td>
-                              <td className="px-4 py-3">{formatHours(contrato.total_horas)}</td>
-                              <td className="px-4 py-3">{contrato.total_itens}</td>
-                              <td className="px-4 py-3 text-right">{formatMoney(contrato.total_valor)}</td>
+                              <td className="px-4 py-3 font-tabular">{formatHours(contrato.total_horas)}</td>
+                              <td className="px-4 py-3 font-tabular">{contrato.total_itens}</td>
+                              <td className="px-4 py-3 text-right font-tabular">{formatMoney(contrato.total_valor)}</td>
                               <td className="px-4 py-3 text-right">
                                 <Tooltip
                                   content={sendingTarget === contrato.contrato_id ? 'Enviando contrato...' : 'Enviar contrato'}
@@ -1025,16 +1025,16 @@ export default function ItensAFaturarList() {
                                           {caso.caso_numero ? `${caso.caso_numero} - ` : ''}{caso.caso_nome}
                                         </button>
                                       </td>
-                                      <td className="px-4 py-3 text-muted-foreground">{formatHours(caso.total_horas)}</td>
-                                      <td className="px-4 py-3 text-muted-foreground">{caso.total_itens}</td>
-                                      <td className="px-4 py-3 text-right text-muted-foreground">{formatMoney(caso.total_valor)}</td>
+                                      <td className="px-4 py-3 text-muted-foreground font-tabular">{formatHours(caso.total_horas)}</td>
+                                      <td className="px-4 py-3 text-muted-foreground font-tabular">{caso.total_itens}</td>
+                                      <td className="px-4 py-3 text-right text-muted-foreground font-tabular">{formatMoney(caso.total_valor)}</td>
                                       <td className="px-4 py-3 text-right">
                                         <div className="flex items-center justify-end gap-1">
                                           <Tooltip content="Postergar fatura">
                                             <Button
                                               size="sm"
                                               variant="ghost"
-                                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                              className="text-primary hover:text-primary-deep hover:bg-primary-soft-bg"
                                               disabled={!!sendingTarget || postergarSubmitting}
                                               onClick={() => openPostergar(caso)}
                                               aria-label="Postergar fatura"
@@ -1073,13 +1073,13 @@ export default function ItensAFaturarList() {
                                           <td className="px-4 py-2 pl-24 text-xs text-muted-foreground">
                                             {(linha.descricao || linha.tipo) + ' • ' + formatBillingReference(linha.tipo, linha.data_referencia)}
                                           </td>
-                                          <td className="px-4 py-2 text-xs text-muted-foreground">
+                                          <td className="px-4 py-2 text-xs text-muted-foreground font-tabular">
                                             {formatHours(linha.horas)}
                                           </td>
                                           <td className="px-4 py-2 text-xs text-muted-foreground">
                                             -
                                           </td>
-                                          <td className="px-4 py-2 text-right text-xs text-muted-foreground">
+                                          <td className="px-4 py-2 text-right text-xs text-muted-foreground font-tabular">
                                             {formatMoney(linha.valor)}
                                           </td>
                                           <td className="px-4 py-2 text-right text-xs text-muted-foreground">-</td>
@@ -1110,15 +1110,15 @@ export default function ItensAFaturarList() {
             <DialogTitle>Postergar fatura</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ink-mute">
               Selecione a nova data para os lançamentos do caso{' '}
-              <strong className="text-slate-900">{postergarTarget?.casoNome}</strong>.
+              <strong className="text-ink">{postergarTarget?.casoNome}</strong>.
             </p>
             <div className="space-y-1">
               <label className="text-sm font-medium">Nova data de faturamento</label>
               <DatePicker value={postergarDate} onChange={setPostergarDate} />
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-ink-mute">
               Os lançamentos serão movidos para o período da data escolhida e reaparecerão na lista nesse novo período.
             </p>
           </div>
@@ -1127,7 +1127,7 @@ export default function ItensAFaturarList() {
               Cancelar
             </Button>
             <Button
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-primary hover:bg-primary-deep text-primary-foreground"
               onClick={() => void confirmPostergar()}
               disabled={postergarSubmitting || !postergarDate}
             >

@@ -25,7 +25,7 @@ export function Popover({ open, onOpenChange, trigger, children, className }: Po
     <div ref={ref} className="relative inline-block">
       <div onClick={() => onOpenChange(!open)}>{trigger}</div>
       {open ? (
-        <div className={cn('absolute z-40 mt-2 rounded-md border bg-white p-2 shadow', className)}>
+        <div className={cn('absolute z-40 mt-2 rounded-md border border-hairline bg-canvas p-2 shadow-lift-2', className)}>
           {children}
         </div>
       ) : null}

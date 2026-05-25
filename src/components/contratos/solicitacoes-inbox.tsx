@@ -138,12 +138,12 @@ export default function SolicitacoesInbox() {
     <Collapsible open={open} onOpenChange={setOpen} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <ClipboardList className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Solicitações de Contrato</p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="text-sm font-semibold text-ink">Solicitações de Contrato</p>
+            <p className="mt-1 text-sm text-ink-mute">
               Solicitações pendentes de abertura ou revisão de contrato.
             </p>
           </div>
@@ -153,10 +153,10 @@ export default function SolicitacoesInbox() {
           <Badge
             className={
               isError
-                ? 'border-red-200 bg-red-50 text-red-700'
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
                 : total > 0
                   ? 'border-amber-200 bg-amber-50 text-amber-700'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
+                  : 'border-hairline bg-canvas-soft text-ink-mute'
             }
           >
             {badgeLabel}
@@ -180,13 +180,13 @@ export default function SolicitacoesInbox() {
       </div>
 
       <CollapsibleContent>
-        <div className="border-t bg-slate-50/70 p-3">
+        <div className="border-t bg-canvas-soft/70 p-3">
           {isError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error instanceof Error ? error.message : 'Erro ao carregar solicitações'}
             </div>
           ) : preview.length === 0 ? (
-            <div className="rounded-lg border bg-white p-4 text-sm text-slate-500">Nenhuma solicitação pendente</div>
+            <div className="rounded-lg border bg-white p-4 text-sm text-ink-mute">Nenhuma solicitação pendente</div>
           ) : (
             <div className="space-y-2">
               {preview.map((item) => (
@@ -206,17 +206,17 @@ export default function SolicitacoesInbox() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className="text-sm font-semibold text-ink">
                           {item.nome || 'Solicitação sem título'}
                         </span>
-                        <span className="text-xs text-slate-400">•</span>
-                        <span className="text-xs text-slate-500">{formatRelativeDate(item.created_at)}</span>
+                        <span className="text-xs text-ink-mute">•</span>
+                        <span className="text-xs text-ink-mute">{formatRelativeDate(item.created_at)}</span>
                       </div>
-                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-ink-mute">
                         {clienteLabel(item)}
                         {item.solicitante_nome ? ` → ${item.solicitante_nome}` : ''}
                       </p>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.descricao}</p>
+                      <p className="mt-2 line-clamp-2 text-sm text-ink-secondary">{item.descricao}</p>
                     </div>
                   </button>
                   {canWrite ? (

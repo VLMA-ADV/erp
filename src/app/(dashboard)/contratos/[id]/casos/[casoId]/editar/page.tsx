@@ -21,11 +21,12 @@ export default async function EditarCasoPage({
   const viewOnly = query.view === '1'
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">{viewOnly ? 'Visualizar Caso' : 'Editar Caso'}</h1>
-        <p className="mt-2 text-gray-600">{viewOnly ? 'Visualize os dados do caso' : 'Atualize os dados do caso'}</p>
-      </div>
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">OPERAÇÃO</span>
+        <h1 className="mt-2 display-lg text-ink">{viewOnly ? 'Visualizar Caso' : 'Editar Caso'}</h1>
+        <p className="mt-2 text-sm text-ink-mute">{viewOnly ? 'Visualize os dados do caso' : 'Atualize os dados do caso'}</p>
+      </header>
       <CasoForm contratoId={id} casoId={casoId} viewOnly={viewOnly} />
     </div>
   )

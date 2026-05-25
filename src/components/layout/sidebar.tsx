@@ -57,12 +57,12 @@ export default function Sidebar() {
 
   if (loading) {
     return (
-      <aside className="w-64 border-r bg-gray-50 p-4">
+      <aside className="w-64 border-r border-hairline bg-canvas-soft p-4">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded mb-4"></div>
+          <div className="h-8 bg-hairline rounded mb-4"></div>
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 bg-gray-200 rounded"></div>
+              <div key={i} className="h-10 bg-hairline rounded"></div>
             ))}
           </div>
         </div>
@@ -88,9 +88,10 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 border-r bg-gray-50 p-4">
+    <aside className="w-64 border-r border-hairline bg-canvas-soft p-4">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">ERP-VLMA</h1>
+        <span className="text-eyebrow">VLMA</span>
+        <h1 className="mt-1 text-lg font-light text-ink">ERP</h1>
       </div>
       <nav className="space-y-1">
         {/* Menu Configuração (Expansível) */}

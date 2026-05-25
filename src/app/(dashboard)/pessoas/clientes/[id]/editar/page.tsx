@@ -17,11 +17,12 @@ export default async function EditarClientePage({
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Editar Cliente</h1>
-        <p className="mt-2 text-gray-600">Edite os dados do cliente</p>
-      </div>
+    <div className="container mx-auto px-6 py-12">
+      <header className="mb-8">
+        <span className="text-eyebrow">PESSOAS</span>
+        <h1 className="mt-2 display-lg text-ink">Editar Cliente</h1>
+        <p className="mt-2 text-sm text-ink-mute">Edite os dados do cliente</p>
+      </header>
       <ClienteForm clienteId={params.id} />
     </div>
   )

@@ -38,21 +38,21 @@ function MiniBarChart({ title, items }: { title: string; items: DashboardListIte
 
   return (
     <div className="flex h-full min-h-[132px] flex-col rounded-xl border bg-white p-3 shadow-sm">
-      <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500">{title}</p>
+      <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-mute">{title}</p>
       <div className="space-y-1.5">
         {topItems.length === 0 ? (
-          <p className="text-xs text-gray-400">Sem dados</p>
+          <p className="text-xs text-ink-mute">Sem dados</p>
         ) : (
           topItems.map((item) => {
             const width = max > 0 ? (item.total / max) * 100 : 0
             return (
               <div key={`${title}-${item.nome}`} className="space-y-1">
                 <div className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="truncate text-gray-600">{item.nome}</span>
-                  <span className="font-medium text-gray-900">{item.total}</span>
+                  <span className="truncate text-ink-mute">{item.nome}</span>
+                  <span className="font-medium text-ink font-tabular">{item.total}</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-gray-100">
-                  <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${width}%` }} />
+                <div className="h-1.5 rounded-full bg-canvas-soft">
+                  <div className="h-1.5 rounded-full bg-primary" style={{ width: `${width}%` }} />
                 </div>
               </div>
             )
@@ -65,14 +65,14 @@ function MiniBarChart({ title, items }: { title: string; items: DashboardListIte
 
 function DashboardSkeleton() {
   return (
-    <div className="rounded-2xl border bg-slate-50/80 p-3">
+    <div className="rounded-2xl border bg-canvas-soft/80 p-3">
       <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           {[1, 2, 3].map((item) => (
             <div key={item} className="rounded-xl border bg-white p-3 shadow-sm">
               <div className="animate-pulse space-y-2">
-                <div className="h-3 w-20 rounded bg-gray-200" />
-                <div className="h-7 w-14 rounded bg-gray-200" />
+                <div className="h-3 w-20 rounded bg-hairline" />
+                <div className="h-7 w-14 rounded bg-hairline" />
               </div>
             </div>
           ))}
@@ -81,11 +81,11 @@ function DashboardSkeleton() {
           {[1, 2, 3].map((item) => (
             <div key={`chart-${item}`} className="rounded-xl border bg-white p-3 shadow-sm">
               <div className="animate-pulse space-y-2">
-                <div className="h-3 w-24 rounded bg-gray-200" />
+                <div className="h-3 w-24 rounded bg-hairline" />
                 {[1, 2, 3].map((row) => (
                   <div key={row} className="space-y-1">
-                    <div className="h-2.5 w-full rounded bg-gray-100" />
-                    <div className="h-1.5 w-full rounded bg-gray-200" />
+                    <div className="h-2.5 w-full rounded bg-canvas-soft" />
+                    <div className="h-1.5 w-full rounded bg-hairline" />
                   </div>
                 ))}
               </div>
@@ -157,20 +157,20 @@ export default function ContratosDashboard() {
   if (!data) return null
 
   return (
-    <div className="overflow-hidden rounded-2xl border bg-slate-50/80 p-3">
+    <div className="overflow-hidden rounded-2xl border bg-canvas-soft/80 p-3">
       <div className="grid gap-3 xl:max-h-[200px] xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
           <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Contratos</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.total_contratos}</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-ink-mute">Contratos</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-ink font-tabular">{data.total_contratos}</p>
           </div>
           <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Casos</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.total_casos}</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-ink-mute">Casos</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-ink font-tabular">{data.total_casos}</p>
           </div>
           <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Reajuste 2026</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-gray-900">{data.com_reajuste_2026}</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-ink-mute">Reajuste 2026</p>
+            <p className="mt-1 text-2xl font-semibold leading-none text-ink font-tabular">{data.com_reajuste_2026}</p>
           </div>
         </div>
 

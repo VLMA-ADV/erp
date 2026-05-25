@@ -81,8 +81,8 @@ export default function ClientesList() {
 
   if (!canRead) {
     return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+        <p className="text-sm text-destructive">
           Você não tem permissão para visualizar clientes
         </p>
       </div>
@@ -92,8 +92,8 @@ export default function ClientesList() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 
@@ -108,7 +108,7 @@ export default function ClientesList() {
       </div>
 
       {!loading && total > items.length ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-ink-mute">
           Mostrando {items.length} de {total} clientes. Refine a busca para encontrar mais.
         </p>
       ) : null}

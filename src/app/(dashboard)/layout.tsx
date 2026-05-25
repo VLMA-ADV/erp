@@ -11,12 +11,12 @@ export const dynamic = 'force-dynamic'
 
 function SidebarFallback() {
   return (
-    <aside className="w-64 border-r bg-gray-50 p-4">
+    <aside className="w-64 border-r border-hairline bg-canvas-soft p-4">
       <div className="animate-pulse">
-        <div className="h-8 bg-gray-200 rounded mb-4"></div>
+        <div className="h-8 bg-hairline rounded mb-4"></div>
         <div className="space-y-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-10 bg-gray-200 rounded"></div>
+            <div key={i} className="h-10 bg-hairline rounded"></div>
           ))}
         </div>
       </div>
@@ -54,7 +54,7 @@ export default async function DashboardLayout({
               <SidebarClient />
             </Suspense>
             <main className="flex-1 overflow-y-auto">
-              <div className="sticky top-0 z-10 border-b bg-white/95 px-6 py-3 backdrop-blur-sm">
+              <div className="sticky top-0 z-10 border-b border-hairline bg-canvas/95 px-6 py-3 backdrop-blur-sm">
                 <PageBreadcrumb />
               </div>
               {children}

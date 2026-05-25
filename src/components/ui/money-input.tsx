@@ -54,6 +54,7 @@ export function MoneyInput({
       disabled={disabled}
       readOnly={readOnly}
       placeholder={placeholder}
+      className="font-tabular text-right"
     />
   )
 }

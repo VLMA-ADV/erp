@@ -17,7 +17,7 @@ export default function SidebarItem({ href, label, active }: SidebarItemProps) {
         'flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors',
         active
           ? 'bg-primary text-primary-foreground'
-          : 'text-gray-700 hover:bg-gray-100'
+          : 'text-ink-mute hover:bg-canvas hover:text-ink'
       )}
     >
       {label}
