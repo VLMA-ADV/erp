@@ -206,21 +206,20 @@ export default function CrmPipeline() {
   }
 
   const fetchClientes = async () => {
-    const session = await getSession()
-    if (!session) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-clientes?_ts=${Date.now()}`, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
+    const { data, error: rpcErr } = await supabase.rpc('list_clientes_paginated', {
+      p_user_id: user.id,
+      p_limit: 5000,
+      p_offset: 0,
+      p_search: null,
     })
 
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok) return
+    if (rpcErr || !data) return
 
+    const payload = (data as { data: any[]; total: number })
     const nextClientes = (payload.data || [])
       .filter((item: any) => item?.id && item?.nome)
       .map((item: any) => ({ id: item.id as string, nome: item.nome as string }))
