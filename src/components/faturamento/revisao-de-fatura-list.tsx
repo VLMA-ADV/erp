@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Clock, Eye, FileText, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,6 @@ import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissions } from '@/lib/hooks/use-permissions'
-import NfsePreviewDialog from './nfse-preview-dialog'
 
 interface RevisaoItem {
   id: string
@@ -637,10 +636,6 @@ export default function RevisaoDeFaturaList() {
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
   const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
   const [colaboradores, setColaboradores] = useState<ColaboradorOption[]>([])
-  const [approvedItems, setApprovedItems] = useState<RevisaoItem[]>([])
-  const [emittingNfse, setEmittingNfse] = useState<string | null>(null)
-  const [nfseResult, setNfseResult] = useState<{ ref: string; valor_total: number; focus_response: Record<string, unknown> } | null>(null)
-  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string; itemIds: string[] } | null>(null)
 
   const canRead =
     hasPermission('finance.faturamento.read') ||
@@ -793,67 +788,11 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
-  const loadApprovedItems = async () => {
-    try {
-      const accessToken = await getSessionToken()
-      if (!accessToken) return
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura?status=aprovado`,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        },
-      )
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) return
-      const parsed: RevisaoItem[] = Array.isArray(payload.data)
-        ? payload.data.map(normalizeItem).filter((e: RevisaoItem | null): e is RevisaoItem => e !== null && e.status === 'aprovado')
-        : []
-      setApprovedItems(parsed)
-    } catch (loadError) {
-      console.error('loadApprovedItems', loadError)
-    }
-  }
-
-  const emitNfse = async (contratoId: string, itemIds: string[]) => {
-    try {
-      setEmittingNfse(contratoId)
-      const accessToken = await getSessionToken()
-      if (!accessToken) return
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/emit-nfse`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contrato_id: contratoId, billing_item_ids: itemIds }),
-        },
-      )
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao emitir NFS-e')
-        return
-      }
-      setNfseResult({
-        ref: String(payload.ref),
-        valor_total: Number(payload.valor_total),
-        focus_response: (payload.focus_response as Record<string, unknown>) || {},
-      })
-      success('NFS-e enviada para processamento na Focus NFe!')
-      void loadApprovedItems()
-    } catch (emitError) {
-      console.error('emitNfse', emitError)
-      toastError('Erro ao emitir NFS-e')
-    } finally {
-      setEmittingNfse(null)
-    }
-  }
-
   useEffect(() => {
     if (!canRead) return
     void loadItems()
     void loadAllContratos()
     void loadColaboradores()
-    void loadApprovedItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -2105,114 +2044,6 @@ export default function RevisaoDeFaturaList() {
         </DialogContent>
       </Dialog>
 
-      {/* Seção: Prontos para emissão de NFS-e */}
-      {approvedItems.length > 0 && (() => {
-        const byContrato = approvedItems.reduce<Record<string, { nome: string; numero: number | null; items: RevisaoItem[] }>>((acc, item) => {
-          const key = item.contratoId
-          if (!acc[key]) acc[key] = { nome: item.contratoNome, numero: item.contratoNumero, items: [] }
-          acc[key].items.push(item)
-          return acc
-        }, {})
-
-        return (
-          <div className="mt-8 rounded-xl border border-green-200 bg-green-50/60 p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <FileText className="h-5 w-5 text-green-700" />
-              <h3 className="text-sm font-semibold text-green-800">Prontos para emissão de NFS-e</h3>
-              <span className="rounded-full bg-green-200 px-2 py-0.5 text-xs font-medium text-green-800">
-                {approvedItems.length} item(ns) aprovados
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              {Object.entries(byContrato).map(([contratoId, group]) => {
-                const valorTotal = group.items.reduce((sum, item) => {
-                  const v = item.valorAprovado ?? item.valorRevisado ?? item.valorInformado ?? 0
-                  return sum + Number(v)
-                }, 0)
-                const isBusy = emittingNfse === contratoId
-
-                return (
-                  <div key={contratoId} className="flex items-center justify-between rounded-lg border border-green-200 bg-white px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-ink">
-                        {group.numero ? `${group.numero} — ` : ''}{group.nome}
-                      </p>
-                      <p className="text-xs text-ink-mute font-tabular">
-                        {group.items.length} item(ns) · {valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-hairline text-ink-secondary hover:bg-canvas-soft"
-                        onClick={() => setNfsePreview({
-                          contratoId,
-                          label: `${group.numero ? `${group.numero} — ` : ''}${group.nome}`,
-                          itemIds: group.items.map((i) => i.id),
-                        })}
-                      >
-                        <Eye className="mr-2 h-4 w-4" /> Visualizar prévia
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-green-700 hover:bg-green-800 text-white"
-                        disabled={isBusy}
-                        onClick={() => void emitNfse(contratoId, group.items.map((i) => i.id))}
-                      >
-                        {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                        Emitir NFS-e
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Dialog: prévia rascunho NFS-e (camada anterior pedida pelo Filipe) */}
-      <NfsePreviewDialog
-        open={nfsePreview !== null}
-        contratoId={nfsePreview?.contratoId ?? null}
-        contratoLabel={nfsePreview?.label}
-        onClose={() => setNfsePreview(null)}
-        onConfirmEmit={() => {
-          if (!nfsePreview) return
-          const { contratoId, itemIds } = nfsePreview
-          setNfsePreview(null)
-          void emitNfse(contratoId, itemIds)
-        }}
-      />
-
-      {/* Dialog: resultado da emissão Focus NFe */}
-      <Dialog open={nfseResult !== null} onOpenChange={(open) => { if (!open) setNfseResult(null) }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-green-700">
-              <FileText className="h-5 w-5" />
-              NFS-e enviada para processamento
-            </DialogTitle>
-          </DialogHeader>
-          {nfseResult && (
-            <div className="space-y-3 text-sm">
-              <div className="rounded-lg bg-green-50 p-3">
-                <p className="font-medium text-green-800">Status: Pendente (aguardando prefeitura)</p>
-                <p className="mt-1 text-green-700">Referência: <span className="font-mono">{nfseResult.ref}</span></p>
-                <p className="text-green-700 font-tabular">Valor: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-              </div>
-              <p className="text-xs text-ink-mute">
-                A nota foi enviada à Focus NFe em modo homologação. Consulte o painel da Focus NFe para acompanhar o status.
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNfseResult(null)}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
