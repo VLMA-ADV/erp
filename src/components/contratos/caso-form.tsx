@@ -2673,8 +2673,24 @@ export default function CasoForm({
                   <p className="text-base font-semibold">Configuração de mensalidade de carteira</p>
 
                   {form.parte_de_carteira_id ? (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
-                      Este caso é um processo de uma carteira. A regra de cobrança e o valor mensal são definidos pelo caso matriz.
+                    <div className="space-y-3">
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                        Este caso é um processo de uma carteira. A regra de cobrança e o valor mensal global são definidos pelo caso matriz.
+                      </div>
+                      <div className="max-w-sm space-y-1">
+                        <Label>Valor individual deste processo</Label>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Ex: 150,00 (vazio = rateio proporcional)"
+                          value={regras.valor_individual ?? ''}
+                          onChange={(e) => setRegra('valor_individual', e.target.value)}
+                          disabled={isReadOnly}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Deixe em branco para usar o rateio proporcional da carteira.
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <>
