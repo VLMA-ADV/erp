@@ -88,10 +88,11 @@ export async function fetchCEPData(cep: string): Promise<{
   bairro?: string
   localidade?: string
   uf?: string
+  ibge?: string
   erro?: boolean
 } | null> {
   const cleanCEP = cep.replace(/\D/g, '')
-  
+
   if (cleanCEP.length !== 8) {
     return null
   }
@@ -99,7 +100,7 @@ export async function fetchCEPData(cep: string): Promise<{
   try {
     const response = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`)
     const data = await response.json()
-    
+
     if (data.erro) {
       return { erro: true }
     }
@@ -110,6 +111,7 @@ export async function fetchCEPData(cep: string): Promise<{
       bairro: data.bairro || '',
       localidade: data.localidade || '',
       uf: data.uf || '',
+      ibge: data.ibge || '',
     }
   } catch (error) {
     console.error('Error fetching CEP data:', error)
