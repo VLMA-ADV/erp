@@ -269,11 +269,21 @@ export default function ContratosList() {
                                       </thead>
                                       <tbody className="divide-y divide-hairline">
                                         {item.casos?.length ? (
-                                          item.casos.map((caso) => (
+                                          (() => {
+                                            const matrizIds = new Set(
+                                              (item.casos || [])
+                                                .filter((c) => (c.processos_carteira_count ?? 0) > 0 && !c.parte_de_carteira_id)
+                                                .map((c) => c.id),
+                                            )
+                                            const visibleCasos = matrizIds.size > 0
+                                              ? (item.casos || []).filter((c) => !matrizIds.has(c.id))
+                                              : item.casos || []
+                                            return visibleCasos.length > 0
+                                              ? visibleCasos.map((caso) => (
                                             <tr key={caso.id}>
                                               <td className="px-4 py-3 text-sm text-ink">
                                                 <span className="inline-flex items-center gap-1">
-                                                  <span>{caso.numero || '-'} - {caso.nome}</span>
+                                                  <span>{caso.parte_de_carteira_id ? (caso.nome || 'Processo sem identificador') : `${caso.numero || '-'} - ${caso.nome}`}</span>
                                                   {caso.parte_de_carteira_id ? (
                                                     <Badge className="ml-1 bg-white text-[10px] font-normal text-ink-secondary">Processo da carteira</Badge>
                                                   ) : (caso.processos_carteira_count ?? 0) > 0 ? (
@@ -299,6 +309,14 @@ export default function ContratosList() {
                                               </td>
                                             </tr>
                                           ))
+                                              : (
+                                                <tr>
+                                                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-ink-mute">
+                                                    Nenhum caso cadastrado para este contrato
+                                                  </td>
+                                                </tr>
+                                              )
+                                          })()
                                         ) : (
                                           <tr>
                                             <td colSpan={5} className="px-4 py-6 text-center text-sm text-ink-mute">
