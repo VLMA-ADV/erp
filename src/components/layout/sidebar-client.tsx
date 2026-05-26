@@ -8,6 +8,7 @@ import SidebarMenuPessoas from './sidebar-menu-pessoas'
 import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
 import SidebarMenuFaturamento from './sidebar-menu-faturamento'
 import SidebarMenuContratos from './sidebar-menu-contratos'
+import SidebarMenuRelatorios from './sidebar-menu-relatorios'
 import { Button } from '@/components/ui/button'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 
@@ -144,19 +145,21 @@ export default function SidebarClient() {
         {/* Menu Faturamento (Expansível) */}
         <SidebarMenuFaturamento pathname={pathname} hasPermission={checkPermission} />
 
-        {/* PDI e Relatórios */}
-        {['/avaliacoes-pdi', '/relatorios'].map((href) => {
-          const item = menuItems.find((m) => m.href === href)
+        {/* PDI */}
+        {(() => {
+          const item = menuItems.find((m) => m.href === '/avaliacoes-pdi')
           if (!item || !checkPermission(item.permission)) return null
           return (
             <SidebarItem
-              key={item.href}
               href={item.href}
               label={item.label}
               active={pathname === item.href}
             />
           )
-        })}
+        })()}
+
+        {/* Menu Relatórios (Expansível) */}
+        <SidebarMenuRelatorios pathname={pathname} hasPermission={checkPermission} />
       </SidebarContent>
       
       {/* Botão de Logout */}
