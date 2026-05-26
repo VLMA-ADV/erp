@@ -98,6 +98,76 @@ Deno.serve(async (req) => {
     }
     const discriminacao = Array.from(discriminacaoSet).join("; ") || "Serviços advocatícios"
 
+    // Acumulação mensal: buscar cliente do contrato + valor já emitido no mês
+    const effectiveContratoId = contrato_id || (items[0] as any).contrato_id
+    const { data: contratoData } = await supabase
+      .schema("contracts")
+      .from("contratos")
+      .select("cliente_id, grupo_imposto_id")
+      .eq("id", effectiveContratoId)
+      .single()
+
+    let acumuladoMes = 0
+    if (contratoData?.cliente_id) {
+      const now = new Date()
+      const competencia = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`
+      const { data: acum } = await supabase.rpc("get_client_month_accumulated_value", {
+        p_tenant_id: tenantUser.tenant_id,
+        p_cliente_id: contratoData.cliente_id,
+        p_competencia: competencia,
+      })
+      acumuladoMes = Number(acum ?? 0)
+    }
+
+    // Retenções (não enviadas ao Focus NFe, registradas em billing_notes)
+    const RATES = {
+      irrf: { aliquota: 1.5, minCalc: 666.67, minRet: 10 },
+      pis: { aliquota: 0.65, minCalc: 215.34, minRet: 1.4 },
+      cofins: { aliquota: 3.0, minCalc: 215.34, minRet: 6.46 },
+      csll: { aliquota: 1.0, minCalc: 215.34, minRet: 2.15 },
+    }
+
+    let retemIrrf = true, retemPis = true, retemCofins = true, retemCsll = true
+    let respeitaMinimo = true
+    const grupoRates = { ...RATES }
+
+    if (contratoData?.grupo_imposto_id) {
+      const { data: gi } = await supabase
+        .schema("contracts")
+        .from("grupos_impostos")
+        .select("retem_irrf, retem_pis, retem_cofins, retem_csll, respeita_minimo, aliquota_irrf, aliquota_pis, aliquota_cofins, aliquota_csll, min_calc_irrf, min_calc_pis_cofins_csll, min_ret_irrf, min_ret_pis, min_ret_cofins, min_ret_csll")
+        .eq("id", contratoData.grupo_imposto_id)
+        .single()
+
+      if (gi) {
+        retemIrrf = gi.retem_irrf ?? true
+        retemPis = gi.retem_pis ?? true
+        retemCofins = gi.retem_cofins ?? true
+        retemCsll = gi.retem_csll ?? true
+        respeitaMinimo = gi.respeita_minimo ?? true
+        grupoRates.irrf = { aliquota: Number(gi.aliquota_irrf ?? RATES.irrf.aliquota), minCalc: Number(gi.min_calc_irrf ?? RATES.irrf.minCalc), minRet: Number(gi.min_ret_irrf ?? RATES.irrf.minRet) }
+        grupoRates.pis = { aliquota: Number(gi.aliquota_pis ?? RATES.pis.aliquota), minCalc: Number(gi.min_calc_pis_cofins_csll ?? RATES.pis.minCalc), minRet: Number(gi.min_ret_pis ?? RATES.pis.minRet) }
+        grupoRates.cofins = { aliquota: Number(gi.aliquota_cofins ?? RATES.cofins.aliquota), minCalc: Number(gi.min_calc_pis_cofins_csll ?? RATES.cofins.minCalc), minRet: Number(gi.min_ret_cofins ?? RATES.cofins.minRet) }
+        grupoRates.csll = { aliquota: Number(gi.aliquota_csll ?? RATES.csll.aliquota), minCalc: Number(gi.min_calc_pis_cofins_csll ?? RATES.csll.minCalc), minRet: Number(gi.min_ret_csll ?? RATES.csll.minRet) }
+      }
+    }
+
+    const baseCalculo = valorTotal + acumuladoMes
+    const calcRet = (retem: boolean, rate: { aliquota: number; minCalc: number; minRet: number }) => {
+      if (!retem) return { valor: 0, aplicado: false }
+      if (respeitaMinimo && baseCalculo < rate.minCalc) return { valor: 0, aplicado: false }
+      const valor = Math.round(valorTotal * rate.aliquota) / 100
+      if (respeitaMinimo && valor < rate.minRet) return { valor: 0, aplicado: false }
+      return { valor, aplicado: true, acumulacao: acumuladoMes > 0 && valorTotal < rate.minCalc }
+    }
+
+    const retencoes = {
+      irrf: calcRet(retemIrrf, grupoRates.irrf),
+      pis: calcRet(retemPis, grupoRates.pis),
+      cofins: calcRet(retemCofins, grupoRates.cofins),
+      csll: calcRet(retemCsll, grupoRates.csll),
+    }
+
     // Focus NFe config
     const focusToken = Deno.env.get("FOCUS_NFE_TOKEN") ?? ""
     const focusEnv = Deno.env.get("FOCUS_NFE_ENV") ?? "homologation"
@@ -156,6 +226,8 @@ Deno.serve(async (req) => {
           item_ids: items.map((i: any) => i.id),
           valor_total: valorTotal,
           discriminacao,
+          acumulado_mes: acumuladoMes,
+          retencoes,
         },
         created_by: user.id,
       })
