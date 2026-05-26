@@ -126,6 +126,7 @@ interface PreviewData {
     endereco: string
     municipio: string
   }
+  acumuladoMes: number
 }
 
 export default function NfsePreviewDialog({
@@ -178,6 +179,18 @@ export default function NfsePreviewDialog({
 
       const { data: cfg } = await supabase.rpc('get_focus_nfe_config', { p_tenant_id: tenantId })
 
+      const clienteId = dataset.contrato?.cliente_id || dataset.tomador?.id
+      const competencia = new Date().toISOString().slice(0, 7)
+      let acumuladoMes = 0
+      if (clienteId) {
+        const { data: acum } = await supabase.rpc('get_client_month_accumulated_value', {
+          p_tenant_id: tenantId,
+          p_cliente_id: clienteId,
+          p_competencia: competencia,
+        })
+        acumuladoMes = Number(acum ?? 0)
+      }
+
       setData({
         itens: dataset.itens as DatasetItem[],
         contrato: dataset.contrato || null,
@@ -192,6 +205,7 @@ export default function NfsePreviewDialog({
             : 'Rua Cândido Xavier, 602 — Água Verde · CEP 80240-280',
           municipio: 'Curitiba/PR',
         },
+        acumuladoMes,
       })
     } catch (e) {
       console.error('NfsePreviewDialog.loadPreviewData', e)
@@ -202,6 +216,8 @@ export default function NfsePreviewDialog({
   }
 
   const valorBruto = data?.itens.reduce((s, i) => s + Number(i.valor ?? 0), 0) ?? 0
+  const acumuladoMes = data?.acumuladoMes ?? 0
+  const baseCalculoMinimo = valorBruto + acumuladoMes
   const aliquotaIss = Number(data?.grupoImposto?.aliquota_iss ?? ALIQUOTAS_VOA_LEGAL.iss.aliquota)
   const tipoTomador =
     data?.tomador?.cnpj && String(data.tomador.cnpj).replace(/\D/g, '').length === 14 ? 'PJ' : 'PF'
@@ -254,14 +270,23 @@ export default function NfsePreviewDialog({
       : imp === 'cofins' ? grupoConfig.minRetCofins
       : grupoConfig.minRetCsll
 
-    if (grupoConfig.respeitaMinimo && valorBruto < minCalc) {
-      return { valor: 0, aplicado: false, motivo: `bruto < mín. R$ ${minCalc.toLocaleString('pt-BR')}` }
+    if (grupoConfig.respeitaMinimo && baseCalculoMinimo < minCalc) {
+      return { valor: 0, aplicado: false, motivo: acumuladoMes > 0
+        ? `bruto + acum. (${fmtMoney(baseCalculoMinimo)}) < mín. R$ ${minCalc.toLocaleString('pt-BR')}`
+        : `bruto < mín. R$ ${minCalc.toLocaleString('pt-BR')}` }
     }
     const valor = Math.round(valorBruto * aliquota) / 100
     if (grupoConfig.respeitaMinimo && valor < minRet) {
       return { valor: 0, aplicado: false, motivo: `retenção < mín. R$ ${minRet.toLocaleString('pt-BR')}` }
     }
-    return { valor, aplicado: true }
+    const ativadoPorAcumulacao = acumuladoMes > 0 && valorBruto < minCalc
+    return {
+      valor,
+      aplicado: true,
+      motivo: ativadoPorAcumulacao
+        ? `acumulação mensal (${fmtMoney(acumuladoMes)} já emitido + ${fmtMoney(valorBruto)} nota = ${fmtMoney(baseCalculoMinimo)})`
+        : undefined,
+    }
   }
 
   const valorIss = Math.round(valorBruto * aliquotaIss) / 100
@@ -373,6 +398,17 @@ export default function NfsePreviewDialog({
                 </table>
               </div>
             </div>
+
+            {/* Acumulação mensal */}
+            {acumuladoMes > 0 && (
+              <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
+                <p className="font-medium">Acumulação mensal ativa</p>
+                <p>
+                  {fmtMoney(acumuladoMes)} já emitido para este cliente neste mês.
+                  Base de cálculo para mínimos de retenção: {fmtMoney(baseCalculoMinimo)}
+                </p>
+              </div>
+            )}
 
             {/* Breakdown de impostos */}
             <div className="rounded-lg border border-hairline bg-white p-4">
