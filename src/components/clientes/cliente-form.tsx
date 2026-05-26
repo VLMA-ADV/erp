@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
-import { Plus, Trash2 } from 'lucide-react'
+import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { fetchCEPData } from '@/lib/utils/validation'
 import { maskCEP, maskCPF, maskCNPJ, maskPhone, onlyDigits } from '@/lib/utils/masks'
 
@@ -34,8 +34,12 @@ type ClientePayload = {
   rua: string
   numero: string
   complemento: string
+  bairro: string
   cidade: string
   estado: string
+  codigo_ibge: string
+  email: string
+  telefone: string
   potencial_cliente: 'baixo' | 'medio' | 'alto' | ''
   grupo_economico_id: string
   observacoes: string
@@ -57,8 +61,12 @@ const emptyPayload: ClientePayload = {
   rua: '',
   numero: '',
   complemento: '',
+  bairro: '',
   cidade: '',
   estado: '',
+  codigo_ibge: '',
+  email: '',
+  telefone: '',
   potencial_cliente: '',
   grupo_economico_id: '',
   observacoes: '',
@@ -82,6 +90,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [form, setForm] = useState<ClientePayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
+  const [fetchingCep, setFetchingCep] = useState(false)
   const [lastCepFetched, setLastCepFetched] = useState<string>('')
 
   const [grupos, setGrupos] = useState<GrupoEconomico[]>([])
@@ -197,8 +206,12 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           rua: cliente.rua || '',
           numero: cliente.numero || '',
           complemento: cliente.complemento || '',
+          bairro: cliente.bairro || '',
           cidade: cliente.cidade || '',
           estado: cliente.estado || '',
+          codigo_ibge: cliente.codigo_ibge || '',
+          email: cliente.email || '',
+          telefone: maskPhone(cliente.telefone || ''),
           potencial_cliente: (cliente.potencial_cliente || '') as ClientePayload['potencial_cliente'],
           grupo_economico_id: cliente.grupo_economico_id || '',
           observacoes: cliente.observacoes || '',
@@ -209,6 +222,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           resp_int_data_nascimento: ri.data_nascimento || '',
           responsaveis_financeiros: rfs,
         })
+        if (cliente.codigo_ibge) setCepPreenchido(true)
       } catch (e) {
         console.error(e)
         setError('Erro ao carregar cliente')
@@ -234,7 +248,10 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
     if (digits === lastCepFetched) return
     setLastCepFetched(digits)
 
+    setFetchingCep(true)
     const data = await fetchCEPData(digits)
+    setFetchingCep(false)
+
     if (!data || data.erro) {
       setCepPreenchido(false)
       return
@@ -243,8 +260,10 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
     setForm((prev) => ({
       ...prev,
       rua: data.logradouro || prev.rua,
+      bairro: data.bairro || prev.bairro,
       cidade: data.localidade || prev.cidade,
       estado: data.uf || prev.estado,
+      codigo_ibge: data.ibge || prev.codigo_ibge,
     }))
     setCepPreenchido(true)
   }
@@ -287,8 +306,12 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         rua: form.rua || null,
         numero: form.numero || null,
         complemento: form.complemento || null,
+        bairro: form.bairro || null,
         cidade: form.cidade || null,
         estado: form.estado || null,
+        codigo_ibge: form.codigo_ibge || null,
+        email: form.email || null,
+        telefone: onlyDigits(form.telefone) || null,
         potencial_cliente: form.potencial_cliente || null,
         grupo_economico_id: form.grupo_economico_id || null,
         observacoes: form.observacoes || null,
@@ -476,6 +499,26 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                     placeholder="Ex.: 1.1.01.0030"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email_cliente">E-mail</Label>
+                  <Input
+                    id="email_cliente"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="contato@empresa.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="telefone_cliente">Telefone</Label>
+                  <Input
+                    id="telefone_cliente"
+                    value={form.telefone}
+                    maxLength={15}
+                    onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -490,13 +533,18 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="cep">CEP</Label>
-                  <Input
-                    id="cep"
-                    value={form.cep}
-                    maxLength={9}
-                    onChange={(e) => handleCepChange(e.target.value)}
-                    placeholder="00000-000"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="cep"
+                      value={form.cep}
+                      maxLength={9}
+                      onChange={(e) => handleCepChange(e.target.value)}
+                      placeholder="00000-000"
+                    />
+                    {fetchingCep && (
+                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ink-mute" />
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="rua">Rua</Label>
@@ -516,6 +564,17 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                 <div className="space-y-2">
                   <Label htmlFor="complemento">Complemento</Label>
                   <Input id="complemento" value={form.complemento} onChange={(e) => setForm({ ...form, complemento: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bairro">Bairro</Label>
+                  <Input
+                    id="bairro"
+                    value={form.bairro}
+                    readOnly={cepPreenchido}
+                    className={cepPreenchido ? 'bg-canvas-soft cursor-not-allowed' : ''}
+                    onChange={(e) => setForm({ ...form, bairro: e.target.value })}
+                    placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cidade">Cidade</Label>
@@ -538,6 +597,16 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                     className={cepPreenchido ? 'bg-canvas-soft cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, estado: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="codigo_ibge">Código IBGE</Label>
+                  <Input
+                    id="codigo_ibge"
+                    value={form.codigo_ibge}
+                    readOnly
+                    className="bg-canvas-soft cursor-not-allowed"
+                    placeholder="Preenchido automaticamente pelo CEP"
                   />
                 </div>
               </div>
