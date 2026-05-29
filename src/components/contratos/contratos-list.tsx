@@ -272,7 +272,10 @@ export default function ContratosList() {
                                           (() => {
                                             const matrizIds = new Set(
                                               (item.casos || [])
-                                                .filter((c) => (c.processos_carteira_count ?? 0) > 0 && !c.parte_de_carteira_id)
+                                                .filter((c) =>
+                                                  !c.parte_de_carteira_id &&
+                                                  (c.regra_cobranca === 'mensalidade_carteira' || (c.processos_carteira_count ?? 0) > 0),
+                                                )
                                                 .map((c) => c.id),
                                             )
                                             const visibleCasos = matrizIds.size > 0
