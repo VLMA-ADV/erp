@@ -15,6 +15,27 @@ import ContratosActions from './contratos-actions'
 import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
 import { Table } from '@/components/ui/table'
+
+type CasoLike = {
+  id: string
+  parte_de_carteira_id?: string | null
+  regra_cobranca?: string | null
+  processos_carteira_count?: number | null
+}
+
+function getVisibleCasos<T extends CasoLike>(casos: T[] | null | undefined): T[] {
+  if (!casos || casos.length === 0) return []
+  const matrizIds = new Set(
+    casos
+      .filter((c) =>
+        !c.parte_de_carteira_id &&
+        (c.regra_cobranca === 'mensalidade_carteira' || (c.processos_carteira_count ?? 0) > 0),
+      )
+      .map((c) => c.id),
+  )
+  return matrizIds.size > 0 ? casos.filter((c) => !matrizIds.has(c.id)) : casos
+}
+
 export default function ContratosList() {
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissionsContext()
@@ -242,7 +263,7 @@ export default function ContratosList() {
                                   {formatContractStatus(item.status)}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-secondary font-tabular">{item.casos?.length || 0}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-secondary font-tabular">{getVisibleCasos(item.casos).length}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
                                 <ContratosActions
                                   contratoId={item.id}
@@ -270,17 +291,7 @@ export default function ContratosList() {
                                       <tbody className="divide-y divide-hairline">
                                         {item.casos?.length ? (
                                           (() => {
-                                            const matrizIds = new Set(
-                                              (item.casos || [])
-                                                .filter((c) =>
-                                                  !c.parte_de_carteira_id &&
-                                                  (c.regra_cobranca === 'mensalidade_carteira' || (c.processos_carteira_count ?? 0) > 0),
-                                                )
-                                                .map((c) => c.id),
-                                            )
-                                            const visibleCasos = matrizIds.size > 0
-                                              ? (item.casos || []).filter((c) => !matrizIds.has(c.id))
-                                              : item.casos || []
+                                            const visibleCasos = getVisibleCasos(item.casos)
                                             return visibleCasos.length > 0
                                               ? visibleCasos.map((caso) => (
                                             <tr key={caso.id}>
