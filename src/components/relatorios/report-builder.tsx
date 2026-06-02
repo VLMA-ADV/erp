@@ -51,18 +51,29 @@ const ENTITIES: EntityConfig[] = [
     key: 'contratos',
     columns: [
       { key: 'id', label: 'ID', default: false },
+      { key: 'numero', label: 'Nº (interno)', default: false },
       { key: 'numero_sequencial', label: 'Nº Sequencial', default: true },
       { key: 'nome_contrato', label: 'Nome do Contrato', default: true },
       { key: 'status', label: 'Status', default: true },
       { key: 'regime_fiscal', label: 'Regime Fiscal', default: false },
       { key: 'forma_entrada', label: 'Forma de Entrada', default: false },
+      { key: 'canal_prospeccao', label: 'Canal Prospecção', default: false },
       { key: 'created_at', label: 'Criado em', default: false },
-      { key: 'created_by', label: 'Criado por', default: false },
+      { key: 'updated_at', label: 'Atualizado em', default: false },
+      { key: 'cliente_id', label: 'ID Cliente', default: false },
       { key: 'cliente_nome', label: 'Cliente', default: true },
       { key: 'cliente_cnpj', label: 'CNPJ do Cliente', default: true },
       { key: 'cliente_tipo', label: 'Tipo do Cliente', default: false },
+      { key: 'cliente_email', label: 'E-mail do Cliente', default: false },
+      { key: 'cliente_telefone', label: 'Telefone do Cliente', default: false },
+      { key: 'cliente_cidade', label: 'Cidade do Cliente', default: false },
+      { key: 'cliente_estado', label: 'UF do Cliente', default: false },
+      { key: 'cliente_regime_fiscal', label: 'Regime Fiscal do Cliente', default: false },
       { key: 'grupo_imposto_nome', label: 'Grupo de Imposto', default: true },
       { key: 'total_casos', label: 'Total de Casos', default: true },
+      { key: 'responsavel_prospeccao_nome', label: 'Resp. Prospecção', default: false },
+      { key: 'servico_nome', label: 'Serviço (contrato)', default: false },
+      { key: 'produto_nome', label: 'Produto (contrato)', default: false },
     ],
     statusOptions: [
       { value: 'ativo', label: 'Ativo' },
@@ -79,9 +90,19 @@ const ENTITIES: EntityConfig[] = [
       { key: 'nome', label: 'Nome', default: true },
       { key: 'contrato_id', label: 'ID do Contrato', default: false },
       { key: 'status', label: 'Status', default: true },
+      { key: 'ativo', label: 'Ativo', default: false },
+      { key: 'regra_cobranca', label: 'Regra de Cobrança', default: false },
+      { key: 'polo', label: 'Polo', default: false },
+      { key: 'responsavel_id', label: 'ID Responsável', default: false },
+      { key: 'responsavel_nome', label: 'Responsável', default: true },
+      { key: 'servico_id', label: 'ID Serviço', default: false },
+      { key: 'servico_nome', label: 'Serviço', default: false },
+      { key: 'produto_id', label: 'ID Produto', default: false },
+      { key: 'produto_nome', label: 'Produto', default: false },
       { key: 'created_at', label: 'Criado em', default: false },
       { key: 'contrato_numero_sequencial', label: 'Nº Contrato', default: true },
       { key: 'contrato_nome', label: 'Nome do Contrato', default: true },
+      { key: 'cliente_id', label: 'ID Cliente', default: false },
       { key: 'cliente_nome', label: 'Cliente', default: true },
     ],
     statusOptions: [
@@ -169,11 +190,17 @@ export default function ReportBuilder({ userId }: ReportBuilderProps) {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterSearch, setFilterSearch] = useState('')
+  const [filterClienteId, setFilterClienteId] = useState('')
+  const [filterResponsavelId, setFilterResponsavelId] = useState('')
+  const [filterRegimeFiscal, setFilterRegimeFiscal] = useState('')
   const [data, setData] = useState<Record<string, unknown>[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [clientesOpts, setClientesOpts] = useState<Array<{ id: string; nome: string }>>([])
+  const [responsaveisOpts, setResponsaveisOpts] = useState<Array<{ id: string; nome: string }>>([])
 
   const PAGE_SIZE = 50
 
@@ -192,7 +219,45 @@ export default function ReportBuilder({ userId }: ReportBuilderProps) {
     setFilterStatus('')
     setFilterDateFrom('')
     setFilterDateTo('')
+    setFilterSearch('')
+    setFilterClienteId('')
+    setFilterResponsavelId('')
+    setFilterRegimeFiscal('')
   }, [entity])
+
+  useEffect(() => {
+    if (!entity || (entity !== 'contratos' && entity !== 'casos' && entity !== 'billing_items')) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: clientes } = await supabase
+          .from('clientes')
+          .select('id, nome')
+          .order('nome', { ascending: true })
+          .limit(500)
+        if (!cancelled && Array.isArray(clientes)) {
+          setClientesOpts(clientes as Array<{ id: string; nome: string }>)
+        }
+      } catch {
+        if (!cancelled) setClientesOpts([])
+      }
+      if (entity === 'casos') {
+        try {
+          const { data: cols } = await supabase
+            .from('colaboradores')
+            .select('id, nome')
+            .order('nome', { ascending: true })
+            .limit(500)
+          if (!cancelled && Array.isArray(cols)) {
+            setResponsaveisOpts(cols as Array<{ id: string; nome: string }>)
+          }
+        } catch {
+          if (!cancelled) setResponsaveisOpts([])
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [entity, supabase])
 
   const toggleColumn = (col: string) => {
     setSelectedColumns((prev) =>
@@ -215,8 +280,12 @@ export default function ReportBuilder({ userId }: ReportBuilderProps) {
     if (filterStatus) filters.status = filterStatus
     if (filterDateFrom) filters.date_from = filterDateFrom
     if (filterDateTo) filters.date_to = filterDateTo
+    if (filterSearch.trim()) filters.search = filterSearch.trim()
+    if (filterClienteId) filters.cliente_id = filterClienteId
+    if (filterResponsavelId) filters.responsavel_id = filterResponsavelId
+    if (filterRegimeFiscal) filters.regime_fiscal = filterRegimeFiscal
     return filters
-  }, [filterStatus, filterDateFrom, filterDateTo])
+  }, [filterStatus, filterDateFrom, filterDateTo, filterSearch, filterClienteId, filterResponsavelId, filterRegimeFiscal])
 
   const fetchPreview = useCallback(async (pageNum: number) => {
     if (!entity || selectedColumns.length === 0) return
@@ -342,8 +411,20 @@ export default function ReportBuilder({ userId }: ReportBuilderProps) {
             <CardHeader>
               <CardTitle>3. Filtros opcionais</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Busca livre</Label>
+                <Input
+                  type="search"
+                  placeholder="Buscar por nome, CNPJ, número..."
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-ink-mute">
+                  Procura em nome, CNPJ, e-mail, cidade, número e cliente da entidade selecionada.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {entityConfig.statusOptions && (
                   <div>
                     <Label>Status</Label>
@@ -357,21 +438,65 @@ export default function ReportBuilder({ userId }: ReportBuilderProps) {
                 )}
                 <div>
                   <Label>Data início</Label>
-                  <Input
-                    type="date"
-                    value={filterDateFrom}
-                    onChange={(e) => setFilterDateFrom(e.target.value)}
-                  />
+                  <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
                 </div>
                 <div>
                   <Label>Data fim</Label>
-                  <Input
-                    type="date"
-                    value={filterDateTo}
-                    onChange={(e) => setFilterDateTo(e.target.value)}
-                  />
+                  <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
                 </div>
               </div>
+              {(entity === 'contratos' || entity === 'casos' || entity === 'billing_items') && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <Label>Cliente</Label>
+                    <NativeSelect value={filterClienteId} onChange={(e) => setFilterClienteId(e.target.value)}>
+                      <option value="">Todos os clientes</option>
+                      {clientesOpts.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nome}</option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  {entity === 'casos' && (
+                    <div>
+                      <Label>Responsável</Label>
+                      <NativeSelect value={filterResponsavelId} onChange={(e) => setFilterResponsavelId(e.target.value)}>
+                        <option value="">Todos os responsáveis</option>
+                        {responsaveisOpts.map((c) => (
+                          <option key={c.id} value={c.id}>{c.nome}</option>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                  )}
+                  {entity === 'contratos' && (
+                    <div>
+                      <Label>Regime fiscal</Label>
+                      <NativeSelect value={filterRegimeFiscal} onChange={(e) => setFilterRegimeFiscal(e.target.value)}>
+                        <option value="">Todos</option>
+                        <option value="simples_nacional">Simples Nacional</option>
+                        <option value="lucro_presumido">Lucro Presumido</option>
+                        <option value="lucro_real">Lucro Real</option>
+                        <option value="mei">MEI</option>
+                        <option value="pf">Pessoa Física</option>
+                      </NativeSelect>
+                    </div>
+                  )}
+                </div>
+              )}
+              {entity === 'clientes' && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <Label>Regime fiscal</Label>
+                    <NativeSelect value={filterRegimeFiscal} onChange={(e) => setFilterRegimeFiscal(e.target.value)}>
+                      <option value="">Todos</option>
+                      <option value="simples_nacional">Simples Nacional</option>
+                      <option value="lucro_presumido">Lucro Presumido</option>
+                      <option value="lucro_real">Lucro Real</option>
+                      <option value="mei">MEI</option>
+                      <option value="pf">Pessoa Física</option>
+                    </NativeSelect>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
