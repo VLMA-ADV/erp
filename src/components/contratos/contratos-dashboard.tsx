@@ -354,7 +354,7 @@ function CentroCustoCard({ items, totalCasos }: { items: DashboardListItem[]; to
               <p className="text-sm font-medium text-ink">Centros não cadastrados</p>
               <p className="text-[11px] text-ink-mute">
                 {semCentro.toLocaleString('pt-BR')} caso{semCentro !== 1 ? 's' : ''} sem rateio
-                {totalCasos > 0 && ` (${Math.round((semCentro / totalCasos) * 100)}% do total)`}
+                {totalCasos > 0 && ` (${Math.min(100, Math.round((semCentro / totalCasos) * 100))}% do total)`}
               </p>
             </div>
           </div>
