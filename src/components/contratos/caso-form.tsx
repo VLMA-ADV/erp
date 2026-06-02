@@ -1556,6 +1556,19 @@ export default function CasoForm({
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
+      if (isEdit && form.parte_de_carteira_id && casoId) {
+        const { error: rpcError } = await supabase.rpc('update_caso_carteira_valor', {
+          p_user_id: session.user.id,
+          p_caso_id: casoId,
+          p_valor_individual: String(regras.valor_individual ?? ''),
+        })
+        if (rpcError) {
+          setError(rpcError.message)
+          toastError(rpcError.message)
+          return
+        }
+      }
+
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${isEdit ? 'update-caso' : 'create-caso'}`
       const preparedRules = (() => {
         const list = [...billingRules]
@@ -1605,9 +1618,13 @@ export default function CasoForm({
           })),
         },
       }
+      const isFilhoCarteira = isEdit && !!form.parte_de_carteira_id
+      const sanitizedPayload = isFilhoCarteira
+        ? { ...payload, regras_financeiras: [], regra_cobranca: 'mensalidade_carteira', dia_inicio_faturamento: null }
+        : payload
       const body = isEdit
-        ? { id: casoId, ...payload, status: 'ativo' }
-        : { contrato_id: contratoId, ...payload, status: 'ativo' }
+        ? { id: casoId, ...sanitizedPayload, status: 'ativo' }
+        : { contrato_id: contratoId, ...sanitizedPayload, status: 'ativo' }
 
       const resp = await fetch(url, {
         method: 'POST',
@@ -1623,6 +1640,26 @@ export default function CasoForm({
         setError(data.error || 'Erro ao salvar caso')
         toastError(data.error || 'Erro ao salvar caso')
         return
+      }
+
+      const isMatrizEdit =
+        isEdit &&
+        !form.parte_de_carteira_id &&
+        normalizeRegraCobranca(form.regra_cobranca) === 'mensalidade_carteira' &&
+        Array.isArray(regras.processos_carteira) &&
+        (regras.processos_carteira as unknown[]).length > 0
+      if (isMatrizEdit && casoId) {
+        const { data: expData, error: expErr } = await supabase.rpc('expand_carteira_filhos', {
+          p_user_id: session.user.id,
+          p_matriz_id: casoId,
+          p_processos: regras.processos_carteira,
+        })
+        if (expErr) {
+          toastError(`Caso salvo, mas falha ao criar filhos: ${expErr.message}`)
+        } else if (expData && typeof expData === 'object' && 'novos_filhos' in (expData as Record<string, unknown>)) {
+          const novos = Number((expData as Record<string, unknown>).novos_filhos ?? 0)
+          if (novos > 0) success(`${novos} processo(s) adicionado(s) à carteira.`)
+        }
       }
 
       success(isEdit ? 'Caso atualizado com sucesso.' : 'Caso criado com sucesso.')
