@@ -9,6 +9,7 @@ import SidebarMenuConfiguracao from './sidebar-menu-configuracao'
 import SidebarMenuFaturamento from './sidebar-menu-faturamento'
 import SidebarMenuContratos from './sidebar-menu-contratos'
 import SidebarMenuRelatorios from './sidebar-menu-relatorios'
+import Novidades from './novidades'
 import { Button } from '@/components/ui/button'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 
@@ -102,7 +103,7 @@ export default function SidebarClient() {
       <SidebarHeader>
         <span className="text-eyebrow">VLMA</span>
         <h1 className="mt-1 text-lg font-light text-ink">ERP</h1>
-        <p className="text-xs text-ink-mute">Versão 1.0.0</p>
+        <Novidades />
       </SidebarHeader>
       <SidebarContent>
         {/* Menu Configuração (Expansível) */}
