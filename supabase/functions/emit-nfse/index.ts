@@ -107,6 +107,37 @@ Deno.serve(async (req) => {
       .eq("id", effectiveContratoId)
       .single()
 
+    // Tomador (cliente do contrato) — obrigatório na NFS-e. Sem este bloco a
+    // nota era emitida sem destinatário ("o jeito que tá saindo na fatura").
+    // Espelha o que o preview (nfse-preview-dialog) já exibe.
+    let tomador: Record<string, unknown> | null = null
+    if (contratoData?.cliente_id) {
+      const { data: cli } = await supabase
+        .schema("crm")
+        .from("clientes")
+        .select("nome, cnpj, cliente_estrangeiro, cep, rua, numero, complemento, bairro, cidade, estado, codigo_ibge, email")
+        .eq("id", contratoData.cliente_id)
+        .single()
+      if (cli) {
+        const t: Record<string, unknown> = {}
+        const docDigits = String((cli as any).cnpj ?? "").replace(/\D/g, "")
+        if (docDigits.length === 14) t.cnpj = docDigits
+        else if (docDigits.length === 11) t.cpf = docDigits
+        if ((cli as any).nome) t.razao_social = (cli as any).nome
+        if ((cli as any).email) t.email = (cli as any).email
+        const endereco: Record<string, unknown> = {}
+        if ((cli as any).rua) endereco.logradouro = (cli as any).rua
+        if ((cli as any).numero) endereco.numero = (cli as any).numero
+        if ((cli as any).complemento) endereco.complemento = (cli as any).complemento
+        if ((cli as any).bairro) endereco.bairro = (cli as any).bairro
+        if ((cli as any).codigo_ibge) endereco.codigo_municipio = String((cli as any).codigo_ibge).replace(/\D/g, "")
+        if ((cli as any).estado) endereco.uf = (cli as any).estado
+        if ((cli as any).cep) endereco.cep = String((cli as any).cep).replace(/\D/g, "")
+        if (Object.keys(endereco).length > 0) t.endereco = endereco
+        if (Object.keys(t).length > 0) tomador = t
+      }
+    }
+
     let acumuladoMes = 0
     if (contratoData?.cliente_id) {
       const now = new Date()
@@ -119,7 +150,8 @@ Deno.serve(async (req) => {
       acumuladoMes = Number(acum ?? 0)
     }
 
-    // Retenções (não enviadas ao Focus NFe, registradas em billing_notes)
+    // Retenções federais (IRRF/PIS/COFINS/CSLL): calculadas, enviadas ao Focus
+    // NFe no bloco `servico` quando aplicadas e também registradas em billing_notes.
     const RATES = {
       irrf: { aliquota: 1.5, minCalc: 666.67, minRet: 10 },
       pis: { aliquota: 0.65, minCalc: 215.34, minRet: 1.4 },
@@ -188,12 +220,17 @@ Deno.serve(async (req) => {
         cnpj: cnpjPrestador,
         inscricao_municipal: inscricaoMunicipal,
       },
+      ...(tomador ? { tomador } : {}),
       servico: {
         valor_servicos: valorTotal.toFixed(2),
         discriminacao,
         item_lista_servico: itemListaServico,
         aliquota,
         ...(codigoTributario ? { codigo_tributario_municipio: codigoTributario } : {}),
+        ...(retencoes.irrf.aplicado ? { valor_ir: retencoes.irrf.valor.toFixed(2) } : {}),
+        ...(retencoes.pis.aplicado ? { valor_pis: retencoes.pis.valor.toFixed(2) } : {}),
+        ...(retencoes.cofins.aplicado ? { valor_cofins: retencoes.cofins.valor.toFixed(2) } : {}),
+        ...(retencoes.csll.aplicado ? { valor_csll: retencoes.csll.valor.toFixed(2) } : {}),
       },
     }
 
@@ -228,6 +265,8 @@ Deno.serve(async (req) => {
           discriminacao,
           acumulado_mes: acumuladoMes,
           retencoes,
+          tomador_enviado: !!tomador,
+          tomador,
         },
         created_by: user.id,
       })
