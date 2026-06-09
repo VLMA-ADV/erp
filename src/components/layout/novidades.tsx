@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.1.0'
+export const APP_VERSION = '1.2.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.2.0',
+    date: '10/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '💸',
+        title: 'Contas a Pagar e Fluxo de Caixa',
+        desc: 'Novo módulo no Financeiro: lance despesas (fixas/variáveis, recorrentes e reembolsáveis), acompanhe a rotina diária com despesas, receitas e saldo do dia, dê baixa e reagende contas que atrasam. As notas fiscais emitidas viram contas a receber automaticamente, e o saldo inicial da conta é lançado manualmente.',
+      },
+      {
+        icon: '🧾',
+        title: 'Descrição editável na NFS-e',
+        desc: 'Agora você revisa e edita a descrição do serviço na prévia da nota antes de emitir — nome do caso, dados bancários e textos legais já vêm preenchidos.',
+      },
+    ],
+  },
+  {
     version: '1.1.0',
     date: '09/06/2026',
-    destaque: true,
     items: [
       {
         icon: '📊',
