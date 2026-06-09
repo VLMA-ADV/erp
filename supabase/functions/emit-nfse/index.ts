@@ -6,17 +6,27 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
+function digits(v: string | null | undefined): string {
+  return (v ?? "").replace(/\D/g, "")
+}
+
+// Retorna data ISO em BRT (-03:00) com buffer de segundos no passado.
+// Necessário porque a SPED valida que data_emissao <= timestamp do processamento;
+// quando enviada em UTC com `Z`, o servidor SPED pode interpretar como futuro
+// pela diferença de fuso/relógio. Erro E0008 observado em homologação Curitiba.
+function isoBrt(secondsAgo: number = 60): string {
+  const ms = Date.now() - secondsAgo * 1000 - 3 * 60 * 60 * 1000
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}-03:00`
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
     const authHeader = req.headers.get("Authorization")
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
+    if (!authHeader) return new Response(JSON.stringify({ error: "Missing authorization header" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -26,306 +36,224 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "")
     const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
+    if (userError || !user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
-    // Resolve tenant
-    const { data: tenantUser } = await supabase
-      .schema("core")
-      .from("tenant_users")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .eq("status", "ativo")
-      .limit(1)
-      .single()
-
-    if (!tenantUser) {
-      return new Response(JSON.stringify({ error: "Usuário não associado a tenant" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
+    const { data: tenantId } = await supabase.rpc("get_tenant_for_user", { p_user_id: user.id })
+    if (!tenantId) return new Response(JSON.stringify({ error: "Usuário não associado a tenant" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
     const body = await req.json()
-    const { contrato_id, billing_item_ids, dry_run } = body as {
-      contrato_id?: string
-      billing_item_ids?: string[]
-      dry_run?: boolean
-    }
-    // dry_run: monta o payload (inclui tomador) e devolve para inspeção SEM
-    // chamar o Focus NFe e SEM gravar billing_notes. Teste seguro em prod.
-    const dryRun = dry_run === true
+    const { contrato_id, descricao_servico: descricaoOverride } = body as { contrato_id?: string; descricao_servico?: string }
+    if (!contrato_id) return new Response(JSON.stringify({ error: "contrato_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
-    if (!contrato_id && (!billing_item_ids || billing_item_ids.length === 0)) {
-      return new Response(JSON.stringify({ error: "contrato_id ou billing_item_ids é obrigatório" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
+    const { data: cfg } = await supabase.rpc("get_focus_nfe_config", { p_tenant_id: tenantId })
+    if (!cfg) return new Response(JSON.stringify({ error: "Configuração fiscal não encontrada. Cadastre em /configuracao/fiscal-nfse." }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
-    if (dryRun && !contrato_id) {
-      return new Response(JSON.stringify({ error: "dry_run requer contrato_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
+    const { data: dataset } = await supabase.rpc("get_billing_items_aprovados_full", { p_tenant_id: tenantId, p_contrato_id: contrato_id })
+    if (!dataset || !dataset.itens || dataset.itens.length === 0) return new Response(JSON.stringify({ error: "Nenhum item aprovado encontrado para este contrato" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
-    // Buscar itens aprovados
-    let query = supabase
-      .schema("finance")
-      .from("billing_items")
-      .select("id, contrato_id, caso_id, valor_aprovado, valor_revisado, valor, snapshot, status")
-      .eq("tenant_id", tenantUser.tenant_id)
-      .eq("status", "aprovado")
+    const itens = dataset.itens as Array<{ id: string; valor: number; snapshot: Record<string, unknown> }>
+    const tomador = dataset.tomador as Record<string, any> | null
+    const grupo = dataset.grupo_imposto as Record<string, any> | null
+    const contrato = dataset.contrato as Record<string, any> | null
 
-    if (contrato_id) {
-      query = query.eq("contrato_id", contrato_id)
-    } else {
-      query = query.in("id", billing_item_ids!)
+    if (!tomador) return new Response(JSON.stringify({ error: "Cliente do contrato não encontrado." }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+
+    const missingTomador: string[] = []
+    if (!tomador.cnpj) missingTomador.push("cnpj")
+    if (!tomador.codigo_ibge) missingTomador.push("codigo_ibge")
+    if (!tomador.cep) missingTomador.push("cep")
+    if (!tomador.rua) missingTomador.push("rua")
+    if (!tomador.numero) missingTomador.push("numero")
+    if (!tomador.bairro) missingTomador.push("bairro")
+    if (missingTomador.length > 0) {
+      return new Response(JSON.stringify({ error: `Cliente ${tomador.nome} sem dados fiscais completos. Faltam: ${missingTomador.join(", ")}. Preencha em /pessoas/clientes.` }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
-    const { data: itemsRaw, error: itemsError } = await query
-    if (!dryRun && (itemsError || !itemsRaw || itemsRaw.length === 0)) {
-      return new Response(JSON.stringify({ error: "Nenhum item aprovado encontrado para este contrato" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-    // No dry_run seguimos mesmo sem itens (valor 0) só para inspecionar o payload/tomador.
-    const items = itemsRaw ?? []
-
-    // Calcular valor total e discriminação
-    const valorTotal = items.reduce((sum, item: any) => {
-      return sum + Number(item.valor_aprovado ?? item.valor_revisado ?? item.valor ?? 0)
-    }, 0)
-
-    const discriminacaoSet = new Set<string>()
-    for (const item of items as any[]) {
-      const snap = (item.snapshot as Record<string, unknown>) || {}
-      const desc = String(snap.caso_nome || snap.descricao || "Serviços advocatícios")
-      discriminacaoSet.add(desc)
-    }
-    const discriminacao = Array.from(discriminacaoSet).join("; ") || "Serviços advocatícios"
-
-    // Acumulação mensal: buscar cliente do contrato + valor já emitido no mês
-    const effectiveContratoId = contrato_id || (items[0] as any).contrato_id
-    const { data: contratoData } = await supabase
-      .schema("contracts")
-      .from("contratos")
-      .select("cliente_id, grupo_imposto_id")
-      .eq("id", effectiveContratoId)
-      .single()
-
-    // Tomador (cliente do contrato) — obrigatório na NFS-e. Sem este bloco a
-    // nota era emitida sem destinatário ("o jeito que tá saindo na fatura").
-    // Espelha o que o preview (nfse-preview-dialog) já exibe.
-    let tomador: Record<string, unknown> | null = null
-    if (contratoData?.cliente_id) {
-      const { data: cli } = await supabase
-        .schema("crm")
-        .from("clientes")
-        .select("nome, cnpj, cliente_estrangeiro, cep, rua, numero, complemento, bairro, cidade, estado, codigo_ibge, email")
-        .eq("id", contratoData.cliente_id)
-        .single()
-      if (cli) {
-        const t: Record<string, unknown> = {}
-        const docDigits = String((cli as any).cnpj ?? "").replace(/\D/g, "")
-        if (docDigits.length === 14) t.cnpj = docDigits
-        else if (docDigits.length === 11) t.cpf = docDigits
-        if ((cli as any).nome) t.razao_social = (cli as any).nome
-        if ((cli as any).email) t.email = (cli as any).email
-        const endereco: Record<string, unknown> = {}
-        if ((cli as any).rua) endereco.logradouro = (cli as any).rua
-        if ((cli as any).numero) endereco.numero = (cli as any).numero
-        if ((cli as any).complemento) endereco.complemento = (cli as any).complemento
-        if ((cli as any).bairro) endereco.bairro = (cli as any).bairro
-        if ((cli as any).codigo_ibge) endereco.codigo_municipio = String((cli as any).codigo_ibge).replace(/\D/g, "")
-        if ((cli as any).estado) endereco.uf = (cli as any).estado
-        if ((cli as any).cep) endereco.cep = String((cli as any).cep).replace(/\D/g, "")
-        if (Object.keys(endereco).length > 0) t.endereco = endereco
-        if (Object.keys(t).length > 0) tomador = t
-      }
+    if (!grupo || !grupo.codigo_tributacao_nacional_iss || !grupo.codigo_nbs || !grupo.aliquota_iss) {
+      return new Response(JSON.stringify({ error: "Contrato sem grupo de impostos configurado para NFS-e. Selecione um grupo válido no contrato." }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
+    const valorTotal = itens.reduce((s, i) => s + Number(i.valor ?? 0), 0)
+    const valorIss = Math.round(valorTotal * Number(grupo.aliquota_iss) * 100) / 10000
+    const valorIssRounded = Math.round(valorIss * 100) / 100
+
+    // Descrição do serviço = texto VARIÁVEL (nome do caso) + bloco FIXO.
+    // Texto variável: nomes dos casos dos itens aprovados (dedup, juntados por "; ").
+    const casoNomes = Array.from(new Set(
+      itens
+        .map((it) => String((it.snapshot as any)?.caso_nome || (it.snapshot as any)?.descricao || "").trim())
+        .filter(Boolean),
+    ))
+    const textoVariavel = casoNomes.join("; ")
+    // Texto fixo (VLMA) — dados bancários/Pix e nota da Lei 12.741/LC 214 são
+    // literais por enquanto. Se mudar Ag./C-C/Pix ou o % aproximado, é aqui.
+    const DESCRICAO_FIXA = [
+      "Honorários Advocatícios",
+      "Pagamento conforme boleto bancário em anexo",
+      "Dados bancários: Banco Itaú (341) - Ag. 3835 - C/C 31141-0",
+      "Pix/CNPJ: 14.491.612/0001-39",
+      "Conforme Lei 12.741/2012 o valor aproximado dos tributos é 14,53%. Em atendimento à Reforma Tributária (LC 214/2025), nesta operação são informados 0,1% a título de IBS e 0,9% a título de CBS para fins de obrigação acessória no ano-teste de 2026.",
+    ].join("\n")
+    const discriminacao = [textoVariavel, DESCRICAO_FIXA].filter(Boolean).join("\n")
+    // Override: se o usuário editou a descrição na prévia, usa o texto dele.
+    const descricaoFinal = (descricaoOverride && descricaoOverride.trim()) ? descricaoOverride.trim() : discriminacao
+
+    const { data: numeroDps } = await supabase.rpc("allocate_numero_dps", { p_tenant_id: tenantId })
+
+    const focusToken = Deno.env.get("FOCUS_NFE_TOKEN") ?? ""
+    const focusBase = cfg.focus_env === "production" ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br"
+    const ref = `vlma-${tenantId}-${contrato_id}-${Date.now()}`
+
+    const dataEmissao = isoBrt(60) // 60s no passado em BRT (-03:00) — evita erro E0008 SPED
+    const dataCompetencia = dataEmissao.slice(0, 10)
+
+    // ── Retenções federais (IRRF, PIS, COFINS, CSLL) ──────────────────────────
+    // Replica exatamente a lógica do preview (nfse-preview-dialog.tsx): lê as
+    // colunas do grupo (retem_*, aliquota_*, min_calc_*, min_ret_*) e respeita o
+    // valor acumulado do cliente no mês p/ atingir os mínimos de cálculo.
+    // Pós-Reforma Tributária a retenção de PIS+COFINS+CSLL é UNIFICADA na tag
+    // vRetCSLL (campo `valor_csll`); `valor_pis`/`valor_cofins` carregam só o
+    // débito de apuração própria do prestador. Comprovado pela NFS-e 1386 (Curitiba).
+    const clienteId = contrato?.cliente_id ?? (tomador as any)?.id ?? null
     let acumuladoMes = 0
-    if (contratoData?.cliente_id) {
-      const now = new Date()
-      const competencia = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`
+    if (clienteId) {
       const { data: acum } = await supabase.rpc("get_client_month_accumulated_value", {
-        p_tenant_id: tenantUser.tenant_id,
-        p_cliente_id: contratoData.cliente_id,
-        p_competencia: competencia,
+        p_tenant_id: tenantId,
+        p_cliente_id: clienteId,
+        p_competencia: dataCompetencia.slice(0, 7),
       })
       acumuladoMes = Number(acum ?? 0)
     }
-
-    // Retenções federais (IRRF/PIS/COFINS/CSLL): calculadas, enviadas ao Focus
-    // NFe no bloco `servico` quando aplicadas e também registradas em billing_notes.
-    const RATES = {
-      irrf: { aliquota: 1.5, minCalc: 666.67, minRet: 10 },
-      pis: { aliquota: 0.65, minCalc: 215.34, minRet: 1.4 },
-      cofins: { aliquota: 3.0, minCalc: 215.34, minRet: 6.46 },
-      csll: { aliquota: 1.0, minCalc: 215.34, minRet: 2.15 },
+    const gi = grupo as Record<string, any>
+    const baseMin = valorTotal + acumuladoMes
+    const respeitaMin = gi.respeita_minimo ?? true
+    const calcRet = (
+      imp: "irrf" | "pis" | "cofins" | "csll",
+      aliqDef: number, minCalcCol: string, minCalcDef: number, minRetDef: number,
+    ): number => {
+      if ((gi[`retem_${imp}`] ?? true) === false) return 0
+      const aliquota = Number(gi[`aliquota_${imp}`] ?? aliqDef)
+      const minCalc = Number(gi[minCalcCol] ?? minCalcDef)
+      const minRet = Number(gi[`min_ret_${imp}`] ?? minRetDef)
+      if (respeitaMin && baseMin < minCalc) return 0
+      const valor = Math.round(valorTotal * aliquota) / 100
+      if (respeitaMin && valor < minRet) return 0
+      return valor
     }
-
-    let retemIrrf = true, retemPis = true, retemCofins = true, retemCsll = true
-    let respeitaMinimo = true
-    const grupoRates = { ...RATES }
-
-    if (contratoData?.grupo_imposto_id) {
-      const { data: gi } = await supabase
-        .schema("contracts")
-        .from("grupos_impostos")
-        .select("retem_irrf, retem_pis, retem_cofins, retem_csll, respeita_minimo, aliquota_irrf, aliquota_pis, aliquota_cofins, aliquota_csll, min_calc_irrf, min_calc_pis_cofins_csll, min_ret_irrf, min_ret_pis, min_ret_cofins, min_ret_csll")
-        .eq("id", contratoData.grupo_imposto_id)
-        .single()
-
-      if (gi) {
-        retemIrrf = gi.retem_irrf ?? true
-        retemPis = gi.retem_pis ?? true
-        retemCofins = gi.retem_cofins ?? true
-        retemCsll = gi.retem_csll ?? true
-        respeitaMinimo = gi.respeita_minimo ?? true
-        grupoRates.irrf = { aliquota: Number(gi.aliquota_irrf ?? RATES.irrf.aliquota), minCalc: Number(gi.min_calc_irrf ?? RATES.irrf.minCalc), minRet: Number(gi.min_ret_irrf ?? RATES.irrf.minRet) }
-        grupoRates.pis = { aliquota: Number(gi.aliquota_pis ?? RATES.pis.aliquota), minCalc: Number(gi.min_calc_pis_cofins_csll ?? RATES.pis.minCalc), minRet: Number(gi.min_ret_pis ?? RATES.pis.minRet) }
-        grupoRates.cofins = { aliquota: Number(gi.aliquota_cofins ?? RATES.cofins.aliquota), minCalc: Number(gi.min_calc_pis_cofins_csll ?? RATES.cofins.minCalc), minRet: Number(gi.min_ret_cofins ?? RATES.cofins.minRet) }
-        grupoRates.csll = { aliquota: Number(gi.aliquota_csll ?? RATES.csll.aliquota), minCalc: Number(gi.min_calc_pis_cofins_csll ?? RATES.csll.minCalc), minRet: Number(gi.min_ret_csll ?? RATES.csll.minRet) }
-      }
+    const vIrrf    = calcRet("irrf",   1.5,  "min_calc_irrf",            666.67, 10.00)
+    const vPis     = calcRet("pis",    0.65, "min_calc_pis_cofins_csll", 215.34, 1.40)
+    const vCofins  = calcRet("cofins", 3.0,  "min_calc_pis_cofins_csll", 215.34, 6.46)
+    const vCsllRet = calcRet("csll",   1.0,  "min_calc_pis_cofins_csll", 215.34, 2.15)
+    // vRetCSLL agrupa a soma de PIS+COFINS+CSLL retidos (campo `valor_csll`).
+    const vRetUnificada = Math.round((vPis + vCofins + vCsllRet) * 100) / 100
+    // tipo_retencao_pis_cofins (tpRetPisCofins): código pela combinação retida.
+    const tpKey = `${vPis > 0 ? 1 : 0}${vCofins > 0 ? 1 : 0}${vCsllRet > 0 ? 1 : 0}`
+    const tpRetMap: Record<string, number> = {
+      "111": 3, "110": 4, "100": 5, "010": 6, "011": 7, "001": 8, "101": 9, "000": 0,
     }
+    const tpRetPisCofins = tpRetMap[tpKey] ?? 0
 
-    const baseCalculo = valorTotal + acumuladoMes
-    const calcRet = (retem: boolean, rate: { aliquota: number; minCalc: number; minRet: number }) => {
-      if (!retem) return { valor: 0, aplicado: false }
-      if (respeitaMinimo && baseCalculo < rate.minCalc) return { valor: 0, aplicado: false }
-      const valor = Math.round(valorTotal * rate.aliquota) / 100
-      if (respeitaMinimo && valor < rate.minRet) return { valor: 0, aplicado: false }
-      return { valor, aplicado: true, acumulacao: acumuladoMes > 0 && valorTotal < rate.minCalc }
-    }
+    // 6 = Sociedade de Profissionais (VLMA, advocacia — tributação fixa de ISS).
+    // Confirmado pela NFS-e 1386 autorizada em Curitiba. Antes forçávamos 0
+    // (Nenhum) só p/ furar o E0178, o que deixava o ISS sendo apurado por valor.
+    const regimeEsp = Number(cfg.regime_especial_tributacao ?? 6)
 
-    const retencoes = {
-      irrf: calcRet(retemIrrf, grupoRates.irrf),
-      pis: calcRet(retemPis, grupoRates.pis),
-      cofins: calcRet(retemCofins, grupoRates.cofins),
-      csll: calcRet(retemCsll, grupoRates.csll),
-    }
-
-    // Focus NFe config
-    const focusToken = Deno.env.get("FOCUS_NFE_TOKEN") ?? ""
-    const focusEnv = Deno.env.get("FOCUS_NFE_ENV") ?? "homologation"
-    const focusBase = focusEnv === "production"
-      ? "https://api.focusnfe.com.br"
-      : "https://homologacao.focusnfe.com.br"
-
-    const cnpjPrestador = (Deno.env.get("FOCUS_NFE_CNPJ") ?? "14491612000139").replace(/\D/g, "")
-    const inscricaoMunicipal = Deno.env.get("FOCUS_NFE_INSCRICAO_MUNICIPAL") ?? "6265382"
-    const itemListaServico = Deno.env.get("FOCUS_NFE_ITEM_LISTA_SERVICO") ?? "1714"
-    const aliquota = Number(Deno.env.get("FOCUS_NFE_ALIQUOTA") ?? "3.5")
-    const codigoTributario = Deno.env.get("FOCUS_NFE_CODIGO_TRIBUTARIO") ?? ""
-
-    const ref = `vlma-${Date.now()}`
+    const retencoesFederais: Record<string, unknown> = {}
+    if (vIrrf > 0) retencoesFederais.valor_irrf = vIrrf
+    if (vPis > 0) retencoesFederais.valor_pis = vPis
+    if (vCofins > 0) retencoesFederais.valor_cofins = vCofins
+    if (vRetUnificada > 0) retencoesFederais.valor_csll = vRetUnificada
+    if (tpRetPisCofins !== 0) retencoesFederais.tipo_retencao_pis_cofins = tpRetPisCofins
 
     const nfsePayload: Record<string, unknown> = {
-      prestador: {
-        cnpj: cnpjPrestador,
-        inscricao_municipal: inscricaoMunicipal,
-      },
-      ...(tomador ? { tomador } : {}),
-      servico: {
-        valor_servicos: valorTotal.toFixed(2),
-        discriminacao,
-        item_lista_servico: itemListaServico,
-        aliquota,
-        ...(codigoTributario ? { codigo_tributario_municipio: codigoTributario } : {}),
-        ...(retencoes.irrf.aplicado ? { valor_ir: retencoes.irrf.valor.toFixed(2) } : {}),
-        ...(retencoes.pis.aplicado ? { valor_pis: retencoes.pis.valor.toFixed(2) } : {}),
-        ...(retencoes.cofins.aplicado ? { valor_cofins: retencoes.cofins.valor.toFixed(2) } : {}),
-        ...(retencoes.csll.aplicado ? { valor_csll: retencoes.csll.valor.toFixed(2) } : {}),
-      },
+      data_emissao: dataEmissao,
+      data_competencia: dataCompetencia,
+      serie_dps: cfg.serie_dps,
+      numero_dps: String(numeroDps ?? 1),
+
+      cnpj_prestador: digits(cfg.cnpj),
+      inscricao_municipal_prestador: cfg.inscricao_municipal ?? undefined,
+      // codigo_municipio_prestador REMOVIDO: em auto-emissão (prestador = emitente)
+      // ele faz o Focus montar o bloco endNac do prestador, que então exige CEP/xLgr
+      // — campos que a prefeitura proíbe nesse caso. O endereço vem do cadastro
+      // nacional. Mantemos emissora/prestacao (cabeçalho da DPS, não são endereço).
+      codigo_municipio_emissora: Number(cfg.codigo_municipio),
+      codigo_municipio_prestacao: Number(cfg.codigo_municipio),
+      telefone_prestador: digits(cfg.telefone),
+      email_prestador: cfg.email,
+      codigo_opcao_simples_nacional: cfg.codigo_opcao_simples_nacional,
+      // O grupo regTrib (SPED) exige UM de: regApTribSN (Simples) OU regEspTrib.
+      // VLMA é NÃO optante do Simples (codigo_opcao_simples_nacional=1), então usa
+      // regEspTrib = 6 (Sociedade de Profissionais), que é o enquadramento real da
+      // advocacia e o que a NFS-e 1386 autorizada mostra. O 3 (Microempresa
+      // Municipal) é que Curitiba recusou com E0178.
+      regime_especial_tributacao: regimeEsp,
+      // NÃO enviar endereço do prestador: quando o próprio prestador é o emitente
+      // da DPS (auto-emissão, caso da VLMA), o endereço vem do cadastro nacional.
+      // Informá-lo aqui é rejeitado pela prefeitura ("endereço nacional do prestador
+      // não deve ser informado quando o prestador for o emitente da DPS").
+
+      cnpj_tomador: digits(tomador.cnpj),
+      razao_social_tomador: tomador.nome,
+      codigo_municipio_tomador: Number(tomador.codigo_ibge),
+      cep_tomador: digits(tomador.cep),
+      logradouro_tomador: tomador.rua,
+      numero_tomador: String(tomador.numero),
+      complemento_tomador: tomador.complemento || "-",
+      bairro_tomador: tomador.bairro,
+      telefone_tomador: digits(tomador.telefone) || undefined,
+      email_tomador: tomador.email || undefined,
+
+      codigo_tributacao_nacional_iss: grupo.codigo_tributacao_nacional_iss,
+      codigo_nbs: grupo.codigo_nbs,
+      descricao_servico: descricaoFinal,
+      valor_servico: Number(valorTotal.toFixed(2)),
+      // ISS: tipo_retencao_iss=1 já é "Não Retido" na spec nacional. Sob regime 6
+      // (Sociedade de Profissionais) o ISS é tributação FIXA — não se apura por
+      // valor — então NÃO enviamos valor_iss (bate com "ISSQN Apurado: -" da 1386).
+      ...(regimeEsp === 6 ? {} : { valor_iss: valorIssRounded }),
+      tributacao_iss: grupo.tributacao_iss,
+      tipo_retencao_iss: grupo.tipo_retencao_iss,
+      situacao_tributaria_pis_cofins: grupo.situacao_tributaria_pis_cofins,
+      // Retenções federais (valor_irrf, valor_pis, valor_cofins, valor_csll
+      // unificado, tipo_retencao_pis_cofins) — só entram quando o grupo retém.
+      ...retencoesFederais,
+      percentual_total_tributos_federais: String(grupo.pct_trib_federais ?? 0),
+      percentual_total_tributos_estaduais: String(grupo.pct_trib_estaduais ?? 0),
+      percentual_total_tributos_municipais: String(grupo.pct_trib_municipais ?? 0),
     }
 
-    // Teste seguro: devolve o payload montado (com tomador) sem emitir nem gravar.
-    if (dryRun) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          dry_run: true,
-          focus_env: focusEnv,
-          contrato_id: effectiveContratoId,
-          valor_total: valorTotal,
-          tomador_enviado: !!tomador,
-          tomador,
-          retencoes,
-          payload: nfsePayload,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      )
-    }
-
-    const focusResp = await fetch(`${focusBase}/v2/nfse?ref=${ref}`, {
+    const focusResp = await fetch(`${focusBase}/v2/nfsen?ref=${ref}`, {
       method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(focusToken + ":")}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Basic ${btoa(focusToken + ":")}`, "Content-Type": "application/json" },
       body: JSON.stringify(nfsePayload),
     })
 
     const focusBody = await focusResp.json().catch(() => ({}))
-    const accepted = focusResp.status === 201 || focusResp.status === 200
-    const focusStatus = accepted ? "pendente" : "erro"
+    // Focus NFe retorna 202 (Accepted) para emissões async (NFSe Nacional) — também é sucesso.
+    // Tratar como erro apenas se houver código de erro explícito ou status >= 400.
+    const accepted = focusResp.status >= 200 && focusResp.status < 300 && !(focusBody as any)?.codigo
 
-    // Registrar nota em billing_notes
-    const { data: noteData } = await supabase
-      .schema("finance")
-      .from("billing_notes")
-      .insert({
-        tenant_id: tenantUser.tenant_id,
-        contrato_id: (items[0] as any).contrato_id,
-        tipo_documento: "nota_fiscal_servico",
-        status: accepted ? "gerado" : "cancelado",
-        focus_ref: ref,
-        focus_status: focusStatus,
-        metadata: {
-          focus_response: focusBody,
-          item_ids: items.map((i: any) => i.id),
-          valor_total: valorTotal,
-          discriminacao,
-          acumulado_mes: acumuladoMes,
-          retencoes,
-          tomador_enviado: !!tomador,
-          tomador,
-        },
-        created_by: user.id,
-      })
-      .select("id")
-      .single()
+    // focus_status: usa o status retornado pelo Focus (ex.: "processando_autorizacao") ou fallback
+    const focusStatus = accepted ? String((focusBody as any)?.status ?? "pendente") : "erro"
+
+    const { data: noteId } = await supabase.rpc("insert_billing_note", {
+      p_tenant_id: tenantId,
+      p_contrato_id: contrato_id,
+      p_tipo_documento: "nota_fiscal_servico",
+      p_status: accepted ? "gerado" : "cancelado",
+      p_focus_ref: ref,
+      p_focus_status: focusStatus,
+      p_metadata: { focus_request: nfsePayload, focus_response: focusBody, item_ids: itens.map(i => i.id), valor_total: valorTotal, valor_iss: valorIssRounded },
+      p_created_by: user.id,
+    })
 
     if (!accepted) {
-      return new Response(
-        JSON.stringify({ error: "Focus NFe recusou a solicitação", focus_response: focusBody }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      )
+      return new Response(JSON.stringify({ error: "Focus NFe recusou a solicitação", focus_response: focusBody, ref, nota_id: noteId }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        ref,
-        focus_status: focusStatus,
-        nota_id: noteData?.id ?? null,
-        valor_total: valorTotal,
-        focus_response: focusBody,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    )
+    return new Response(JSON.stringify({ ok: true, ref, focus_status: focusStatus, nota_id: noteId, valor_total: valorTotal, valor_iss: valorIssRounded, focus_response: focusBody }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
   } catch (error) {
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return new Response(JSON.stringify({ error: (error as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
   }
 })

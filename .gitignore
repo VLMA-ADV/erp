@@ -86,3 +86,6 @@ scripts/.z2-chunks/_*
 
 # Z-6 / MCP: artefatos locais de chunk (não versionar)
 supabase/migrations/.z6-build/
+
+# Supabase CLI: estado local efêmero (não versionar)
+supabase/.temp/

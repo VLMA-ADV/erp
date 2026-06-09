@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Importação de Contratos — VLMA ERP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #ffffff;
+    --canvas-soft: #f6f9fc;
+    --canvas-cream: #f5e9d4;
+    --ink: #0d253d;
+    --ink-secondary: #273951;
+    --ink-mute: #64748d;
+    --primary: #533afd;
+    --primary-deep: #4434d4;
+    --primary-soft-bg: #b9b9f9;
+    --brand-dark: #1c1e54;
+    --hairline: #e3e8ef;
+    --radius: 12px;
+    --lift-1: 0 1px 3px rgba(0, 55, 112, 0.08);
+    --lift-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background: var(--canvas);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .gradient-mesh {
+    background-image:
+      radial-gradient(at 5% 0%, hsl(38 80% 88% / 0.95) 0px, transparent 55%),
+      radial-gradient(at 28% 0%, hsl(24 90% 84% / 0.85) 0px, transparent 55%),
+      radial-gradient(at 52% 0%, hsl(265 65% 90% / 0.85) 0px, transparent 55%),
+      radial-gradient(at 80% 0%, hsl(214 80% 90% / 0.9) 0px, transparent 55%);
+  }
+  .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  .eyebrow {
+    font-size: 10px; font-weight: 500; letter-spacing: 0.075em;
+    text-transform: uppercase; color: var(--primary-deep);
+  }
+  .display-xl { font-size: 3rem; font-weight: 300; line-height: 1.15; letter-spacing: -0.06rem; }
+  .display-md { font-size: 1.625rem; font-weight: 300; line-height: 1.12; letter-spacing: -0.016rem; }
+  .mute { color: var(--ink-mute); }
+  .secondary { color: var(--ink-secondary); }
+
+  header { padding: 72px 0 56px; }
+  header p.lead { margin-top: 16px; max-width: 560px; color: var(--ink-secondary); }
+
+  section { padding: 36px 0; }
+  section + section { border-top: 1px solid var(--hairline); }
+
+  .cream-band {
+    background: var(--canvas-cream); border-radius: var(--radius);
+    padding: 28px 32px; box-shadow: var(--lift-1); margin-top: 20px;
+  }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+  .step {
+    background: var(--canvas); border: 1px solid var(--hairline);
+    border-radius: var(--radius); padding: 22px; box-shadow: var(--lift-1);
+  }
+  .step .num {
+    display: inline-flex; width: 28px; height: 28px; border-radius: 9999px;
+    background: var(--primary); color: #fff; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 13px; margin-bottom: 12px;
+  }
+  .step h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .step p { font-size: 13px; color: var(--ink-mute); }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 13.5px; }
+  th {
+    text-align: left; font-size: 10px; font-weight: 500; letter-spacing: 0.075em;
+    text-transform: uppercase; color: var(--ink-mute); padding: 10px 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--hairline); vertical-align: top; color: var(--ink-secondary); }
+  td:first-child { color: var(--ink); font-weight: 500; white-space: nowrap; }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px;
+    background: var(--canvas-soft); border: 1px solid var(--hairline);
+    border-radius: 6px; padding: 1px 6px; color: var(--primary-deep);
+  }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 500; border-radius: 9999px;
+    padding: 2px 10px; white-space: nowrap;
+  }
+  .pill.obr { background: var(--brand-dark); color: #fff; }
+  .pill.rec { background: var(--primary-soft-bg); color: var(--primary-press, #2e2b8c); }
+  .pill.opt { background: var(--canvas-soft); color: var(--ink-mute); border: 1px solid var(--hairline); }
+
+  .example-sheet {
+    margin-top: 18px; border: 1px solid var(--hairline); border-radius: var(--radius);
+    overflow: hidden; box-shadow: var(--lift-2);
+  }
+  .example-sheet table { margin: 0; font-size: 12px; }
+  .example-sheet th { background: var(--canvas-soft); }
+  .example-sheet td { white-space: nowrap; }
+  .example-sheet .hl { background: hsl(247 98% 61% / 0.06); }
+
+  .callout {
+    display: flex; gap: 12px; background: var(--canvas-soft);
+    border: 1px solid var(--hairline); border-radius: var(--radius);
+    padding: 16px 20px; margin-top: 18px; font-size: 13.5px; color: var(--ink-secondary);
+  }
+  .callout .icon { color: var(--primary); font-weight: 600; }
+
+  ul.clean { list-style: none; margin-top: 14px; }
+  ul.clean li { padding: 7px 0 7px 28px; position: relative; color: var(--ink-secondary); font-size: 14px; }
+  ul.clean li::before {
+    content: "✓"; position: absolute; left: 0; top: 7px;
+    color: var(--primary); font-weight: 600;
+  }
+  ul.x li::before { content: "—"; color: var(--ink-mute); }
+
+  footer {
+    margin-top: 48px; padding: 28px 0 48px; border-top: 1px solid var(--hairline);
+    font-size: 12.5px; color: var(--ink-mute);
+  }
+  @media print {
+    header { padding: 40px 0 24px; }
+    .step, .cream-band, .example-sheet { box-shadow: none; }
+    section { break-inside: avoid; }
+  }
+  @media (max-width: 640px) { .steps { grid-template-columns: 1fr; } .display-xl { font-size: 2.2rem; } }
+</style>
+</head>
+<body>
+
+<div class="gradient-mesh">
+  <div class="container">
+    <header>
+      <span class="eyebrow">VLMA · ERP — Guia de preenchimento</span>
+      <h1 class="display-xl" style="margin-top:12px;">Importação de Contratos</h1>
+      <p class="lead">Este guia explica como preencher a planilha <strong style="font-weight:600;">modelo-import-contratos.xlsx</strong> para trazermos todos os contratos e casos do escritório para o ERP de uma só vez.</p>
+    </header>
+  </div>
+</div>
+
+<div class="container">
+
+  <section>
+    <span class="eyebrow">Visão geral</span>
+    <h2 class="display-md" style="margin-top:8px;">Como funciona</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="num">1</span>
+        <h4>Você preenche</h4>
+        <p>Uma linha para cada caso, na aba <strong>Contratos</strong> da planilha. As listas suspensas já trazem os valores aceitos pelo sistema.</p>
+      </div>
+      <div class="step">
+        <span class="num">2</span>
+        <h4>Nós validamos</h4>
+        <p>Rodamos uma verificação completa (clientes, valores, datas, percentuais) e devolvemos um relatório. Nada entra no sistema com erro.</p>
+      </div>
+      <div class="step">
+        <span class="num">3</span>
+        <h4>Importação</h4>
+        <p>Com a planilha aprovada, os contratos são criados no ERP pelos mesmos mecanismos das telas — com numeração e regras de faturamento corretas.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <span class="icon">ℹ</span>
+      <span><strong style="font-weight:600;">Pré-requisito:</strong> os clientes precisam já estar cadastrados no ERP. A planilha referencia cada cliente pelo CPF/CNPJ — se o cliente ainda não existe, nos avise antes.</span>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Conceito central</span>
+    <h2 class="display-md" style="margin-top:8px;">Uma linha = um caso</h2>
+    <p class="secondary" style="margin-top:12px; max-width:640px;">
+      No ERP, um <strong style="font-weight:600;">contrato</strong> agrupa um ou mais <strong style="font-weight:600;">casos</strong> (escopos de trabalho, cada um com sua forma de cobrança).
+      Na planilha, cada linha descreve um caso. Para colocar dois casos no mesmo contrato, repita o mesmo
+      código na coluna <code>contrato_ref</code>:
+    </p>
+    <div class="example-sheet">
+      <table>
+        <tr><th>contrato_ref</th><th>cliente_cpf_cnpj</th><th>nome_contrato</th><th>nome_caso</th><th>regra_cobranca</th></tr>
+        <tr><td>C001</td><td>12.345.678/0001-90</td><td>Contrato Consultoria Exemplo</td><td>Consultoria tributária mensal</td><td>mensal</td></tr>
+        <tr class="hl"><td>C002</td><td>123.456.789-09</td><td>Contrato Trabalhista João</td><td>Reclamatória trabalhista</td><td>hora</td></tr>
+        <tr class="hl"><td>C002</td><td>123.456.789-09</td><td>Contrato Trabalhista João</td><td>Êxito sobre a causa</td><td>exito</td></tr>
+        <tr><td>C003</td><td>98.765.432/0001-10</td><td>Contrato Societário Holding</td><td>Reorganização societária</td><td>projeto</td></tr>
+      </table>
+    </div>
+    <p class="mute" style="margin-top:10px; font-size:13px;">As duas linhas destacadas usam o mesmo <code>contrato_ref</code> (C002) — viram um único contrato com dois casos.</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Legenda das colunas</span>
+    <h2 class="display-md" style="margin-top:8px;">O que é obrigatório</h2>
+    <p class="secondary" style="margin-top:12px;">As cores do cabeçalho da planilha indicam a exigência de cada coluna:</p>
+    <table>
+      <tr><th style="width:160px;">Tipo</th><th>Colunas</th><th>O que acontece se faltar</th></tr>
+      <tr>
+        <td><span class="pill obr">Obrigatória</span></td>
+        <td><code>contrato_ref</code>, <code>cliente_cpf_cnpj</code>, <code>cliente_nome</code>, <code>nome_contrato</code>, <code>grupo_imposto</code>, <code>nome_caso</code>, <code>regra_cobranca</code>, <code>natureza</code>, <code>dia_vencimento</code> + o campo de valor da regra escolhida</td>
+        <td>A linha é <strong style="font-weight:600;">bloqueada</strong> — devolvemos para correção</td>
+      </tr>
+      <tr>
+        <td><span class="pill rec">Recomendada</span></td>
+        <td><code>area</code>, <code>produto</code>, <code>responsavel</code>, <code>inicio_vigencia</code></td>
+        <td>Importa mesmo assim, mas sinalizamos no relatório para completar depois</td>
+      </tr>
+      <tr>
+        <td><span class="pill opt">Opcional</span></td>
+        <td>Todas as demais (polo, observação, reajuste, pagadores…)</td>
+        <td>O sistema assume o padrão (ex.: moeda real, status ativo, reajuste IPCA anual)</td>
+      </tr>
+    </table>
+  </section>
+
+  <section>
+    <span class="eyebrow">Cobrança</span>
+    <h2 class="display-md" style="margin-top:8px;">Qual coluna de valor preencher</h2>
+    <p class="secondary" style="margin-top:12px;">Cada caso tem <strong style="font-weight:600;">uma</strong> regra de cobrança. Preencha apenas a coluna de valor correspondente:</p>
+    <table>
+      <tr><th>Se a regra é…</th><th>Preencha…</th><th>Exemplo</th></tr>
+      <tr><td><code>hora</code></td><td><code>valor_hora</code></td><td>450,00</td></tr>
+      <tr><td><code>mensal</code></td><td><code>valor_mensal</code></td><td>8.000,00</td></tr>
+      <tr><td><code>mensalidade_processo</code></td><td><code>valor_mensal</code></td><td>1.200,00</td></tr>
+      <tr><td><code>mensalidade_carteira</code></td><td><code>valor_mensal</code></td><td>15.000,00</td></tr>
+      <tr><td><code>salario_minimo</code></td><td><code>quantidade_sm</code> (quantidade de salários mínimos)</td><td>0,5</td></tr>
+      <tr><td><code>projeto</code></td><td><code>valor_projeto</code> (e <code>num_parcelas</code> se parcelado)</td><td>45.000,00 · 3</td></tr>
+      <tr><td><code>exito</code></td><td><code>percentual_exito</code> <em>ou</em> <code>valor_exito_fixo</code> — pode deixar em branco e definir depois</td><td>20</td></tr>
+    </table>
+    <div class="callout">
+      <span class="icon">ℹ</span>
+      <span><strong style="font-weight:600;">Formatos:</strong> valores no padrão brasileiro (<code>1.500,00</code>), datas <code>DD/MM/AAAA</code>, CPF/CNPJ com ou sem pontuação — tanto faz.</span>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Situações especiais</span>
+    <h2 class="display-md" style="margin-top:8px;">Rateio e reajuste</h2>
+    <table>
+      <tr><th style="width:200px;">Situação</th><th>Como preencher</th></tr>
+      <tr>
+        <td>Outra empresa paga a fatura (ou mais de um pagador)</td>
+        <td>Coluna <code>pagadores</code>: CNPJ e percentual separados por dois-pontos; vários pagadores separados por ponto-e-vírgula.<br>
+        Ex.: <code>98.765.432/0001-10:70; 12.345.678/0001-90:30</code> — precisa somar 100%. Vazio = o próprio cliente paga 100%.</td>
+      </tr>
+      <tr>
+        <td>Contrato sem reajuste</td>
+        <td><code>possui_reajuste</code> = <code>nao</code> (e deixe índice/período em branco)</td>
+      </tr>
+      <tr>
+        <td>Contrato com reajuste</td>
+        <td>Deixe o padrão (<code>sim</code>, IPCA anual) ou ajuste <code>indice_reajuste</code> / <code>data_ultimo_reajuste</code>. O sistema calcula o próximo reajuste automaticamente.</td>
+      </tr>
+      <tr>
+        <td>Caso contencioso</td>
+        <td><code>natureza</code> = <code>contencioso</code> e informe o <code>polo</code> (ativo ou passivo)</td>
+      </tr>
+    </table>
+  </section>
+
+  <section>
+    <span class="eyebrow">Limites</span>
+    <h2 class="display-md" style="margin-top:8px;">O que não entra pela planilha</h2>
+    <p class="secondary" style="margin-top:12px;">Alguns detalhes são configurados direto no ERP depois da importação (avisamos quais casos precisam no relatório):</p>
+    <ul class="clean x">
+      <li>Anexos e documentos (propostas, contratos assinados)</li>
+      <li>Datas e valores de cada parcela de projetos parcelados</li>
+      <li>Configuração de timesheet (aprovadores, limite de horas)</li>
+      <li>Despesas reembolsáveis, cross-sell e regras de indicação</li>
+      <li>Vínculo de processos em mensalidade de carteira</li>
+    </ul>
+  </section>
+
+  <section>
+    <span class="eyebrow">Antes de enviar</span>
+    <h2 class="display-md" style="margin-top:8px;">Checklist final</h2>
+    <ul class="clean">
+      <li>Apagou as linhas de exemplo (em cinza itálico)?</li>
+      <li>Todo caso tem <code>contrato_ref</code>, cliente, nome do contrato e do caso?</li>
+      <li>Toda linha tem <code>regra_cobranca</code> com o valor correspondente preenchido?</li>
+      <li>Linhas do mesmo contrato usam exatamente o mesmo <code>contrato_ref</code>?</li>
+      <li>Usou as listas suspensas (não digitou valores fora da lista)?</li>
+      <li>Dúvida em algum campo? Deixe vazio e registre na coluna <code>observacao</code> — é melhor que chutar.</li>
+    </ul>
+    <div class="cream-band">
+      <span class="eyebrow" style="color:var(--ink-secondary);">Próximo passo</span>
+      <h3 style="font-size:1.25rem; font-weight:300; margin-top:6px;">Envie a planilha preenchida para a equipe Flowcode</h3>
+      <p style="font-size:13.5px; margin-top:8px; color:var(--ink-secondary);">
+        Rodamos a validação no mesmo dia e devolvemos o relatório: o que será criado, o que precisa de ajuste e o que ficou para configurar na tela. Nada é importado sem a sua confirmação.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    VLMA · ERP — Guia de importação de contratos · Preparado pela equipe Flowcode · Junho/2026
+  </footer>
+
+</div>
+</body>
+</html>

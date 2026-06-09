@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Contas a Pagar / Fluxo de Caixa — Entrega &amp; Validação</title>
+<style>
+  :root { --ink:#1a1a2e; --mute:#6b7280; --line:#e5e7eb; --brand:#4f46e5; --ok:#16a34a; --warn:#d97706; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; background: #f7f7fb; line-height: 1.55; }
+  .wrap { max-width: 840px; margin: 0 auto; padding: 48px 24px 80px; }
+  .eyebrow { letter-spacing: .12em; text-transform: uppercase; font-size: 12px; color: var(--brand); font-weight: 700; }
+  h1 { font-size: 30px; margin: 8px 0 4px; }
+  .sub { color: var(--mute); margin: 0 0 32px; }
+  h2 { font-size: 18px; margin: 36px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 12px 0; }
+  .done li { margin: 6px 0; }
+  .done li::marker { color: var(--ok); }
+  .q { background:#fff; border:1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 10px; padding: 14px 18px; margin: 12px 0; }
+  .q .n { color: var(--brand); font-weight: 700; }
+  .q .ctx { color: var(--mute); font-size: 14px; margin-top: 4px; }
+  .tag { display:inline-block; font-size: 11px; font-weight:700; padding: 2px 8px; border-radius: 999px; }
+  .tag.prop { background:#eef2ff; color:var(--brand); }
+  .tag.need { background:#fef3c7; color:var(--warn); }
+  footer { color: var(--mute); font-size: 13px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">VLMA · ERP · Financeiro</p>
+  <h1>Contas a Pagar &amp; Fluxo de Caixa</h1>
+  <p class="sub">O que já foi entregue e as últimas validações para fechar a fase 1.</p>
+
+  <h2>✅ Já construído e funcionando</h2>
+  <div class="card done">
+    <ul>
+      <li><b>Rotina diária</b>: visão única Pagar + Receber, com KPIs do dia (despesas, receitas, saldo corrente) e filtros (Pendentes / Vencidas / Pagos).</li>
+      <li><b>Novo lançamento</b> (pagar ou receber) com pré-visualização ao vivo: empresa pagadora, tipo (fixo/variável), conta contábil + centro de custo, valor, vencimento.</li>
+      <li><b>Recorrência</b>: marca "recorrente" e o nº de parcelas — o sistema gera as parcelas mensais sozinho.</li>
+      <li><b>Reajuste programado</b>: data + % IPCA estimado, na mesma lógica dos contratos de honorários.</li>
+      <li><b>Reembolsável</b>: ao marcar, gera automaticamente a previsão de entrada (o reembolso que volta).</li>
+      <li><b>Baixa e Reagendar</b>: dá baixa (pago/recebido) ou empurra a data quando o honorário atrasa.</li>
+      <li><b>Contas a Receber automáticas</b>: as notas fiscais emitidas no faturamento entram sozinhas como honorários a receber.</li>
+      <li><b>Saldo inicial manual</b> da conta Itaú (sem conciliação bancária, como combinado).</li>
+      <li><b>Acesso restrito</b> a financeiro/administrativo e sócios.</li>
+    </ul>
+  </div>
+
+  <h2>❓ Últimas validações (rápidas)</h2>
+
+  <div class="q">
+    <span class="n">1.</span> <b>Contas a Receber</b> — hoje puxamos as <b>notas fiscais emitidas</b> como honorários a receber.
+    <span class="tag prop">proposto</span>
+    <div class="ctx">Você quer ver também os honorários <b>ainda não faturados</b> (em aprovação, antes da nota) nessa lista, ou só o que já virou nota?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">2.</span> <b>Vencimento do recebível</b> — a nota não tem data de pagamento, então usamos a data de emissão e você reagenda conforme o cliente paga.
+    <span class="tag prop">proposto</span>
+    <div class="ctx">Faz sentido, ou prefere um prazo padrão (ex.: emissão + 30 dias)?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">3.</span> <b>Plano de contas real</b> — hoje há exemplos de centro de custo e conta contábil.
+    <span class="tag need">precisa de você</span>
+    <div class="ctx">Pode nos enviar a planilha com a lista oficial de <b>centros de custo</b> e <b>contas contábeis</b> (código + nome) para carregarmos?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">4.</span> <b>Empresas do grupo</b> — cadastramos VLMA, Ravena e Verve.
+    <span class="tag need">precisa de você</span>
+    <div class="ctx">Quais os <b>CNPJs</b> de cada uma (para a fonte pagadora)?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">5.</span> <b>Saldo inicial</b> — a conta é o Itaú.
+    <span class="tag need">precisa de você</span>
+    <div class="ctx">Qual o <b>saldo de abertura</b> a lançar? Há outra conta bancária além do Itaú?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">6.</span> <b>Forma de pagamento</b> — hoje é texto livre.
+    <span class="tag prop">proposto</span>
+    <div class="ctx">Prefere uma lista fixa (Boleto / Pix / TED / Débito automático)?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">7.</span> <b>Anexos (boleto / NF / comprovante)</b> — os campos existem.
+    <span class="tag prop">proposto</span>
+    <div class="ctx">Querem <b>upload de arquivo</b> anexado a cada lançamento já nesta fase?</div>
+  </div>
+
+  <div class="q">
+    <span class="n">8.</span> <b>Aprovação antes de pagar</b> — opcional.
+    <span class="tag prop">proposto</span>
+    <div class="ctx">Querem um fluxo onde o pagamento só sai após aprovação de um sócio, ou o controle por perfil já basta?</div>
+  </div>
+
+  <footer>
+    Defaults já assumidos (confirmar se algo destoa): recorrência sem nº de parcelas = sem prazo (até cancelar) · reajuste com % IPCA digitado manualmente · reembolsável gera previsão de entrada · obrigatórios: valor, vencimento, conta contábil, centro de custo, empresa pagadora.
+  </footer>
+</div>
+</body>
+</html>

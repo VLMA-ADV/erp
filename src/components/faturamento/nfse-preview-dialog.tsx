@@ -100,12 +100,22 @@ function formatCep(cep: string | null | undefined): string {
   return cep
 }
 
+// Texto fixo da descrição (VLMA) — espelha o DESCRICAO_FIXA do emit-nfse.
+// Mantém os dois em sincronia: o que o usuário vê na prévia é o default real.
+const DESCRICAO_FIXA = [
+  'Honorários Advocatícios',
+  'Pagamento conforme boleto bancário em anexo',
+  'Dados bancários: Banco Itaú (341) - Ag. 3835 - C/C 31141-0',
+  'Pix/CNPJ: 14.491.612/0001-39',
+  'Conforme Lei 12.741/2012 o valor aproximado dos tributos é 14,53%. Em atendimento à Reforma Tributária (LC 214/2025), nesta operação são informados 0,1% a título de IBS e 0,9% a título de CBS para fins de obrigação acessória no ano-teste de 2026.',
+].join('\n')
+
 interface NfsePreviewDialogProps {
   open: boolean
   contratoId: string | null
   contratoLabel?: string | null
   onClose: () => void
-  onConfirmEmit?: () => void
+  onConfirmEmit?: (descricaoServico: string) => void
 }
 
 interface DatasetItem {
@@ -139,6 +149,7 @@ export default function NfsePreviewDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<PreviewData | null>(null)
+  const [descricaoEdit, setDescricaoEdit] = useState('')
 
   useEffect(() => {
     if (!open || !contratoId) {
@@ -149,6 +160,21 @@ export default function NfsePreviewDialog({
     void loadPreviewData(contratoId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, contratoId])
+
+  // (Re)inicializa a descrição editável quando os dados carregam: nome(s) do(s)
+  // caso(s) na 1ª linha + bloco fixo. O usuário pode editar antes de emitir.
+  useEffect(() => {
+    if (!data) {
+      setDescricaoEdit('')
+      return
+    }
+    const nomes = Array.from(new Set(
+      (data.itens || [])
+        .map((it) => String((it.snapshot as any)?.caso_nome || (it.snapshot as any)?.descricao || '').trim())
+        .filter(Boolean),
+    ))
+    setDescricaoEdit([nomes.join('; '), DESCRICAO_FIXA].filter(Boolean).join('\n'))
+  }, [data])
 
   const loadPreviewData = async (id: string) => {
     try {
@@ -399,6 +425,24 @@ export default function NfsePreviewDialog({
               </div>
             </div>
 
+            {/* Descrição do serviço — editável antes de emitir */}
+            <div className="rounded-lg border border-hairline bg-white p-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs uppercase tracking-wide text-ink-mute">Descrição do Serviço (vai na NFS-e)</p>
+                <span className="text-[11px] text-ink-mute">editável</span>
+              </div>
+              <textarea
+                value={descricaoEdit}
+                onChange={(e) => setDescricaoEdit(e.target.value)}
+                rows={8}
+                className="w-full resize-y rounded-md border border-hairline bg-white p-2 text-xs font-mono leading-relaxed text-ink focus:outline-none focus:ring-1 focus:ring-primary"
+                spellCheck={false}
+              />
+              <p className="mt-1 text-[11px] text-ink-mute">
+                1ª linha = nome do(s) caso(s) (automático). O restante é o texto padrão — edite o que precisar; o que estiver aqui é o que vai pra nota.
+              </p>
+            </div>
+
             {/* Acumulação mensal */}
             {acumuladoMes > 0 && (
               <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
@@ -510,8 +554,8 @@ export default function NfsePreviewDialog({
             {onConfirmEmit && (
               <Button
                 className="bg-green-700 hover:bg-green-800 text-white"
-                onClick={onConfirmEmit}
-                disabled={loading || !!error || !data}
+                onClick={() => onConfirmEmit(descricaoEdit)}
+                disabled={loading || !!error || !data || !descricaoEdit.trim()}
               >
                 <FileText className="mr-2 h-4 w-4" /> Confirmar e emitir
               </Button>

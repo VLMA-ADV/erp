@@ -30,6 +30,11 @@ const faturamentoMenuItems = [
     href: '/financeiro/notas-geradas',
     permission: 'finance.faturamento.read',
   },
+  {
+    label: 'Contas a pagar e receber',
+    href: '/financeiro/contas-a-pagar',
+    permission: 'finance.contas_pagar.read',
+  },
 ]
 
 export default function SidebarMenuFaturamento({

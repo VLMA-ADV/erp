@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Importação de Contratos — Diagnóstico</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:247 98% 61%; --primary-deep:244 67% 52%; --primary-press:242 53% 36%;
+    --brand-dark:237 49% 18%; --ink:212 64% 14%; --ink-2:213 35% 24%; --ink-mute:217 16% 47%;
+    --canvas:0 0% 100%; --canvas-soft:214 50% 97%; --cream:38 67% 90%;
+    --hairline:214 23% 91%; --destructive:343 81% 53%; --accent:199 56% 35%; --soft:240 92% 86%;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Inter',system-ui,sans-serif; color:hsl(var(--ink));
+    background:linear-gradient(160deg,hsl(var(--canvas-soft)) 0%,hsl(var(--cream)/.5) 100%);
+    -webkit-font-smoothing:antialiased; line-height:1.5; padding:40px 20px;
+  }
+  .wrap{max-width:780px;margin:0 auto}
+  .card{background:hsl(var(--canvas));border:1px solid hsl(var(--hairline));border-radius:16px;
+    box-shadow:0 8px 24px rgba(0,55,112,.08),0 2px 6px rgba(0,55,112,.04);overflow:hidden}
+  header{background:linear-gradient(135deg,hsl(var(--brand-dark)),hsl(var(--primary-press)));
+    color:#fff;padding:28px 32px}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:hsl(var(--soft));opacity:.95}
+  header h1{font-size:22px;font-weight:800;margin-top:6px;letter-spacing:-.02em}
+  header p{font-size:13.5px;opacity:.85;margin-top:6px}
+  .body{padding:28px 32px}
+  .lead{font-size:15px;color:hsl(var(--ink-2))}
+  .lead b{color:hsl(var(--ink))}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0 6px}
+  .stat{background:hsl(var(--canvas-soft));border:1px solid hsl(var(--hairline));border-radius:12px;padding:14px 12px;text-align:center}
+  .stat .n{font-size:26px;font-weight:800;letter-spacing:-.03em;color:hsl(var(--primary-deep))}
+  .stat .n.warn{color:hsl(var(--destructive))}
+  .stat .n.ok{color:hsl(var(--accent))}
+  .stat .l{font-size:11px;font-weight:600;color:hsl(var(--ink-mute));margin-top:3px;line-height:1.3}
+  h2{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    color:hsl(var(--ink-mute));margin:28px 0 14px;display:flex;align-items:center;gap:8px}
+  h2::after{content:"";flex:1;height:1px;background:hsl(var(--hairline))}
+  .row{display:flex;gap:13px;padding:13px 0;border-bottom:1px solid hsl(var(--hairline))}
+  .row:last-child{border-bottom:none}
+  .dot{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    font-size:13px;font-weight:800;color:#fff;margin-top:1px}
+  .row h3{font-size:14.5px;font-weight:700}
+  .row p{font-size:13px;color:hsl(var(--ink-2));margin-top:2px}
+  .ex{margin-top:8px;font-size:12.5px;background:hsl(var(--canvas-soft));border-left:3px solid hsl(var(--destructive));
+    border-radius:6px;padding:8px 11px;color:hsl(var(--ink-2))}
+  .ex code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:hsl(var(--ink))}
+  .ex .bad{color:hsl(var(--destructive));font-weight:700}
+  .next{background:hsl(var(--soft)/.35);border:1px solid hsl(var(--primary)/.35);border-radius:12px;padding:16px 18px;margin-top:8px}
+  .next h3{font-size:14px;font-weight:700;color:hsl(var(--primary-press));margin-bottom:9px}
+  .next ul{list-style:none}
+  .next li{font-size:13.5px;color:hsl(var(--ink-2));padding:5px 0 5px 22px;position:relative}
+  .next li::before{content:"→";position:absolute;left:0;color:hsl(var(--primary-deep));font-weight:700}
+  .next li b{color:hsl(var(--ink))}
+  .ask{margin-top:18px;background:hsl(var(--brand-dark));color:#fff;border-radius:12px;padding:16px 18px}
+  .ask .t{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--soft));margin-bottom:6px}
+  .ask p{font-size:14px;line-height:1.55}
+  footer{padding:16px 32px;font-size:11.5px;color:hsl(var(--ink-mute));border-top:1px solid hsl(var(--hairline));
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .pill.ok{background:hsl(var(--accent)/.12);color:hsl(var(--accent))}
+  .pill.warn{background:hsl(var(--destructive)/.1);color:hsl(var(--destructive))}
+  @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <header>
+      <div class="eyebrow">VLMA ERP · Migração de Dados</div>
+      <h1>Importação de Contratos — Contencioso Tributário</h1>
+      <p>Diagnóstico da planilha recebida (339 casos) cruzada com a base de clientes do sistema.</p>
+    </header>
+
+    <div class="body">
+      <p class="lead">
+        Recebemos a planilha com <b>339 casos</b> do contencioso tributário. Antes de criar
+        qualquer registro, cruzamos cada linha com a base de clientes já no ERP.
+        O resultado mostra que <b>a importação não é um simples “colar e subir”</b> — há decisões
+        que dependem de vocês para não gerar dado incorreto.
+      </p>
+
+      <div class="stats">
+        <div class="stat"><div class="n">339</div><div class="l">casos na planilha</div></div>
+        <div class="stat"><div class="n">147</div><div class="l">clientes distintos</div></div>
+        <div class="stat"><div class="n ok">~70</div><div class="l">casaram com alta confiança</div></div>
+        <div class="stat"><div class="n warn">60</div><div class="l">não encontrados na base</div></div>
+      </div>
+
+      <h2>Por que não é trivial</h2>
+
+      <div class="row">
+        <div class="dot" style="background:hsl(var(--primary-deep))">1</div>
+        <div>
+          <h3>A planilha não tem CPF/CNPJ — só o nome</h3>
+          <p>Sem documento, o cliente é identificado pelo nome, que é ambíguo. Match exato bate em
+            apenas <b>42 dos 147</b>, porque os nomes vêm em CAIXA ALTA, com acentos e abreviações diferentes do cadastro.</p>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="dot" style="background:hsl(var(--destructive))">2</div>
+        <div>
+          <h3>Aproximar por nome gera erro grave</h3>
+          <p>Nomes de empresa terminam em termos genéricos (Ltda, Participações, Administradora de Bens)
+            que se repetem em centenas de clientes e enganam o casamento automático:</p>
+          <div class="ex">
+            <code>LPA Construtora e Incorporadora Ltda</code> &nbsp;→&nbsp;
+            <code>CGL Construtora e Incorporadora Ltda</code> &nbsp;<span class="bad">empresas diferentes</span><br>
+            Casaria só pelo sufixo. Linkar um caso ao cliente errado é <b>pior que deixar de fora</b>:
+            vira dado sujo, difícil de rastrear depois. Por isso esses ficam para revisão manual.
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="dot" style="background:hsl(var(--accent))">3</div>
+        <div>
+          <h3>60 clientes não existem na base — quase todos pessoa física</h3>
+          <p>Ex.: <b>Marin Fontes, Angelo Antonio Zabot, Elcio Silva Elpo</b>. A base de clientes
+            foi dada como “migrada completa”, então precisamos entender se faltaram, estão com outro
+            nome, ou devem ser cadastrados no próprio import.</p>
+        </div>
+      </div>
+
+      <h2>O caminho seguro</h2>
+      <div class="next">
+        <h3>Para subir sem risco, escolher uma das opções:</h3>
+        <ul>
+          <li><b>Ideal —</b> incluir a coluna <b>CPF/CNPJ</b> na planilha (onde houver). Match por documento é à prova de homônimo.</li>
+          <li><b>Alternativa —</b> revisar a lista de correspondências sugeridas (já gerada) e confirmar “é esse / não é” caso a caso.</li>
+          <li><b>Imediato —</b> podemos subir desde já os <b>~70 de alta confiança</b> (com pré-visualização), e tratar os demais à parte.</li>
+        </ul>
+      </div>
+
+      <div class="ask">
+        <div class="t">Decisão que precisamos de vocês</div>
+        <p>Os <b>60 clientes ausentes</b> (em sua maioria pessoas físicas) não foram migrados, estão
+          cadastrados com outro nome, ou devemos criá-los durante a importação?</p>
+      </div>
+    </div>
+
+    <footer>
+      <span>VLMA ERP · Diagnóstico de importação</span>
+      <span><span class="pill ok">~70 prontos</span> &nbsp; <span class="pill warn">77 a resolver</span></span>
+    </footer>
+  </div>
+</div>
+</body>
+</html>

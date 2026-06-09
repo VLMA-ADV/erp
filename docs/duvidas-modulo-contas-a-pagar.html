@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Módulo · Contas a Pagar — Definições — VLMA ERP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #ffffff;
+    --canvas-soft: #f6f9fc;
+    --canvas-cream: #f5e9d4;
+    --ink: #0d253d;
+    --ink-secondary: #273951;
+    --ink-mute: #64748d;
+    --primary: #533afd;
+    --primary-deep: #4434d4;
+    --primary-soft-bg: #b9b9f9;
+    --brand-dark: #1c1e54;
+    --hairline: #e3e8ef;
+    --radius: 12px;
+    --lift-1: 0 1px 3px rgba(0, 55, 112, 0.08);
+    --lift-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    color: var(--ink); background: var(--canvas);
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .gradient-mesh {
+    background-image:
+      radial-gradient(at 5% 0%, hsl(38 80% 88% / 0.95) 0px, transparent 55%),
+      radial-gradient(at 28% 0%, hsl(24 90% 84% / 0.85) 0px, transparent 55%),
+      radial-gradient(at 52% 0%, hsl(265 65% 90% / 0.85) 0px, transparent 55%),
+      radial-gradient(at 80% 0%, hsl(214 80% 90% / 0.9) 0px, transparent 55%);
+  }
+  .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  .eyebrow {
+    font-size: 10px; font-weight: 500; letter-spacing: 0.075em;
+    text-transform: uppercase; color: var(--primary-deep);
+  }
+  .display-xl { font-size: 3rem; font-weight: 300; line-height: 1.15; letter-spacing: -0.06rem; }
+  .display-md { font-size: 1.625rem; font-weight: 300; line-height: 1.12; letter-spacing: -0.016rem; }
+  header { padding: 72px 0 56px; }
+  header p.lead { margin-top: 16px; max-width: 620px; color: var(--ink-secondary); }
+  section { padding: 32px 0; }
+  section + section { border-top: 1px solid var(--hairline); }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px;
+    background: var(--canvas-soft); border: 1px solid var(--hairline);
+    border-radius: 6px; padding: 1px 6px; color: var(--primary-deep);
+  }
+  .q-card {
+    background: var(--canvas); border: 1px solid var(--hairline);
+    border-radius: var(--radius); padding: 26px 30px; box-shadow: var(--lift-1);
+    margin-top: 20px;
+  }
+  .q-card .q-head { display: flex; gap: 14px; align-items: baseline; }
+  .q-card .num {
+    flex-shrink: 0; display: inline-flex; width: 30px; height: 30px; border-radius: 9999px;
+    background: var(--primary); color: #fff; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 14px; transform: translateY(5px);
+  }
+  .q-card h3 { font-size: 1.2rem; font-weight: 500; line-height: 1.35; }
+  .q-card .tag {
+    display: inline-block; font-size: 10px; font-weight: 500; letter-spacing: 0.075em;
+    text-transform: uppercase; color: var(--ink-mute); margin-bottom: 6px;
+  }
+  .q-card p.context { margin-top: 12px; font-size: 13.5px; color: var(--ink-mute); }
+  .q-card .options { margin-top: 14px; display: grid; gap: 8px; }
+  .q-card .opt {
+    background: var(--canvas-soft); border: 1px solid var(--hairline);
+    border-radius: 8px; padding: 10px 14px; font-size: 13.5px; color: var(--ink-secondary);
+  }
+  .q-card .opt strong { font-weight: 600; color: var(--ink); }
+  .answer {
+    margin-top: 14px; border-top: 1px dashed var(--hairline); padding-top: 12px;
+    font-size: 12px; color: var(--ink-mute);
+  }
+  .answer .line { display: block; border-bottom: 1px solid var(--hairline); height: 26px; margin-top: 6px; }
+  .cream-band {
+    background: var(--canvas-cream); border-radius: var(--radius);
+    padding: 28px 32px; box-shadow: var(--lift-1); margin-top: 24px;
+  }
+  footer {
+    margin-top: 40px; padding: 28px 0 48px; border-top: 1px solid var(--hairline);
+    font-size: 12.5px; color: var(--ink-mute);
+  }
+  @media print {
+    header { padding: 40px 0 24px; }
+    .q-card, .cream-band { box-shadow: none; break-inside: avoid; }
+  }
+  @media (max-width: 640px) { .display-xl { font-size: 2.2rem; } }
+</style>
+</head>
+<body>
+
+<div class="gradient-mesh">
+  <div class="container">
+    <header>
+      <span class="eyebrow">VLMA · ERP — Módulo · Contas a Pagar</span>
+      <h1 class="display-xl" style="margin-top:12px;">Definições antes de construir</h1>
+      <p class="lead">Estudamos a planilha "Contas a pagar / fluxo". A lógica é clara — despesas previsíveis, lançadas com recorrência e reajuste de contrato. Antes de modelar, precisamos fechar dez definições. São decisões de vocês; cada uma muda o que será construído.</p>
+    </header>
+  </div>
+</div>
+
+<div class="container">
+
+  <section>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">1</span>
+        <div>
+          <span class="tag">Campos do lançamento</span>
+          <h3>Quais campos toda despesa precisa ter — e quais são obrigatórios?</h3>
+        </div>
+      </div>
+      <p class="context">Nossa leitura da planilha aponta para estes campos. Confirmem o conjunto, marquem os obrigatórios e acrescentem o que faltar.</p>
+      <div class="options">
+        <div class="opt"><strong>Já mapeados:</strong> tipo (fixo/variável), conta contábil, centro de custo, fornecedor, valor, vencimento, recorrência, criticidade, reajuste futuro.</div>
+        <div class="opt"><strong>Faltam definir?</strong> nº da nota/boleto, forma de pagamento (boleto, PIX, transferência), conta bancária de saída, observações.</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">2</span>
+        <div>
+          <span class="tag">Plano de contas</span>
+          <h3>Confirmamos as três camadas de classificação da planilha?</h3>
+        </div>
+      </div>
+      <p class="context">A planilha classifica cada despesa em três níveis. Queremos cadastrá-los como listas fixas no sistema, para padronizar os lançamentos.</p>
+      <div class="options">
+        <div class="opt"><strong>Grupo macro (17):</strong> ex. "Administrativa - Imóvel", "Área Tributária", "Pessoal - Funcionários" → isto é o <strong>centro de custo</strong>?</div>
+        <div class="opt"><strong>Subconta (~200):</strong> ex. "Aluguel Curitiba", "Condomínio", "OAB - Societário" → isto é a <strong>conta contábil</strong>?</div>
+        <div class="opt"><strong>Classificação gerencial:</strong> ex. "Infra-Estrutura", "CLT - Remuneração Mensal", "Licenças" → como vocês chamam essa camada?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">3</span>
+        <div>
+          <span class="tag">Empresas do grupo</span>
+          <h3>As despesas precisam ser separadas por empresa?</h3>
+        </div>
+      </div>
+      <p class="context">Na coluna "tipo" aparecem, além de <strong>Fixo/Variável</strong>, os nomes <strong>"Ravena"</strong> e <strong>"Verve"</strong> — aparentam ser outras empresas/entidades do grupo.</p>
+      <div class="options">
+        <div class="opt"><strong>A.</strong> É tudo VLMA → "tipo" é só fixo/variável e ignoramos o resto.</div>
+        <div class="opt"><strong>B.</strong> Há mais de uma empresa pagadora → criamos um campo "empresa/CNPJ" e cada conta a pagar é vinculada a uma delas. Quais empresas e CNPJs?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">4</span>
+        <div>
+          <span class="tag">Criticidade</span>
+          <h3>Mantemos o campo "Indispensável / Dispensável"?</h3>
+        </div>
+      </div>
+      <p class="context">Toda linha da planilha está marcada como <strong>Indispensável</strong> ou <strong>Dispensável</strong>. Queremos entender o uso para não criar um campo decorativo.</p>
+      <div class="options">
+        <div class="opt"><strong>A.</strong> Sim, é usado para priorizar cortes/decisão de pagamento → vira campo e filtro.</div>
+        <div class="opt"><strong>B.</strong> Era só para a planilha → não levamos para o sistema.</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">5</span>
+        <div>
+          <span class="tag">A definir</span>
+          <h3>O que é a coluna de percentual (3%, 5%, 8%, 10%)?</h3>
+        </div>
+      </div>
+      <p class="context">Há uma coluna com percentuais por linha que não conseguimos interpretar só pelos dados. Precisamos saber o que ela representa antes de decidir se entra no sistema.</p>
+      <div class="options">
+        <div class="opt"><strong>É:</strong> margem de variação esperada? provisão/reserva? rateio entre conjuntos/imóveis? reajuste previsto? outra coisa?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">6</span>
+        <div>
+          <span class="tag">Recorrência</span>
+          <h3>Como o sistema deve gerar as parcelas mensais?</h3>
+        </div>
+      </div>
+      <p class="context">A maioria das despesas é fixa e se repete todo mês. A ideia é cadastrar uma vez e o sistema gerar a conta de cada mês — mas há detalhes: alguns valores mudam ao longo do ano (ex. <strong>IPTU</strong> só começa em março; aluguel reajusta no meio do ano).</p>
+      <div class="options">
+        <div class="opt"><strong>Geração:</strong> automática (cadastra 1× → gera os 12 meses) ou manual mês a mês?</div>
+        <div class="opt"><strong>Fim:</strong> recorrência sem prazo (até cancelar) ou com data final?</div>
+        <div class="opt"><strong>Variação:</strong> quando o valor muda em um mês específico, edita-se só aquela parcela?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">7</span>
+        <div>
+          <span class="tag">Reajuste de contrato</span>
+          <h3>Como tratamos o reajuste futuro dos contratos?</h3>
+        </div>
+      </div>
+      <p class="context">Em despesas como aluguel, a planilha traz o histórico nas observações — ex. <code>10.01.2024 — R$ 10.500</code> / <code>10.01.2025 — R$ 11.500</code> — e índices (IGP-M, IPCA). Queremos antecipar isso no sistema.</p>
+      <div class="options">
+        <div class="opt"><strong>A.</strong> Cadastra-se a data e o novo valor, e o sistema aplica sozinho a partir daquele mês.</div>
+        <div class="opt"><strong>B.</strong> O sistema só avisa que o contrato vai reajustar (alerta de vencimento) e vocês atualizam o valor na mão.</div>
+        <div class="opt"><strong>Índice:</strong> o sistema deve calcular pelo IGP-M/IPCA automaticamente, ou vocês sempre informam o valor novo?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">8</span>
+        <div>
+          <span class="tag">Pagamento</span>
+          <h3>Como funciona a baixa (marcar como paga)?</h3>
+        </div>
+      </div>
+      <p class="context">Para o controle valer, cada conta precisa de um status e de um registro de quitação.</p>
+      <div class="options">
+        <div class="opt"><strong>Status:</strong> Pendente · Paga · Atrasada · Cancelada — atende?</div>
+        <div class="opt"><strong>Baixa:</strong> ao pagar, registra-se data do pagamento, valor pago e conta bancária de saída?</div>
+        <div class="opt"><strong>Parcial/parcelado:</strong> existe pagamento parcial ou parcelado a tratar?</div>
+        <div class="opt"><strong>Anexo:</strong> precisam anexar boleto/NF/comprovante ao lançamento?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">9</span>
+        <div>
+          <span class="tag">Fluxo de caixa</span>
+          <h3>De onde vêm as entradas e o saldo inicial?</h3>
+        </div>
+      </div>
+      <p class="context">Na aba "Fluxo de caixa" há entradas (honorários) e um saldo de abertura (ex. <strong>Saldo Itaú R$ 413.311</strong>). O ERP já tem o faturamento dos clientes.</p>
+      <div class="options">
+        <div class="opt"><strong>Entradas:</strong> podemos puxar automaticamente do faturamento/recebimentos já existentes no ERP? (nossa recomendação)</div>
+        <div class="opt"><strong>Contas bancárias:</strong> quantas contas/bancos? Cadastramos o saldo de abertura de cada uma?</div>
+        <div class="opt"><strong>Projeção:</strong> querem a visão futura (saldo + a receber − a pagar por mês) já nesta fase?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+    <div class="q-card">
+      <div class="q-head">
+        <span class="num">10</span>
+        <div>
+          <span class="tag">Acesso e aprovação</span>
+          <h3>Quem lança, quem vê e há aprovação antes de pagar?</h3>
+        </div>
+      </div>
+      <p class="context">Contas a pagar é informação sensível. Acabamos de padronizar as permissões por perfil — este módulo entra nessa lógica.</p>
+      <div class="options">
+        <div class="opt"><strong>Acesso:</strong> restrito ao Financeiro/Administrativo, certo? Sócios enxergam tudo?</div>
+        <div class="opt"><strong>Aprovação:</strong> alguém aprova a conta antes do pagamento (fluxo de aprovação) ou lança e paga direto?</div>
+      </div>
+      <div class="answer">Resposta:<span class="line"></span></div>
+    </div>
+
+  </section>
+
+  <section>
+    <div class="cream-band">
+      <span class="eyebrow" style="color:var(--ink-secondary);">Próximo passo</span>
+      <h3 style="font-size:1.25rem; font-weight:300; margin-top:6px;">Com as respostas, fechamos o desenho e partimos para a construção</h3>
+      <p style="font-size:13.5px; margin-top:8px; color:var(--ink-secondary);">
+        A boa notícia: a estrutura da planilha já nos dá quase tudo — o plano de contas, os centros de custo e os valores mês a mês. Estas definições destravam o que a planilha não diz: recorrência, reajuste, baixa de pagamento e a ligação com o faturamento que já existe no ERP.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    VLMA · ERP — Módulo · Contas a Pagar · Definições de negócio · Preparado pela equipe Flowcode · Junho/2026
+  </footer>
+
+</div>
+</body>
+</html>

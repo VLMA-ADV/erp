@@ -848,7 +848,7 @@ export default function FluxoDeFaturamentoList() {
 
   // Dispara emissão real da NFS-e via edge emit-nfse. Usado quando o usuário
   // confirma na prévia OU clica direto no botão $ ao lado do "Prévia" na linha do caso.
-  const emitNfse = async (contratoId: string, label: string) => {
+  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string) => {
     try {
       setEmittingNfse(contratoId)
       const supabase = createClient()
@@ -865,7 +865,10 @@ export default function FluxoDeFaturamentoList() {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ contrato_id: contratoId }),
+        body: JSON.stringify({
+          contrato_id: contratoId,
+          ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
+        }),
       })
       const payload = await resp.json().catch(() => ({}))
       if (!resp.ok) {
@@ -1709,11 +1712,11 @@ export default function FluxoDeFaturamentoList() {
         contratoId={nfsePreview?.contratoId ?? null}
         contratoLabel={nfsePreview?.label}
         onClose={() => setNfsePreview(null)}
-        onConfirmEmit={() => {
+        onConfirmEmit={(descricaoServico) => {
           if (!nfsePreview) return
           const { contratoId, label } = nfsePreview
           setNfsePreview(null)
-          void emitNfse(contratoId, label)
+          void emitNfse(contratoId, label, descricaoServico)
         }}
       />
 

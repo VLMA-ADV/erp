@@ -1,0 +1,106 @@
+csv_nome;melhor_candidato;score;bucket
+"A PAROLIN CIA LTDA";"A. Parolin e Cia Ltda.";1.00;forte
+"BOWL VENTURES S/A";"Bowl Ventures";1.00;forte
+"MZ8 IMOVEIS E ALUGUEL LTDA";"MZ8 Imóveis e Aluguel";1.00;forte
+"PBIM INVESTIMENTOS IMOBILIARIOS LTDA.";"PBIM Investimentos Imobiliários";1.00;forte
+"PRO-VASCULAR REPRESENTACOES COMERCIAIS LTDA.";"Pró-Vascular Representações Comerciais";1.00;forte
+"TOTAL LINHAS AEREAS S.A";"Total Linhas Aéreas";1.00;forte
+"MLG ADMINISTRADORA DE BENS IMOVEIS LTDA";"MLG Administração de Bens Imóveis";1.00;forte
+"LM ADMINISTRADORA DE BENS LTDA";"LM Administradora de Bens";1.00;forte
+"WA4 PARTICIPACOES SOCIETARIAS";"WA4 Holding";1.00;forte
+"GREEN STONE ADMINISTRADORA DE BENS LTDA.";"Green Stone Administradora de Bens";1.00;forte
+"TATUQUARA ADMINISTRACAO DE BENS S/A";"Tatuquara Administração de Bens";1.00;forte
+"THOMAS MORUS PARTICIPACOES LTDA.";"Thomas Morus Participações";1.00;forte
+"GREEN STONE INVESTIMENTOS E PARTICIPACOES SOCIETARIAS LTDA.";"Green Stone Investimentos";1.00;forte
+"Catalunya Filmes Ltda.";"Catalunya Filmes";1.00;forte
+"OCEANA ADMINISTRADORA DE BENS";"Oceana Administradora de Bens Ltda";1.00;forte
+"Babycare Servicos de Saude Ltda";"Babycare Serviços de Saúde";1.00;forte
+"PREMIO SINALIZACAO E LOCACAO LTDA - EPP";"Prêmio Sinalização e Locação";1.00;forte
+"VHSYS SISTEMA DE GESTAO S.A.";"Vhsys Sistema de Gestão";1.00;forte
+"N W M ENGENHARIA ELETRONICA LTDA";"N W M Engenharia Eletrônica";1.00;forte
+"PREMIO SINALIZACAO E LOCACAO LTDA";"Prêmio Sinalização e Locação";1.00;forte
+"MMT PRODUÇÕES AUDIOVISUAIS LTDA ME";"MMT Produções Audiovisuais";1.00;forte
+"PIO XII PARTICIPACOES SOCIETARIAS S/A";"PIO XII Participações Societárias";1.00;forte
+"PASCOWITCH MOREIRA SOCIEDADE DE ADVOGADOS";"Pascowitch e Moreira Sociedade de Advogados";1.00;forte
+"THE YOUTH - DIRECAO COLETIVA FILMES LTDA";"The Youth – Direção Coletiva Filmes";1.00;forte
+"CORITIBA SOCIEDADE ANONIMA DE FUTEBOL";"Coritiba Sociedade Anônima do Futebol";1.00;forte
+"RA3G PARTICIPACOES S.A.";"RA3G Participações";1.00;forte
+"VLMA - Di Lascio, Vosgerau & Advogados Associados";"Di Lascio, Vosgerau & Advogados Associados";0.82;forte
+"TARGA PARTICIPACOES SOCIETARIAS LTDA.";"Targa Participações Societárias";1.00;forte
+"SYLVIA DE MATTOS LEÃO GAMAR";"Sylvia de Mattos Leão Gamarra";0.73;fraco
+"Coritiba Sociedade Anonima do Futebol -- SAF";"Coritiba Sociedade Anônima do Futebol";0.72;fraco
+"Gramarcal Granitos e Marmores Cachoeiro Ltda";"Gramarcal Granitos e Mármores Cachoeira";0.75;fraco
+"K2 SOCCER S.A.";"K2 Soccer SA (Baltoro)";0.61;fraco
+"SIBILINA PEDROZO PINTO";"James Pedrozo Pinto";0.55;fraco
+"BABYCARE SERVICOS DE SAUDE S/C LTDA.";"Babycare Serviços de Saúde";0.75;fraco
+"DI LASCIO MESQUITA & ADVOGADOS ASSOCIADOS";"Di Lascio, Vosgerau & Advogados Associados";0.66;fraco
+"DOUGLAS TERUEL";"Douglas Camargo Teruel";0.65;fraco
+"BEAUNE IMPORTADORA LTDA.";"Cellar - Beaune Importadora";0.69;fraco
+"STQ PUBLICIDADE E PROPOGANDA LTDA";"STQ Publicidade e Propaganda";0.68;fraco
+"ROCHCONSULT ENGENHARIA E EMPREENDIMENTOS";"Rochconsult Engenharia e Empreendimentos Imobiliários Ltda";0.65;fraco
+"PF&PJ SOLUCOES TECNOLOGICAS LTDA";"VELTEC SOLUÇÕES TECNOLÓGICAS S/A";0.55;fraco
+"MARLI PETROSINO JUNIOR";"Michele Petrosino Junior";0.62;fraco
+"CORITIBA FOOT BALL CLUB";"Coritiba Foot Ball Club Em Recuperação Judicial";0.61;fraco
+"Maria Cristina Valente de Almeida";"Maria Eunice Valente Almeida";0.67;fraco
+"PIO XII - PARTICIPACOES SOCIETARIAS E ADMINISTRACAO DE BENS PROPRIOS S/A.";"PIO XII Participações Societárias";0.57;fraco
+"VELIKO PARTICIPAÇÕES LTDA";"Veliko 01 Participações";0.57;fraco
+"MARIN FONTES";"Olney Fontes";0.43;ausente
+"LUIZA LOBO ELPO MACEDO";"Leticia Lobo Elpo";0.44;ausente
+"RUCKER SOCIEDADE DE ADVOGADOS - SCP";"Rucker Sociedade de Advogados";0.54;ausente
+"ANGELO ANTONIO ZABOT";"Gilson Antonio Tedesco";0.30;ausente
+"ELCIO SILVA ELPO";"Alessio Silva Alionço";0.35;ausente
+"LPA CONSTRUTORA E INCORPORADORA LTDA";"LPS Participações Ltda";0.27;ausente
+"E-FINANCE REALTY ADMINISTRADORA DE BENS IMOVEIS LTDA";"E - Fi ce Reality Administradora de Bens Imóveis Ltda";0.29;ausente
+"OSUL PARTICIPACOES SOCIETARIAS LTDA.";"Olsen Indústria e Comércio S/A";0.16;ausente
+"GIMENES PARTICIPACOES SOCIETARIAS LTDA";"Marcos Gimenes";0.50;ausente
+"STOCK TECH S.A. ARMAZENS GERAIS";"Comercial Tech Brasil Baterias";0.26;ausente
+"MG3 PARTICIPACOES LTDA.";"BGV Administração de Bens";0.13;ausente
+"JGIG PARTICIPACOES LTDA.";"JNI Participações Societárias Ltda";0.20;ausente
+"MEDCLIN CLIN MULHER CRIANCA LTDA";"Medme Clínica Médica Ltda";0.18;ausente
+"ESPOLIO DE SIBILINA PEDROSO PINTO";"James Pedrozo Pinto";0.29;ausente
+"THERMOTRONICS INDUSTRIAL LTDA";"Tecniton Incorporadora e Construtora Ltda.";0.15;ausente
+"WERNER ADOLFO ALTENBURGER";"Bernardo Rucker";0.16;ausente
+"PRODUCENTRO PRODUCOES GRAFICA E EDITORA LTDA - ME";"Jamute Produções de Áudio";0.28;ausente
+"RENTUP ADMINISTRADORA DE BENS LTDA.";"Zendur Empreendimentos e Participações";0.20;ausente
+"ANTONIO CARLOS DE PAULI BETTEGA";"Flávio Rodrigues Bettega";0.30;ausente
+"Z3F4 INVESTIMENTOS LTDA.";"A2W Investimentos e Participações Ltda";0.51;ausente
+"CPL2 ADMINISTRACAO E PARTICIPACOES LTDA.";"CPL Administração e Participações";0.30;ausente
+"ESPOLIO DE ALMIRO VOSGERAU";"Ronaldo Pereira Vosgerau";0.35;ausente
+"GIMENES PARTICIPACOES SOCIETARIAS EIRELI";"Marcos Gimenes";0.50;ausente
+"EDILENE VALERIO";"Andre Valerio Zandona";0.28;ausente
+"MARLIN AZUL MARINA CLUBE";"Marina de Fátima Pereira da Silva";0.25;ausente
+"NWM";"LM Administradora de Bens";0.13;ausente
+"JOSE LUIZ FAVORETTO";"José Luiz Favoreto Pereira";0.50;ausente
+"MILTON DIGIACOMO";"Milton Antonio Oliveira Digiacomo";0.49;ausente
+"VIDA VERDE PARTICIPACOES LTDA.";"Verde Agropecuária";0.31;ausente
+"Talogy";"Talogy Estratégias Humanas Do Brasil Ltda";0.29;ausente
+"ANGELS BRASIL DESENVOLVIMENTO E PARTICIPAÇAO LTDA.";"Projese Desenvolvimento Imobiliário";0.50;ausente
+"DENISE CASAGRANDE PEREIRA GUIMARAES ARAUJO";"Guilherme Guimarães Araújo";0.39;ausente
+"INOVATECH NETWORK S/A";"CISS Consultoria em Informática e Software Ltda.";0.16;ausente
+"TIF COMUNICACAO LTDA.";"TIF Comunicações";0.53;ausente
+"Profarma Specialty S.A";"Pró-Vascular Representações Comerciais";0.16;ausente
+"Leila Maria Raimundo Pereira";"Cristina Maria Cunha Pereira";0.43;ausente
+"DULCE MOREIRA DE SOUZA";"Levi Pereira de Souza";0.37;ausente
+"INTERMEDIA COMUNICACAO INTERATIVA LTDA";"Brooh Comunicação Ltda.";0.31;ausente
+"SPORT CLUB CORINTHIANS PAULISTA";"Club Athletico Paranaense";0.20;ausente
+"SUPERMERCADOS VITÓRIA LTDA";"Supermercado Cereal Ltda";0.27;ausente
+"JOSUE PAULA PINTO";"James Pedrozo Pinto";0.31;ausente
+"Fontoura";"Anna Elisa Lima Fontoura";0.28;ausente
+"E-FINANCE REALTY LTDA.";"E - Fi ce Reality Administradora de Bens Imóveis Ltda";0.29;ausente
+"Catalunya Producoes Cinematografica Ltda";"Asteroide Produções Cinematográficas Ltda";0.42;ausente
+"Marinete Razera Azevedo";"Wallace Soares de Azevedo";0.33;ausente
+"Sag Brasil Fabricação Tanques Ltda";"SAG Motion GmbH";0.23;ausente
+"UNIPORTAS IND COM ESQUADRIAS MADEIRA LTDA";"Glassvale Ind. e Com. Vidros Ltda. EPP";0.30;ausente
+"ANAIDES PIMENTEL DA SILVA ORTH";"Juarez Moraes e Silva";0.26;ausente
+"GRAMARCAL	        																																																																																				OFFICINA PONTUAL CORTES FINOS LTDA";"Gramarcal Granitos, Marmores e Calcareos Ltda";0.24;ausente
+"TECSASS MANUTENÇÃO INDUSTRIAL - EIRELI";"Santa Filomena Serviços e Manutenção";0.34;ausente
+"PAULO BERNARDO CAMARGO DA VEIGA,";"Paulo Adriano de Carvalho Tambellini";0.28;ausente
+"LIGIA MUSSNICH";"Gustavo Mussnich";0.45;ausente
+"LIBRA - AGENTE AUTONOMO DE INVESTIMENTO LTDA";"Libra - Assessor de Investimento Ltda";0.50;ausente
+"Plane Produções Ltda";"Jamute Produções de Áudio";0.35;ausente
+"FERNANDO MATSUNO RAMOS";"Fernando Silva dos Santos";0.32;ausente
+"Leonardo Orth";"Deive Leonardo Martins";0.35;ausente
+"GILIA ADMINISTRADORA DE BENS LTDA";"Gedisa Holding Ltda";0.20;ausente
+"ZDC ADMINISTRADORA DE BENS LTDA.";"Zendur Empreendimentos e Participações";0.13;ausente
+"Silvia Mussnich Medeiros";"Gustavo Mussnich";0.30;ausente
+"TD - 3 ASSESSORIA E CONSULTORIA LTDA.";"PCH Caiua 3 Ltda";0.22;ausente

@@ -273,6 +273,11 @@ export function usePermissions() {
 
     return () => {
       ac.abort()
+      // Libera o mutex para que um remount (ex.: React StrictMode no dev, que
+      // monta→desmonta→monta) consiga disparar um novo load. Sem isto, a 1ª
+      // execução é abortada na limpeza sem zerar o loading e a 2ª sai no guard
+      // `if (isLoadingRef.current) return`, deixando o menu preso no skeleton.
+      isLoadingRef.current = false
       window.removeEventListener('storage', handleStorageChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
