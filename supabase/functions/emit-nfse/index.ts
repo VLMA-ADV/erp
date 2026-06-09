@@ -51,13 +51,24 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { contrato_id, billing_item_ids } = body as {
+    const { contrato_id, billing_item_ids, dry_run } = body as {
       contrato_id?: string
       billing_item_ids?: string[]
+      dry_run?: boolean
     }
+    // dry_run: monta o payload (inclui tomador) e devolve para inspeção SEM
+    // chamar o Focus NFe e SEM gravar billing_notes. Teste seguro em prod.
+    const dryRun = dry_run === true
 
     if (!contrato_id && (!billing_item_ids || billing_item_ids.length === 0)) {
       return new Response(JSON.stringify({ error: "contrato_id ou billing_item_ids é obrigatório" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    if (dryRun && !contrato_id) {
+      return new Response(JSON.stringify({ error: "dry_run requer contrato_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
@@ -77,13 +88,15 @@ Deno.serve(async (req) => {
       query = query.in("id", billing_item_ids!)
     }
 
-    const { data: items, error: itemsError } = await query
-    if (itemsError || !items || items.length === 0) {
+    const { data: itemsRaw, error: itemsError } = await query
+    if (!dryRun && (itemsError || !itemsRaw || itemsRaw.length === 0)) {
       return new Response(JSON.stringify({ error: "Nenhum item aprovado encontrado para este contrato" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
+    // No dry_run seguimos mesmo sem itens (valor 0) só para inspecionar o payload/tomador.
+    const items = itemsRaw ?? []
 
     // Calcular valor total e discriminação
     const valorTotal = items.reduce((sum, item: any) => {
@@ -232,6 +245,24 @@ Deno.serve(async (req) => {
         ...(retencoes.cofins.aplicado ? { valor_cofins: retencoes.cofins.valor.toFixed(2) } : {}),
         ...(retencoes.csll.aplicado ? { valor_csll: retencoes.csll.valor.toFixed(2) } : {}),
       },
+    }
+
+    // Teste seguro: devolve o payload montado (com tomador) sem emitir nem gravar.
+    if (dryRun) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          dry_run: true,
+          focus_env: focusEnv,
+          contrato_id: effectiveContratoId,
+          valor_total: valorTotal,
+          tomador_enviado: !!tomador,
+          tomador,
+          retencoes,
+          payload: nfsePayload,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
     }
 
     const focusResp = await fetch(`${focusBase}/v2/nfse?ref=${ref}`, {
