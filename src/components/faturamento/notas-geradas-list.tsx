@@ -1,7 +1,7 @@
 'use client'
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Loader2, Search } from 'lucide-react'
+import { Ban, Loader2, RefreshCw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -63,9 +63,28 @@ function getStatusLabel(value: string) {
   return value || '-'
 }
 
+const nfseStatusLabels: Record<string, string> = {
+  processando_autorizacao: 'NFS-e em processamento',
+  autorizado: 'NFS-e autorizada',
+  erro_autorizacao: 'NFS-e rejeitada',
+  cancelado: 'NFS-e cancelada',
+}
+
+function getNfseStatus(note: NotaGerada): string | null {
+  if (note.tipo_documento !== 'nota_fiscal_servico') return null
+  const consulta = note.metadata?.nfse_consulta as { status?: string } | undefined
+  return consulta?.status || null
+}
+
+function getNfseStatusBadgeClass(status: string) {
+  if (status === 'autorizado') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'erro_autorizacao' || status === 'cancelado') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-amber-200 bg-amber-50 text-amber-700'
+}
+
 function formatMetadata(metadata: Record<string, unknown> | null) {
   if (!metadata || typeof metadata !== 'object') return '-'
-  const entries = Object.entries(metadata)
+  const entries = Object.entries(metadata).filter(([, value]) => typeof value !== 'object' || value === null)
   if (entries.length === 0) return '-'
   return entries
     .slice(0, 3)
@@ -90,6 +109,8 @@ export default function NotasGeradasList() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState('')
+  const [refreshingNfse, setRefreshingNfse] = useState(false)
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
 
   const loadNotes = async (isRefresh = false) => {
     try {
@@ -163,6 +184,85 @@ export default function NotasGeradasList() {
     void loadNotes(true)
   }
 
+  const handleRefreshNfse = async () => {
+    try {
+      setRefreshingNfse(true)
+      setError(null)
+
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/consultar-nfse`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      })
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        setError(payload.error || 'Erro ao atualizar status das NFS-e')
+        return
+      }
+
+      await loadNotes(true)
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao atualizar status das NFS-e')
+    } finally {
+      setRefreshingNfse(false)
+    }
+  }
+
+  const handleCancelNfse = async (note: NotaGerada) => {
+    const autorizada = getNfseStatus(note) === 'autorizado'
+    const aviso = autorizada
+      ? 'Esta NFS-e foi AUTORIZADA pela prefeitura. O cancelamento é fiscal e irreversível. Informe a justificativa:'
+      : 'Esta nota será marcada como cancelada no sistema. Informe a justificativa:'
+    const justificativa = window.prompt(aviso, 'Cancelamento solicitado pelo prestador (emissão indevida).')
+    if (justificativa === null) return
+
+    try {
+      setCancelingId(note.id)
+      setError(null)
+
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/cancelar-nfse`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nota_id: note.id, justificativa }),
+      })
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        setError(payload.error || 'Erro ao cancelar a nota')
+        return
+      }
+
+      await loadNotes(true)
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao cancelar a nota')
+    } finally {
+      setCancelingId(null)
+    }
+  }
+
   const handleClearFilters = () => {
     setSearch('')
     setStatus('')
@@ -211,6 +311,10 @@ export default function NotasGeradasList() {
           <Button type="button" variant="outline" onClick={handleClearFilters} disabled={submitting}>
             Limpar filtros
           </Button>
+          <Button type="button" variant="outline" onClick={() => void handleRefreshNfse()} disabled={refreshingNfse || submitting}>
+            {refreshingNfse ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Atualizar NFS-e
+          </Button>
           <span className="text-sm text-gray-500">
             {totals.total} nota(s) • {totals.canceladas} cancelada(s)
           </span>
@@ -236,12 +340,13 @@ export default function NotasGeradasList() {
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Arquivo</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Metadados</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gerado em</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
                   <span className="inline-flex items-center">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Carregando notas geradas...
@@ -250,7 +355,7 @@ export default function NotasGeradasList() {
               </tr>
             ) : notes.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
                   Nenhuma nota encontrada para os filtros informados.
                 </td>
               </tr>
@@ -260,9 +365,20 @@ export default function NotasGeradasList() {
                   <td className="p-2 font-medium">#{note.numero || '-'}</td>
                   <td className="p-2">{getTipoDocumentoLabel(note.tipo_documento)}</td>
                   <td className="p-2">
-                    <Badge className={note.status === 'cancelado' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}>
-                      {getStatusLabel(note.status)}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge className={note.status === 'cancelado' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}>
+                        {getStatusLabel(note.status)}
+                      </Badge>
+                      {(() => {
+                        const nfseStatus = getNfseStatus(note)
+                        if (!nfseStatus) return null
+                        return (
+                          <Badge className={getNfseStatusBadgeClass(nfseStatus)}>
+                            {nfseStatusLabels[nfseStatus] || `NFS-e: ${nfseStatus}`}
+                          </Badge>
+                        )
+                      })()}
+                    </div>
                   </td>
                   <td className="p-2 text-sm text-gray-700">{getContractCaseLabel(note)}</td>
                   <td className="p-2">{note.batch_numero ? `#${note.batch_numero}` : '-'}</td>
@@ -282,6 +398,21 @@ export default function NotasGeradasList() {
                   </td>
                   <td className="p-2 text-xs text-gray-600">{formatMetadata(note.metadata)}</td>
                   <td className="p-2 text-sm text-gray-700">{formatDateTime(note.created_at)}</td>
+                  <td className="p-2">
+                    {note.tipo_documento === 'nota_fiscal_servico' && note.status !== 'cancelado' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-red-200 text-red-700 hover:bg-red-50"
+                        onClick={() => void handleCancelNfse(note)}
+                        disabled={cancelingId !== null}
+                      >
+                        {cancelingId === note.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Ban className="mr-1 h-3.5 w-3.5" />}
+                        Cancelar
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
               ))
             )}

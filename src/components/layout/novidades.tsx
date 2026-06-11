@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.2.0'
+export const APP_VERSION = '1.3.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.3.0',
+    date: '12/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '📄',
+        title: 'PDF da NFS-e na lista de notas',
+        desc: 'Clique em "Atualizar NFS-e" em Financeiro → Notas Geradas para consultar a prefeitura: notas autorizadas ganham o link do PDF na coluna Arquivo, além do número e código de verificação.',
+      },
+      {
+        icon: '🚫',
+        title: 'Cancelamento de NFS-e',
+        desc: 'Cancele notas direto da lista: notas autorizadas são canceladas na prefeitura (com justificativa), e as demais são marcadas como canceladas no sistema.',
+      },
+    ],
+  },
+  {
     version: '1.2.0',
     date: '10/06/2026',
-    destaque: true,
     items: [
       {
         icon: '💸',
