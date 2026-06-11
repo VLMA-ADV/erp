@@ -1,7 +1,7 @@
 'use client'
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Loader2, RefreshCw, Search } from 'lucide-react'
+import { Ban, Loader2, RefreshCw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -110,6 +110,7 @@ export default function NotasGeradasList() {
   const [status, setStatus] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState('')
   const [refreshingNfse, setRefreshingNfse] = useState(false)
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
 
   const loadNotes = async (isRefresh = false) => {
     try {
@@ -219,6 +220,49 @@ export default function NotasGeradasList() {
     }
   }
 
+  const handleCancelNfse = async (note: NotaGerada) => {
+    const autorizada = getNfseStatus(note) === 'autorizado'
+    const aviso = autorizada
+      ? 'Esta NFS-e foi AUTORIZADA pela prefeitura. O cancelamento é fiscal e irreversível. Informe a justificativa:'
+      : 'Esta nota será marcada como cancelada no sistema. Informe a justificativa:'
+    const justificativa = window.prompt(aviso, 'Cancelamento solicitado pelo prestador (emissão indevida).')
+    if (justificativa === null) return
+
+    try {
+      setCancelingId(note.id)
+      setError(null)
+
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/cancelar-nfse`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nota_id: note.id, justificativa }),
+      })
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        setError(payload.error || 'Erro ao cancelar a nota')
+        return
+      }
+
+      await loadNotes(true)
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao cancelar a nota')
+    } finally {
+      setCancelingId(null)
+    }
+  }
+
   const handleClearFilters = () => {
     setSearch('')
     setStatus('')
@@ -296,12 +340,13 @@ export default function NotasGeradasList() {
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Arquivo</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Metadados</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gerado em</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
                   <span className="inline-flex items-center">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Carregando notas geradas...
@@ -310,7 +355,7 @@ export default function NotasGeradasList() {
               </tr>
             ) : notes.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
                   Nenhuma nota encontrada para os filtros informados.
                 </td>
               </tr>
@@ -353,6 +398,21 @@ export default function NotasGeradasList() {
                   </td>
                   <td className="p-2 text-xs text-gray-600">{formatMetadata(note.metadata)}</td>
                   <td className="p-2 text-sm text-gray-700">{formatDateTime(note.created_at)}</td>
+                  <td className="p-2">
+                    {note.tipo_documento === 'nota_fiscal_servico' && note.status !== 'cancelado' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-red-200 text-red-700 hover:bg-red-50"
+                        onClick={() => void handleCancelNfse(note)}
+                        disabled={cancelingId !== null}
+                      >
+                        {cancelingId === note.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Ban className="mr-1 h-3.5 w-3.5" />}
+                        Cancelar
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
               ))
             )}
