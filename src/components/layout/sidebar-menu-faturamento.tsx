@@ -31,9 +31,9 @@ const faturamentoMenuItems = [
     permission: 'finance.faturamento.read',
   },
   {
-    label: 'Contas a pagar e receber',
-    href: '/financeiro/contas-a-pagar',
-    permission: 'finance.contas_pagar.read',
+    label: '5. Composição da fatura',
+    href: '/financeiro/composicao-da-fatura',
+    permission: 'finance.faturamento.read',
   },
 ]
 
@@ -41,12 +41,13 @@ export default function SidebarMenuFaturamento({
   pathname,
   hasPermission,
 }: SidebarMenuFaturamentoProps) {
-  const [isOpen, setIsOpen] = useState(pathname.startsWith('/financeiro'))
+  const isFaturamentoRoute = faturamentoMenuItems.some((item) => pathname.startsWith(item.href))
+  const [isOpen, setIsOpen] = useState(isFaturamentoRoute)
   const hasVisibleItems = faturamentoMenuItems.some((item) => hasPermission(item.permission))
 
   if (!hasVisibleItems) return null
 
-  const isActive = pathname.startsWith('/financeiro')
+  const isActive = isFaturamentoRoute
 
   return (
     <div>

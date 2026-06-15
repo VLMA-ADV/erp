@@ -45,6 +45,11 @@ const menuItems = [
     permission: 'operations.despesas.read',
   },
   {
+    label: 'Contas a pagar e receber',
+    href: '/financeiro/contas-a-pagar',
+    permission: 'finance.contas_pagar.read',
+  },
+  {
     label: 'PDI',
     href: '/avaliacoes-pdi',
     permission: 'people.pdi.read',
@@ -145,6 +150,19 @@ export default function SidebarClient() {
 
         {/* Menu Faturamento (Expansível) */}
         <SidebarMenuFaturamento pathname={pathname} hasPermission={checkPermission} />
+
+        {/* Contas a pagar e receber — módulo financeiro-gerencial à parte do faturamento */}
+        {(() => {
+          const item = menuItems.find((m) => m.href === '/financeiro/contas-a-pagar')
+          if (!item || !checkPermission(item.permission)) return null
+          return (
+            <SidebarItem
+              href={item.href}
+              label={item.label}
+              active={pathname === item.href}
+            />
+          )
+        })()}
 
         {/* PDI */}
         {(() => {
