@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.3.0'
+export const APP_VERSION = '1.4.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,35 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.4.0',
+    date: '15/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '🧾',
+        title: 'Composição da fatura',
+        desc: 'Novo item em Faturamento: reúne, por cliente e contrato, o "kit" da fatura dos itens aprovados pelo financeiro — nota fiscal de serviço, boleto, relatório de timesheet e nota de despesa, tudo em um só lugar.',
+      },
+      {
+        icon: '📑',
+        title: 'Nota de despesa em PDF',
+        desc: 'Gere a nota de despesa no formato padrão do escritório (capa, detalhamento das despesas reembolsáveis por contrato/caso e dados bancários) e imprima ou salve em PDF.',
+      },
+      {
+        icon: '✉️',
+        title: 'Prévia do e-mail ao cliente',
+        desc: 'Visualize o e-mail de cobrança (enviado via Resend) antes do envio, com o texto padrão e a lista de anexos para conferência.',
+      },
+      {
+        icon: '💰',
+        title: 'Contas a pagar e receber no menu',
+        desc: 'O módulo de Contas a pagar e receber passou a ser um item próprio do menu, separado do Faturamento.',
+      },
+    ],
+  },
+  {
     version: '1.3.0',
     date: '12/06/2026',
-    destaque: true,
     items: [
       {
         icon: '📄',
