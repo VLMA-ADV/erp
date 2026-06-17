@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Edit, Plus } from 'lucide-react'
+import { Edit, Plus, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -394,6 +394,38 @@ export default function DespesasList() {
       reader.onerror = reject
     })
 
+  const deleteDespesa = async (item: DespesaItem) => {
+    const ok = window.confirm(
+      `Excluir esta despesa?\n\n${item.descricao || ''}\nValor: ${formatMoney(item.valor)}\n\nEsta ação não pode ser desfeita.`,
+    )
+    if (!ok) return
+
+    try {
+      setSubmitting(true)
+      const session = await getSession()
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-despesa`, {
+        method: 'POST',
+        headers: getFunctionsHeaders(session.access_token),
+        body: JSON.stringify({ id: item.id }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao excluir despesa')
+        return
+      }
+
+      success('Despesa excluída')
+      await fetchDespesas()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao excluir despesa')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const saveDespesa = async () => {
     if (!form.cliente_id) {
       toastError('Cliente é obrigatório')
@@ -599,10 +631,25 @@ export default function DespesasList() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     {canWrite ? (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(item)}>
-                        <Edit className="mr-1 h-4 w-4" />
-                        Editar
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(item)}>
+                          <Edit className="mr-1 h-4 w-4" />
+                          Editar
+                        </Button>
+                        {item.status !== 'aprovado' ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => void deleteDespesa(item)}
+                            disabled={submitting}
+                            title="Excluir despesa"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>
                     )}
