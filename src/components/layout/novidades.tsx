@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.4.0'
+export const APP_VERSION = '1.5.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.5.0',
+    date: '17/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '🗑️',
+        title: 'Excluir lançamentos de timesheet e despesas',
+        desc: 'Agora dá para excluir um lançamento de timesheet ou de despesa direto da lista, pelo botão de lixeira (com confirmação). Lançamentos já aprovados ficam protegidos e não podem ser excluídos.',
+      },
+    ],
+  },
+  {
     version: '1.4.0',
     date: '15/06/2026',
-    destaque: true,
     items: [
       {
         icon: '🧾',
