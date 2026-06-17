@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Edit, Plus } from 'lucide-react'
+import { Edit, Plus, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -354,6 +354,38 @@ export default function TimesheetList() {
     setDialogOpen(true)
   }
 
+  const deleteTimesheet = async (item: TimesheetItem) => {
+    const ok = window.confirm(
+      `Excluir este lançamento de timesheet?\n\n${item.contrato_nome || ''} — ${item.caso_nome || ''}\n${item.descricao || ''}\n\nEsta ação não pode ser desfeita.`,
+    )
+    if (!ok) return
+
+    try {
+      setSubmitting(true)
+      const session = await getSession()
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-timesheet`, {
+        method: 'POST',
+        headers: { ...getFunctionsHeaders(session.access_token) },
+        body: JSON.stringify({ id: item.id }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao excluir timesheet')
+        return
+      }
+
+      success('Lançamento excluído')
+      await fetchTimesheets()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao excluir timesheet')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const saveTimesheet = async () => {
     if (!form.cliente_id || !form.contrato_id || !form.caso_id) {
       toastError('Cliente, caso e contrato são obrigatórios')
@@ -523,6 +555,18 @@ export default function TimesheetList() {
                         {showEdit ? (
                           <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
                             <Edit className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                        {showEdit ? (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => void deleteTimesheet(item)}
+                            disabled={submitting}
+                            title="Excluir lançamento"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         ) : null}
                       </div>
