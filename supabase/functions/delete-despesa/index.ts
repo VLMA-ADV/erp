@@ -39,26 +39,19 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     if (!body.id) return json({ error: "ID da despesa é obrigatório" }, 400);
 
-    const { data: tenantRows, error: tenantError } = await supabase.rpc("get_user_tenant", { p_user_id: user.id });
-    if (tenantError) return json({ error: tenantError.message }, 500);
-    const tenantId = Array.isArray(tenantRows) && tenantRows.length > 0 ? tenantRows[0]?.tenant_id as string | undefined : undefined;
-    if (!tenantId) return json({ error: "Usuário sem tenant vinculado" }, 403);
-
-    // Guarda: não excluir despesa já aprovada (pode já ter entrado no faturamento).
-    const { data: existing, error: fetchError } = await supabase
-      .schema("operations").from("despesas")
-      .select("id, status").eq("id", body.id).eq("tenant_id", tenantId).single();
-    if (fetchError || !existing) return json({ error: "Despesa não encontrada" }, 404);
-    if (existing.status === "aprovado") {
-      return json({ error: "Não é possível excluir uma despesa já aprovada. Reabra a revisão antes." }, 422);
+    // O schema `operations` não é exposto ao PostgREST; o delete roda via RPC
+    // SECURITY DEFINER (resolve tenant, bloqueia aprovado, deleta).
+    const { data, error } = await supabase.rpc("delete_despesa", {
+      p_user_id: user.id,
+      p_despesa_id: body.id,
+    });
+    if (error) {
+      const msg = error.message || "Erro ao excluir despesa";
+      const status = /não encontrada/i.test(msg) ? 404 : /aprovada|tenant/i.test(msg) ? 422 : 500;
+      return json({ error: msg }, status);
     }
 
-    const { error: delError } = await supabase
-      .schema("operations").from("despesas")
-      .delete().eq("id", body.id).eq("tenant_id", tenantId);
-    if (delError) return json({ error: delError.message }, 500);
-
-    return json({ ok: true, id: body.id }, 200);
+    return json({ ok: true, ...(data as Record<string, unknown>) }, 200);
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }
