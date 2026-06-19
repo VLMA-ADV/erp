@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Edit, Plus, Trash2 } from 'lucide-react'
+import { Download, Edit, Plus, Trash2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -19,6 +19,14 @@ import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
 type DespesaStatus = 'em_lancamento' | 'revisao' | 'aprovado' | 'cancelado'
+
+interface DespesaAnexo {
+  id: string
+  kind: 'primario' | 'extra'
+  arquivo_nome: string
+  mime_type: string | null
+  tamanho_bytes: number | null
+}
 
 interface DespesaItem {
   id: string
@@ -39,6 +47,7 @@ interface DespesaItem {
   arquivo_nome: string
   mime_type: string | null
   tamanho_bytes: number | null
+  anexos?: DespesaAnexo[]
   created_by_nome: string | null
   created_at: string
   updated_at: string
@@ -71,6 +80,9 @@ interface FormState {
   descricao: string
   arquivo: File | null
   arquivo_nome: string
+  anexosNovos: File[]
+  anexosExistentes: DespesaAnexo[]
+  anexosRemover: string[]
 }
 
 const emptyForm: FormState = {
@@ -83,6 +95,9 @@ const emptyForm: FormState = {
   descricao: '',
   arquivo: null,
   arquivo_nome: '',
+  anexosNovos: [],
+  anexosExistentes: [],
+  anexosRemover: [],
 }
 
 function formatDate(value: string) {
@@ -379,8 +394,40 @@ export default function DespesasList() {
       descricao: item.descricao || '',
       arquivo: null,
       arquivo_nome: item.arquivo_nome || '',
+      anexosNovos: [],
+      anexosExistentes: (item.anexos || []).filter((a) => a.kind === 'extra'),
+      anexosRemover: [],
     })
     setDialogOpen(true)
+  }
+
+  const downloadAnexo = async (kind: 'primario' | 'extra', id: string, nome: string) => {
+    try {
+      const session = await getSession()
+      if (!session) return
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesa-arquivo?kind=${kind}&id=${id}`,
+        { headers: getFunctionsHeaders(session.access_token) },
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload.arquivo_base64) {
+        toastError(payload.error || 'Erro ao baixar arquivo')
+        return
+      }
+      const bytes = Uint8Array.from(atob(payload.arquivo_base64), (c) => c.charCodeAt(0))
+      const blob = new Blob([bytes], { type: payload.mime_type || 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = payload.arquivo_nome || nome || 'arquivo'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao baixar arquivo')
+    }
   }
 
   const toBase64 = (file: File) =>
@@ -469,6 +516,23 @@ export default function DespesasList() {
         payload.mime_type = form.arquivo.type || null
         payload.tamanho_bytes = form.arquivo.size || null
         payload.arquivo_base64 = await toBase64(form.arquivo)
+      }
+
+      // Anexos adicionais (novos arquivos enviados nesta operação)
+      const anexosNovos = await Promise.all(
+        form.anexosNovos.map(async (file) => ({
+          arquivo_nome: file.name,
+          mime_type: file.type || null,
+          tamanho_bytes: file.size || null,
+          arquivo_base64: await toBase64(file),
+        })),
+      )
+
+      if (form.id) {
+        if (anexosNovos.length > 0) payload.anexos_extra_add = anexosNovos
+        if (form.anexosRemover.length > 0) payload.anexos_remove = form.anexosRemover
+      } else if (anexosNovos.length > 0) {
+        payload.anexos_extra = anexosNovos
       }
 
       const endpoint = form.id ? 'update-despesa' : 'create-despesa'
@@ -625,7 +689,35 @@ export default function DespesasList() {
                     <p className="line-clamp-2">{item.descricao || '-'}</p>
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-tabular">{formatMoney(item.valor)}</td>
-                  <td className="px-4 py-3 text-sm">{item.arquivo_nome || '-'}</td>
+                  <td className="px-4 py-3 text-sm">
+                    {item.anexos && item.anexos.length > 0 ? (
+                      <div className="flex flex-col gap-0.5">
+                        {item.anexos.map((anexo) => (
+                          <button
+                            key={`${anexo.kind}-${anexo.id}`}
+                            type="button"
+                            className="inline-flex max-w-[200px] items-center gap-1 text-left text-primary hover:underline"
+                            onClick={() => void downloadAnexo(anexo.kind, anexo.id, anexo.arquivo_nome)}
+                            title={anexo.arquivo_nome}
+                          >
+                            <Download className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{anexo.arquivo_nome}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : item.arquivo_nome ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                        onClick={() => void downloadAnexo('primario', item.id, item.arquivo_nome)}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span className="truncate">{item.arquivo_nome}</span>
+                      </button>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm">
                     <Badge className={statusClassName(item.status)}>{formatStatus(item.status)}</Badge>
                   </td>
@@ -750,7 +842,7 @@ export default function DespesasList() {
             </div>
 
             <div className="space-y-1 md:col-span-2">
-              <Label>Arquivo</Label>
+              <Label>Arquivo principal{form.id ? '' : ' *'}</Label>
               <Input
                 type="file"
                 onChange={(event) => {
@@ -763,9 +855,92 @@ export default function DespesasList() {
                 }}
                 disabled={submitting}
               />
-              {form.arquivo_nome ? (
-                <p className="text-xs text-muted-foreground">Arquivo atual: {form.arquivo_nome}</p>
+              {form.arquivo ? (
+                <p className="text-xs text-muted-foreground">Novo: {form.arquivo.name}</p>
+              ) : form.arquivo_nome ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  Atual: {form.arquivo_nome}
+                  {form.id ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                      onClick={() => void downloadAnexo('primario', form.id as string, form.arquivo_nome)}
+                    >
+                      <Download className="h-3 w-3" /> baixar
+                    </button>
+                  ) : null}
+                </p>
               ) : null}
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Anexos adicionais</Label>
+
+              {form.anexosExistentes.length > 0 ? (
+                <ul className="space-y-1">
+                  {form.anexosExistentes.map((anexo) => (
+                    <li key={anexo.id} className="flex items-center justify-between gap-2 rounded-md border border-hairline px-3 py-1.5 text-sm">
+                      <span className="truncate">{anexo.arquivo_nome}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                          onClick={() => void downloadAnexo('extra', anexo.id, anexo.arquivo_nome)}
+                        >
+                          <Download className="h-3.5 w-3.5" /> baixar
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-red-600 hover:underline"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              anexosExistentes: prev.anexosExistentes.filter((a) => a.id !== anexo.id),
+                              anexosRemover: [...prev.anexosRemover, anexo.id],
+                            }))
+                          }
+                          disabled={submitting}
+                        >
+                          <X className="h-3.5 w-3.5" /> remover
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {form.anexosNovos.length > 0 ? (
+                <ul className="space-y-1">
+                  {form.anexosNovos.map((file, idx) => (
+                    <li key={`${file.name}-${idx}`} className="flex items-center justify-between gap-2 rounded-md border border-dashed border-hairline px-3 py-1.5 text-sm">
+                      <span className="truncate">{file.name} <span className="text-muted-foreground">(novo)</span></span>
+                      <button
+                        type="button"
+                        className="inline-flex shrink-0 items-center gap-1 text-red-600 hover:underline"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, anexosNovos: prev.anexosNovos.filter((_, i) => i !== idx) }))
+                        }
+                        disabled={submitting}
+                      >
+                        <X className="h-3.5 w-3.5" /> remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <Input
+                type="file"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || [])
+                  if (files.length === 0) return
+                  setForm((prev) => ({ ...prev, anexosNovos: [...prev.anexosNovos, ...files] }))
+                  event.target.value = ''
+                }}
+                disabled={submitting}
+              />
+              <p className="text-xs text-muted-foreground">Você pode anexar vários arquivos.</p>
             </div>
           </div>
 
