@@ -1,9 +1,12 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import ColaboradoresActions from './colaboradores-actions'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/ui/toast'
 import { Table } from '@/components/ui/table'
 
 interface Colaborador {
@@ -15,6 +18,18 @@ interface Colaborador {
   cargo: {
     nome: string
   } | null
+  foto_url?: string | null
+  salario?: number | null
+}
+
+function initials(nome: string) {
+  const parts = (nome || '').trim().split(/\s+/)
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?'
+}
+
+function formatSalario(valor: number | null | undefined) {
+  if (valor == null) return '-'
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor))
 }
 
 interface Pagination {
@@ -40,7 +55,66 @@ export default function ColaboradoresTable({
   onRefresh,
 }: ColaboradoresTableProps) {
   const router = useRouter()
+  const { success, error: toastError } = useToast()
   const { hasPermission, permissions, loading: permissionsLoading } = usePermissionsContext()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const pendingIdRef = useRef<string | null>(null)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+
+  const openFotoPicker = (id: string) => {
+    pendingIdRef.current = id
+    fileInputRef.current?.click()
+  }
+
+  const toBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = () => {
+        const result = String(reader.result || '')
+        resolve(result.includes(',') ? result.split(',')[1] : result)
+      }
+      reader.onerror = reject
+    })
+
+  const handleFotoSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const colaboradorId = pendingIdRef.current
+    event.target.value = ''
+    if (!file || !colaboradorId) return
+    if (!file.type.startsWith('image/')) {
+      toastError('Selecione um arquivo de imagem')
+      return
+    }
+    try {
+      setUploadingId(colaboradorId)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const base64 = await toBase64(file)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/upload-colaborador-foto`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          ...(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY } : {}),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ colaborador_id: colaboradorId, arquivo_base64: base64, mime_type: file.type }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao enviar a foto')
+        return
+      }
+      success('Foto atualizada')
+      onRefresh()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao enviar a foto')
+    } finally {
+      setUploadingId(null)
+    }
+  }
 
   // Verificar permissões corretamente
   const canEdit = hasPermission('people.colaboradores.write')
@@ -74,10 +148,20 @@ export default function ColaboradoresTable({
 
   return (
     <div className="space-y-4">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFotoSelected}
+      />
       <div className="rounded-md border overflow-x-auto">
         <Table className="w-full min-w-full">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Foto
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Nome
               </th>
@@ -85,10 +169,10 @@ export default function ColaboradoresTable({
                 E-mail
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                WhatsApp
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Cargo
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Salário
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
@@ -103,6 +187,37 @@ export default function ColaboradoresTable({
           <tbody className="bg-white divide-y divide-gray-200">
             {colaboradores.map((colaborador) => (
               <tr key={colaborador.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {(() => {
+                    const avatar = colaborador.foto_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={colaborador.foto_url}
+                        alt={colaborador.nome}
+                        className="h-9 w-9 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600">
+                        {initials(colaborador.nome)}
+                      </div>
+                    )
+                    if (!canEdit) return avatar
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => openFotoPicker(colaborador.id)}
+                        disabled={uploadingId === colaborador.id}
+                        title="Trocar foto"
+                        className="relative rounded-full ring-offset-2 transition hover:ring-2 hover:ring-primary disabled:opacity-50"
+                      >
+                        {avatar}
+                        {uploadingId === colaborador.id ? (
+                          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-[10px] text-white">...</span>
+                        ) : null}
+                      </button>
+                    )
+                  })()}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {colaborador.nome}
                 </td>
@@ -110,10 +225,10 @@ export default function ColaboradoresTable({
                   {colaborador.email}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {colaborador.whatsapp || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {colaborador.cargo?.nome || '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-tabular text-gray-700">
+                  {formatSalario(colaborador.salario)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span

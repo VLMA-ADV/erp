@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ColaboradoresTable from './colaboradores-table'
 import ColaboradoresSearch from './colaboradores-search'
+import ColaboradoresDashboard from './colaboradores-dashboard'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,8 @@ interface Colaborador {
   cargo: {
     nome: string
   } | null
+  foto_url?: string | null
+  salario?: number | null
 }
 
 interface Area {
@@ -142,6 +145,8 @@ export default function ColaboradoresList() {
 
   return (
     <div className="space-y-4">
+      <ColaboradoresDashboard />
+
       <div className="flex items-center gap-4">
         <ColaboradoresSearch onSearch={handleSearch} />
         <div className="flex items-center gap-2">
