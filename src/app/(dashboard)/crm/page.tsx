@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import CrmPipeline from '@/components/crm/crm-pipeline'
+import CrmDashboard from '@/components/crm/crm-dashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,9 @@ export default async function CrmPage() {
         <h1 className="mt-2 display-lg text-ink">CRM</h1>
         <p className="mt-2 text-sm text-ink-mute">Acompanhe oportunidades em Kanban da prospecção até conversão.</p>
       </header>
+      <div className="mb-8">
+        <CrmDashboard />
+      </div>
       <CrmPipeline />
     </div>
   )
