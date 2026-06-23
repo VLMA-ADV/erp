@@ -117,76 +117,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Buscar total real de registros para paginação correta
-    let totalCount = 0;
-    try {
-      let countQuery = supabase
-        .schema('people')
-        .from('colaboradores')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId);
+    // Sempre via RPC (schema people não é exposto ao PostgREST). O filtro por
+    // área (centro de custo) e o total vêm da própria RPC (total_count).
+    const result = await supabase.rpc('list_colaboradores', {
+      p_tenant_id: tenantId,
+      p_search: search || null,
+      p_page: page,
+      p_limit: limit,
+      p_area_id: areaId || null,
+    });
+    const data: any[] | null = result.data;
+    const queryError: any = result.error;
 
-      if (search) {
-        countQuery = countQuery.ilike('nome', `%${search}%`);
-      }
-      if (areaId) {
-        countQuery = countQuery.eq('area_id', areaId);
-      }
-
-      const { count } = await countQuery;
-      totalCount = count ?? 0;
-    } catch (countError) {
-      console.error("Count query error:", countError);
-    }
-
-    let data: any[] | null = null;
-    let queryError: any = null;
-
-    if (areaId) {
-      // Resolve a página pelo schema base para filtrar área sem perder cargo_nome da RPC.
-      let idsQuery = supabase
-        .schema('people')
-        .from('colaboradores')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('area_id', areaId)
-        .order('nome')
-        .range(offset, offset + limit - 1);
-
-      if (search) {
-        idsQuery = idsQuery.ilike('nome', `%${search}%`);
-      }
-
-      const { data: idRows, error: idsError } = await idsQuery;
-      if (idsError) {
-        queryError = idsError;
-      } else {
-        const pageIds = (idRows || []).map((row: any) => row.id);
-        if (pageIds.length === 0) {
-          data = [];
-        } else {
-          const rpcResult = await supabase.rpc('list_colaboradores', {
-            p_tenant_id: tenantId,
-            p_search: search || null,
-            p_page: 1,
-            p_limit: 1000
-          });
-          queryError = rpcResult.error;
-          data = (rpcResult.data || []).filter((item: any) => pageIds.includes(item.id));
-        }
-      }
-    } else {
-      // Sempre usar RPC (mantém compatibilidade e inclui cargo_nome)
-      const result = await supabase
-        .rpc('list_colaboradores', {
-          p_tenant_id: tenantId,
-          p_search: search || null,
-          p_page: page,
-          p_limit: limit
-        });
-      data = result.data;
-      queryError = result.error;
-    }
+    const totalCount = Array.isArray(data) && data.length > 0 ? Number(data[0].total_count || 0) : 0;
 
     // Transformar dados para o formato esperado
     const transformedData = data?.map((item: any) => ({
