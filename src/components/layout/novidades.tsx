@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.7.0'
+export const APP_VERSION = '1.8.0'
 
 interface ChangeItem {
   icon: string
@@ -18,6 +18,23 @@ interface Release {
 
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
+  {
+    version: '1.8.0',
+    date: '20/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '🗂️',
+        title: 'Card do CRM enriquecido',
+        desc: 'O card de oportunidade agora mostra, em ordem: cliente, segmento, centro de custo, serviço, produto, valor, fase, temperatura, responsável, cidade, observações e anexos.',
+      },
+      {
+        icon: '🌡️',
+        title: 'Temperatura em barra (0–100%)',
+        desc: 'A temperatura de fechamento passou a ser uma barra de 0% a 100% ajustável direto no card. O segmento e a cidade são puxados automaticamente do cadastro do cliente.',
+      },
+    ],
+  },
   {
     version: '1.7.0',
     date: '19/06/2026',
