@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.8.0'
+export const APP_VERSION = '1.9.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.9.0',
+    date: '21/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '📊',
+        title: 'Dashboard de Contratos turbinado',
+        desc: 'Clique em qualquer item dos gráficos para ver os contratos daquele grupo num popup. Centros de custo agora aparecem corretos (antes muitos caíam em "Sem centro").',
+      },
+      {
+        icon: '🗓️',
+        title: 'Filtro de mês + fechados por regra',
+        desc: 'Novo filtro de mês no topo do dashboard e um indicador de casos fechados no mês por regra de cobrança (projeto, hora, fixo, mensal…).',
+      },
+    ],
+  },
+  {
     version: '1.8.0',
     date: '20/06/2026',
-    destaque: true,
     items: [
       {
         icon: '🗂️',

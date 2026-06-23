@@ -1,8 +1,11 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { NativeSelect } from '@/components/ui/native-select'
 
 interface DashboardListItem {
   nome: string
@@ -28,6 +31,7 @@ interface ContratosDashboardData {
   por_servico: DashboardListItem[]
   por_produto: DashboardListItem[]
   por_centro_custo: DashboardListItem[]
+  por_regra_cobranca_mes: DashboardListItem[]
   por_cliente_top: DashboardListItem[]
   por_status: DashboardListItem[]
 }
@@ -225,7 +229,7 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
   )
 }
 
-function AvatarBarChart({ title, items, hint }: { title: string; items: DashboardListItem[]; hint?: string }) {
+function AvatarBarChart({ title, items, hint, onSelect }: { title: string; items: DashboardListItem[]; hint?: string; onSelect?: (nome: string) => void }) {
   const top = items.slice(0, 6)
   const max = top.reduce((acc, item) => Math.max(acc, item.total), 0)
   return (
@@ -239,7 +243,12 @@ function AvatarBarChart({ title, items, hint }: { title: string; items: Dashboar
             const palette = AVATAR_COLORS[hashIndex(item.nome, AVATAR_COLORS.length)]
             const isUnassigned = /sem responsável|sem nome/i.test(item.nome)
             return (
-              <div key={`${title}-${item.nome}-${idx}`} className="space-y-1">
+              <div
+                key={`${title}-${item.nome}-${idx}`}
+                className={`space-y-1 ${onSelect ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-canvas-soft' : ''}`}
+                onClick={onSelect ? () => onSelect(item.nome) : undefined}
+                title={onSelect ? 'Ver contratos' : undefined}
+              >
                 <div className="flex items-center gap-2">
                   <span
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
@@ -265,7 +274,7 @@ function AvatarBarChart({ title, items, hint }: { title: string; items: Dashboar
   )
 }
 
-function DonutChart({ title, items, hint, maxSlices = 6 }: { title: string; items: DashboardListItem[]; hint?: string; maxSlices?: number }) {
+function DonutChart({ title, items, hint, maxSlices = 6, onSelect }: { title: string; items: DashboardListItem[]; hint?: string; maxSlices?: number; onSelect?: (nome: string) => void }) {
   if (items.length === 0) {
     return (
       <CardShell title={title} hint={hint}>
@@ -322,8 +331,14 @@ function DonutChart({ title, items, hint, maxSlices = 6 }: { title: string; item
           {slices.map((s, i) => {
             const color = s.nome === 'Outros' ? '#cbd5e1' : DONUT_PALETTE[i % DONUT_PALETTE.length]
             const pct = total > 0 ? Math.round((s.total / total) * 100) : 0
+            const clickable = onSelect && s.nome !== 'Outros'
             return (
-              <div key={`leg-${s.nome}-${i}`} className="flex items-center gap-2 text-[11px]">
+              <div
+                key={`leg-${s.nome}-${i}`}
+                className={`flex items-center gap-2 text-[11px] ${clickable ? 'cursor-pointer rounded hover:bg-canvas-soft' : ''}`}
+                onClick={clickable ? () => onSelect!(s.nome) : undefined}
+                title={clickable ? 'Ver contratos' : undefined}
+              >
                 <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: color }} />
                 <span className="flex-1 truncate text-ink" title={s.nome}>{s.nome}</span>
                 <span className="text-ink-mute font-tabular">{pct}%</span>
@@ -337,7 +352,7 @@ function DonutChart({ title, items, hint, maxSlices = 6 }: { title: string; item
   )
 }
 
-function CentroCustoCard({ items, totalCasos }: { items: DashboardListItem[]; totalCasos: number }) {
+function CentroCustoCard({ items, totalCasos, onSelect }: { items: DashboardListItem[]; totalCasos: number; onSelect?: (nome: string) => void }) {
   const semCentro = items.find((i) => /sem centro/i.test(i.nome))?.total ?? 0
   const definidos = items.filter((i) => !/sem centro/i.test(i.nome))
   const totalDefinidos = definidos.reduce((acc, i) => acc + i.total, 0)
@@ -378,11 +393,12 @@ function CentroCustoCard({ items, totalCasos }: { items: DashboardListItem[]; to
       hint={`${pctCadastrado}% dos casos com centro`}
       items={itemsParaDonut}
       maxSlices={5}
+      onSelect={onSelect}
     />
   )
 }
 
-function PodiumList({ title, items, hint }: { title: string; items: DashboardListItem[]; hint?: string }) {
+function PodiumList({ title, items, hint, onSelect }: { title: string; items: DashboardListItem[]; hint?: string; onSelect?: (nome: string) => void }) {
   const top = items.slice(0, 10)
   const max = top.reduce((acc, i) => Math.max(acc, i.total), 0)
   const medals = ['🥇', '🥈', '🥉']
@@ -397,7 +413,12 @@ function PodiumList({ title, items, hint }: { title: string; items: DashboardLis
             const medal = medals[idx]
             const isPodium = idx < 3
             return (
-              <div key={`pod-${item.nome}-${idx}`} className="flex items-center gap-2">
+              <div
+                key={`pod-${item.nome}-${idx}`}
+                className={`flex items-center gap-2 ${onSelect ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-canvas-soft' : ''}`}
+                onClick={onSelect ? () => onSelect(item.nome) : undefined}
+                title={onSelect ? 'Ver contratos' : undefined}
+              >
                 <span
                   className={`flex h-6 w-7 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold font-tabular ${
                     isPodium ? 'bg-amber-50 text-amber-800' : 'bg-canvas-soft text-ink-mute'
@@ -426,7 +447,7 @@ function PodiumList({ title, items, hint }: { title: string; items: DashboardLis
   )
 }
 
-function StatusStackedBar({ items, hint }: { items: DashboardListItem[]; hint?: string }) {
+function StatusStackedBar({ items, hint, onSelect }: { items: DashboardListItem[]; hint?: string; onSelect?: (nome: string) => void }) {
   const total = items.reduce((acc, i) => acc + i.total, 0)
   return (
     <CardShell title="Por status do contrato" hint={hint}>
@@ -456,7 +477,12 @@ function StatusStackedBar({ items, hint }: { items: DashboardListItem[]; hint?: 
               const color = STATUS_COLOR[item.nome.toLowerCase()] ?? '#94a3b8'
               const pct = total > 0 ? Math.round((item.total / total) * 100) : 0
               return (
-                <div key={`leg-${item.nome}`} className="flex items-center gap-2 text-[11px]">
+                <div
+                  key={`leg-${item.nome}`}
+                  className={`flex items-center gap-2 text-[11px] ${onSelect ? 'cursor-pointer rounded hover:bg-canvas-soft' : ''}`}
+                  onClick={onSelect ? () => onSelect(item.nome) : undefined}
+                  title={onSelect ? 'Ver contratos' : undefined}
+                >
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: color }} />
                   <span className="flex-1 truncate text-ink">{STATUS_LABEL[item.nome] ?? item.nome}</span>
                   <span className="text-ink-mute font-tabular">{pct}%</span>
@@ -496,33 +522,99 @@ function DashboardSkeleton() {
   )
 }
 
+const REGRA_LABEL: Record<string, string> = {
+  projeto: 'Projeto',
+  hora: 'Hora',
+  mensal: 'Fixo mensal',
+  mensalidade_processo: 'Mensalidade por processo',
+  salario_minimo: 'Salário mínimo',
+  exito: 'Êxito',
+  mensalidade_carteira: 'Mensalidade de carteira',
+  'Sem regra': 'Sem regra',
+}
+
+async function resolveTenantId(supabase: ReturnType<typeof createClient>): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user?.id) return null
+  const { data: tenantResult } = await supabase.rpc('get_user_tenant', { p_user_id: session.user.id })
+  if (Array.isArray(tenantResult) && tenantResult[0]?.tenant_id) return String(tenantResult[0].tenant_id)
+  if (tenantResult && typeof tenantResult === 'object' && 'tenant_id' in tenantResult) return String((tenantResult as Record<string, unknown>).tenant_id)
+  if (typeof tenantResult === 'string') return tenantResult
+  return null
+}
+
+function RegraCard({ items, onSelect }: { items: DashboardListItem[]; onSelect?: (nome: string) => void }) {
+  const max = Math.max(1, ...items.map((i) => i.total))
+  return (
+    <CardShell title="Fechados no mês por regra de cobrança" hint="contagem no mês">
+      {items.length === 0 ? (
+        <p className="text-xs text-ink-mute">Nenhum caso no mês selecionado</p>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((it) => (
+            <div
+              key={`regra-${it.nome}`}
+              className={`space-y-1 ${onSelect ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-canvas-soft' : ''}`}
+              onClick={onSelect ? () => onSelect(it.nome) : undefined}
+              title={onSelect ? 'Ver contratos' : undefined}
+            >
+              <div className="flex items-center justify-between gap-2 text-[12px]">
+                <span className="truncate text-ink">{REGRA_LABEL[it.nome] || it.nome}</span>
+                <span className="font-medium text-ink font-tabular">{it.total}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-canvas-soft">
+                <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(it.total / max) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </CardShell>
+  )
+}
+
+const DRILL_TITULOS: Record<string, string> = {
+  por_responsavel: 'Responsável',
+  por_servico: 'Serviço',
+  por_produto: 'Produto',
+  por_centro_custo: 'Centro de custo',
+  por_cliente_top: 'Cliente',
+  por_status: 'Status',
+  por_regra_cobranca_mes: 'Regra de cobrança',
+}
+
+interface DrillRow { numero: number | null; nome: string; cliente: string; caso: string | null }
+
 export default function ContratosDashboard() {
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('contracts.contratos.read')
+  const [refMonth, setRefMonth] = useState('') // '' = mês atual; senão 'YYYY-MM'
+  const [drill, setDrill] = useState<{ dim: string; valor: string } | null>(null)
+
+  const monthOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = [{ value: '', label: 'Mês atual' }]
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      opts.push({ value, label: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) })
+    }
+    return opts
+  }, [])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['contracts-dashboard-v2'],
+    queryKey: ['contracts-dashboard-v2', refMonth],
     enabled: canRead,
     queryFn: async (): Promise<ContratosDashboardData | null> => {
       try {
         const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user?.id) return null
-
-        const { data: tenantResult, error: tenantError } = await supabase.rpc('get_user_tenant', { p_user_id: session.user.id })
-        if (tenantError) return null
-
-        let tenantId: string | null = null
-        if (Array.isArray(tenantResult) && tenantResult[0]?.tenant_id) {
-          tenantId = String(tenantResult[0].tenant_id)
-        } else if (tenantResult && typeof tenantResult === 'object' && 'tenant_id' in tenantResult) {
-          tenantId = String((tenantResult as Record<string, unknown>).tenant_id)
-        } else if (typeof tenantResult === 'string') {
-          tenantId = tenantResult
-        }
+        const tenantId = await resolveTenantId(supabase)
         if (!tenantId) return null
 
-        const { data: raw, error } = await supabase.rpc('get_contratos_dashboard_v2', { p_tenant_id: tenantId })
+        const { data: raw, error } = await supabase.rpc('get_contratos_dashboard_v2', {
+          p_tenant_id: tenantId,
+          p_ref_month: refMonth ? `${refMonth}-01` : null,
+        })
         if (error || !raw) return null
 
         const payload: Record<string, unknown> = typeof raw === 'string' ? JSON.parse(raw) : raw
@@ -541,6 +633,7 @@ export default function ContratosDashboard() {
           por_servico: normalizeList(payload.por_servico),
           por_produto: normalizeList(payload.por_produto),
           por_centro_custo: normalizeList(payload.por_centro_custo),
+          por_regra_cobranca_mes: normalizeList(payload.por_regra_cobranca_mes),
           por_cliente_top: normalizeList(payload.por_cliente_top),
           por_status: normalizeList(payload.por_status),
         }
@@ -550,12 +643,44 @@ export default function ContratosDashboard() {
     },
   })
 
+  const { data: drillRows, isLoading: drillLoading } = useQuery({
+    queryKey: ['contracts-dashboard-drill', drill?.dim, drill?.valor, refMonth],
+    enabled: canRead && !!drill,
+    queryFn: async (): Promise<DrillRow[]> => {
+      if (!drill) return []
+      const supabase = createClient()
+      const tenantId = await resolveTenantId(supabase)
+      if (!tenantId) return []
+      const { data: raw, error } = await supabase.rpc('get_contratos_dashboard_drill', {
+        p_tenant_id: tenantId,
+        p_dim: drill.dim,
+        p_valor: drill.valor,
+        p_ref_month: refMonth ? `${refMonth}-01` : null,
+      })
+      if (error || !raw) return []
+      const arr = typeof raw === 'string' ? JSON.parse(raw) : raw
+      return Array.isArray(arr) ? (arr as DrillRow[]) : []
+    },
+  })
+
   if (!canRead) return null
   if (isLoading) return <DashboardSkeleton />
   if (!data) return null
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-eyebrow">Indicadores</p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-ink-mute">Mês:</span>
+          <NativeSelect value={refMonth} onChange={(e) => setRefMonth(e.target.value)} className="h-8 rounded-md border px-2 text-sm capitalize">
+            {monthOptions.map((m) => (
+              <option key={m.value || 'atual'} value={m.value}>{m.label}</option>
+            ))}
+          </NativeSelect>
+        </div>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Contratos ativos" value={data.kpis.contratos_ativos} />
         <KpiCard label="Casos ativos" value={data.kpis.casos_ativos} hint="Exclui filhos de carteira" />
@@ -566,13 +691,42 @@ export default function ContratosDashboard() {
       <StackedAreaChart serie={data.serie_temporal} />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <AvatarBarChart title="Por responsável" items={data.por_responsavel} hint="top 6 ativos" />
-        <DonutChart title="Por serviço" items={data.por_servico} hint="distribuição" />
-        <DonutChart title="Por produto" items={data.por_produto} hint="distribuição" />
-        <CentroCustoCard items={data.por_centro_custo} totalCasos={data.kpis.casos_ativos} />
-        <PodiumList title="Top 10 clientes (por contratos)" items={data.por_cliente_top} hint="ranking" />
-        <StatusStackedBar items={data.por_status} hint="proporção" />
+        <AvatarBarChart title="Por responsável" items={data.por_responsavel} hint="top 6 ativos" onSelect={(nome) => setDrill({ dim: 'por_responsavel', valor: nome })} />
+        <DonutChart title="Por serviço" items={data.por_servico} hint="distribuição" onSelect={(nome) => setDrill({ dim: 'por_servico', valor: nome })} />
+        <DonutChart title="Por produto" items={data.por_produto} hint="distribuição" onSelect={(nome) => setDrill({ dim: 'por_produto', valor: nome })} />
+        <CentroCustoCard items={data.por_centro_custo} totalCasos={data.kpis.casos_ativos} onSelect={(nome) => setDrill({ dim: 'por_centro_custo', valor: nome })} />
+        <RegraCard items={data.por_regra_cobranca_mes} onSelect={(nome) => setDrill({ dim: 'por_regra_cobranca_mes', valor: nome })} />
+        <PodiumList title="Top 10 clientes (por contratos)" items={data.por_cliente_top} hint="ranking" onSelect={(nome) => setDrill({ dim: 'por_cliente_top', valor: nome })} />
+        <StatusStackedBar items={data.por_status} hint="proporção" onSelect={(nome) => setDrill({ dim: 'por_status', valor: nome })} />
       </div>
+
+      <Dialog open={!!drill} onOpenChange={(open) => { if (!open) setDrill(null) }}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {drill ? `${DRILL_TITULOS[drill.dim] || ''}: ${drill.valor}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          {drillLoading ? (
+            <p className="text-sm text-ink-mute">Carregando…</p>
+          ) : !drillRows || drillRows.length === 0 ? (
+            <p className="text-sm text-ink-mute">Nenhum contrato encontrado.</p>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-xs text-ink-mute">{drillRows.length} registro(s)</p>
+              <ul className="divide-y divide-hairline">
+                {drillRows.map((row, i) => (
+                  <li key={`${row.numero}-${i}`} className="py-2 text-sm">
+                    <span className="font-medium text-ink">{row.numero ? `Contrato ${row.numero}` : row.nome}</span>
+                    <span className="text-ink-mute"> · {row.cliente}</span>
+                    {row.caso ? <p className="text-xs text-ink-mute">{row.caso}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
