@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.5.0'
+export const APP_VERSION = '1.6.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.6.0',
+    date: '18/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '👤',
+        title: 'Foto dos colaboradores',
+        desc: 'Cada colaborador pode ter uma foto: clique no avatar na lista de Colaboradores para enviar/trocar a imagem, que vira a miniatura da pessoa.',
+      },
+      {
+        icon: '📊',
+        title: 'Painel de colaboradores',
+        desc: 'Novo minidashboard no topo de Colaboradores: total de pessoas e quebras por categoria, cargo, centro de custo e função adicional. O salário aparece por pessoa na lista.',
+      },
+    ],
+  },
+  {
     version: '1.5.0',
     date: '17/06/2026',
-    destaque: true,
     items: [
       {
         icon: '🗑️',

@@ -196,7 +196,13 @@ Deno.serve(async (req) => {
       whatsapp: item.whatsapp,
       ativo: item.ativo,
       cargo_id: item.cargo_id,
-      cargo: item.cargo_nome ? { nome: item.cargo_nome } : null
+      cargo: item.cargo_nome ? { nome: item.cargo_nome } : null,
+      foto_url: item.foto_url ?? null,
+      salario: item.salario ?? null,
+      categoria: item.categoria ?? null,
+      area_id: item.area_id ?? null,
+      area_nome: item.area_nome ?? null,
+      adicional: item.adicional ?? null,
     })) || [];
 
     if (queryError) {
