@@ -44,9 +44,10 @@ export default function ColaboradoresList() {
   const [search, setSearch] = useState('')
   const [areaId, setAreaId] = useState('')
   const [areas, setAreas] = useState<Area[]>([])
+  const [showDashboard, setShowDashboard] = useState(true)
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
-    limit: 10,
+    limit: 500,
     total: 0,
     totalPages: 0,
   })
@@ -144,34 +145,55 @@ export default function ColaboradoresList() {
   }, [])
 
   return (
-    <div className="space-y-4">
-      <ColaboradoresDashboard />
-
-      <div className="flex items-center gap-4">
-        <ColaboradoresSearch onSearch={handleSearch} />
-        <div className="flex items-center gap-2">
-          <Label htmlFor="area-filter" className="whitespace-nowrap text-sm">Centro de custo</Label>
-          <NativeSelect
-            id="area-filter"
-            value={areaId}
-            onChange={(e) => handleAreaFilter(e.target.value)}
-            className="w-48"
+    <div className="space-y-6">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-eyebrow">Indicadores</p>
+          <button
+            type="button"
+            onClick={() => setShowDashboard((v) => !v)}
+            className="text-xs text-primary hover:underline"
           >
-            <option value="">Todos</option>
-            {areas.map((area) => (
-              <option key={area.id} value={area.id}>{area.nome}</option>
-            ))}
-          </NativeSelect>
+            {showDashboard ? 'Ocultar indicadores' : 'Mostrar indicadores'}
+          </button>
         </div>
-      </div>
+        {showDashboard ? <ColaboradoresDashboard /> : null}
+      </section>
 
-      <ColaboradoresTable
-        colaboradores={colaboradores}
-        loading={loading}
-        pagination={pagination}
-        onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
-        onRefresh={fetchColaboradores}
-      />
+      <section className="space-y-4 rounded-xl border bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-ink">
+            Lista de colaboradores
+            <span className="ml-2 font-normal text-ink-mute">{pagination.total} no total</span>
+          </h2>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <ColaboradoresSearch onSearch={handleSearch} />
+          <div className="flex items-center gap-2">
+            <Label htmlFor="area-filter" className="whitespace-nowrap text-sm">Centro de custo</Label>
+            <NativeSelect
+              id="area-filter"
+              value={areaId}
+              onChange={(e) => handleAreaFilter(e.target.value)}
+              className="w-48"
+            >
+              <option value="">Todos</option>
+              {areas.map((area) => (
+                <option key={area.id} value={area.id}>{area.nome}</option>
+              ))}
+            </NativeSelect>
+          </div>
+        </div>
+
+        <ColaboradoresTable
+          colaboradores={colaboradores}
+          loading={loading}
+          pagination={pagination}
+          onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
+          onRefresh={fetchColaboradores}
+        />
+      </section>
     </div>
   )
 }
