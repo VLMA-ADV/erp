@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.9.0'
+export const APP_VERSION = '1.10.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.10.0',
+    date: '22/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '💬',
+        title: 'Conversa na solicitação de contrato',
+        desc: 'Além do formulário, dá para trocar mensagens na solicitação. Cada pessoa vê só as próprias mensagens; o financeiro (administrativo e sócios) vê todas.',
+      },
+      {
+        icon: '✅',
+        title: 'Lida / providência tomada',
+        desc: 'O financeiro pode marcar cada mensagem como "lida" e "providência tomada", deixando o acompanhamento claro para todos.',
+      },
+    ],
+  },
+  {
     version: '1.9.0',
     date: '21/06/2026',
-    destaque: true,
     items: [
       {
         icon: '📊',

@@ -62,12 +62,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: mensagens, error } = await supabase
-      .schema("contracts")
-      .from("solicitacao_mensagens")
-      .select("id, mensagem, created_at, autor_id")
-      .eq("solicitacao_id", solicitacaoId)
-      .order("created_at", { ascending: true });
+    // Visibilidade + autor + status via RPC SECURITY DEFINER:
+    // usuário comum vê só as próprias; financeiro (admin/sócio) vê todas.
+    const { data: result, error } = await supabase.rpc("get_solicitacao_mensagens", {
+      p_user_id: user.id,
+      p_solicitacao_id: solicitacaoId,
+    });
 
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), {
@@ -76,28 +76,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Resolve autores em query separada (evita join cross-schema contracts→people)
-    const autorIds = [...new Set((mensagens ?? []).map((m) => m.autor_id).filter(Boolean))];
-    let autoresMap: Record<string, { id: string; nome_completo: string }> = {};
-
-    if (autorIds.length > 0) {
-      const { data: autores } = await supabase
-        .schema("people")
-        .from("colaboradores")
-        .select("id, nome_completo")
-        .in("id", autorIds);
-
-      if (autores) {
-        autoresMap = Object.fromEntries(autores.map((a) => [a.id, a]));
-      }
-    }
-
-    const data = (mensagens ?? []).map((m) => ({
-      ...m,
-      autor: autoresMap[m.autor_id] ?? null,
-    }));
-
-    return new Response(JSON.stringify({ data }), {
+    const payload = (result ?? {}) as { can_manage?: boolean; mensagens?: unknown };
+    return new Response(JSON.stringify({ data: payload.mensagens ?? [], can_manage: payload.can_manage ?? false }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

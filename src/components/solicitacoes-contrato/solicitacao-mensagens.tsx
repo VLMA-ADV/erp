@@ -15,6 +15,8 @@ interface Mensagem {
     id: string
     nome_completo: string
   } | null
+  lido_at: string | null
+  providencia_at: string | null
 }
 
 interface Props {
@@ -39,6 +41,7 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
   const [sending, setSending] = useState(false)
   const [texto, setTexto] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [canManage, setCanManage] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
   const getHeaders = async () => {
@@ -70,6 +73,7 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
         return
       }
       setMensagens((payload.data || []) as Mensagem[])
+      setCanManage(Boolean(payload.can_manage))
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar mensagens')
@@ -109,6 +113,26 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
     }
   }
 
+  const marcarStatus = async (mensagemId: string, campo: 'lida' | 'providencia', valor: boolean) => {
+    try {
+      const headers = await getHeaders()
+      if (!headers) return
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-mensagem-status`,
+        { method: 'POST', headers, body: JSON.stringify({ mensagem_id: mensagemId, [campo]: valor }) },
+      )
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(payload.error || 'Erro ao atualizar mensagem')
+        return
+      }
+      await fetchMensagens()
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao atualizar mensagem')
+    }
+  }
+
   useEffect(() => {
     void fetchMensagens()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,6 +166,36 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
                 <span className="text-xs text-slate-400">{formatDateTime(msg.created_at)}</span>
               </div>
               <p className="whitespace-pre-wrap text-slate-700">{msg.mensagem}</p>
+
+              {(msg.lido_at || msg.providencia_at) ? (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {msg.lido_at ? (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">✓ Lida</span>
+                  ) : null}
+                  {msg.providencia_at ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">✓ Providência tomada</span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {canManage ? (
+                <div className="mt-2 flex flex-wrap gap-2 border-t pt-2">
+                  <button
+                    type="button"
+                    className="text-[11px] text-blue-600 hover:underline"
+                    onClick={() => void marcarStatus(msg.id, 'lida', !msg.lido_at)}
+                  >
+                    {msg.lido_at ? 'Desmarcar lida' : 'Marcar lida'}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[11px] text-emerald-700 hover:underline"
+                    onClick={() => void marcarStatus(msg.id, 'providencia', !msg.providencia_at)}
+                  >
+                    {msg.providencia_at ? 'Desfazer providência' : 'Providência tomada'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))
         )}
