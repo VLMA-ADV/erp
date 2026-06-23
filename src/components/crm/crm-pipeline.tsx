@@ -46,6 +46,8 @@ interface PipelineCard {
   valor: number
   responsavel_interno_id: string | null
   responsavel_interno_nome: string | null
+  temperatura_id: string | null
+  temperatura_nome: string | null
   area_id: string | null
   observacoes: string
   etapa: EtapaKanban
@@ -158,6 +160,7 @@ export default function CrmPipeline() {
   const [servicos, setServicos] = useState<OptionItem[]>([])
   const [produtos, setProdutos] = useState<OptionItem[]>([])
   const [colaboradores, setColaboradores] = useState<OptionItem[]>([])
+  const [temperaturas, setTemperaturas] = useState<OptionItem[]>([])
   const [areas, setAreas] = useState<OptionItem[]>([])
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -203,6 +206,68 @@ export default function CrmPipeline() {
     }
 
     setCards(Array.isArray(payload.data) ? (payload.data as PipelineCard[]) : [])
+  }
+
+  const fetchTemperaturas = async () => {
+    const session = await getSession()
+    if (!session) return
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/crm-temperaturas?_ts=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (response.ok) setTemperaturas(Array.isArray(payload.data) ? (payload.data as OptionItem[]) : [])
+  }
+
+  const handleSetTemperatura = async (cardId: string, value: string) => {
+    if (value === '__nova__') {
+      const nome = window.prompt('Nome da nova temperatura (ex.: Muito quente):')
+      if (!nome || !nome.trim()) return
+      try {
+        const session = await getSession()
+        if (!session) return
+        const createResp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/crm-temperaturas`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: nome.trim() }),
+        })
+        const createPayload = await createResp.json().catch(() => ({}))
+        if (!createResp.ok) {
+          setError(createPayload.error || 'Erro ao criar temperatura')
+          return
+        }
+        await fetchTemperaturas()
+        await assignTemperatura(cardId, createPayload.data?.id ?? null)
+      } catch (err) {
+        console.error(err)
+        setError('Erro ao criar temperatura')
+      }
+      return
+    }
+    await assignTemperatura(cardId, value || null)
+  }
+
+  const assignTemperatura = async (cardId: string, temperaturaId: string | null) => {
+    try {
+      const session = await getSession()
+      if (!session) return
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-crm-card-temperatura`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_id: cardId, temperatura_id: temperaturaId }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(payload.error || 'Erro ao definir temperatura')
+        return
+      }
+      const nome = temperaturas.find((t) => t.id === temperaturaId)?.nome ?? null
+      setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, temperatura_id: temperaturaId, temperatura_nome: nome } : c)))
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao definir temperatura')
+    }
   }
 
   const fetchClientes = async () => {
@@ -326,7 +391,7 @@ export default function CrmPipeline() {
     try {
       setLoading(true)
       setError(null)
-      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas()])
+      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas(), fetchTemperaturas()])
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Erro ao carregar CRM')
@@ -827,8 +892,28 @@ export default function CrmPipeline() {
                           <UserRound className="mr-1 inline h-3 w-3" />
                           {card.responsavel_interno_nome || 'Sem responsável'}
                         </p>
+                        <p className="truncate">
+                          🌡️ {card.temperatura_nome || 'Sem temperatura'}
+                        </p>
                         <p className="text-[11px] text-ink-mute">Atualizado em {formatDateTime(card.updated_at)}</p>
                       </div>
+
+                      {canWrite ? (
+                        <div className="mt-2">
+                          <NativeSelect
+                            value={card.temperatura_id || ''}
+                            onChange={(event) => void handleSetTemperatura(card.id, event.target.value)}
+                            className="h-7 w-full rounded border px-2 text-xs"
+                            title="Temperatura de fechamento"
+                          >
+                            <option value="">Sem temperatura</option>
+                            {temperaturas.map((t) => (
+                              <option key={t.id} value={t.id}>{t.nome}</option>
+                            ))}
+                            <option value="__nova__">+ Nova temperatura…</option>
+                          </NativeSelect>
+                        </div>
+                      ) : null}
 
                       <div className="mt-3 flex flex-wrap gap-1">
                         {canWrite ? (

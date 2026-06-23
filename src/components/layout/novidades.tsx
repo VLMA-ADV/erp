@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.6.0'
+export const APP_VERSION = '1.7.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.7.0',
+    date: '19/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '📈',
+        title: 'Painel do CRM',
+        desc: 'Novo minidashboard no topo do CRM: total de oportunidades e valor, valor por fase, e quebras por centro de custo, produto, responsável, segmento econômico e temperatura — com um mini mapa do Brasil por estado.',
+      },
+      {
+        icon: '🌡️',
+        title: 'Temperatura de fechamento',
+        desc: 'Defina a temperatura de cada oportunidade direto no card do Kanban. Você pode criar suas próprias temperaturas (além de Quente/Morno/Frio) pelo seletor.',
+      },
+    ],
+  },
+  {
     version: '1.6.0',
     date: '18/06/2026',
-    destaque: true,
     items: [
       {
         icon: '👤',
