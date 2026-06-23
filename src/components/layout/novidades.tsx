@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.10.0'
+export const APP_VERSION = '1.11.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.11.0',
+    date: '23/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '📑',
+        title: 'Duplicar caso',
+        desc: 'Na tela de Novo Caso, use "Duplicar de um caso existente": filtre por cliente, escolha o caso de origem e o contrato destino — os dados são copiados (sem anexos) para você revisar e salvar, sem preencher tudo de novo.',
+      },
+    ],
+  },
+  {
     version: '1.10.0',
     date: '22/06/2026',
-    destaque: true,
     items: [
       {
         icon: '💬',
