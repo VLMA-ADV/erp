@@ -46,8 +46,10 @@ interface PipelineCard {
   valor: number
   responsavel_interno_id: string | null
   responsavel_interno_nome: string | null
-  temperatura_id: string | null
-  temperatura_nome: string | null
+  temperatura_pct: number | null
+  segmento_nome: string | null
+  cidade: string | null
+  estado: string | null
   area_id: string | null
   observacoes: string
   etapa: EtapaKanban
@@ -100,6 +102,12 @@ const emptyForm: FormState = {
   area_id: '',
   observacoes: '',
   etapa: 'prospeccao',
+}
+
+function tempColor(pct: number | null | undefined) {
+  if (pct == null) return '#d1d5db'
+  const hue = 210 - (210 * pct) / 100 // azul (frio) → vermelho (quente)
+  return `hsl(${hue}, 80%, 50%)`
 }
 
 function formatMoney(value: number | string | null | undefined) {
@@ -160,7 +168,7 @@ export default function CrmPipeline() {
   const [servicos, setServicos] = useState<OptionItem[]>([])
   const [produtos, setProdutos] = useState<OptionItem[]>([])
   const [colaboradores, setColaboradores] = useState<OptionItem[]>([])
-  const [temperaturas, setTemperaturas] = useState<OptionItem[]>([])
+  const [clientesInfo, setClientesInfo] = useState<Record<string, { segmento_nome: string | null; cidade: string | null; estado: string | null }>>({})
   const [areas, setAreas] = useState<OptionItem[]>([])
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -208,62 +216,34 @@ export default function CrmPipeline() {
     setCards(Array.isArray(payload.data) ? (payload.data as PipelineCard[]) : [])
   }
 
-  const fetchTemperaturas = async () => {
+  const fetchClientesInfo = async () => {
     const session = await getSession()
     if (!session) return
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/crm-temperaturas?_ts=${Date.now()}`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-crm-clientes-info?_ts=${Date.now()}`, {
       method: 'GET',
       cache: 'no-store',
       headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
     })
     const payload = await response.json().catch(() => ({}))
-    if (response.ok) setTemperaturas(Array.isArray(payload.data) ? (payload.data as OptionItem[]) : [])
+    if (response.ok && payload.data && typeof payload.data === 'object') setClientesInfo(payload.data)
   }
 
-  const handleSetTemperatura = async (cardId: string, value: string) => {
-    if (value === '__nova__') {
-      const nome = window.prompt('Nome da nova temperatura (ex.: Muito quente):')
-      if (!nome || !nome.trim()) return
-      try {
-        const session = await getSession()
-        if (!session) return
-        const createResp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/crm-temperaturas`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome: nome.trim() }),
-        })
-        const createPayload = await createResp.json().catch(() => ({}))
-        if (!createResp.ok) {
-          setError(createPayload.error || 'Erro ao criar temperatura')
-          return
-        }
-        await fetchTemperaturas()
-        await assignTemperatura(cardId, createPayload.data?.id ?? null)
-      } catch (err) {
-        console.error(err)
-        setError('Erro ao criar temperatura')
-      }
-      return
-    }
-    await assignTemperatura(cardId, value || null)
-  }
-
-  const assignTemperatura = async (cardId: string, temperaturaId: string | null) => {
+  const handleSetTemperaturaPct = async (cardId: string, pct: number | null) => {
+    // otimista
+    setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, temperatura_pct: pct } : c)))
     try {
       const session = await getSession()
       if (!session) return
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-crm-card-temperatura`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-crm-card-temperatura-pct`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ card_id: cardId, temperatura_id: temperaturaId }),
+        body: JSON.stringify({ card_id: cardId, temperatura_pct: pct }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         setError(payload.error || 'Erro ao definir temperatura')
-        return
+        await fetchPipeline()
       }
-      const nome = temperaturas.find((t) => t.id === temperaturaId)?.nome ?? null
-      setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, temperatura_id: temperaturaId, temperatura_nome: nome } : c)))
     } catch (err) {
       console.error(err)
       setError('Erro ao definir temperatura')
@@ -391,7 +371,7 @@ export default function CrmPipeline() {
     try {
       setLoading(true)
       setError(null)
-      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas(), fetchTemperaturas()])
+      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas(), fetchClientesInfo()])
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Erro ao carregar CRM')
@@ -879,41 +859,47 @@ export default function CrmPipeline() {
                           onClick={() => handleOpenEdit(card)}
                         >
                           <p className="truncate text-sm font-semibold text-ink">{card.cliente_nome}</p>
-                          <p className="truncate text-xs text-ink-mute">
-                            {[card.servico_nome, card.produto_nome].filter(Boolean).join(' • ') || 'Sem serviço/produto'}
-                          </p>
+                          <p className="truncate text-xs text-ink-mute">{card.segmento_nome || 'Sem segmento'}</p>
                         </button>
                         {canWrite ? <GripVertical className="h-4 w-4 shrink-0 text-ink-mute" /> : null}
                       </div>
 
                       <div className="space-y-1 text-xs text-ink-mute">
+                        <p className="truncate">🏢 {areas.find((a) => a.id === card.area_id)?.nome || 'Sem centro de custo'}</p>
+                        <p className="truncate">🧩 {[card.servico_nome, card.produto_nome].filter(Boolean).join(' • ') || 'Sem serviço/produto'}</p>
                         <p className="font-medium text-ink">{formatMoney(card.valor)}</p>
+
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span>🌡️ Temperatura</span>
+                            <span className="font-medium text-ink">{card.temperatura_pct != null ? `${card.temperatura_pct}%` : '—'}</span>
+                          </div>
+                          <div className="mt-1 h-1.5 rounded-full bg-gray-100">
+                            <div className="h-1.5 rounded-full" style={{ width: `${card.temperatura_pct ?? 0}%`, backgroundColor: tempColor(card.temperatura_pct) }} />
+                          </div>
+                          {canWrite ? (
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={card.temperatura_pct ?? 0}
+                              onChange={(event) => void handleSetTemperaturaPct(card.id, Number(event.target.value))}
+                              className="mt-1 w-full"
+                              title="Temperatura de fechamento (%)"
+                            />
+                          ) : null}
+                        </div>
+
                         <p className="truncate">
                           <UserRound className="mr-1 inline h-3 w-3" />
                           {card.responsavel_interno_nome || 'Sem responsável'}
                         </p>
-                        <p className="truncate">
-                          🌡️ {card.temperatura_nome || 'Sem temperatura'}
-                        </p>
+                        <p className="truncate">📍 {[card.cidade, card.estado].filter(Boolean).join(' / ') || 'Sem cidade'}</p>
+                        {card.observacoes ? <p className="line-clamp-2 whitespace-pre-wrap">📝 {card.observacoes}</p> : null}
+                        {card.anexos?.length ? <p>📎 {card.anexos.length} anexo(s)</p> : null}
                         <p className="text-[11px] text-ink-mute">Atualizado em {formatDateTime(card.updated_at)}</p>
                       </div>
-
-                      {canWrite ? (
-                        <div className="mt-2">
-                          <NativeSelect
-                            value={card.temperatura_id || ''}
-                            onChange={(event) => void handleSetTemperatura(card.id, event.target.value)}
-                            className="h-7 w-full rounded border px-2 text-xs"
-                            title="Temperatura de fechamento"
-                          >
-                            <option value="">Sem temperatura</option>
-                            {temperaturas.map((t) => (
-                              <option key={t.id} value={t.id}>{t.nome}</option>
-                            ))}
-                            <option value="__nova__">+ Nova temperatura…</option>
-                          </NativeSelect>
-                        </div>
-                      ) : null}
 
                       <div className="mt-3 flex flex-wrap gap-1">
                         {canWrite ? (
@@ -989,6 +975,7 @@ export default function CrmPipeline() {
           </DialogHeader>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* 1. Cliente */}
             <div className="space-y-2">
               <Label>Cliente *</Label>
               <CommandSelect
@@ -1012,22 +999,30 @@ export default function CrmPipeline() {
               />
             </div>
 
+            {/* 2. Segmento econômico (do cliente, somente leitura) */}
             <div className="space-y-2">
-              <Label>Etapa</Label>
-              <NativeSelect
-                value={form.etapa}
-                onChange={(event) => setForm((prev) => ({ ...prev, etapa: event.target.value as EtapaKanban }))}
-                className="h-10 rounded-md border px-3"
-                disabled={!canWrite || saving}
-              >
-                {ETAPAS.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {item.label}
-                  </option>
-                ))}
-              </NativeSelect>
+              <Label>Segmento econômico</Label>
+              <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
+                {clientesInfo[form.cliente_id]?.segmento_nome || '— (definido no cadastro do cliente)'}
+              </div>
             </div>
 
+            {/* 3. Centro de custo */}
+            <div className="space-y-2">
+              <Label>Centro de custo</Label>
+              <CommandSelect
+                value={form.area_id}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, area_id: value }))}
+                options={areasOptions}
+                placeholder="Selecione o centro de custo"
+                searchPlaceholder="Buscar área..."
+                emptyText="Nenhuma área encontrada."
+                disabled={saving}
+                maxVisibleOptions={7}
+              />
+            </div>
+
+            {/* 4. Serviço */}
             <div className="space-y-2">
               <Label>Serviço</Label>
               <CommandSelect
@@ -1042,6 +1037,7 @@ export default function CrmPipeline() {
               />
             </div>
 
+            {/* 5. Produto */}
             <div className="space-y-2">
               <Label>Produto</Label>
               <CommandSelect
@@ -1056,6 +1052,7 @@ export default function CrmPipeline() {
               />
             </div>
 
+            {/* 6. Valor */}
             <div className="space-y-2">
               <Label>Valor</Label>
               <MoneyInput
@@ -1066,6 +1063,24 @@ export default function CrmPipeline() {
               />
             </div>
 
+            {/* 7. Fase */}
+            <div className="space-y-2">
+              <Label>Fase</Label>
+              <NativeSelect
+                value={form.etapa}
+                onChange={(event) => setForm((prev) => ({ ...prev, etapa: event.target.value as EtapaKanban }))}
+                className="h-10 rounded-md border px-3"
+                disabled={!canWrite || saving}
+              >
+                {ETAPAS.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+
+            {/* 9. Responsável */}
             <div className="space-y-2">
               <Label>Responsável interno</Label>
               <CommandSelect
@@ -1079,20 +1094,20 @@ export default function CrmPipeline() {
                 maxVisibleOptions={7}
               />
             </div>
+
+            {/* 10. Cidade (do cliente, somente leitura) */}
             <div className="space-y-2">
-              <Label>Centro de custo</Label>
-              <CommandSelect
-                value={form.area_id}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, area_id: value }))}
-                options={areasOptions}
-                placeholder="Selecione o centro de custo"
-                searchPlaceholder="Buscar área..."
-                emptyText="Nenhuma área encontrada."
-                disabled={saving}
-                maxVisibleOptions={7}
-              />
+              <Label>Cidade</Label>
+              <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
+                {[clientesInfo[form.cliente_id]?.cidade, clientesInfo[form.cliente_id]?.estado].filter(Boolean).join(' / ') || '— (definida no cadastro do cliente)'}
+              </div>
             </div>
           </div>
+
+          {/* 8. Temperatura de fechamento — ajustável pela barra no card */}
+          <p className="text-xs text-ink-mute">
+            🌡️ Temperatura de fechamento: ajuste pela barra de 0–100% no card{form.id ? '' : ' (após salvar)'}.
+          </p>
 
           <div className="space-y-2">
             <Label>Observações</Label>
