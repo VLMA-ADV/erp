@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.11.0'
+export const APP_VERSION = '1.12.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.12.0',
+    date: '24/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '💰',
+        title: 'Dashboard de Despesas',
+        desc: 'Resumo no topo de Despesas: lançado hoje, na semana e no mês, total do período, e quebras por cliente e por caso. Com filtros de mês e cliente, mantendo a lista existente.',
+      },
+    ],
+  },
+  {
     version: '1.11.0',
     date: '23/06/2026',
-    destaque: true,
     items: [
       {
         icon: '📑',
@@ -81,7 +92,6 @@ const CHANGELOG: Release[] = [
   {
     version: '1.7.0',
     date: '19/06/2026',
-    destaque: true,
     items: [
       {
         icon: '📈',
