@@ -92,7 +92,6 @@ const CHANGELOG: Release[] = [
   {
     version: '1.7.0',
     date: '19/06/2026',
-    destaque: true,
     items: [
       {
         icon: '📈',
