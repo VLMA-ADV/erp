@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DespesasList from '@/components/despesas/despesas-list'
+import DespesasDashboard from '@/components/despesas/despesas-dashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,9 @@ export default async function DespesasPage() {
         <h1 className="mt-2 display-lg text-ink">Despesas</h1>
         <p className="mt-2 text-sm text-ink-mute">Lançamentos por cliente e caso, com categoria, descrição e arquivo.</p>
       </header>
+      <div className="mb-8">
+        <DespesasDashboard />
+      </div>
       <DespesasList />
     </div>
   )
