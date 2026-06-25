@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.12.0'
+export const APP_VERSION = '1.13.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.13.0',
+    date: '25/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '⏱️',
+        title: 'Gestão de horas (sócios e coordenadores)',
+        desc: 'No Timesheet, sócios e coordenadores veem um painel da equipe do seu centro de custo: minhas horas, horas da equipe, distribuição por pessoa, cliente e caso, e projeção de faturamento (horas lançadas e aprovadas × valor/hora do caso). Com filtros de mês e cliente.',
+      },
+    ],
+  },
+  {
     version: '1.12.0',
     date: '24/06/2026',
-    destaque: true,
     items: [
       {
         icon: '💰',
