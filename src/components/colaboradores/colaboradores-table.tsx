@@ -20,6 +20,7 @@ interface Colaborador {
   } | null
   foto_url?: string | null
   salario?: number | null
+  eh_coordenador?: boolean
 }
 
 function initials(nome: string) {
@@ -76,6 +77,38 @@ export default function ColaboradoresTable({
       }
       reader.onerror = reject
     })
+
+  const [savingCoordId, setSavingCoordId] = useState<string | null>(null)
+
+  const toggleCoordenador = async (colaborador: Colaborador) => {
+    try {
+      setSavingCoordId(colaborador.id)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-colaborador-coordenador`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          ...(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY } : {}),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ colaborador_id: colaborador.id, eh_coordenador: !colaborador.eh_coordenador }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao atualizar coordenador')
+        return
+      }
+      success(colaborador.eh_coordenador ? 'Removido como coordenador' : 'Marcado como coordenador')
+      onRefresh()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao atualizar coordenador')
+    } finally {
+      setSavingCoordId(null)
+    }
+  }
 
   const handleFotoSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -174,6 +207,9 @@ export default function ColaboradoresTable({
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Salário
               </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Coordenador
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
@@ -229,6 +265,16 @@ export default function ColaboradoresTable({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-tabular text-gray-700">
                   {formatSalario(colaborador.salario)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-center">
+                  <input
+                    type="checkbox"
+                    checked={!!colaborador.eh_coordenador}
+                    onChange={() => void toggleCoordenador(colaborador)}
+                    disabled={!canEdit || savingCoordId === colaborador.id}
+                    title="Coordenador do centro de custo"
+                    className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
+                  />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
