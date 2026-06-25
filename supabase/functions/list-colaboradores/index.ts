@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
       area_id: item.area_id ?? null,
       area_nome: item.area_nome ?? null,
       adicional: item.adicional ?? null,
+      eh_coordenador: item.eh_coordenador ?? false,
     })) || [];
 
     if (queryError) {

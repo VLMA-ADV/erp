@@ -22,6 +22,7 @@ interface Colaborador {
   } | null
   foto_url?: string | null
   salario?: number | null
+  eh_coordenador?: boolean
 }
 
 interface Area {
