@@ -20,8 +20,10 @@ import SolicitacaoContratoFormFields, { type PendingSolicitacaoAnexo } from '@/c
 
 type EtapaKanban =
   | 'prospeccao'
+  | 'em_standby'
   | 'proposta_solicitada'
   | 'proposta_enviada'
+  | 'exito_projetado'
   | 'conversao'
   | 'negada'
   | 'suspensa'
@@ -51,6 +53,11 @@ interface PipelineCard {
   cidade: string | null
   estado: string | null
   area_id: string | null
+  data_card: string | null
+  valor_global: number
+  forma_pagamento: string | null
+  valor_caixa_mes: number
+  valor_futuro_projetado: number
   observacoes: string
   etapa: EtapaKanban
   ordem: number
@@ -76,6 +83,11 @@ interface FormState {
   area_id: string
   observacoes: string
   etapa: EtapaKanban
+  data_card: string
+  valor_global: string
+  forma_pagamento: string
+  valor_caixa_mes: string
+  valor_futuro_projetado: string
 }
 
 interface NewAnexo {
@@ -86,8 +98,10 @@ interface NewAnexo {
 
 const ETAPAS: Array<{ key: EtapaKanban; label: string }> = [
   { key: 'prospeccao', label: 'Prospecção' },
+  { key: 'em_standby', label: 'Em standby' },
   { key: 'proposta_solicitada', label: 'Proposta solicitada' },
   { key: 'proposta_enviada', label: 'Proposta enviada' },
+  { key: 'exito_projetado', label: 'Êxito/projetado' },
   { key: 'conversao', label: 'Conversão' },
   { key: 'negada', label: 'Negada' },
   { key: 'suspensa', label: 'Suspensa' },
@@ -102,6 +116,11 @@ const emptyForm: FormState = {
   area_id: '',
   observacoes: '',
   etapa: 'prospeccao',
+  data_card: '',
+  valor_global: '',
+  forma_pagamento: '',
+  valor_caixa_mes: '',
+  valor_futuro_projetado: '',
 }
 
 function tempColor(pct: number | null | undefined) {
@@ -172,6 +191,7 @@ export default function CrmPipeline() {
   const [areas, setAreas] = useState<OptionItem[]>([])
 
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [filterMonth, setFilterMonth] = useState('')
   const [form, setForm] = useState<FormState>(emptyForm)
   const [solicitacaoOpen, setSolicitacaoOpen] = useState(false)
   const [solicitacaoSubmitting, setSolicitacaoSubmitting] = useState(false)
@@ -389,14 +409,19 @@ export default function CrmPipeline() {
   const cardsByEtapa = useMemo(() => {
     const byEtapa: Record<EtapaKanban, PipelineCard[]> = {
       prospeccao: [],
+      em_standby: [],
       proposta_solicitada: [],
       proposta_enviada: [],
+      exito_projetado: [],
       conversao: [],
       negada: [],
       suspensa: [],
     }
 
-    for (const card of cards) {
+    const filtrados = filterMonth
+      ? cards.filter((c) => (c.created_at || '').slice(0, 7) === filterMonth)
+      : cards
+    for (const card of filtrados) {
       byEtapa[card.etapa]?.push(card)
     }
 
@@ -408,7 +433,17 @@ export default function CrmPipeline() {
     }
 
     return byEtapa
-  }, [cards])
+  }, [cards, filterMonth])
+
+  const monthOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = [{ value: '', label: 'Todos os meses' }]
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      opts.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) })
+    }
+    return opts
+  }, [])
 
   const totalValor = useMemo(() => cards.reduce((acc, card) => acc + Number(card.valor || 0), 0), [cards])
 
@@ -461,6 +496,11 @@ export default function CrmPipeline() {
       area_id: card.area_id || '',
       observacoes: card.observacoes || '',
       etapa: card.etapa,
+      data_card: card.data_card || '',
+      valor_global: card.valor_global ? String(card.valor_global) : '',
+      forma_pagamento: card.forma_pagamento || '',
+      valor_caixa_mes: card.valor_caixa_mes ? String(card.valor_caixa_mes) : '',
+      valor_futuro_projetado: card.valor_futuro_projetado ? String(card.valor_futuro_projetado) : '',
     })
     setExistingAnexos(card.anexos || [])
     setRemoveAnexoIds([])
@@ -668,6 +708,11 @@ export default function CrmPipeline() {
         area_id: form.area_id || null,
         observacoes: form.observacoes || '',
         etapa: form.etapa,
+        data_card: form.data_card || '',
+        valor_global: form.valor_global || '0',
+        forma_pagamento: form.forma_pagamento || '',
+        valor_caixa_mes: form.valor_caixa_mes || '0',
+        valor_futuro_projetado: form.valor_futuro_projetado || '0',
         anexos: anexosPayload,
         remove_anexo_ids: removeAnexoIds,
       }
@@ -795,7 +840,17 @@ export default function CrmPipeline() {
           <h2 className="text-lg font-semibold text-ink">Pipeline de CRM</h2>
           <p className="text-sm text-ink-mute">Total de cards: {cards.length} • Valor potencial: {formatMoney(totalValor)}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <NativeSelect
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="h-9 rounded-md border px-2 text-sm capitalize"
+            title="Filtrar por mês de cadastro do card"
+          >
+            {monthOptions.map((m) => (
+              <option key={m.value || 'all'} value={m.value}>{m.label}</option>
+            ))}
+          </NativeSelect>
           <Button variant="outline" onClick={() => void loadAll()} disabled={loading}>
             Atualizar
           </Button>
@@ -820,7 +875,7 @@ export default function CrmPipeline() {
       ) : null}
 
       <div className="overflow-x-auto pb-2">
-        <div className="grid min-w-[1420px] grid-cols-6 gap-4">
+        <div className="grid min-w-[1900px] grid-cols-8 gap-4">
           {ETAPAS.map((etapa) => {
             const etapaCards = cardsByEtapa[etapa.key] || []
             return (
@@ -867,7 +922,11 @@ export default function CrmPipeline() {
                       <div className="space-y-1 text-xs text-ink-mute">
                         <p className="truncate">🏢 {areas.find((a) => a.id === card.area_id)?.nome || 'Sem centro de custo'}</p>
                         <p className="truncate">🧩 {[card.servico_nome, card.produto_nome].filter(Boolean).join(' • ') || 'Sem serviço/produto'}</p>
+                        {card.data_card ? <p className="truncate">📅 {new Date(card.data_card + 'T00:00:00').toLocaleDateString('pt-BR')}</p> : null}
                         <p className="font-medium text-ink">{formatMoney(card.valor)}</p>
+                        {card.valor_global ? <p className="truncate">Global: {formatMoney(card.valor_global)} {card.forma_pagamento ? `· ${card.forma_pagamento === 'a_vista' ? 'à vista' : 'parcelado'}` : ''}</p> : null}
+                        {card.valor_caixa_mes ? <p className="truncate">Caixa no mês: {formatMoney(card.valor_caixa_mes)}</p> : null}
+                        {card.valor_futuro_projetado ? <p className="truncate">Futuro projetado: {formatMoney(card.valor_futuro_projetado)}</p> : null}
 
                         <div>
                           <div className="flex items-center justify-between">
@@ -1061,6 +1120,45 @@ export default function CrmPipeline() {
                 placeholder="0,00"
                 disabled={saving}
               />
+            </div>
+
+            {/* Data do card */}
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <Input
+                type="date"
+                value={form.data_card}
+                onChange={(e) => setForm((prev) => ({ ...prev, data_card: e.target.value }))}
+                disabled={saving}
+              />
+            </div>
+
+            {/* Valor global */}
+            <div className="space-y-2">
+              <Label>Valor global</Label>
+              <MoneyInput value={form.valor_global} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_global: v }))} placeholder="0,00" disabled={saving} />
+            </div>
+
+            {/* Forma de pagamento */}
+            <div className="space-y-2">
+              <Label>Forma de pagamento</Label>
+              <NativeSelect value={form.forma_pagamento} onChange={(e) => setForm((prev) => ({ ...prev, forma_pagamento: e.target.value }))} className="h-10 rounded-md border px-3" disabled={saving}>
+                <option value="">—</option>
+                <option value="a_vista">À vista</option>
+                <option value="parcelado">Parcelado</option>
+              </NativeSelect>
+            </div>
+
+            {/* Valor em caixa no mês */}
+            <div className="space-y-2">
+              <Label>Valor em caixa no mês</Label>
+              <MoneyInput value={form.valor_caixa_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_caixa_mes: v }))} placeholder="0,00" disabled={saving} />
+            </div>
+
+            {/* Valor futuro projetado */}
+            <div className="space-y-2">
+              <Label>Valor futuro projetado</Label>
+              <MoneyInput value={form.valor_futuro_projetado} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_futuro_projetado: v }))} placeholder="0,00" disabled={saving} />
             </div>
 
             {/* 7. Fase */}
