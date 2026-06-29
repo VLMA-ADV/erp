@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.13.0'
+export const APP_VERSION = '1.14.0'
 
 interface ChangeItem {
   icon: string
@@ -19,9 +19,25 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.14.0',
+    date: '29/06/2026',
+    destaque: true,
+    items: [
+      {
+        icon: '🗂️',
+        title: 'CRM: novos campos e colunas',
+        desc: 'Card de oportunidade ganhou data, valor global, forma de pagamento (à vista/parcelado), valor em caixa no mês e valor futuro projetado. Duas novas colunas no funil: "Em standby" e "Êxito/projetado".',
+      },
+      {
+        icon: '🗓️',
+        title: 'CRM: filtro de mês',
+        desc: 'Filtro de mês no topo do CRM (pela data de cadastro do card) para focar nas oportunidades do período.',
+      },
+    ],
+  },
+  {
     version: '1.13.0',
     date: '25/06/2026',
-    destaque: true,
     items: [
       {
         icon: '⏱️',
