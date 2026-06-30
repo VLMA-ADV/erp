@@ -4,95 +4,95 @@
 
 @layer base {
   :root {
-    /* Surfaces (Stripe canvas/canvas-soft/canvas-cream) */
-    --background: 0 0% 100%;             /* #ffffff canvas */
+    /* VLMA — Surfaces (base cinza/branco do brandbook) */
+    --background: 0 0% 100%;             /* #ffffff */
     --canvas: 0 0% 100%;
-    --canvas-soft: 214 50% 97%;          /* #f6f9fc cool off-white */
-    --canvas-cream: 38 67% 90%;          /* #f5e9d4 warm cream band */
-    --foreground: 212 64% 14%;           /* #0d253d ink */
+    --canvas-soft: 0 0% 96%;             /* #f5f5f5 cinza base neutro */
+    --canvas-cream: 38 100% 94%;         /* #fff3e0 banda laranja suave */
+    --foreground: 280 27% 11%;           /* #1E1423 ink (complementar) */
     --card: 0 0% 100%;
-    --card-foreground: 212 64% 14%;
+    --card-foreground: 280 27% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 212 64% 14%;
+    --popover-foreground: 280 27% 11%;
 
-    /* Ink scale (texto) */
-    --ink: 212 64% 14%;                  /* #0d253d */
-    --ink-secondary: 213 35% 24%;        /* #273951 */
-    --ink-mute: 217 16% 47%;             /* #64748d helper/caption */
+    /* Ink scale (texto) — base #1E1423 */
+    --ink: 280 27% 11%;                  /* #1E1423 */
+    --ink-secondary: 280 13% 28%;        /* títulos/labels secundários */
+    --ink-mute: 280 6% 48%;              /* helper/caption */
 
-    /* Primary = Stripe indigo elétrico (#533afd) — CTA assinatura */
-    --primary: 247 98% 61%;              /* #533afd */
-    --primary-foreground: 0 0% 100%;
-    --primary-deep: 244 67% 52%;         /* #4434d4 hover */
-    --primary-press: 242 53% 36%;        /* #2e2b8c pressed */
-    --primary-soft-bg: 240 92% 86%;      /* #b9b9f9 soft pill bg */
-    --primary-soft-fg: 244 67% 52%;      /* #4434d4 soft pill text */
+    /* Primary = laranja VLMA (#FF9900) — texto ESCURO p/ contraste AA */
+    --primary: 36 100% 50%;              /* #FF9900 */
+    --primary-foreground: 280 27% 11%;   /* #1E1423 (escuro sobre laranja) */
+    --primary-deep: 36 100% 45%;         /* hover */
+    --primary-press: 33 100% 40%;        /* pressed */
+    --primary-soft-bg: 40 100% 92%;      /* #fff1d6 pill bg */
+    --primary-soft-fg: 33 100% 26%;      /* #854f0b pill text */
 
-    /* Brand dark (featured surfaces, sidebar fundo) */
-    --brand-dark: 237 49% 22%;           /* #1c1e54 */
+    /* Brand dark (sidebar/superfícies featured) */
+    --brand-dark: 280 27% 11%;           /* #1E1423 */
 
-    /* Secondary = canvas-soft (botão neutro sobre claro) */
-    --secondary: 214 50% 97%;
-    --secondary-foreground: 213 35% 24%;
+    /* Secondary = cinza base neutro */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 280 13% 28%;
 
-    /* Muted = canvas-soft com texto helper */
-    --muted: 214 50% 97%;
-    --muted-foreground: 217 16% 47%;
+    /* Muted */
+    --muted: 0 0% 96%;
+    --muted-foreground: 280 6% 48%;
 
-    /* Accent = teal-navy sutil */
-    --accent: 199 56% 25%;
+    /* Accent = escuro complementar sutil */
+    --accent: 280 27% 11%;
     --accent-foreground: 0 0% 100%;
 
-    /* Destructive = ruby Stripe (#ea2261) */
-    --destructive: 343 81% 53%;
+    /* Destructive = vermelho VLMA (#FF3333) */
+    --destructive: 0 100% 60%;           /* #FF3333 */
     --destructive-foreground: 0 0% 100%;
 
-    /* Borders (hairline + hairline-input) */
-    --border: 214 23% 91%;               /* #e3e8ee */
-    --hairline: 214 23% 91%;
-    --input: 210 47% 76%;                /* #a8c3de form border */
-    --hairline-input: 210 47% 76%;
-    --ring: 247 98% 61%;                 /* focus = primary indigo */
+    /* Borders (hairline neutro) */
+    --border: 0 0% 90%;                  /* #e5e5e5 */
+    --hairline: 0 0% 90%;
+    --input: 0 0% 83%;                   /* #d4d4d4 form border */
+    --hairline-input: 0 0% 83%;
+    --ring: 36 100% 50%;                 /* focus = laranja */
 
-    --radius: 0.75rem;                   /* 12px (Stripe rounded.lg para cards) */
+    --radius: 0.75rem;                   /* 12px — cantos arredondados da marca */
   }
 
   .dark {
-    --background: 214 50% 6%;
-    --canvas: 214 50% 6%;
-    --canvas-soft: 213 35% 12%;
-    --canvas-cream: 38 30% 20%;
+    --background: 280 27% 11%;           /* #1E1423 */
+    --canvas: 280 27% 11%;
+    --canvas-soft: 280 20% 16%;
+    --canvas-cream: 33 40% 20%;
     --foreground: 0 0% 98%;
-    --card: 214 50% 6%;
+    --card: 280 27% 13%;
     --card-foreground: 0 0% 98%;
-    --popover: 214 50% 6%;
+    --popover: 280 27% 13%;
     --popover-foreground: 0 0% 98%;
 
     --ink: 0 0% 98%;
-    --ink-secondary: 214 23% 80%;
-    --ink-mute: 217 16% 60%;
+    --ink-secondary: 280 8% 80%;
+    --ink-mute: 280 6% 62%;
 
-    --primary: 247 98% 68%;
-    --primary-foreground: 0 0% 100%;
-    --primary-deep: 244 67% 60%;
-    --primary-press: 242 53% 45%;
-    --primary-soft-bg: 240 50% 25%;
-    --primary-soft-fg: 240 92% 86%;
-    --brand-dark: 237 49% 18%;
+    --primary: 36 100% 55%;
+    --primary-foreground: 280 27% 11%;   /* escuro sobre laranja */
+    --primary-deep: 36 100% 50%;
+    --primary-press: 33 100% 44%;
+    --primary-soft-bg: 33 60% 22%;
+    --primary-soft-fg: 40 100% 80%;
+    --brand-dark: 280 30% 9%;
 
-    --secondary: 213 35% 14%;
+    --secondary: 280 18% 18%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 213 35% 14%;
-    --muted-foreground: 217 16% 60%;
-    --accent: 199 56% 35%;
+    --muted: 280 18% 18%;
+    --muted-foreground: 280 6% 62%;
+    --accent: 280 18% 22%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 343 70% 45%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 213 35% 18%;
-    --hairline: 213 35% 18%;
-    --input: 213 35% 22%;
-    --hairline-input: 213 35% 22%;
-    --ring: 247 98% 68%;
+    --destructive: 0 90% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 280 16% 22%;
+    --hairline: 280 16% 22%;
+    --input: 280 16% 26%;
+    --hairline-input: 280 16% 26%;
+    --ring: 36 100% 55%;
   }
 }
 
@@ -114,13 +114,17 @@
     font-weight: 400;
   }
 
-  /* Stripe-style display: weight 300 + negative tracking */
-  h1, .display-xxl { font-size: 3.5rem; font-weight: 300; line-height: 1.03; letter-spacing: -0.0875rem; }
-  h2, .display-xl  { font-size: 3rem;   font-weight: 300; line-height: 1.15; letter-spacing: -0.06rem;   }
-  h3, .display-lg  { font-size: 2rem;   font-weight: 300; line-height: 1.10; letter-spacing: -0.04rem;  }
-  h4, .display-md  { font-size: 1.625rem; font-weight: 300; line-height: 1.12; letter-spacing: -0.016rem; }
-  h5               { font-size: 1.375rem; font-weight: 300; line-height: 1.10; letter-spacing: -0.014rem; }
-  h6               { font-size: 1.25rem;  font-weight: 300; line-height: 1.40; letter-spacing: -0.012rem; }
+  /* VLMA display: Darker Grotesque (títulos/marca) — corpo segue Inter */
+  h1, h2, h3, h4, h5, h6,
+  .display-xxl, .display-xl, .display-lg, .display-md {
+    font-family: var(--font-display), var(--font-inter), sans-serif;
+  }
+  h1, .display-xxl { font-size: 3.5rem; font-weight: 700; line-height: 1.0;  letter-spacing: -0.02rem; }
+  h2, .display-xl  { font-size: 3rem;   font-weight: 700; line-height: 1.05; letter-spacing: -0.02rem; }
+  h3, .display-lg  { font-size: 2.1rem; font-weight: 700; line-height: 1.08; letter-spacing: -0.01rem; }
+  h4, .display-md  { font-size: 1.7rem; font-weight: 700; line-height: 1.1;  letter-spacing: -0.01rem; }
+  h5               { font-size: 1.4rem; font-weight: 600; line-height: 1.12; }
+  h6               { font-size: 1.25rem; font-weight: 600; line-height: 1.35; }
 }
 
 @layer utilities {
@@ -136,15 +140,13 @@
     color: hsl(var(--ink-mute));
   }
 
-  /* Gradient mesh atmosphere — assinatura visual Stripe.
-     Cream → sherbet orange → lavanda → indigo → ruby, no terço superior. */
+  /* Atmosfera VLMA — laranja → vermelho → cinza, suave, no topo. */
   .gradient-mesh {
     background-image:
-      radial-gradient(at 5% 0%, hsl(38 80% 88% / 0.95) 0px, transparent 55%),
-      radial-gradient(at 28% 0%, hsl(24 90% 84% / 0.85) 0px, transparent 55%),
-      radial-gradient(at 52% 0%, hsl(265 65% 90% / 0.85) 0px, transparent 55%),
-      radial-gradient(at 76% 0%, hsl(247 95% 80% / 0.75) 0px, transparent 55%),
-      radial-gradient(at 100% 0%, hsl(343 81% 78% / 0.75) 0px, transparent 55%);
+      radial-gradient(at 8% 0%, hsl(40 100% 90% / 0.9) 0px, transparent 55%),
+      radial-gradient(at 38% 0%, hsl(36 100% 85% / 0.8) 0px, transparent 55%),
+      radial-gradient(at 70% 0%, hsl(0 100% 88% / 0.7) 0px, transparent 55%),
+      radial-gradient(at 100% 0%, hsl(0 0% 90% / 0.7) 0px, transparent 55%);
     background-repeat: no-repeat;
     background-size: 100% 60vh;
     background-position: top center;

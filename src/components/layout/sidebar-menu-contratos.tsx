@@ -22,7 +22,7 @@ export default function SidebarMenuContratos({
       href="/contratos"
       className={cn(
         'flex w-full items-center px-4 py-2 text-sm font-medium rounded-md transition-colors',
-        isActive ? 'bg-primary text-primary-foreground' : 'text-gray-700 hover:bg-gray-100',
+        isActive ? 'bg-primary text-primary-foreground' : 'text-ink-secondary hover:bg-secondary',
       )}
     >
       Contratos

@@ -249,7 +249,7 @@ export default function NovoLancamentoForm() {
         </div>
 
         <div className="flex justify-end gap-2">
-          <button onClick={() => router.push('/financeiro/contas-a-pagar')} className="rounded-md border border-hairline px-4 py-2 text-sm hover:bg-gray-50">Cancelar</button>
+          <button onClick={() => router.push('/financeiro/contas-a-pagar')} className="rounded-md border border-hairline px-4 py-2 text-sm hover:bg-canvas-soft">Cancelar</button>
           <button onClick={submit} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {saving ? 'Salvando…' : 'Salvar lançamento'}
           </button>

@@ -382,7 +382,7 @@ export default function PrestadorForm({
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 rounded bg-gray-200"></div>
+            <div key={i} className="h-10 rounded bg-secondary"></div>
           ))}
         </div>
       </div>
@@ -503,7 +503,7 @@ export default function PrestadorForm({
                         setForm({ ...form, servico_recorrente: e.target.checked })
                       }
                     />
-                    <span className="text-sm text-gray-700">Sim</span>
+                    <span className="text-sm text-ink-secondary">Sim</span>
                   </div>
                 </div>
                 {form.servico_recorrente && (
@@ -543,7 +543,7 @@ export default function PrestadorForm({
                     id="rua"
                     value={form.rua}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, rua: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -562,7 +562,7 @@ export default function PrestadorForm({
                     id="cidade"
                     value={form.cidade}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, cidade: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -574,7 +574,7 @@ export default function PrestadorForm({
                     value={form.estado}
                     maxLength={2}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, estado: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
                   />
@@ -645,7 +645,7 @@ export default function PrestadorForm({
                     id="resp_rua"
                     value={form.resp_rua}
                     readOnly={respCepPreenchido}
-                    className={respCepPreenchido ? 'cursor-not-allowed bg-gray-100' : ''}
+                    className={respCepPreenchido ? 'cursor-not-allowed bg-secondary' : ''}
                     onChange={(e) => setForm({ ...form, resp_rua: e.target.value })}
                     placeholder={respCepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -664,7 +664,7 @@ export default function PrestadorForm({
                     id="resp_cidade"
                     value={form.resp_cidade}
                     readOnly={respCepPreenchido}
-                    className={respCepPreenchido ? 'cursor-not-allowed bg-gray-100' : ''}
+                    className={respCepPreenchido ? 'cursor-not-allowed bg-secondary' : ''}
                     onChange={(e) => setForm({ ...form, resp_cidade: e.target.value })}
                     placeholder={respCepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -676,7 +676,7 @@ export default function PrestadorForm({
                     maxLength={2}
                     value={form.resp_estado}
                     readOnly={respCepPreenchido}
-                    className={respCepPreenchido ? 'cursor-not-allowed bg-gray-100' : ''}
+                    className={respCepPreenchido ? 'cursor-not-allowed bg-secondary' : ''}
                     onChange={(e) => setForm({ ...form, resp_estado: e.target.value.toUpperCase() })}
                     placeholder={respCepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
                   />

@@ -37,7 +37,7 @@ export default function RolesTable({
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-gray-200 rounded"></div>
+            <div key={i} className="h-12 bg-secondary rounded"></div>
           ))}
         </div>
       </div>
@@ -47,7 +47,7 @@ export default function RolesTable({
   if (roles.length === 0) {
     return (
       <div className="rounded-md border p-8 text-center">
-        <p className="text-gray-500">Nenhuma role encontrada</p>
+        <p className="text-ink-mute">Nenhuma role encontrada</p>
       </div>
     )
   }
@@ -56,31 +56,31 @@ export default function RolesTable({
     <div className="space-y-4">
       <div className="rounded-md border overflow-x-auto">
         <Table className="w-full min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-canvas-soft">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Nome
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Descrição
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Status
               </th>
               {hasAnyAction && (
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-ink-mute uppercase tracking-wider">
                   Ações
                 </th>
               )}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-white divide-y divide-hairline">
             {roles.map((role) => (
-              <tr key={role.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+              <tr key={role.id} className="hover:bg-canvas-soft">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink">
                   {role.nome}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
+                <td className="px-6 py-4 text-sm text-ink-mute">
                   {role.descricao || '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">

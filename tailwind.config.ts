@@ -19,6 +19,7 @@ const config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-inter)", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",

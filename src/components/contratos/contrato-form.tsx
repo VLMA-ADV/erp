@@ -1856,7 +1856,7 @@ export default function ContratoForm({
   const getCarteiraBadge = (caso: CasoPayload | undefined) => {
     if (caso?.parte_de_carteira_id) {
       return (
-        <Badge className="ml-1 bg-white text-[10px] font-normal text-gray-700">
+        <Badge className="ml-1 bg-white text-[10px] font-normal text-ink-secondary">
           Processo da carteira
         </Badge>
       )
@@ -1864,7 +1864,7 @@ export default function ContratoForm({
     const count = caso?.processos_carteira_count
     if (typeof count === 'number' && count > 0) {
       return (
-        <Badge className="ml-1 bg-white text-[10px] font-normal text-gray-700">
+        <Badge className="ml-1 bg-white text-[10px] font-normal text-ink-secondary">
           Carteira ({count})
         </Badge>
       )
@@ -2577,7 +2577,7 @@ export default function ContratoForm({
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 rounded bg-gray-200" />
+            <div key={i} className="h-10 rounded bg-secondary" />
           ))}
         </div>
       </div>
@@ -3927,7 +3927,7 @@ export default function ContratoForm({
                             <div className="space-y-2">
                               <Label>Habilitar limites?</Label>
                               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <label className="flex items-center gap-2 text-sm text-ink-secondary">
                                   <input
                                     type="checkbox"
                                     checked={capMinEnabled}
@@ -3938,11 +3938,11 @@ export default function ContratoForm({
                                       if (!enabled) updateCurrentRegra('cap_min', '')
                                     }}
                                     disabled={isReadOnly}
-                                    className="h-4 w-4 rounded border-gray-300"
+                                    className="h-4 w-4 rounded border-hairline"
                                   />
                                   Ativar limite inferior
                                 </label>
-                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                <label className="flex items-center gap-2 text-sm text-ink-secondary">
                                   <input
                                     type="checkbox"
                                     checked={capMaxEnabled}
@@ -3953,7 +3953,7 @@ export default function ContratoForm({
                                       if (!enabled) updateCurrentRegra('cap_max', '')
                                     }}
                                     disabled={isReadOnly}
-                                    className="h-4 w-4 rounded border-gray-300"
+                                    className="h-4 w-4 rounded border-hairline"
                                   />
                                   Ativar limite superior
                                 </label>
@@ -4238,7 +4238,7 @@ export default function ContratoForm({
                               </div>
                               <div className="max-h-48 overflow-y-auto rounded border bg-white">
                                 <table className="w-full text-xs">
-                                  <thead className="sticky top-0 bg-gray-50">
+                                  <thead className="sticky top-0 bg-canvas-soft">
                                     <tr>
                                       <th className="px-2 py-1 text-left">Nome do caso</th>
                                     </tr>

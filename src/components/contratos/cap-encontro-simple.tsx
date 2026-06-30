@@ -139,7 +139,7 @@ export default function CapEncontroSimple({
           <div className="space-y-2">
             <Label>Habilitar limites?</Label>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 text-sm text-ink-secondary">
                 <input
                   type="checkbox"
                   checked={capMinEnabled}
@@ -150,11 +150,11 @@ export default function CapEncontroSimple({
                     if (!enabled) onRegraChange('cap_min', '')
                   }}
                   disabled={isReadOnly}
-                  className="h-4 w-4 rounded border-gray-300"
+                  className="h-4 w-4 rounded border-hairline"
                 />
                 Ativar limite inferior
               </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 text-sm text-ink-secondary">
                 <input
                   type="checkbox"
                   checked={capMaxEnabled}
@@ -165,7 +165,7 @@ export default function CapEncontroSimple({
                     if (!enabled) onRegraChange('cap_max', '')
                   }}
                   disabled={isReadOnly}
-                  className="h-4 w-4 rounded border-gray-300"
+                  className="h-4 w-4 rounded border-hairline"
                 />
                 Ativar limite superior
               </label>

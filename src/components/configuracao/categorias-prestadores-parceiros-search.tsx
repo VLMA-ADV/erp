@@ -10,7 +10,7 @@ export default function CategoriasPrestadoresParceirosSearch({
 }) {
   return (
     <div className="relative w-full max-w-md">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
       <Input
         placeholder="Buscar categoria por nome..."
         className="pl-9"

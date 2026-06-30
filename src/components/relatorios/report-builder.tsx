@@ -433,7 +433,7 @@ export default function ReportBuilder({ userId }: ReportBuilderProps) {
                       type="checkbox"
                       checked={selectedColumns.includes(col.key)}
                       onChange={() => toggleColumn(col.key)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-hairline text-primary focus:ring-primary"
                     />
                     {col.label}
                   </label>

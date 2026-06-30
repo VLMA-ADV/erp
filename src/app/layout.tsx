@@ -1,11 +1,19 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Inter, Darker_Grotesque } from "next/font/google"
 import "./globals.css"
 
 const inter = Inter({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600"],
   variable: "--font-inter",
+  display: "swap",
+})
+
+// Tipografia de marca VLMA (títulos/display)
+const darkerGrotesque = Darker_Grotesque({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  variable: "--font-display",
   display: "swap",
 })
 
@@ -20,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR" className={inter.variable}>
+    <html lang="pt-BR" className={`${inter.variable} ${darkerGrotesque.variable}`}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   )

@@ -238,7 +238,7 @@ export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true,
                 </div>
 
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
-                  ℹ️ A operação é idempotente — rodar de novo não duplica os itens já criados.
+                  A operação é idempotente — rodar de novo não duplica os itens já criados.
                 </div>
               </div>
             )}

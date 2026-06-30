@@ -146,34 +146,34 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-800">Histórico de atualizações</h3>
+      <h3 className="text-sm font-semibold text-ink">Histórico de atualizações</h3>
 
       <div
         ref={listRef}
-        className="max-h-64 min-h-[80px] overflow-y-auto rounded-lg border bg-slate-50 p-3 space-y-3"
+        className="max-h-64 min-h-[80px] overflow-y-auto rounded-lg border bg-canvas-soft p-3 space-y-3"
       >
         {loading ? (
-          <p className="text-xs text-slate-500">Carregando mensagens...</p>
+          <p className="text-xs text-ink-mute">Carregando mensagens...</p>
         ) : mensagens.length === 0 ? (
-          <p className="text-xs text-slate-500">Nenhuma mensagem ainda.</p>
+          <p className="text-xs text-ink-mute">Nenhuma mensagem ainda.</p>
         ) : (
           mensagens.map((msg) => (
             <div key={msg.id} className="rounded-md bg-white border p-3 text-sm shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="font-medium text-slate-800 text-xs">
+                <span className="font-medium text-ink text-xs">
                   {msg.autor?.nome_completo || 'Usuário'}
                 </span>
-                <span className="text-xs text-slate-400">{formatDateTime(msg.created_at)}</span>
+                <span className="text-xs text-ink-mute">{formatDateTime(msg.created_at)}</span>
               </div>
-              <p className="whitespace-pre-wrap text-slate-700">{msg.mensagem}</p>
+              <p className="whitespace-pre-wrap text-ink-secondary">{msg.mensagem}</p>
 
               {(msg.lido_at || msg.providencia_at) ? (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {msg.lido_at ? (
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">✓ Lida</span>
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">Lida</span>
                   ) : null}
                   {msg.providencia_at ? (
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">✓ Providência tomada</span>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Providência tomada</span>
                   ) : null}
                 </div>
               ) : null}
@@ -229,7 +229,7 @@ export default function SolicitacaoMensagens({ solicitacaoId }: Props) {
           <span className="ml-1 hidden sm:inline">Enviar atualização</span>
         </Button>
       </div>
-      <p className="text-xs text-slate-400">Ctrl+Enter para enviar</p>
+      <p className="text-xs text-ink-mute">Ctrl+Enter para enviar</p>
     </div>
   )
 }

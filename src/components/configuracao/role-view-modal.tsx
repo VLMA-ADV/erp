@@ -48,28 +48,28 @@ export default function RoleViewModal({
         </DialogHeader>
         <div className="space-y-4 py-4 overflow-y-auto max-h-[calc(90vh-200px)]">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-ink-secondary mb-1">
               Nome
             </label>
-            <p className="text-sm text-gray-900">{role.nome}</p>
+            <p className="text-sm text-ink">{role.nome}</p>
           </div>
           {role.descricao && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-secondary mb-1">
                 Descrição
               </label>
-              <p className="text-sm text-gray-900">{role.descricao}</p>
+              <p className="text-sm text-ink">{role.descricao}</p>
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-ink-secondary mb-2">
               Permissões
             </label>
             {role.role_permissions && role.role_permissions.length > 0 ? (
               <div className="border rounded-lg p-4 max-h-96 overflow-y-auto">
                 {Object.entries(permissionsByCategory).map(([categoria, perms]) => (
                   <div key={categoria} className="mb-4">
-                    <h4 className="font-medium text-sm text-gray-700 mb-2 capitalize">
+                    <h4 className="font-medium text-sm text-ink-secondary mb-2 capitalize">
                       {categoria}
                     </h4>
                     <div className="space-y-1">
@@ -77,11 +77,11 @@ export default function RoleViewModal({
                         <div key={perm.id} className="flex items-center space-x-2 p-2">
                           <CheckSquare className="h-4 w-4 text-green-600" />
                           <div>
-                            <span className="text-sm font-medium text-gray-900">
+                            <span className="text-sm font-medium text-ink">
                               {perm.chave}
                             </span>
                             {perm.descricao && (
-                              <p className="text-xs text-gray-500">{perm.descricao}</p>
+                              <p className="text-xs text-ink-mute">{perm.descricao}</p>
                             )}
                           </div>
                         </div>
@@ -91,7 +91,7 @@ export default function RoleViewModal({
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Nenhuma permissão associada</p>
+              <p className="text-sm text-ink-mute">Nenhuma permissão associada</p>
             )}
           </div>
         </div>

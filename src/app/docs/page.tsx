@@ -546,15 +546,15 @@ const comandos = [
 
 export default function DocsPage() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-canvas-soft text-ink">
       <header className="border-b bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">ERP-VLMA</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-ink-mute">ERP-VLMA</p>
             <h1 className="text-2xl font-bold">Documentação Técnica do Projeto</h1>
-            <p className="mt-1 text-sm text-slate-600">Guia de handover para continuidade do desenvolvimento e operação.</p>
+            <p className="mt-1 text-sm text-ink-secondary">Guia de handover para continuidade do desenvolvimento e operação.</p>
           </div>
-          <div className="text-right text-xs text-slate-500">
+          <div className="text-right text-xs text-ink-mute">
             <p>Rota pública interna: <span className="font-mono">/docs</span></p>
             <p>Atualizado em: 18/03/2026</p>
           </div>
@@ -563,14 +563,14 @@ export default function DocsPage() {
 
       <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[280px_1fr]">
         <aside className="h-fit rounded-xl border bg-white p-4 shadow-sm lg:sticky lg:top-6">
-          <p className="mb-3 text-sm font-semibold text-slate-700">Navegação</p>
+          <p className="mb-3 text-sm font-semibold text-ink-secondary">Navegação</p>
           <nav>
             <ul className="space-y-1">
               {sections.map((section) => (
                 <li key={section.id}>
                   <a
                     href={`#${section.id}`}
-                    className="block rounded-md px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+                    className="block rounded-md px-3 py-2 text-sm text-ink-secondary transition hover:bg-secondary hover:text-ink"
                   >
                     {section.title}
                   </a>
@@ -579,8 +579,8 @@ export default function DocsPage() {
             </ul>
           </nav>
 
-          <div className="mt-6 rounded-lg border bg-slate-50 p-3 text-xs text-slate-600">
-            <p className="font-semibold text-slate-800">Acessos rápidos</p>
+          <div className="mt-6 rounded-lg border bg-canvas-soft p-3 text-xs text-ink-secondary">
+            <p className="font-semibold text-ink">Acessos rápidos</p>
             <p className="mt-1">
               <Link href="/home" className="underline">Dashboard</Link>
               {' · '}
@@ -592,18 +592,18 @@ export default function DocsPage() {
         <main className="space-y-6">
           <section id="visao-geral" className="scroll-mt-24 rounded-xl border bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">Visão Geral</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
+            <p className="mt-3 text-sm leading-6 text-ink-secondary">
               O ERP-VLMA é um sistema para operação jurídica com foco em contratos, casos, timesheet, despesas e faturamento.
               A arquitetura é multi-tenant e baseada em Supabase (Auth, Database, Edge Functions), com frontend em Next.js.
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Objetivo</p>
-                <p className="mt-1 text-sm text-slate-700">Centralizar cadastro, execução operacional e ciclo completo de faturamento.</p>
+              <div className="rounded-lg border bg-canvas-soft p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">Objetivo</p>
+                <p className="mt-1 text-sm text-ink-secondary">Centralizar cadastro, execução operacional e ciclo completo de faturamento.</p>
               </div>
-              <div className="rounded-lg border bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Público interno</p>
-                <p className="mt-1 text-sm text-slate-700">Sócios, advogados, administrativo e estagiários com permissões diferentes.</p>
+              <div className="rounded-lg border bg-canvas-soft p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">Público interno</p>
+                <p className="mt-1 text-sm text-ink-secondary">Sócios, advogados, administrativo e estagiários com permissões diferentes.</p>
               </div>
             </div>
           </section>
@@ -612,7 +612,7 @@ export default function DocsPage() {
             <h2 className="text-xl font-semibold">Arquitetura e Stack</h2>
             <div className="mt-4 overflow-x-auto rounded-lg border">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-canvas-soft text-ink-secondary">
                   <tr>
                     <th className="px-4 py-2 font-semibold">Camada</th>
                     <th className="px-4 py-2 font-semibold">Tecnologia</th>
@@ -621,8 +621,8 @@ export default function DocsPage() {
                 <tbody>
                   {stacks.map((item) => (
                     <tr key={item.label} className="border-t">
-                      <td className="px-4 py-2 font-medium text-slate-800">{item.label}</td>
-                      <td className="px-4 py-2 text-slate-700">{item.value}</td>
+                      <td className="px-4 py-2 font-medium text-ink">{item.label}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{item.value}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -632,16 +632,16 @@ export default function DocsPage() {
 
           <section id="estrutura" className="scroll-mt-24 rounded-xl border bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">Estrutura do Projeto</h2>
-            <p className="mt-3 text-sm text-slate-700">Seções principais para entender rapidamente onde cada responsabilidade fica.</p>
+            <p className="mt-3 text-sm text-ink-secondary">Seções principais para entender rapidamente onde cada responsabilidade fica.</p>
             <div className="mt-4 space-y-3">
               {estrutura.map((item) => (
                 <article key={item.pasta} className="rounded-lg border p-4">
-                  <h3 className="font-mono text-sm font-semibold text-slate-800">{item.pasta}</h3>
-                  <p className="mt-1 text-sm text-slate-700">{item.descricao}</p>
-                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Exemplos</p>
+                  <h3 className="font-mono text-sm font-semibold text-ink">{item.pasta}</h3>
+                  <p className="mt-1 text-sm text-ink-secondary">{item.descricao}</p>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-mute">Exemplos</p>
                   <div className="mt-1 flex flex-wrap gap-2">
                     {item.exemplos.map((exemplo) => (
-                      <span key={exemplo} className="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">
+                      <span key={exemplo} className="rounded bg-secondary px-2 py-1 font-mono text-xs text-ink-secondary">
                         {exemplo}
                       </span>
                     ))}
@@ -653,18 +653,18 @@ export default function DocsPage() {
 
           <section id="banco" className="scroll-mt-24 rounded-xl border bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">Banco de Dados</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
+            <p className="mt-3 text-sm leading-6 text-ink-secondary">
               O banco é PostgreSQL (Supabase) com separação por domínio e validação de tenant/permissão em toda operação.
               Para manutenção, considere <span className="font-mono">supabase/migrations</span> como fonte primária de verdade.
             </p>
-            <p className="mt-2 text-sm text-slate-700">
+            <p className="mt-2 text-sm text-ink-secondary">
               A forma mais rápida de entender o sistema é ler os dados em cadeia:
               <span className="font-semibold"> usuário/tenant {'->'} cliente {'->'} contrato {'->'} caso {'->'} operação {'->'} faturamento</span>.
             </p>
 
-            <div className="mt-4 rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Pilares da modelagem</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            <div className="mt-4 rounded-lg border bg-canvas-soft p-4">
+              <p className="text-sm font-semibold text-ink">Pilares da modelagem</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
                 {bancoPilares.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -672,13 +672,13 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Leitura guiada do fluxo de dados</p>
+              <p className="text-sm font-semibold text-ink">Leitura guiada do fluxo de dados</p>
               <div className="mt-3 space-y-3">
                 {bancoJornadaDados.map((item) => (
-                  <article key={item.etapa} className="rounded-md border bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-800">{item.etapa}</p>
-                    <p className="mt-1 text-sm text-slate-700">{item.descricao}</p>
-                    <p className="mt-1 text-xs text-slate-600">
+                  <article key={item.etapa} className="rounded-md border bg-canvas-soft p-3">
+                    <p className="text-sm font-semibold text-ink">{item.etapa}</p>
+                    <p className="mt-1 text-sm text-ink-secondary">{item.descricao}</p>
+                    <p className="mt-1 text-xs text-ink-secondary">
                       <span className="font-semibold">Impacto:</span> {item.impacto}
                     </p>
                   </article>
@@ -688,7 +688,7 @@ export default function DocsPage() {
 
             <div className="mt-4 overflow-x-auto rounded-lg border">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-canvas-soft text-ink-secondary">
                   <tr>
                     <th className="px-4 py-2 font-semibold">Schema</th>
                     <th className="px-4 py-2 font-semibold">Objetivo</th>
@@ -698,12 +698,12 @@ export default function DocsPage() {
                 <tbody>
                   {schemas.map((schema) => (
                     <tr key={schema.nome} className="border-t align-top">
-                      <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-800">{schema.nome}</td>
-                      <td className="px-4 py-2 text-slate-700">{schema.objetivo}</td>
-                      <td className="px-4 py-2 text-slate-700">
+                      <td className="px-4 py-2 font-mono text-xs font-semibold text-ink">{schema.nome}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{schema.objetivo}</td>
+                      <td className="px-4 py-2 text-ink-secondary">
                         <div className="flex flex-wrap gap-1.5">
                           {schema.tabelas.map((tabela) => (
-                            <span key={tabela} className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs">
+                            <span key={tabela} className="rounded bg-secondary px-2 py-0.5 font-mono text-xs">
                               {tabela}
                             </span>
                           ))}
@@ -716,10 +716,10 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4">
-              <p className="text-sm font-semibold text-slate-800">Núcleo do faturamento</p>
+              <p className="text-sm font-semibold text-ink">Núcleo do faturamento</p>
               <div className="mt-2 overflow-x-auto rounded-lg border">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-canvas-soft text-ink-secondary">
                     <tr>
                       <th className="px-4 py-2 font-semibold">Tabela</th>
                       <th className="px-4 py-2 font-semibold">Função</th>
@@ -729,9 +729,9 @@ export default function DocsPage() {
                   <tbody>
                     {tabelasFaturamento.map((item) => (
                       <tr key={item.tabela} className="border-t align-top">
-                        <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-800">{item.tabela}</td>
-                        <td className="px-4 py-2 text-slate-700">{item.funcao}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-slate-700">{item.campos}</td>
+                        <td className="px-4 py-2 font-mono text-xs font-semibold text-ink">{item.tabela}</td>
+                        <td className="px-4 py-2 text-ink-secondary">{item.funcao}</td>
+                        <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{item.campos}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -740,8 +740,8 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Constraints e índices que evitam regressão financeira</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+              <p className="text-sm font-semibold text-ink">Constraints e índices que evitam regressão financeira</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
                 {constraintsCriticas.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -749,10 +749,10 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Máquinas de estado no banco</p>
+              <p className="text-sm font-semibold text-ink">Máquinas de estado no banco</p>
               <div className="mt-2 overflow-x-auto rounded border">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-canvas-soft text-ink-secondary">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Entidade</th>
                       <th className="px-3 py-2 font-semibold">Fluxo</th>
@@ -762,9 +762,9 @@ export default function DocsPage() {
                   <tbody>
                     {maquinasEstadoBanco.map((item) => (
                       <tr key={item.entidade} className="border-t align-top">
-                        <td className="px-3 py-2 font-semibold text-slate-800">{item.entidade}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-slate-700">{item.fluxo}</td>
-                        <td className="px-3 py-2 text-slate-700">{item.regra}</td>
+                        <td className="px-3 py-2 font-semibold text-ink">{item.entidade}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-ink-secondary">{item.fluxo}</td>
+                        <td className="px-3 py-2 text-ink-secondary">{item.regra}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -772,13 +772,13 @@ export default function DocsPage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Checklist rápido de diagnóstico</p>
+            <div className="mt-4 rounded-lg border bg-canvas-soft p-4">
+              <p className="text-sm font-semibold text-ink">Checklist rápido de diagnóstico</p>
               <div className="mt-2 space-y-2">
                 {checklistDiagnosticoBanco.map((item) => (
                   <div key={item.pergunta} className="rounded-md border bg-white p-3">
-                    <p className="text-sm font-semibold text-slate-800">{item.pergunta}</p>
-                    <p className="mt-1 text-sm text-slate-700">{item.verificar}</p>
+                    <p className="text-sm font-semibold text-ink">{item.pergunta}</p>
+                    <p className="mt-1 text-sm text-ink-secondary">{item.verificar}</p>
                   </div>
                 ))}
               </div>
@@ -787,18 +787,18 @@ export default function DocsPage() {
 
           <section id="apis" className="scroll-mt-24 rounded-xl border bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">APIs e Edge Functions</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
+            <p className="mt-3 text-sm leading-6 text-ink-secondary">
               A aplicação consome principalmente endpoints em <span className="font-mono">/functions/v1/*</span> (Supabase Edge Functions).
               O frontend envia JWT do usuário logado no header <span className="font-mono">Authorization: Bearer &lt;token&gt;</span>.
             </p>
-            <p className="mt-2 text-sm text-slate-700">
+            <p className="mt-2 text-sm text-ink-secondary">
               APIs mapeadas automaticamente do diretório <span className="font-mono">supabase/functions</span>:
               <span className="ml-1 font-semibold">{totalApiCount}</span> endpoints.
             </p>
 
-            <div className="mt-4 rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Pipeline padrão de requisição</p>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+            <div className="mt-4 rounded-lg border bg-canvas-soft p-4">
+              <p className="text-sm font-semibold text-ink">Pipeline padrão de requisição</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-secondary">
                 {apiPipeline.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -809,29 +809,29 @@ export default function DocsPage() {
               {apiSections.map((section) => (
                 <article key={section.key} className="rounded-lg border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-slate-800">{section.titulo}</h3>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
+                    <h3 className="text-sm font-semibold text-ink">{section.titulo}</h3>
+                    <span className="rounded bg-secondary px-2 py-0.5 font-mono text-xs text-ink-secondary">
                       {section.items.length} APIs
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">{section.descricao}</p>
+                  <p className="mt-1 text-sm text-ink-secondary">{section.descricao}</p>
 
                   {section.items.length === 0 ? (
-                    <p className="mt-3 text-xs text-slate-500">Nenhuma API detectada nesta seção.</p>
+                    <p className="mt-3 text-xs text-ink-mute">Nenhuma API detectada nesta seção.</p>
                   ) : (
                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
                       {section.items.map((item) => (
-                        <div key={item.nome} className="rounded-md border bg-slate-50 p-3">
-                          <p className="font-mono text-xs font-semibold text-slate-800">{item.nome}</p>
-                          <p className="mt-1 font-mono text-[11px] text-slate-600">{item.rota}</p>
-                          <p className="mt-2 text-xs text-slate-700">
+                        <div key={item.nome} className="rounded-md border bg-canvas-soft p-3">
+                          <p className="font-mono text-xs font-semibold text-ink">{item.nome}</p>
+                          <p className="mt-1 font-mono text-[11px] text-ink-secondary">{item.rota}</p>
+                          <p className="mt-2 text-xs text-ink-secondary">
                             <span className="font-semibold">Método:</span> {item.metodo}
                           </p>
-                          <p className="mt-1 text-xs text-slate-700">
+                          <p className="mt-1 text-xs text-ink-secondary">
                             <span className="font-semibold">Permissões:</span>{' '}
                             {item.permissoes.length > 0 ? item.permissoes.join(', ') : '-'}
                           </p>
-                          <p className="mt-1 text-xs text-slate-700">
+                          <p className="mt-1 text-xs text-ink-secondary">
                             <span className="font-semibold">RPCs:</span>{' '}
                             {item.rpcs.length > 0 ? item.rpcs.join(', ') : '-'}
                           </p>
@@ -844,8 +844,8 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Observações de operação</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+              <p className="text-sm font-semibold text-ink">Observações de operação</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
                 {apiObservacoes.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -855,33 +855,33 @@ export default function DocsPage() {
 
           <section id="processos" className="scroll-mt-24 rounded-xl border bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">Processos de Negócio</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
+            <p className="mt-3 text-sm leading-6 text-ink-secondary">
               A operação gira em três trilhas conectadas: <span className="font-semibold">Contrato/Caso</span>,
               <span className="font-semibold"> Execução Operacional</span> e <span className="font-semibold">Faturamento</span>.
               O objetivo é manter rastreabilidade do lançamento original até a nota gerada.
             </p>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
+            <p className="mt-2 text-sm leading-6 text-ink-secondary">
               As visões de tela e ações não são fixas por cargo; o sistema usa RBAC por permissão. Por isso, ao onboard de um novo usuário,
               a primeira checagem deve ser sempre o conjunto de permissões aplicado ao role.
             </p>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Visão por tipo de usuário (referência operacional)</p>
+              <p className="text-sm font-semibold text-ink">Visão por tipo de usuário (referência operacional)</p>
               <div className="mt-3 grid gap-3 lg:grid-cols-2">
                 {visoesUsuario.map((item) => (
-                  <article key={item.perfil} className="rounded-md border bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-800">{item.perfil}</p>
-                    <p className="mt-1 text-sm text-slate-700"><span className="font-semibold">Vê:</span> {item.ve}</p>
-                    <p className="mt-1 text-sm text-slate-700"><span className="font-semibold">Ações:</span> {item.acoes}</p>
-                    <p className="mt-1 text-xs text-slate-600">{item.observacao}</p>
+                  <article key={item.perfil} className="rounded-md border bg-canvas-soft p-3">
+                    <p className="text-sm font-semibold text-ink">{item.perfil}</p>
+                    <p className="mt-1 text-sm text-ink-secondary"><span className="font-semibold">Vê:</span> {item.ve}</p>
+                    <p className="mt-1 text-sm text-ink-secondary"><span className="font-semibold">Ações:</span> {item.acoes}</p>
+                    <p className="mt-1 text-xs text-ink-secondary">{item.observacao}</p>
                   </article>
                 ))}
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Regras funcionais que não podem quebrar</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            <div className="mt-4 rounded-lg border bg-canvas-soft p-4">
+              <p className="text-sm font-semibold text-ink">Regras funcionais que não podem quebrar</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
                 {regrasFuncionaisCriticas.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -889,10 +889,10 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Trilha 1: Cliente {'->'} Contrato {'->'} Caso</p>
+              <p className="text-sm font-semibold text-ink">Trilha 1: Cliente {'->'} Contrato {'->'} Caso</p>
               <div className="mt-2 overflow-x-auto rounded border">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-canvas-soft text-ink-secondary">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Etapa</th>
                       <th className="px-3 py-2 font-semibold">Descrição</th>
@@ -902,9 +902,9 @@ export default function DocsPage() {
                   <tbody>
                     {fluxoContratoCaso.map((item) => (
                       <tr key={item.etapa} className="border-t align-top">
-                        <td className="px-3 py-2 font-semibold text-slate-800">{item.etapa}</td>
-                        <td className="px-3 py-2 text-slate-700">{item.descricao}</td>
-                        <td className="px-3 py-2 text-slate-700">{item.saida}</td>
+                        <td className="px-3 py-2 font-semibold text-ink">{item.etapa}</td>
+                        <td className="px-3 py-2 text-ink-secondary">{item.descricao}</td>
+                        <td className="px-3 py-2 text-ink-secondary">{item.saida}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -913,10 +913,10 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Trilha 2: Operação (timesheet/despesa)</p>
+              <p className="text-sm font-semibold text-ink">Trilha 2: Operação (timesheet/despesa)</p>
               <div className="mt-2 overflow-x-auto rounded border">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-canvas-soft text-ink-secondary">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Módulo</th>
                       <th className="px-3 py-2 font-semibold">Status principais</th>
@@ -926,9 +926,9 @@ export default function DocsPage() {
                   <tbody>
                     {fluxoOperacional.map((item) => (
                       <tr key={item.modulo} className="border-t align-top">
-                        <td className="px-3 py-2 font-semibold text-slate-800">{item.modulo}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-slate-700">{item.status}</td>
-                        <td className="px-3 py-2 text-slate-700">{item.regra}</td>
+                        <td className="px-3 py-2 font-semibold text-ink">{item.modulo}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-ink-secondary">{item.status}</td>
+                        <td className="px-3 py-2 text-ink-secondary">{item.regra}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -937,8 +937,8 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Trilha 3: Faturamento ponta a ponta</p>
-              <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-slate-700">
+              <p className="text-sm font-semibold text-ink">Trilha 3: Faturamento ponta a ponta</p>
+              <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-ink-secondary">
                 {fluxoFaturamento.map((item) => (
                   <li key={item.fase}>
                     <span className="font-semibold">{item.fase}: </span>
@@ -948,9 +948,9 @@ export default function DocsPage() {
               </ol>
             </div>
 
-            <div className="mt-4 rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Guardrails de negócio já implementados</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            <div className="mt-4 rounded-lg border bg-canvas-soft p-4">
+              <p className="text-sm font-semibold text-ink">Guardrails de negócio já implementados</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
                 {guardrailsProcesso.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
@@ -958,12 +958,12 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Jornadas práticas por papel</p>
+              <p className="text-sm font-semibold text-ink">Jornadas práticas por papel</p>
               <div className="mt-3 grid gap-3 lg:grid-cols-3">
                 {jornadasPorPapel.map((jornada) => (
-                  <article key={jornada.titulo} className="rounded-md border bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-800">{jornada.titulo}</p>
-                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+                  <article key={jornada.titulo} className="rounded-md border bg-canvas-soft p-3">
+                    <p className="text-sm font-semibold text-ink">{jornada.titulo}</p>
+                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-secondary">
                       {jornada.passos.map((passo) => (
                         <li key={passo}>{passo}</li>
                       ))}
@@ -978,7 +978,7 @@ export default function DocsPage() {
             <h2 className="text-xl font-semibold">Execução e Deploy</h2>
             <div className="mt-4 overflow-x-auto rounded-lg border">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-canvas-soft text-ink-secondary">
                   <tr>
                     <th className="px-4 py-2 font-semibold">Comando</th>
                     <th className="px-4 py-2 font-semibold">Uso</th>
@@ -987,28 +987,28 @@ export default function DocsPage() {
                 <tbody>
                   {comandos.map((item) => (
                     <tr key={item.cmd} className="border-t">
-                      <td className="px-4 py-2 font-mono text-xs text-slate-800">{item.cmd}</td>
-                      <td className="px-4 py-2 text-slate-700">{item.desc}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-ink">{item.cmd}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{item.desc}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="mt-4 text-sm text-slate-700">
+            <p className="mt-4 text-sm text-ink-secondary">
               Consulte também: <span className="font-mono">README_SETUP.md</span>, <span className="font-mono">README_DEPLOY.md</span> e <span className="font-mono">ENV_VARIABLES.md</span>.
             </p>
           </section>
 
           <section id="handover" className="scroll-mt-24 rounded-xl border bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold">Handover Técnico</h2>
-            <p className="mt-3 text-sm text-slate-700">
+            <p className="mt-3 text-sm text-ink-secondary">
               Para quem assumir o projeto, a sequência recomendada é: entender entidades, rodar localmente, validar permissões,
               revisar fluxo de faturamento ponta a ponta e só então iniciar mudanças estruturais.
             </p>
 
-            <div className="mt-4 rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Checklist inicial</p>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+            <div className="mt-4 rounded-lg border bg-canvas-soft p-4">
+              <p className="text-sm font-semibold text-ink">Checklist inicial</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-secondary">
                 <li>Configurar `.env` com as chaves corretas do Supabase.</li>
                 <li>Subir app com `npm run dev` e validar login.</li>
                 <li>Confirmar permissões do perfil no menu e nas ações.</li>
@@ -1018,10 +1018,10 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <p className="text-sm font-semibold text-slate-800">Documentos já existentes no repositório</p>
+              <p className="text-sm font-semibold text-ink">Documentos já existentes no repositório</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {docsRelacionados.map((doc) => (
-                  <span key={doc} className="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">
+                  <span key={doc} className="rounded bg-secondary px-2 py-1 font-mono text-xs text-ink-secondary">
                     {doc}
                   </span>
                 ))}

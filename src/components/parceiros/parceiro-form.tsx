@@ -302,7 +302,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 rounded bg-gray-200"></div>
+            <div key={i} className="h-10 rounded bg-secondary"></div>
           ))}
         </div>
       </div>
@@ -405,7 +405,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                     id="rua"
                     value={form.rua}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, rua: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -432,7 +432,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                     id="cidade"
                     value={form.cidade}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, cidade: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
@@ -444,7 +444,7 @@ export default function ParceiroForm({ parceiroId }: { parceiroId?: string }) {
                     value={form.estado}
                     maxLength={2}
                     readOnly={cepPreenchido}
-                    className={cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}
+                    className={cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}
                     onChange={(e) => setForm({ ...form, estado: e.target.value })}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
                   />
