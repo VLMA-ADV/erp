@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, Edit3, GripVertical, MoveRight, Plus, UserPlus, UserRound } from 'lucide-react'
+import { Download, Edit3, GripVertical, MoveRight, Plus, Trash2, UserPlus, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -777,6 +777,42 @@ export default function CrmPipeline() {
     }
   }
 
+  const handleDeleteCard = async (card: PipelineCard) => {
+    const ok = window.confirm(
+      `Excluir este card do CRM?\n\n${card.cliente_nome || ''}${card.valor ? `\nValor: ${formatMoney(card.valor)}` : ''}\n\nEsta ação não pode ser desfeita.`,
+    )
+    if (!ok) return
+
+    try {
+      setMovingCardId(card.id)
+      const session = await getSession()
+      if (!session) return
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-crm-pipeline-card`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: card.id }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao excluir card')
+        return
+      }
+
+      success('Card excluído')
+      await fetchPipeline()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao excluir card')
+    } finally {
+      setMovingCardId(null)
+    }
+  }
+
   const handleDownloadAnexo = async (anexoId: string) => {
     try {
       const session = await getSession()
@@ -996,6 +1032,19 @@ export default function CrmPipeline() {
                               </option>
                             ))}
                           </NativeSelect>
+                        ) : null}
+
+                        {canWrite ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => void handleDeleteCard(card)}
+                            disabled={movingCardId === card.id}
+                            title="Excluir card"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         ) : null}
                       </div>
                     </div>
