@@ -595,7 +595,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     onChange={handleDadosPessoaisChange}
                     className="mt-1"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-ink-mute">
                     Se alterar o e-mail, ele será atualizado no sistema de autenticação
                   </p>
                 </div>
@@ -734,7 +734,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     name="rua"
                     value={contato.rua}
                     readOnly={cepPreenchido}
-                    className={`mt-1 ${cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    className={`mt-1 ${cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}`}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
                 </div>
@@ -768,7 +768,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     name="cidade"
                     value={contato.cidade}
                     readOnly={cepPreenchido}
-                    className={`mt-1 ${cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    className={`mt-1 ${cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}`}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : ''}
                   />
                 </div>
@@ -780,7 +780,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                     name="estado"
                     value={contato.estado}
                     readOnly={cepPreenchido}
-                    className={`mt-1 ${cepPreenchido ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    className={`mt-1 ${cepPreenchido ? 'bg-secondary cursor-not-allowed' : ''}`}
                     maxLength={2}
                     placeholder={cepPreenchido ? 'Preenchido automaticamente pelo CEP' : 'SP'}
                   />
@@ -923,7 +923,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                         }
                         className="w-full"
                       />
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-ink-secondary">
                         {Number(profissional.percentual_adicional || 0)}%
                       </p>
                     </div>
@@ -952,7 +952,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                       type="checkbox"
                       checked={beneficios.includes('plano_saude')}
                       onChange={() => toggleBeneficio('plano_saude')}
-                      className="rounded border-gray-300"
+                      className="rounded border-hairline"
                     />
                     <span>Plano de Saúde</span>
                   </label>
@@ -961,7 +961,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                       type="checkbox"
                       checked={beneficios.includes('auxilio_previdenciaria')}
                       onChange={() => toggleBeneficio('auxilio_previdenciaria')}
-                      className="rounded border-gray-300"
+                      className="rounded border-hairline"
                     />
                     <span>Auxílio Previdenciária</span>
                   </label>
@@ -1080,7 +1080,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
               <div className="space-y-6">
                 {Object.entries(permissions).map(([categoria, perms]) => (
                   <div key={categoria} className="space-y-2">
-                    <h3 className="text-lg font-semibold text-gray-900 capitalize">
+                    <h3 className="text-lg font-semibold text-ink capitalize">
                       {categoria === 'dashboard' ? 'Dashboard' :
                        categoria === 'crm' ? 'CRM' :
                        categoria === 'people' ? 'Pessoas' :
@@ -1094,7 +1094,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                       {perms.map((perm) => (
                         <label
                           key={perm.id}
-                          className="flex items-center space-x-2 rounded p-2 hover:bg-gray-50"
+                          className="flex items-center space-x-2 rounded p-2 hover:bg-canvas-soft"
                         >
                           <input
                             type="checkbox"
@@ -1106,9 +1106,9 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                                   : [...prev, perm.id]
                               )
                             }}
-                            className="rounded border-gray-300"
+                            className="rounded border-hairline"
                           />
-                          <span className="text-sm text-gray-700">
+                          <span className="text-sm text-ink-secondary">
                             {perm.descricao || perm.chave}
                           </span>
                         </label>
@@ -1117,7 +1117,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                   </div>
                 ))}
                 {Object.keys(permissions).length === 0 && (
-                  <p className="text-sm text-gray-500">Nenhuma permissão disponível.</p>
+                  <p className="text-sm text-ink-mute">Nenhuma permissão disponível.</p>
                 )}
               </div>
             </CardContent>

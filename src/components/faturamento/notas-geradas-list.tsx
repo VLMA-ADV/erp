@@ -315,7 +315,7 @@ export default function NotasGeradasList() {
             {refreshingNfse ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Atualizar NFS-e
           </Button>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-ink-mute">
             {totals.total} nota(s) • {totals.canceladas} cancelada(s)
           </span>
         </div>
@@ -332,21 +332,21 @@ export default function NotasGeradasList() {
         <Table>
           <thead>
             <tr>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Nota</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Documento</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Contrato / Caso</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Lote</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Arquivo</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Metadados</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gerado em</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Ações</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Nota</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Documento</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Status</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Contrato / Caso</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Lote</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Arquivo</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Metadados</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Gerado em</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-ink-mute">
                   <span className="inline-flex items-center">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Carregando notas geradas...
@@ -355,7 +355,7 @@ export default function NotasGeradasList() {
               </tr>
             ) : notes.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-2 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-2 py-12 text-center text-sm text-ink-mute">
                   Nenhuma nota encontrada para os filtros informados.
                 </td>
               </tr>
@@ -380,7 +380,7 @@ export default function NotasGeradasList() {
                       })()}
                     </div>
                   </td>
-                  <td className="p-2 text-sm text-gray-700">{getContractCaseLabel(note)}</td>
+                  <td className="p-2 text-sm text-ink-secondary">{getContractCaseLabel(note)}</td>
                   <td className="p-2">{note.batch_numero ? `#${note.batch_numero}` : '-'}</td>
                   <td className="p-2">
                     {note.arquivo_url ? (
@@ -393,11 +393,11 @@ export default function NotasGeradasList() {
                         {note.arquivo_nome || 'Abrir arquivo'}
                       </a>
                     ) : (
-                      <span className="text-gray-500">-</span>
+                      <span className="text-ink-mute">-</span>
                     )}
                   </td>
-                  <td className="p-2 text-xs text-gray-600">{formatMetadata(note.metadata)}</td>
-                  <td className="p-2 text-sm text-gray-700">{formatDateTime(note.created_at)}</td>
+                  <td className="p-2 text-xs text-ink-secondary">{formatMetadata(note.metadata)}</td>
+                  <td className="p-2 text-sm text-ink-secondary">{formatDateTime(note.created_at)}</td>
                   <td className="p-2">
                     {note.tipo_documento === 'nota_fiscal_servico' && note.status !== 'cancelado' ? (
                       <Button

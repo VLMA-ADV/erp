@@ -74,7 +74,7 @@ export default function PermissionsList() {
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-gray-200 rounded"></div>
+            <div key={i} className="h-12 bg-secondary rounded"></div>
           ))}
         </div>
       </div>
@@ -109,24 +109,24 @@ export default function PermissionsList() {
         </CardHeader>
         <CardContent>
           {Object.keys(permissions).length === 0 ? (
-            <p className="text-gray-500 text-center py-8">Nenhuma permissão cadastrada</p>
+            <p className="text-ink-mute text-center py-8">Nenhuma permissão cadastrada</p>
           ) : (
             <div className="space-y-6">
               {Object.entries(permissions).map(([categoria, perms]) => (
                 <div key={categoria} className="space-y-2">
-                  <h3 className="text-lg font-semibold text-gray-900">
+                  <h3 className="text-lg font-semibold text-ink">
                     {getCategoryLabel(categoria)}
                   </h3>
                   <div className="ml-4 space-y-2">
                     {perms.map((perm) => (
                       <div
                         key={perm.id}
-                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-canvas-soft"
                       >
                         <div>
-                          <p className="font-medium text-gray-900">{perm.chave}</p>
+                          <p className="font-medium text-ink">{perm.chave}</p>
                           {perm.descricao && (
-                            <p className="text-sm text-gray-500">{perm.descricao}</p>
+                            <p className="text-sm text-ink-mute">{perm.descricao}</p>
                           )}
                         </div>
                       </div>

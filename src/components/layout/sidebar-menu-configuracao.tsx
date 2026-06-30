@@ -95,7 +95,7 @@ export default function SidebarMenuConfiguracao({
           'flex w-full items-center justify-between px-4 py-2 text-sm font-medium rounded-md transition-colors',
           isActive
             ? 'bg-primary text-primary-foreground'
-            : 'text-gray-700 hover:bg-gray-100'
+            : 'text-ink-secondary hover:bg-secondary'
         )}
       >
         <span>Configuração</span>
@@ -133,7 +133,7 @@ export default function SidebarMenuConfiguracao({
                   'flex items-center px-4 py-2 text-sm rounded-md transition-colors',
                   pathname === item.href
                     ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    : 'text-ink-secondary hover:bg-secondary'
                 )}
               >
                 {Icon ? <Icon className="mr-2 h-4 w-4" /> : null}

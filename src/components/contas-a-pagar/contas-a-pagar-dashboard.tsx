@@ -47,13 +47,13 @@ type Rotina = {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  pendente: 'bg-gray-100 text-gray-600',
+  pendente: 'bg-secondary text-ink-secondary',
   agendado: 'bg-blue-100 text-blue-700',
   pago: 'bg-green-100 text-green-700',
   recebido: 'bg-green-100 text-green-700',
   atrasado: 'bg-red-100 text-red-700',
   remanejado: 'bg-amber-100 text-amber-700',
-  cancelado: 'bg-gray-200 text-gray-500 line-through',
+  cancelado: 'bg-secondary text-ink-mute line-through',
 }
 
 const FILTERS = [
@@ -180,9 +180,9 @@ export default function ContasAPagarDashboard() {
     <div className="space-y-6">
       {/* Navegador de data */}
       <div className="flex items-center gap-3">
-        <button onClick={() => setDia(shiftIso(dia, -1))} className="rounded-md border border-hairline px-3 py-1.5 text-sm hover:bg-gray-50">‹</button>
+        <button onClick={() => setDia(shiftIso(dia, -1))} className="rounded-md border border-hairline px-3 py-1.5 text-sm hover:bg-canvas-soft">‹</button>
         <input type="date" value={dia} onChange={(e) => setDia(e.target.value || todayIso())} className="rounded-md border border-hairline px-3 py-1.5 text-sm" />
-        <button onClick={() => setDia(shiftIso(dia, 1))} className="rounded-md border border-hairline px-3 py-1.5 text-sm hover:bg-gray-50">›</button>
+        <button onClick={() => setDia(shiftIso(dia, 1))} className="rounded-md border border-hairline px-3 py-1.5 text-sm hover:bg-canvas-soft">›</button>
         <button onClick={() => setDia(todayIso())} className="text-sm text-primary hover:underline">hoje</button>
       </div>
 
@@ -213,7 +213,7 @@ export default function ContasAPagarDashboard() {
             <input type="number" step="0.01" value={saldoInput} onChange={(e) => setSaldoInput(e.target.value)}
               className="rounded-md border border-hairline px-3 py-2 text-sm" placeholder="0,00" />
           </div>
-          <button onClick={salvarSaldo} className="rounded-md border border-hairline px-3 py-2 text-sm hover:bg-gray-50">Salvar saldo</button>
+          <button onClick={salvarSaldo} className="rounded-md border border-hairline px-3 py-2 text-sm hover:bg-canvas-soft">Salvar saldo</button>
           <span className="text-xs text-ink-mute">Base do saldo corrente. Lançado manualmente (sem conciliação bancária).</span>
         </div>
       )}
@@ -224,7 +224,7 @@ export default function ContasAPagarDashboard() {
           <button
             key={f.key}
             onClick={() => setFiltro(f.key)}
-            className={`rounded-full px-3 py-1 text-sm ${filtro === f.key ? 'bg-primary text-primary-foreground' : 'border border-hairline text-ink-mute hover:bg-gray-50'}`}
+            className={`rounded-full px-3 py-1 text-sm ${filtro === f.key ? 'bg-primary text-primary-foreground' : 'border border-hairline text-ink-mute hover:bg-canvas-soft'}`}
           >
             {f.label}
           </button>
@@ -269,8 +269,8 @@ function ListaColuna({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-ink">{r.descricao}</p>
                 <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-mute">
-                  {r.empresa_nome && <span className="rounded bg-gray-100 px-1.5 py-0.5">{r.empresa_nome}</span>}
-                  {r.centro_nome && <span className="rounded bg-gray-100 px-1.5 py-0.5">{r.centro_nome}</span>}
+                  {r.empresa_nome && <span className="rounded bg-secondary px-1.5 py-0.5">{r.empresa_nome}</span>}
+                  {r.centro_nome && <span className="rounded bg-secondary px-1.5 py-0.5">{r.centro_nome}</span>}
                   {r.conta_codigo && <span className="font-mono">{r.conta_codigo}</span>}
                   <span>· {fmtDate(r.vencimento)}</span>
                   {r.reembolsavel && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">reembolsável</span>}
@@ -279,12 +279,12 @@ function ListaColuna({
               <div className="flex shrink-0 items-center gap-2">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-ink">{fmtMoney(r.valor)}</p>
-                  <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[r.status] || 'bg-gray-100 text-gray-600'}`}>{r.status}</span>
+                  <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[r.status] || 'bg-secondary text-ink-secondary'}`}>{r.status}</span>
                 </div>
                 {canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
                   <div className="flex flex-col gap-1">
-                    <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-gray-50">baixar</button>
-                    <button onClick={() => onReagendar(r.id)} title="Reagendar" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-gray-50">reagendar</button>
+                    <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
+                    <button onClick={() => onReagendar(r.id)} title="Reagendar" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">reagendar</button>
                   </div>
                 )}
               </div>

@@ -45,7 +45,7 @@ export function LoadingProgress({ isLoading, message = 'Carregando...', classNam
       <div className="w-full max-w-md">
         <Progress value={progress} showLabel={true} />
       </div>
-      <p className="text-sm text-gray-600">{message}</p>
+      <p className="text-sm text-ink-secondary">{message}</p>
     </div>
   )
 }
@@ -96,14 +96,14 @@ export function LoadingProgressWithSteps({
       </div>
       {stepLabels.length > 0 && (
         <div className="w-full max-w-md">
-          <div className="flex justify-between text-xs text-gray-500 mb-2">
+          <div className="flex justify-between text-xs text-ink-mute mb-2">
             {stepLabels.map((label, index) => (
               <span
                 key={index}
                 className={cn(
                   index < currentStep && 'text-primary font-medium',
                   index === currentStep && 'text-primary font-semibold',
-                  index > currentStep && 'text-gray-400'
+                  index > currentStep && 'text-ink-mute'
                 )}
               >
                 {label}
@@ -112,7 +112,7 @@ export function LoadingProgressWithSteps({
           </div>
         </div>
       )}
-      {message && <p className="text-sm text-gray-600">{message}</p>}
+      {message && <p className="text-sm text-ink-secondary">{message}</p>}
     </div>
   )
 }

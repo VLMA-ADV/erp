@@ -67,7 +67,7 @@ function Breakdown({ titulo, grupos, labelMap }: { titulo: string; grupos: Grupo
                   {g.count} <span className="text-ink-mute">· {formatMoney(g.valor)}</span>
                 </span>
               </div>
-              <div className="mt-1 h-1.5 rounded-full bg-gray-100">
+              <div className="mt-1 h-1.5 rounded-full bg-secondary">
                 <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(g.count / max) * 100}%` }} />
               </div>
             </li>
@@ -146,7 +146,7 @@ export default function CrmDashboard() {
     return (
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-28 animate-pulse rounded-lg bg-gray-100" />
+          <div key={i} className="h-28 animate-pulse rounded-lg bg-secondary" />
         ))}
       </div>
     )

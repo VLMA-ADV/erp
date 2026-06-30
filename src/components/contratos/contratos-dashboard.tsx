@@ -41,18 +41,20 @@ const MES_PT: Record<string, string> = {
   Jul: 'Jul', Aug: 'Ago', Sep: 'Set', Oct: 'Out', Nov: 'Nov', Dec: 'Dez',
 }
 
+// Tints de marca VLMA (quentes + ink roxo da marca, hue 280) — sem azul/verde frio
 const AVATAR_COLORS = [
-  { bg: '#eef2ff', fg: '#4338ca' },
-  { bg: '#ecfdf5', fg: '#047857' },
-  { bg: '#fef3c7', fg: '#b45309' },
-  { bg: '#e0f2fe', fg: '#0369a1' },
-  { bg: '#fce7f3', fg: '#be185d' },
-  { bg: '#f3e8ff', fg: '#7e22ce' },
+  { bg: '#fff1d6', fg: '#854f0b' },
   { bg: '#fef2f2', fg: '#b91c1c' },
+  { bg: '#fff7ed', fg: '#c2410c' },
+  { bg: '#f3eef7', fg: '#5b2e6b' },
+  { bg: '#fef3c7', fg: '#b45309' },
+  { bg: '#f5f5f4', fg: '#57534e' },
+  { bg: '#ffe4e6', fg: '#9f1239' },
   { bg: '#fffbeb', fg: '#a16207' },
 ]
 
-const DONUT_PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#0ea5e9', '#f43f5e', '#8b5cf6', '#94a3b8']
+// Categórico de marca: laranja → ink → vermelho → tons quentes + roxo-ink
+const DONUT_PALETTE = ['#FF9900', '#1E1423', '#FF3333', '#FFC266', '#B45309', '#8A5A9E', '#A8A29E']
 
 const STATUS_LABEL: Record<string, string> = {
   ativo: 'Ativo',
@@ -66,9 +68,9 @@ const STATUS_LABEL: Record<string, string> = {
 const STATUS_COLOR: Record<string, string> = {
   ativo: '#10b981',
   em_analise: '#f59e0b',
-  rascunho: '#0ea5e9',
-  encerrado: '#64748b',
-  suspenso: '#f43f5e',
+  rascunho: '#A8A29E',
+  encerrado: '#57534e',
+  suspenso: '#FF3333',
   'sem status': '#cbd5e1',
 }
 
@@ -182,11 +184,11 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
         </div>
         <div className="flex gap-3 text-[11px]">
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#0ea5e9' }} />
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#FF9900' }} />
             <span className="text-ink-mute">Casos</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#6366f1' }} />
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#1E1423' }} />
             <span className="text-ink-mute">Contratos</span>
           </span>
         </div>
@@ -195,12 +197,12 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
         <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" preserveAspectRatio="none">
           <defs>
             <linearGradient id="grad-contratos" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity={0.55} />
-              <stop offset="100%" stopColor="#6366f1" stopOpacity={0.06} />
+              <stop offset="0%" stopColor="#1E1423" stopOpacity={0.55} />
+              <stop offset="100%" stopColor="#1E1423" stopOpacity={0.06} />
             </linearGradient>
             <linearGradient id="grad-casos" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.55} />
-              <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.06} />
+              <stop offset="0%" stopColor="#FF9900" stopOpacity={0.55} />
+              <stop offset="100%" stopColor="#FF9900" stopOpacity={0.06} />
             </linearGradient>
           </defs>
           {yTicks.map((t) => (
@@ -211,8 +213,8 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
           ))}
           <path d={buildArea('upper')} fill="url(#grad-casos)" />
           <path d={buildArea('lower')} fill="url(#grad-contratos)" />
-          <path d={lineCasos} fill="none" stroke="#0ea5e9" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-          <path d={lineContratos} fill="none" stroke="#6366f1" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={lineCasos} fill="none" stroke="#FF9900" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={lineContratos} fill="none" stroke="#1E1423" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
           {stacked.map((s, i) => (
             <g key={`pts-${s.mes}`}>
               {s.contratos_novos + s.casos_novos > 0 && (
@@ -364,7 +366,7 @@ function CentroCustoCard({ items, totalCasos, onSelect }: { items: DashboardList
       <CardShell title="Por centro de custo" hint="cobertura de cadastro">
         <div className="flex h-full flex-col items-start justify-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">⚠</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-base font-bold">!</span>
             <div>
               <p className="text-sm font-medium text-ink">Centros não cadastrados</p>
               <p className="text-[11px] text-ink-mute">
@@ -401,7 +403,6 @@ function CentroCustoCard({ items, totalCasos, onSelect }: { items: DashboardList
 function PodiumList({ title, items, hint, onSelect }: { title: string; items: DashboardListItem[]; hint?: string; onSelect?: (nome: string) => void }) {
   const top = items.slice(0, 10)
   const max = top.reduce((acc, i) => Math.max(acc, i.total), 0)
-  const medals = ['🥇', '🥈', '🥉']
   return (
     <CardShell title={title} hint={hint}>
       <div className="space-y-1.5">
@@ -410,7 +411,6 @@ function PodiumList({ title, items, hint, onSelect }: { title: string; items: Da
         ) : (
           top.map((item, idx) => {
             const width = max > 0 ? (item.total / max) * 100 : 0
-            const medal = medals[idx]
             const isPodium = idx < 3
             return (
               <div
@@ -424,7 +424,7 @@ function PodiumList({ title, items, hint, onSelect }: { title: string; items: Da
                     isPodium ? 'bg-amber-50 text-amber-800' : 'bg-canvas-soft text-ink-mute'
                   }`}
                 >
-                  {medal ?? `${idx + 1}º`}
+                  {`${idx + 1}º`}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 text-[12px]">

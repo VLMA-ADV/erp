@@ -920,9 +920,9 @@ export default function CrmPipeline() {
                       </div>
 
                       <div className="space-y-1 text-xs text-ink-mute">
-                        <p className="truncate">🏢 {areas.find((a) => a.id === card.area_id)?.nome || 'Sem centro de custo'}</p>
-                        <p className="truncate">🧩 {[card.servico_nome, card.produto_nome].filter(Boolean).join(' • ') || 'Sem serviço/produto'}</p>
-                        {card.data_card ? <p className="truncate">📅 {new Date(card.data_card + 'T00:00:00').toLocaleDateString('pt-BR')}</p> : null}
+                        <p className="truncate">{areas.find((a) => a.id === card.area_id)?.nome || 'Sem centro de custo'}</p>
+                        <p className="truncate">{[card.servico_nome, card.produto_nome].filter(Boolean).join(' • ') || 'Sem serviço/produto'}</p>
+                        {card.data_card ? <p className="truncate">{new Date(card.data_card + 'T00:00:00').toLocaleDateString('pt-BR')}</p> : null}
                         <p className="font-medium text-ink">{formatMoney(card.valor)}</p>
                         {card.valor_global ? <p className="truncate">Global: {formatMoney(card.valor_global)} {card.forma_pagamento ? `· ${card.forma_pagamento === 'a_vista' ? 'à vista' : 'parcelado'}` : ''}</p> : null}
                         {card.valor_caixa_mes ? <p className="truncate">Caixa no mês: {formatMoney(card.valor_caixa_mes)}</p> : null}
@@ -930,10 +930,10 @@ export default function CrmPipeline() {
 
                         <div>
                           <div className="flex items-center justify-between">
-                            <span>🌡️ Temperatura</span>
+                            <span>Temperatura</span>
                             <span className="font-medium text-ink">{card.temperatura_pct != null ? `${card.temperatura_pct}%` : '—'}</span>
                           </div>
-                          <div className="mt-1 h-1.5 rounded-full bg-gray-100">
+                          <div className="mt-1 h-1.5 rounded-full bg-secondary">
                             <div className="h-1.5 rounded-full" style={{ width: `${card.temperatura_pct ?? 0}%`, backgroundColor: tempColor(card.temperatura_pct) }} />
                           </div>
                           {canWrite ? (
@@ -954,9 +954,9 @@ export default function CrmPipeline() {
                           <UserRound className="mr-1 inline h-3 w-3" />
                           {card.responsavel_interno_nome || 'Sem responsável'}
                         </p>
-                        <p className="truncate">📍 {[card.cidade, card.estado].filter(Boolean).join(' / ') || 'Sem cidade'}</p>
-                        {card.observacoes ? <p className="line-clamp-2 whitespace-pre-wrap">📝 {card.observacoes}</p> : null}
-                        {card.anexos?.length ? <p>📎 {card.anexos.length} anexo(s)</p> : null}
+                        <p className="truncate">{[card.cidade, card.estado].filter(Boolean).join(' / ') || 'Sem cidade'}</p>
+                        {card.observacoes ? <p className="line-clamp-2 whitespace-pre-wrap">{card.observacoes}</p> : null}
+                        {card.anexos?.length ? <p>{card.anexos.length} anexo(s)</p> : null}
                         <p className="text-[11px] text-ink-mute">Atualizado em {formatDateTime(card.updated_at)}</p>
                       </div>
 
@@ -1204,7 +1204,7 @@ export default function CrmPipeline() {
 
           {/* 8. Temperatura de fechamento — ajustável pela barra no card */}
           <p className="text-xs text-ink-mute">
-            🌡️ Temperatura de fechamento: ajuste pela barra de 0–100% no card{form.id ? '' : ' (após salvar)'}.
+            Temperatura de fechamento: ajuste pela barra de 0–100% no card{form.id ? '' : ' (após salvar)'}.
           </p>
 
           <div className="space-y-2">

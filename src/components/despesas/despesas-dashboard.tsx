@@ -46,7 +46,7 @@ function Breakdown({ titulo, grupos }: { titulo: string; grupos: Grupo[] }) {
                 <span className="truncate text-ink-secondary">{g.label}</span>
                 <span className="shrink-0 font-tabular text-ink">{formatMoney(g.valor)} <span className="text-ink-mute">· {g.count}</span></span>
               </div>
-              <div className="mt-1 h-1.5 rounded-full bg-gray-100">
+              <div className="mt-1 h-1.5 rounded-full bg-secondary">
                 <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(g.valor / max) * 100}%` }} />
               </div>
             </li>
@@ -104,7 +104,7 @@ export default function DespesasDashboard() {
   if (loading && !data) {
     return (
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => <div key={i} className="h-24 animate-pulse rounded-lg bg-gray-100" />)}
+        {[1, 2, 3, 4].map((i) => <div key={i} className="h-24 animate-pulse rounded-lg bg-secondary" />)}
       </div>
     )
   }

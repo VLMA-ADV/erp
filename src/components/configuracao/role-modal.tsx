@@ -166,27 +166,27 @@ export default function RoleModal({
             <div className="border rounded-lg p-4 max-h-96 overflow-y-auto">
               {Object.entries(permissions).map(([categoria, perms]) => (
                 <div key={categoria} className="mb-4">
-                  <h4 className="font-medium text-sm text-gray-700 mb-2 capitalize">
+                  <h4 className="font-medium text-sm text-ink-secondary mb-2 capitalize">
                     {categoria}
                   </h4>
                   <div className="space-y-2">
                     {perms.map((perm) => (
                       <label
                         key={perm.id}
-                        className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                        className="flex items-center space-x-2 cursor-pointer hover:bg-canvas-soft p-2 rounded"
                       >
                         <input
                           type="checkbox"
                           checked={selectedPermissions.includes(perm.id)}
                           onChange={() => togglePermission(perm.id)}
-                          className="rounded border-gray-300"
+                          className="rounded border-hairline"
                         />
                         <div className="flex-1">
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-ink">
                             {perm.chave}
                           </span>
                           {perm.descricao && (
-                            <p className="text-xs text-gray-500">{perm.descricao}</p>
+                            <p className="text-xs text-ink-mute">{perm.descricao}</p>
                           )}
                         </div>
                       </label>

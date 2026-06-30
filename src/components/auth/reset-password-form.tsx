@@ -202,7 +202,7 @@ export default function ResetPasswordForm() {
             className="mt-1"
             placeholder="••••••••"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-ink-mute">
             Mínimo 8 caracteres, com letras maiúsculas, minúsculas e números
           </p>
         </div>

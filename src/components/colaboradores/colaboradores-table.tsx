@@ -164,7 +164,7 @@ export default function ColaboradoresTable({
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-gray-200 rounded"></div>
+            <div key={i} className="h-12 bg-secondary rounded"></div>
           ))}
         </div>
       </div>
@@ -174,7 +174,7 @@ export default function ColaboradoresTable({
   if (colaboradores.length === 0) {
     return (
       <div className="rounded-md border p-8 text-center">
-        <p className="text-gray-500">Nenhum colaborador encontrado</p>
+        <p className="text-ink-mute">Nenhum colaborador encontrado</p>
       </div>
     )
   }
@@ -190,39 +190,39 @@ export default function ColaboradoresTable({
       />
       <div className="rounded-md border overflow-x-auto">
         <Table className="w-full min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-canvas-soft">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Foto
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Nome
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 E-mail
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Cargo
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Salário
               </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-center text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Coordenador
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Status
               </th>
               {hasAnyAction && (
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-ink-mute uppercase tracking-wider">
                   Ações
                 </th>
               )}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-white divide-y divide-hairline">
             {colaboradores.map((colaborador) => (
-              <tr key={colaborador.id} className="hover:bg-gray-50">
+              <tr key={colaborador.id} className="hover:bg-canvas-soft">
                 <td className="px-4 py-3 whitespace-nowrap">
                   {(() => {
                     const avatar = colaborador.foto_url ? (
@@ -233,7 +233,7 @@ export default function ColaboradoresTable({
                         className="h-9 w-9 rounded-full object-cover"
                       />
                     ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xs font-medium text-ink-secondary">
                         {initials(colaborador.nome)}
                       </div>
                     )
@@ -254,16 +254,16 @@ export default function ColaboradoresTable({
                     )
                   })()}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink">
                   {colaborador.nome}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-mute">
                   {colaborador.email}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-mute">
                   {colaborador.cargo?.nome || '-'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-tabular text-gray-700">
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-tabular text-ink-secondary">
                   {formatSalario(colaborador.salario)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -307,7 +307,7 @@ export default function ColaboradoresTable({
       {/* Pagination */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
+          <div className="text-sm text-ink-secondary">
             Mostrando {((pagination.page - 1) * pagination.limit) + 1} a{' '}
             {Math.min(pagination.page * pagination.limit, pagination.total)} de{' '}
             {pagination.total} resultados

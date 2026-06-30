@@ -1740,7 +1740,7 @@ export default function FluxoDeFaturamentoList() {
                   Valor bruto: {nfseResult.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </p>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-mute">
                 A nota foi enviada à Focus NFe. Consulte em{' '}
                 <a href="/financeiro/notas-geradas" className="underline text-blue-700">
                   Notas geradas

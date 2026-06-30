@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react'
 export const APP_VERSION = '1.14.0'
 
 interface ChangeItem {
-  icon: string
   title: string
   desc: string
 }
@@ -24,12 +23,10 @@ const CHANGELOG: Release[] = [
     destaque: true,
     items: [
       {
-        icon: '🗂️',
         title: 'CRM: novos campos e colunas',
         desc: 'Card de oportunidade ganhou data, valor global, forma de pagamento (à vista/parcelado), valor em caixa no mês e valor futuro projetado. Duas novas colunas no funil: "Em standby" e "Êxito/projetado".',
       },
       {
-        icon: '🗓️',
         title: 'CRM: filtro de mês',
         desc: 'Filtro de mês no topo do CRM (pela data de cadastro do card) para focar nas oportunidades do período.',
       },
@@ -40,7 +37,6 @@ const CHANGELOG: Release[] = [
     date: '25/06/2026',
     items: [
       {
-        icon: '⏱️',
         title: 'Gestão de horas (sócios e coordenadores)',
         desc: 'No Timesheet, sócios e coordenadores veem um painel da equipe do seu centro de custo: minhas horas, horas da equipe, distribuição por pessoa, cliente e caso, e projeção de faturamento (horas lançadas e aprovadas × valor/hora do caso). Com filtros de mês e cliente.',
       },
@@ -51,7 +47,6 @@ const CHANGELOG: Release[] = [
     date: '24/06/2026',
     items: [
       {
-        icon: '💰',
         title: 'Dashboard de Despesas',
         desc: 'Resumo no topo de Despesas: lançado hoje, na semana e no mês, total do período, e quebras por cliente e por caso. Com filtros de mês e cliente, mantendo a lista existente.',
       },
@@ -62,7 +57,6 @@ const CHANGELOG: Release[] = [
     date: '23/06/2026',
     items: [
       {
-        icon: '📑',
         title: 'Duplicar caso',
         desc: 'Na tela de Novo Caso, use "Duplicar de um caso existente": filtre por cliente, escolha o caso de origem e o contrato destino — os dados são copiados (sem anexos) para você revisar e salvar, sem preencher tudo de novo.',
       },
@@ -73,12 +67,10 @@ const CHANGELOG: Release[] = [
     date: '22/06/2026',
     items: [
       {
-        icon: '💬',
         title: 'Conversa na solicitação de contrato',
         desc: 'Além do formulário, dá para trocar mensagens na solicitação. Cada pessoa vê só as próprias mensagens; o financeiro (administrativo e sócios) vê todas.',
       },
       {
-        icon: '✅',
         title: 'Lida / providência tomada',
         desc: 'O financeiro pode marcar cada mensagem como "lida" e "providência tomada", deixando o acompanhamento claro para todos.',
       },
@@ -89,12 +81,10 @@ const CHANGELOG: Release[] = [
     date: '21/06/2026',
     items: [
       {
-        icon: '📊',
         title: 'Dashboard de Contratos turbinado',
         desc: 'Clique em qualquer item dos gráficos para ver os contratos daquele grupo num popup. Centros de custo agora aparecem corretos (antes muitos caíam em "Sem centro").',
       },
       {
-        icon: '🗓️',
         title: 'Filtro de mês + fechados por regra',
         desc: 'Novo filtro de mês no topo do dashboard e um indicador de casos fechados no mês por regra de cobrança (projeto, hora, fixo, mensal…).',
       },
@@ -105,12 +95,10 @@ const CHANGELOG: Release[] = [
     date: '20/06/2026',
     items: [
       {
-        icon: '🗂️',
         title: 'Card do CRM enriquecido',
         desc: 'O card de oportunidade agora mostra, em ordem: cliente, segmento, centro de custo, serviço, produto, valor, fase, temperatura, responsável, cidade, observações e anexos.',
       },
       {
-        icon: '🌡️',
         title: 'Temperatura em barra (0–100%)',
         desc: 'A temperatura de fechamento passou a ser uma barra de 0% a 100% ajustável direto no card. O segmento e a cidade são puxados automaticamente do cadastro do cliente.',
       },
@@ -121,12 +109,10 @@ const CHANGELOG: Release[] = [
     date: '19/06/2026',
     items: [
       {
-        icon: '📈',
         title: 'Painel do CRM',
         desc: 'Novo minidashboard no topo do CRM: total de oportunidades e valor, valor por fase, e quebras por centro de custo, produto, responsável, segmento econômico e temperatura — com um mini mapa do Brasil por estado.',
       },
       {
-        icon: '🌡️',
         title: 'Temperatura de fechamento',
         desc: 'Defina a temperatura de cada oportunidade direto no card do Kanban. Você pode criar suas próprias temperaturas (além de Quente/Morno/Frio) pelo seletor.',
       },
@@ -137,12 +123,10 @@ const CHANGELOG: Release[] = [
     date: '18/06/2026',
     items: [
       {
-        icon: '👤',
         title: 'Foto dos colaboradores',
         desc: 'Cada colaborador pode ter uma foto: clique no avatar na lista de Colaboradores para enviar/trocar a imagem, que vira a miniatura da pessoa.',
       },
       {
-        icon: '📊',
         title: 'Painel de colaboradores',
         desc: 'Novo minidashboard no topo de Colaboradores: total de pessoas e quebras por categoria, cargo, centro de custo e função adicional. O salário aparece por pessoa na lista.',
       },
@@ -153,7 +137,6 @@ const CHANGELOG: Release[] = [
     date: '17/06/2026',
     items: [
       {
-        icon: '🗑️',
         title: 'Excluir lançamentos de timesheet e despesas',
         desc: 'Agora dá para excluir um lançamento de timesheet ou de despesa direto da lista, pelo botão de lixeira (com confirmação). Lançamentos já aprovados ficam protegidos e não podem ser excluídos.',
       },
@@ -164,22 +147,18 @@ const CHANGELOG: Release[] = [
     date: '15/06/2026',
     items: [
       {
-        icon: '🧾',
         title: 'Composição da fatura',
         desc: 'Novo item em Faturamento: reúne, por cliente e contrato, o "kit" da fatura dos itens aprovados pelo financeiro — nota fiscal de serviço, boleto, relatório de timesheet e nota de despesa, tudo em um só lugar.',
       },
       {
-        icon: '📑',
         title: 'Nota de despesa em PDF',
         desc: 'Gere a nota de despesa no formato padrão do escritório (capa, detalhamento das despesas reembolsáveis por contrato/caso e dados bancários) e imprima ou salve em PDF.',
       },
       {
-        icon: '✉️',
         title: 'Prévia do e-mail ao cliente',
         desc: 'Visualize o e-mail de cobrança (enviado via Resend) antes do envio, com o texto padrão e a lista de anexos para conferência.',
       },
       {
-        icon: '💰',
         title: 'Contas a pagar e receber no menu',
         desc: 'O módulo de Contas a pagar e receber passou a ser um item próprio do menu, separado do Faturamento.',
       },
@@ -190,12 +169,10 @@ const CHANGELOG: Release[] = [
     date: '12/06/2026',
     items: [
       {
-        icon: '📄',
         title: 'PDF da NFS-e na lista de notas',
         desc: 'Clique em "Atualizar NFS-e" em Financeiro → Notas Geradas para consultar a prefeitura: notas autorizadas ganham o link do PDF na coluna Arquivo, além do número e código de verificação.',
       },
       {
-        icon: '🚫',
         title: 'Cancelamento de NFS-e',
         desc: 'Cancele notas direto da lista: notas autorizadas são canceladas na prefeitura (com justificativa), e as demais são marcadas como canceladas no sistema.',
       },
@@ -206,12 +183,10 @@ const CHANGELOG: Release[] = [
     date: '10/06/2026',
     items: [
       {
-        icon: '💸',
         title: 'Contas a Pagar e Fluxo de Caixa',
         desc: 'Novo módulo no Financeiro: lance despesas (fixas/variáveis, recorrentes e reembolsáveis), acompanhe a rotina diária com despesas, receitas e saldo do dia, dê baixa e reagende contas que atrasam. As notas fiscais emitidas viram contas a receber automaticamente, e o saldo inicial da conta é lançado manualmente.',
       },
       {
-        icon: '🧾',
         title: 'Descrição editável na NFS-e',
         desc: 'Agora você revisa e edita a descrição do serviço na prévia da nota antes de emitir — nome do caso, dados bancários e textos legais já vêm preenchidos.',
       },
@@ -222,12 +197,10 @@ const CHANGELOG: Release[] = [
     date: '09/06/2026',
     items: [
       {
-        icon: '📊',
         title: 'Relatório de Colaboradores',
         desc: 'Nova opção em Relatórios → Personalizados: gere a base completa de colaboradores (cargo, centro de custo, contato, status e dados cadastrais) com filtros e exportação para Excel.',
       },
       {
-        icon: '⚙️',
         title: 'Permissões padronizadas',
         desc: 'Acesso por perfil ficou mais claro e consistente — cada cargo enxerga apenas o que é do seu escopo.',
       },
@@ -237,7 +210,7 @@ const CHANGELOG: Release[] = [
     version: '1.0.0',
     date: '04/02/2026',
     items: [
-      { icon: '🚀', title: 'Lançamento do ERP', desc: 'Contratos, Casos, CRM, Faturamento, Timesheet, Pessoas e Configurações.' },
+      { title: 'Lançamento do ERP', desc: 'Contratos, Casos, CRM, Faturamento, Timesheet, Pessoas e Configurações.' },
     ],
   },
 ]
@@ -331,7 +304,6 @@ export default function Novidades() {
                           rel.destaque ? 'bg-primary-soft-bg/40' : 'bg-canvas-soft'
                         }`}
                       >
-                        <span className="text-xl leading-none">{it.icon}</span>
                         <div>
                           <h3 className="text-sm font-semibold text-ink">{it.title}</h3>
                           <p className="mt-0.5 text-[13px] leading-snug text-ink-secondary">

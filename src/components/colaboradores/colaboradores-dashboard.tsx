@@ -81,7 +81,7 @@ export default function ColaboradoresDashboard() {
     return (
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-28 animate-pulse rounded-lg bg-gray-100" />
+          <div key={i} className="h-28 animate-pulse rounded-lg bg-secondary" />
         ))}
       </div>
     )

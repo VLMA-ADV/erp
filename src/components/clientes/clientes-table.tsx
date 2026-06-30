@@ -24,7 +24,7 @@ export default function ClientesTable({
       <div className="rounded-md border p-4">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 rounded bg-gray-200"></div>
+            <div key={i} className="h-12 rounded bg-secondary"></div>
           ))}
         </div>
       </div>
@@ -34,7 +34,7 @@ export default function ClientesTable({
   if (items.length === 0) {
     return (
       <div className="rounded-md border p-8 text-center">
-        <p className="text-gray-500">Nenhum cliente encontrado</p>
+        <p className="text-ink-mute">Nenhum cliente encontrado</p>
       </div>
     )
   }
@@ -42,31 +42,31 @@ export default function ClientesTable({
   return (
     <div className="rounded-md border overflow-x-auto">
       <Table className="w-full min-w-full">
-        <thead className="bg-gray-50">
+        <thead className="bg-canvas-soft">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
               Nome
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
               CNPJ
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
               Estrangeiro
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
               Status
             </th>
             {canEdit && (
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Ações
               </th>
             )}
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className="bg-white divide-y divide-hairline">
           {items.map((c) => (
-            <tr key={c.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+            <tr key={c.id} className="hover:bg-canvas-soft">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink">
                 <Link
                   href={`/pessoas/clientes/${c.id}/editar`}
                   className="hover:underline"
@@ -74,7 +74,7 @@ export default function ClientesTable({
                   {c.nome}
                 </Link>
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-mute">
                 {c.cnpj
                   ? maskCpfCnpj(
                       c.cnpj,
@@ -82,7 +82,7 @@ export default function ClientesTable({
                     )
                   : '-'}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-mute">
                 {c.cliente_estrangeiro ? 'Sim' : 'Não'}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
