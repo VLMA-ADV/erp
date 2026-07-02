@@ -113,6 +113,7 @@ Deno.serve(async (req) => {
       p_resp_int_whatsapp: digitsOrNull(body.resp_int_whatsapp),
       p_resp_int_data_nascimento: body.resp_int_data_nascimento ?? null,
       p_responsaveis_financeiros: responsaveisFinanceiros,
+      p_potencial_cliente: body.potencial_cliente ?? null,
     });
     if (error) {
       console.error("Error updating cliente:", error);
