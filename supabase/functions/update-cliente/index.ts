@@ -73,11 +73,15 @@ Deno.serve(async (req) => {
 
     const responsaveisFinanceiros = Array.isArray(body.responsaveis_financeiros)
       ? body.responsaveis_financeiros
-          .filter((rf: { nome?: unknown }) =>
-            rf && typeof rf.nome === "string" && rf.nome.trim().length > 0,
-          )
-          .map((rf: { nome: string; email?: unknown; whatsapp?: unknown }) => ({
-            nome: rf.nome.trim(),
+          .filter((rf: { nome?: unknown; email?: unknown; whatsapp?: unknown }) => {
+            if (!rf) return false;
+            const nome = typeof rf.nome === "string" ? rf.nome.trim() : "";
+            const email = typeof rf.email === "string" ? rf.email.trim() : "";
+            const whatsapp = rf.whatsapp ? String(rf.whatsapp).trim() : "";
+            return nome.length > 0 || email.length > 0 || whatsapp.length > 0;
+          })
+          .map((rf: { nome?: unknown; email?: unknown; whatsapp?: unknown }) => ({
+            nome: typeof rf.nome === "string" ? rf.nome.trim() : "",
             email: rf.email ?? null,
             whatsapp: digitsOrNull(rf.whatsapp),
           }))
