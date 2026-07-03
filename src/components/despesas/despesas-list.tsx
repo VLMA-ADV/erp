@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Download, Edit, Plus, Trash2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -240,6 +240,24 @@ export default function DespesasList() {
       return true
     })
   }, [items, filterClienteId])
+
+  // Agrupa por dia (a lista já vem ordenada por data desc do backend) para o separador visual.
+  const groupedByDay = useMemo(() => {
+    const groups: Array<{ data: string; items: DespesaItem[]; total: number }> = []
+    const map = new Map<string, { data: string; items: DespesaItem[]; total: number }>()
+    for (const item of filteredItems) {
+      const key = item.data_lancamento || 'sem-data'
+      let g = map.get(key)
+      if (!g) {
+        g = { data: item.data_lancamento, items: [], total: 0 }
+        map.set(key, g)
+        groups.push(g)
+      }
+      g.items.push(item)
+      g.total += Number(item.valor || 0)
+    }
+    return groups
+  }, [filteredItems])
 
   const fetchContratos = async () => {
     const session = await getSession()
@@ -649,112 +667,96 @@ export default function DespesasList() {
         ) : null}
       </div>
 
-      <div className="overflow-hidden rounded-md border bg-white">
-        <Table className="w-full min-w-full">
+      <div className="overflow-x-auto rounded-md border border-hairline bg-card">
+        <Table className="w-full min-w-[760px]">
           <thead className="bg-canvas-soft">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Data</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Categoria</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Descrição</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Valor</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Arquivo</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
+              <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-ink-mute">Cliente / Caso</th>
+              <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-ink-mute">Descrição</th>
+              <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-ink-mute">Pessoa</th>
+              <th className="px-3 py-2.5 text-right text-xs font-medium uppercase text-ink-mute">Valor</th>
+              <th className="px-3 py-2.5 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
+              <th className="px-3 py-2.5 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Carregando despesas...
-                </td>
+                <td colSpan={6} className="px-3 py-8 text-center text-sm text-ink-mute">Carregando despesas...</td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Nenhuma despesa encontrada.
-                </td>
+                <td colSpan={6} className="px-3 py-8 text-center text-sm text-ink-mute">Nenhuma despesa encontrada.</td>
               </tr>
             ) : (
-              filteredItems.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3 text-sm">{formatDate(item.data_lancamento)}</td>
-                  <td className="px-4 py-3 text-sm">{item.cliente_nome || '-'}</td>
-                  <td className="px-4 py-3 text-sm">
-                    {item.caso_numero ? `${item.caso_numero} - ` : ''}
-                    {item.caso_nome || '-'}
-                    <div className="text-xs text-muted-foreground">
-                      {formatContratoDisplay(item.contrato_numero_sequencial ?? null, item.contrato_nome).full}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm">{item.categoria || '-'}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <p className="line-clamp-2">{item.descricao || '-'}</p>
-                    {item.reembolsavel === false ? (
-                      <span className="mt-1 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">Não reembolsável</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm font-tabular">{formatMoney(item.valor)}</td>
-                  <td className="px-4 py-3 text-sm">
-                    {item.anexos && item.anexos.length > 0 ? (
-                      <div className="flex flex-col gap-0.5">
-                        {item.anexos.map((anexo) => (
-                          <button
-                            key={`${anexo.kind}-${anexo.id}`}
-                            type="button"
-                            className="inline-flex max-w-[200px] items-center gap-1 text-left text-primary hover:underline"
-                            onClick={() => void downloadAnexo(anexo.kind, anexo.id, anexo.arquivo_nome)}
-                            title={anexo.arquivo_nome}
-                          >
-                            <Download className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">{anexo.arquivo_nome}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : item.arquivo_nome ? (
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                        onClick={() => void downloadAnexo('primario', item.id, item.arquivo_nome)}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span className="truncate">{item.arquivo_nome}</span>
-                      </button>
-                    ) : (
-                      '-'
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <Badge className={statusClassName(item.status)}>{formatStatus(item.status)}</Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {canWrite ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(item)}>
-                          <Edit className="mr-1 h-4 w-4" />
-                          Editar
-                        </Button>
-                        {item.status !== 'aprovado' ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                            onClick={() => void deleteDespesa(item)}
-                            disabled={submitting}
-                            title="Excluir despesa"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
-                    )}
-                  </td>
-                </tr>
+              groupedByDay.map((group) => (
+                <Fragment key={group.data || 'sem-data'}>
+                  <tr className="bg-canvas-soft/70">
+                    <td colSpan={6} className="px-3 py-1.5 text-xs text-ink-secondary">
+                      <span className="font-tabular font-medium">{formatDate(group.data)}</span>
+                      <span className="text-ink-mute"> · {group.items.length} lançamento{group.items.length > 1 ? 's' : ''} · </span>
+                      <span className="font-tabular">{formatMoney(group.total)}</span>
+                    </td>
+                  </tr>
+                  {group.items.map((item) => (
+                    <tr key={item.id} className="hover:bg-canvas-soft/40">
+                      <td className="px-3 py-2.5 align-top text-sm">
+                        <div className="font-medium text-ink">{item.cliente_nome || '-'}</div>
+                        <div className="text-xs text-ink-mute">{item.caso_numero ? `${item.caso_numero} - ` : ''}{item.caso_nome || '-'}</div>
+                      </td>
+                      <td className="max-w-[320px] px-3 py-2.5 align-top text-sm">
+                        <p className="line-clamp-2 text-ink-secondary">{item.descricao || '-'}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {item.categoria ? <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-ink-mute">{item.categoria}</span> : null}
+                          {item.reembolsavel === false ? <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">Não reembolsável</span> : null}
+                          {(item.arquivo_nome || (item.anexos && item.anexos.length > 0)) ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-0.5 text-[10px] text-primary hover:underline"
+                              title="Baixar anexo"
+                              onClick={() =>
+                                item.anexos && item.anexos.length > 0
+                                  ? void downloadAnexo(item.anexos[0].kind, item.anexos[0].id, item.anexos[0].arquivo_nome)
+                                  : void downloadAnexo('primario', item.id, item.arquivo_nome)
+                              }
+                            >
+                              <Download className="h-3 w-3" /> anexo{item.anexos && item.anexos.length > 1 ? `s (${item.anexos.length})` : ''}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 align-top text-sm text-ink-secondary">{item.created_by_nome || '-'}</td>
+                      <td className="px-3 py-2.5 text-right align-top text-sm font-tabular text-ink">{formatMoney(item.valor)}</td>
+                      <td className="px-3 py-2.5 align-top">
+                        <Badge className={statusClassName(item.status)}>{formatStatus(item.status)}</Badge>
+                      </td>
+                      <td className="px-3 py-2.5 text-right align-top">
+                        {canWrite ? (
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(item)} title="Editar">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            {item.status !== 'aprovado' ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => void deleteDespesa(item)}
+                                disabled={submitting}
+                                title="Excluir despesa"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-ink-mute">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))
             )}
           </tbody>
