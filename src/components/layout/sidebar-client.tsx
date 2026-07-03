@@ -107,7 +107,7 @@ export default function SidebarClient() {
   return (
     <Sidebar className="bg-brand-purple-soft border-r-brand-purple/15">
       <SidebarHeader>
-        <div className="text-brand-purple"><VlmaLogo className="h-8 w-auto" /></div>
+        <div className="text-ink"><VlmaLogo className="h-5 w-auto" /></div>
         <div className="mt-1.5 flex items-center gap-2">
           <span className="text-sm font-medium text-ink">ERP</span>
           <Novidades />

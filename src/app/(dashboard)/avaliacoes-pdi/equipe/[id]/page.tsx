@@ -11,7 +11,7 @@ interface Faixa { codigo: string; rotulo: string; ordem: number }
 interface Skill { id: string; trilha: string; pilar_numero: number; pilar_nome: string; item_codigo: string; titulo: string | null; nome: string; descricao: string | null; faixa_auto: string | null; texto_auto: string | null; faixa_final: string | null; texto_final: string | null }
 interface Dna { id: string; numero: number; nome: string; texto_auto: string | null }
 interface Meta { id: string; nome: string | null; descricao: string | null; indicadores: string | null; semestre: number | null; progresso_pct: number | null; faixa_auto: string | null; faixa_final: string | null; validada: boolean }
-interface Cargo { id: string; nome: string; codigo: string; nivel: number | null }
+interface Cargo { id: string; nome: string; codigo: string; nivel: number | null; salario_sugerido: number | null }
 interface Avaliacao {
   id: string; ano: number; status: string; faixa_final_geral: string | null; resultado: string | null; parecer_gestor: string | null
   autoavaliacao_enviada_at: string | null; avaliacao_gestor_enviada_at: string | null; progressao_aplicada_at: string | null
@@ -311,11 +311,17 @@ export default function ReviewPdiPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <p className="text-eyebrow mb-1.5">Novo cargo</p>
-                <select value={novoCargo} onChange={(e) => setNovoCargo(e.target.value)}
+                <select value={novoCargo} onChange={(e) => {
+                    const cid = e.target.value
+                    setNovoCargo(cid)
+                    const sug = cargos.find((c) => c.id === cid)?.salario_sugerido
+                    if (sug != null) setNovoSalario(String(sug))
+                  }}
                   className="h-9 w-full rounded-md border border-hairline-input bg-background px-2 text-sm text-ink">
                   <option value="">Manter cargo atual</option>
-                  {cargos.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  {cargos.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.salario_sugerido != null ? ` — ${brl(c.salario_sugerido)}` : ''}</option>)}
                 </select>
+                <p className="mt-1 text-xs text-ink-mute">Salário sugerido do quadro preenche o campo ao lado; você pode ajustar.</p>
               </div>
               <div>
                 <p className="text-eyebrow mb-1.5">Novo salário (R$)</p>

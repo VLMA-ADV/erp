@@ -59,6 +59,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
   const [profissional, setProfissional] = useState({
     cargo_id: '',
     area_id: '',
+    carreira: '',
     categoria_profissional: '',
     adicional: '',
     percentual_adicional: '',
@@ -163,6 +164,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         setProfissional({
           cargo_id: colaborador.cargo_id || '',
           area_id: colaborador.area_id || '',
+          carreira: colaborador.carreira || '',
           categoria_profissional: colaborador.categoria_profissional || '',
           adicional: colaborador.adicional || '',
           percentual_adicional: colaborador.percentual_adicional?.toString() || '',
@@ -832,6 +834,24 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                         {area.nome}
                       </option>
                     ))}
+                  </NativeSelect>
+                </div>
+
+                <div>
+                  <Label htmlFor="carreira">Carreira</Label>
+                  <NativeSelect
+                    id="carreira"
+                    name="carreira"
+                    value={profissional.carreira}
+                    onChange={handleProfissionalChange}
+                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Selecione a carreira</option>
+                    <option value="CONTENCIOSO">Contencioso</option>
+                    <option value="CONSULTORIA">Consultoria</option>
+                    <option value="PLUS">Plus — Estratégico / Liderança</option>
+                    <option value="JR_PARTNER">Jr. Partner</option>
+                    <option value="ADM_FIN">Administrativo e Financeiro</option>
                   </NativeSelect>
                 </div>
 
