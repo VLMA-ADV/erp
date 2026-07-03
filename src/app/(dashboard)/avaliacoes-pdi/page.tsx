@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
+import EquipeCard from '@/components/pdi/equipe-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,8 @@ export default async function AvaliacoesPDIPage() {
         </CardContent>
       </Card>
 
+      <EquipeCard />
+
       <Card className="mt-4">
         <CardHeader>
           <CardTitle>Catálogo do PDP</CardTitle>
@@ -53,9 +56,6 @@ export default async function AvaliacoesPDIPage() {
           >
             Ver catálogo do PDP
           </Link>
-          <p className="text-sm text-ink-mute">
-            A consolidação para coordenadores/sócios (Fase 2) virá em seguida.
-          </p>
         </CardContent>
       </Card>
     </div>
