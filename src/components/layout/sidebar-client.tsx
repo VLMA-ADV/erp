@@ -11,6 +11,7 @@ import SidebarMenuContratos from './sidebar-menu-contratos'
 import SidebarMenuRelatorios from './sidebar-menu-relatorios'
 import Novidades from './novidades'
 import { Button } from '@/components/ui/button'
+import { VlmaLogo } from '@/components/ui/vlma-logo'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 
 const menuItems = [
@@ -104,11 +105,13 @@ export default function SidebarClient() {
   }
 
   return (
-    <Sidebar>
+    <Sidebar className="bg-brand-purple-soft border-r-brand-purple/15">
       <SidebarHeader>
-        <span className="text-eyebrow">VLMA</span>
-        <h1 className="mt-1 text-lg font-light text-ink">ERP</h1>
-        <Novidades />
+        <div className="text-brand-purple"><VlmaLogo className="h-8 w-auto" /></div>
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="text-sm font-medium text-ink">ERP</span>
+          <Novidades />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         {/* Menu Configuração (Expansível) */}

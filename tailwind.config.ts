@@ -36,6 +36,11 @@ const config = {
           "soft-fg": "hsl(var(--primary-soft-fg))",
         },
         "brand-dark": "hsl(var(--brand-dark))",
+        "brand-purple": {
+          DEFAULT: "hsl(var(--brand-purple))",
+          fg: "hsl(var(--brand-purple-fg))",
+          soft: "hsl(var(--brand-purple-soft))",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",

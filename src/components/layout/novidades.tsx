@@ -241,14 +241,14 @@ export default function Novidades() {
     <>
       <button
         onClick={abrir}
-        className="group mt-0.5 flex items-center gap-1.5 text-xs text-ink-mute transition-colors hover:text-primary"
+        className="group mt-0.5 flex items-center gap-1.5 text-xs text-ink-mute transition-colors hover:text-brand-purple"
         title="Ver novidades"
       >
         <span>Versão {APP_VERSION}</span>
         {temNovidade && (
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-purple opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-purple" />
           </span>
         )}
         <span
