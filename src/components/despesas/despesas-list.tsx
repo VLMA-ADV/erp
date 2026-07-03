@@ -43,6 +43,7 @@ interface DespesaItem {
   categoria: string
   descricao: string
   valor: number
+  reembolsavel?: boolean
   status: DespesaStatus
   arquivo_nome: string
   mime_type: string | null
@@ -78,6 +79,7 @@ interface FormState {
   categoria: string
   valor: string
   descricao: string
+  reembolsavel: boolean
   arquivo: File | null
   arquivo_nome: string
   anexosNovos: File[]
@@ -93,6 +95,7 @@ const emptyForm: FormState = {
   categoria: '',
   valor: '',
   descricao: '',
+  reembolsavel: true,
   arquivo: null,
   arquivo_nome: '',
   anexosNovos: [],
@@ -392,6 +395,7 @@ export default function DespesasList() {
       categoria: item.categoria || '',
       valor: String(item.valor ?? ''),
       descricao: item.descricao || '',
+      reembolsavel: item.reembolsavel ?? true,
       arquivo: null,
       arquivo_nome: item.arquivo_nome || '',
       anexosNovos: [],
@@ -509,6 +513,7 @@ export default function DespesasList() {
         categoria: form.categoria.trim(),
         valor: valorNumeric,
         descricao: form.descricao.trim(),
+        reembolsavel: form.reembolsavel,
       }
 
       if (form.arquivo) {
@@ -687,6 +692,9 @@ export default function DespesasList() {
                   <td className="px-4 py-3 text-sm">{item.categoria || '-'}</td>
                   <td className="px-4 py-3 text-sm">
                     <p className="line-clamp-2">{item.descricao || '-'}</p>
+                    {item.reembolsavel === false ? (
+                      <span className="mt-1 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">Não reembolsável</span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-tabular">{formatMoney(item.valor)}</td>
                   <td className="px-4 py-3 text-sm">
@@ -839,6 +847,22 @@ export default function DespesasList() {
                 placeholder="Descreva a despesa"
                 disabled={submitting}
               />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="flex items-start gap-2 rounded-md border border-hairline bg-canvas-soft p-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={!form.reembolsavel}
+                  disabled={submitting}
+                  onChange={(event) => setForm((prev) => ({ ...prev, reembolsavel: !event.target.checked }))}
+                />
+                <span className="text-sm text-ink-secondary">
+                  <span className="font-medium text-ink">Despesa não reembolsável</span>
+                  <span className="mt-0.5 block text-xs text-ink-mute">O escritório absorve o custo — não entra no faturamento do cliente.</span>
+                </span>
+              </label>
             </div>
 
             <div className="space-y-1 md:col-span-2">
