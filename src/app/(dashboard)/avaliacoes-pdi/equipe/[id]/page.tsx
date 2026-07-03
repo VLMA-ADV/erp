@@ -16,7 +16,7 @@ interface Avaliacao {
   id: string; ano: number; status: string; faixa_final_geral: string | null; resultado: string | null; parecer_gestor: string | null
   autoavaliacao_enviada_at: string | null; avaliacao_gestor_enviada_at: string | null; progressao_aplicada_at: string | null
   gestor_nome: string | null; salario_anterior: number | null; novo_salario: number | null; novo_cargo_id: string | null
-  bonus_pdi: boolean | null; bonus_performance_plus: number | null; bonus_comercial: number | null
+  bonus_pdi: boolean | null; bonus_13o: number | null; bonus_performance_plus: number | null; bonus_comercial: number | null
   cargo_nome_snapshot: string | null; nivel_codigo_snapshot: string | null; carreira_codigo: string | null; adicional_snapshot: string | null; area_nome_snapshot: string | null
   colaborador_nome: string | null; salario_atual: number | null; cargo_atual_id: string | null
 }
@@ -57,6 +57,7 @@ export default function ReviewPdiPage() {
   const [resultado, setResultado] = useState<string>('')
   const [parecer, setParecer] = useState<string>('')
   const [bonusPdi, setBonusPdi] = useState(false)
+  const [bonus13, setBonus13] = useState<string>('')
   const [bonusPlus, setBonusPlus] = useState<string>('')
   const [bonusComercial, setBonusComercial] = useState<string>('')
   const [novoCargo, setNovoCargo] = useState<string>('')
@@ -80,6 +81,7 @@ export default function ReviewPdiPage() {
       setResultado(d.avaliacao?.resultado || '')
       setParecer(d.avaliacao?.parecer_gestor || '')
       setBonusPdi(!!d.avaliacao?.bonus_pdi)
+      setBonus13(d.avaliacao?.bonus_13o != null ? String(d.avaliacao.bonus_13o) : '')
       setBonusPlus(d.avaliacao?.bonus_performance_plus != null ? String(d.avaliacao.bonus_performance_plus) : '')
       setBonusComercial(d.avaliacao?.bonus_comercial != null ? String(d.avaliacao.bonus_comercial) : '')
       setNovoCargo(d.avaliacao?.novo_cargo_id || d.avaliacao?.cargo_atual_id || '')
@@ -99,6 +101,8 @@ export default function ReviewPdiPage() {
   }, [skills])
 
   const aplicada = !!aval?.progressao_aplicada_at
+  const pdiElegivel = faixaGeral === 'acima_do_esperado' || faixaGeral === 'fora_da_curva'
+  const plusElegivel = faixaGeral === 'fora_da_curva'
 
   const save = async (enviar: boolean) => {
     if (enviar && !window.confirm('Concluir a avaliação do gestor? A faixa final e o resultado ficam registrados.')) return
@@ -112,9 +116,12 @@ export default function ReviewPdiPage() {
         p_faixa_final_geral: faixaGeral || null,
         p_resultado: resultado || null,
         p_parecer: parecer || null,
-        p_bonus_pdi: bonusPdi,
-        p_bonus_performance_plus: bonusPlus ? Number(bonusPlus) : null,
-        p_bonus_comercial: bonusComercial ? Number(bonusComercial) : null,
+        p_bonus: {
+          pdi: bonusPdi,
+          b13: bonus13 ? Number(bonus13) : null,
+          plr_plus: bonusPlus ? Number(bonusPlus) : null,
+          comercial: bonusComercial ? Number(bonusComercial) : null,
+        },
         p_enviar: enviar,
       })
       if (err) { setError(err.message); return }
@@ -267,31 +274,81 @@ export default function ReviewPdiPage() {
         <h2 className="display-md mb-3 text-ink">Resultado geral</h2>
         <p className="text-eyebrow mb-1.5">Faixa final geral</p>
         <GestorPicker value={faixaGeral} onChange={setFaixaGeral} />
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div>
-            <p className="text-eyebrow mb-1.5">Resultado</p>
-            <select value={resultado} onChange={(e) => setResultado(e.target.value)}
-              className="h-9 w-full rounded-md border border-hairline-input bg-background px-2 text-sm text-ink">
-              <option value="">Selecione…</option>
-              {RESULTADOS.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
-            </select>
-          </div>
-          <div>
-            <p className="text-eyebrow mb-1.5">Bônus</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-1.5 text-sm text-ink-secondary">
-                <input type="checkbox" checked={bonusPdi} onChange={(e) => setBonusPdi(e.target.checked)} /> Bônus PDI
-              </label>
-              <input value={bonusPlus} onChange={(e) => setBonusPlus(e.target.value)} inputMode="decimal" placeholder="PLR Plus (R$)"
-                className="h-9 w-32 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink" />
-              <input value={bonusComercial} onChange={(e) => setBonusComercial(e.target.value)} inputMode="decimal" placeholder="Comercial (R$)"
-                className="h-9 w-32 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink" />
-            </div>
-          </div>
+        <div className="mt-4">
+          <p className="text-eyebrow mb-1.5">Resultado</p>
+          <select value={resultado} onChange={(e) => setResultado(e.target.value)}
+            className="h-9 w-full max-w-sm rounded-md border border-hairline-input bg-background px-2 text-sm text-ink">
+            <option value="">Selecione…</option>
+            {RESULTADOS.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+          </select>
         </div>
         <p className="text-eyebrow mb-1.5 mt-4">Parecer do gestor</p>
         <textarea value={parecer} onChange={(e) => setParecer(e.target.value)} rows={3} placeholder="Síntese da avaliação, pontos fortes e de desenvolvimento…"
           className="w-full resize-none rounded-md border border-hairline-input bg-background px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-ring" />
+      </section>
+
+      {/* BÔNUS E PLR (Anexo 4) */}
+      <section className="mb-8 rounded-xl border border-hairline bg-card p-5">
+        <h2 className="display-md mb-1 text-ink">Bônus e PLR</h2>
+        <p className="mb-4 text-sm text-ink-mute">Registro manual pelo gestor (critérios do Anexo 4 do PDP).</p>
+        <div className="space-y-3">
+          {/* 13º */}
+          <div className="rounded-lg border border-hairline p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-ink">13º salário</p>
+                <p className="text-xs text-ink-mute">Garantido a todos (exceto CLT) — equivale a 1 salário.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {aval?.salario_atual != null ? (
+                  <button type="button" onClick={() => setBonus13(String(aval.salario_atual))}
+                    className="rounded-md border border-hairline px-2 py-1 text-xs text-ink-secondary hover:border-primary">usar {brl(aval.salario_atual)}</button>
+                ) : null}
+                <input value={bonus13} onChange={(e) => setBonus13(e.target.value)} inputMode="decimal" placeholder="R$"
+                  className="h-9 w-32 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink" />
+              </div>
+            </div>
+          </div>
+          {/* Bônus PDI */}
+          <div className="rounded-lg border border-hairline p-3">
+            <label className="flex cursor-pointer items-start gap-2">
+              <input type="checkbox" className="mt-0.5" checked={bonusPdi} onChange={(e) => setBonusPdi(e.target.checked)} />
+              <span>
+                <span className="text-sm font-medium text-ink">Bônus PDI <span className="text-ink-mute">— 1 salário adicional</span></span>
+                <span className="block text-xs text-ink-mute">Elegível para “Acima do esperado” ou “Fora da curva”.
+                  {pdiElegivel ? <span className="ml-1 font-medium text-emerald-700">Faixa atual qualifica.</span> : null}</span>
+              </span>
+            </label>
+          </div>
+          {/* PLR Plus */}
+          <div className="rounded-lg border border-hairline p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-ink">PLR Plus</p>
+                <p className="text-xs text-ink-mute">Discricionário dos sócios — apenas “Fora da curva” (pool de 10%).
+                  {plusElegivel ? <span className="ml-1 font-medium text-emerald-700">Faixa atual qualifica.</span> : null}</p>
+              </div>
+              <input value={bonusPlus} onChange={(e) => setBonusPlus(e.target.value)} inputMode="decimal" placeholder="R$"
+                className="h-9 w-32 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink" />
+            </div>
+          </div>
+          {/* Bônus Comercial */}
+          <div className="rounded-lg border border-hairline p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-ink">Bônus Comercial</p>
+                <p className="text-xs text-ink-mute">R$ 15.000 se o caixa recebido no ano ≥ R$ 120.000.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setBonusComercial('15000')}
+                  className="rounded-md border border-hairline px-2 py-1 text-xs text-ink-secondary hover:border-primary">usar R$ 15.000</button>
+                <input value={bonusComercial} onChange={(e) => setBonusComercial(e.target.value)} inputMode="decimal" placeholder="R$"
+                  className="h-9 w-32 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-ink-mute">PLR (35% distribuído uniformemente a todos) é apurado no nível do escritório sobre a receita que exceder a meta — não é lançado por pessoa aqui.</p>
       </section>
 
       {/* PROGRESSÃO */}
