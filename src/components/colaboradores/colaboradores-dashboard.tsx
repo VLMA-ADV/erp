@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-
-interface Grupo {
-  label: string
-  count: number
-}
+import { DonutBreakdown, type DonutGroup as Grupo } from '@/components/ui/donut-breakdown'
 
 interface DashboardData {
   total: number
@@ -14,6 +10,7 @@ interface DashboardData {
   por_cargo: Grupo[]
   por_centro_custo: Grupo[]
   por_adicional: Grupo[]
+  por_salario: Grupo[]
 }
 
 const CATEGORIA_LABEL: Record<string, string> = {
@@ -27,26 +24,6 @@ const ADICIONAL_LABEL: Record<string, string> = {
   lideranca: 'Liderança',
   estrategico: 'Estratégico',
   Nenhuma: 'Nenhuma',
-}
-
-function Breakdown({ titulo, grupos, labelMap }: { titulo: string; grupos: Grupo[]; labelMap?: Record<string, string> }) {
-  return (
-    <div className="rounded-lg border border-hairline bg-white p-4">
-      <p className="text-eyebrow mb-3">{titulo}</p>
-      {grupos.length === 0 ? (
-        <p className="text-sm text-ink-mute">—</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {grupos.map((g) => (
-            <li key={g.label} className="flex items-center justify-between text-sm">
-              <span className="truncate text-ink-secondary">{labelMap?.[g.label] || g.label}</span>
-              <span className="font-tabular font-medium text-ink">{g.count}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
 }
 
 export default function ColaboradoresDashboard() {
@@ -91,17 +68,18 @@ export default function ColaboradoresDashboard() {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-lg border border-hairline bg-white p-4">
-          <p className="text-eyebrow">Total de colaboradores</p>
-          <p className="mt-1 text-3xl font-light text-ink">{data.total}</p>
-          <p className="mt-1 text-xs text-ink-mute">ativos</p>
-        </div>
-        <Breakdown titulo="Por categoria" grupos={data.por_categoria} labelMap={CATEGORIA_LABEL} />
-        <Breakdown titulo="Função adicional" grupos={data.por_adicional} labelMap={ADICIONAL_LABEL} />
-        <Breakdown titulo="Por centro de custo" grupos={data.por_centro_custo} />
+      <div className="rounded-xl border border-hairline bg-brand-purple-soft p-4">
+        <p className="text-eyebrow">Total de colaboradores</p>
+        <p className="mt-1 font-tabular text-4xl font-light text-ink">{data.total}</p>
+        <p className="mt-1 text-xs text-ink-mute">ativos</p>
       </div>
-      <Breakdown titulo="Por cargo" grupos={data.por_cargo} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <DonutBreakdown titulo="Por categoria" grupos={data.por_categoria} labelMap={CATEGORIA_LABEL} />
+        <DonutBreakdown titulo="Por cargo" grupos={data.por_cargo} />
+        <DonutBreakdown titulo="Por centro de custo" grupos={data.por_centro_custo} />
+        <DonutBreakdown titulo="Função adicional" grupos={data.por_adicional} labelMap={ADICIONAL_LABEL} />
+        <DonutBreakdown titulo="Por faixa salarial" grupos={data.por_salario} />
+      </div>
     </div>
   )
 }
