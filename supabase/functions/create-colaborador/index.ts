@@ -357,6 +357,7 @@ Deno.serve(async (req) => {
       data_entrada: data_entrada || null,
       data_saida: data_saida || null,
       categoria,
+      carreira: body.carreira || null,
       oab: categoria === "advogado" ? oab : null,
       whatsapp: whatsapp || null,
       cep: formattedCEP,
