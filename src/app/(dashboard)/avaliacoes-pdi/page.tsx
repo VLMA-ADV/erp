@@ -24,18 +24,37 @@ export default async function AvaliacoesPDIPage() {
       </header>
       <Card>
         <CardHeader>
-          <CardTitle>Em desenvolvimento</CardTitle>
+          <CardTitle>Meu PDI {new Date().getFullYear()}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-ink-mute">
-            A listagem centralizada de avaliações PDI será implementada em uma próxima sprint.
+            Faça sua autoavaliação do ciclo: skills da carreira e DNA por faixa, metas semestrais e feedbacks mensais.
           </p>
+          <Link
+            href="/avaliacoes-pdi/meu"
+            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-deep"
+          >
+            Abrir meu PDI
+          </Link>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Catálogo do PDP</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
           <p className="text-sm text-ink-mute">
-            Por enquanto, acesse o PDI de cada colaborador individualmente em{' '}
-            <Link href="/pessoas/colaboradores" className="text-primary underline underline-offset-2">
-              Pessoas → Colaboradores
-            </Link>
-            .
+            Base de referência do PDP 2026: carreiras, régua de avaliação, quadro de remuneração, matriz de skills e DNA.
+          </p>
+          <Link
+            href="/avaliacoes-pdi/catalogo"
+            className="inline-flex items-center rounded-md border border-hairline bg-card px-4 py-2 text-sm font-medium text-ink hover:bg-canvas-soft"
+          >
+            Ver catálogo do PDP
+          </Link>
+          <p className="text-sm text-ink-mute">
+            A consolidação para coordenadores/sócios (Fase 2) virá em seguida.
           </p>
         </CardContent>
       </Card>
