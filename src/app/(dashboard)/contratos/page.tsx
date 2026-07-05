@@ -5,6 +5,7 @@ import ContratosDashboard from '@/components/contratos/contratos-dashboard'
 import ContratosInbox from '@/components/contratos/contratos-inbox'
 import MensagensInbox from '@/components/contratos/mensagens-inbox'
 import SolicitacoesInbox from '@/components/contratos/solicitacoes-inbox'
+import { SectionTabs } from '@/components/ui/section-tabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,13 +22,23 @@ export default async function ContratosPage() {
         <h1 className="mt-2 display-lg text-ink">Contratos</h1>
         <p className="mt-2 text-sm text-ink-mute">Gerencie contratos e seus casos vinculados.</p>
       </header>
-      <div className="space-y-6">
-        <SolicitacoesInbox />
-        <MensagensInbox />
-        <ContratosInbox />
-        <ContratosDashboard />
-        <ContratosList />
-      </div>
+      <SectionTabs
+        tabs={[
+          { value: 'contratos', label: 'Contratos', content: <ContratosList /> },
+          { value: 'visao', label: 'Visão geral', content: <ContratosDashboard /> },
+          {
+            value: 'inbox',
+            label: 'Caixa de entrada',
+            content: (
+              <div className="space-y-6">
+                <SolicitacoesInbox />
+                <MensagensInbox />
+                <ContratosInbox />
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }
