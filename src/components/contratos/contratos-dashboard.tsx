@@ -207,14 +207,14 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
           </defs>
           {yTicks.map((t) => (
             <g key={`grid-${t}`}>
-              <line x1={padding.left} x2={width - padding.right} y1={yCoord(t)} y2={yCoord(t)} stroke="#e2e8f0" strokeWidth={1} strokeDasharray="2 4" />
+              <line x1={padding.left} x2={width - padding.right} y1={yCoord(t)} y2={yCoord(t)} stroke="#e2e8f0" strokeWidth={1} strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
               <text x={padding.left - 6} y={yCoord(t) + 3} textAnchor="end" className="fill-ink-mute text-[10px] font-tabular">{t}</text>
             </g>
           ))}
           <path d={buildArea('upper')} fill="url(#grad-casos)" />
           <path d={buildArea('lower')} fill="url(#grad-contratos)" />
-          <path d={lineCasos} fill="none" stroke="#FF9900" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-          <path d={lineContratos} fill="none" stroke="#1E1423" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={lineCasos} fill="none" stroke="#FF9900" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          <path d={lineContratos} fill="none" stroke="#1E1423" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
           {stacked.map((s, i) => (
             <g key={`pts-${s.mes}`}>
               {s.contratos_novos + s.casos_novos > 0 && (
