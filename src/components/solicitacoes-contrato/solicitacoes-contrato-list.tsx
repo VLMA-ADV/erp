@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ChevronDown, ChevronRight, FilePlus2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, FilePlus2, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -349,6 +349,31 @@ export default function SolicitacoesContratoList() {
     }
   }
 
+  const deleteSolicitacao = async (id: string, nome?: string | null) => {
+    if (!window.confirm(`Excluir a solicitação "${nome || 'sem nome'}"? Esta ação não pode ser desfeita.`)) return
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toastError('Sessão expirada. Faça login novamente.')
+        return
+      }
+      const { error: rpcError } = await supabase.rpc('delete_solicitacao_contrato', {
+        p_user_id: user.id,
+        p_id: id,
+      })
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao excluir solicitação')
+        return
+      }
+      success('Solicitação excluída')
+      await fetchItems()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao excluir solicitação')
+    }
+  }
+
   const createSolicitacao = async () => {
     try {
       setSubmitting(true)
@@ -614,6 +639,17 @@ export default function SolicitacoesContratoList() {
                             >
                               <Button size="sm" variant="outline">Ir para contrato</Button>
                             </Link>
+                          ) : null}
+                          {canWrite ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:bg-destructive/10"
+                              title="Excluir solicitação"
+                              onClick={() => void deleteSolicitacao(item.id, item.nome)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           ) : null}
                         </div>
                       </td>
