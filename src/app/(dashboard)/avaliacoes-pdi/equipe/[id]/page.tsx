@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { Save, Send, CheckCircle2, TrendingUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 interface Faixa { codigo: string; rotulo: string; ordem: number }
 interface Skill { id: string; trilha: string; pilar_numero: number; pilar_nome: string; item_codigo: string; titulo: string | null; nome: string; descricao: string | null; faixa_auto: string | null; texto_auto: string | null; faixa_final: string | null; texto_final: string | null }
@@ -184,6 +185,16 @@ export default function ReviewPdiPage() {
 
       {!aval?.autoavaliacao_enviada_at ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">O colaborador ainda não enviou a autoavaliação. Você pode registrar a sua mesmo assim.</p> : null}
 
+      <Tabs defaultValue="competencias">
+        <TabsList className="mb-2 flex-wrap">
+          <TabsTrigger value="competencias">Competências</TabsTrigger>
+          <TabsTrigger value="metas">Metas</TabsTrigger>
+          <TabsTrigger value="dna">DNA</TabsTrigger>
+          <TabsTrigger value="resultado">Resultado &amp; Bônus</TabsTrigger>
+          <TabsTrigger value="progressao">Progressão</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="competencias">
       {/* SKILLS lado a lado */}
       {Object.keys(skillsPorTrilha).sort((a, b) => (a === 'base' ? -1 : 1)).map((trilha) => (
         <section key={trilha} className="mb-8">
@@ -224,7 +235,9 @@ export default function ReviewPdiPage() {
           </div>
         </section>
       ))}
+        </TabsContent>
 
+        <TabsContent value="metas">
       {/* METAS */}
       <section className="mb-8">
         <h2 className="display-md mb-1 text-ink">Metas do PDI</h2>
@@ -253,6 +266,9 @@ export default function ReviewPdiPage() {
         </div>
       </section>
 
+        </TabsContent>
+
+        <TabsContent value="dna">
       {/* DNA (leitura) */}
       {dna.length > 0 ? (
         <section className="mb-8">
@@ -269,6 +285,9 @@ export default function ReviewPdiPage() {
         </section>
       ) : null}
 
+        </TabsContent>
+
+        <TabsContent value="resultado">
       {/* RESULTADO GERAL */}
       <section className="mb-8 rounded-xl border border-hairline bg-card p-5">
         <h2 className="display-md mb-3 text-ink">Resultado geral</h2>
@@ -351,6 +370,9 @@ export default function ReviewPdiPage() {
         <p className="mt-3 text-xs text-ink-mute">PLR (35% distribuído uniformemente a todos) é apurado no nível do escritório sobre a receita que exceder a meta — não é lançado por pessoa aqui.</p>
       </section>
 
+        </TabsContent>
+
+        <TabsContent value="progressao">
       {/* PROGRESSÃO */}
       <section className="mb-8 rounded-xl border border-brand-purple/25 bg-brand-purple-soft/50 p-5">
         <div className="mb-3 flex items-center gap-2">
@@ -392,6 +414,9 @@ export default function ReviewPdiPage() {
           </>
         )}
       </section>
+
+        </TabsContent>
+      </Tabs>
 
       {/* SAVE BAR */}
       <div className="fixed inset-x-0 bottom-0 border-t border-hairline bg-card/95 backdrop-blur">

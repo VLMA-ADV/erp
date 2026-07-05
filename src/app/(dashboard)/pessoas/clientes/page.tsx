@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import ClientesList from '@/components/clientes/clientes-list'
 import ClientesPageClient from '@/components/clientes/clientes-page-client'
 import ClientesDashboard from '@/components/clientes/clientes-dashboard'
+import { SectionTabs } from '@/components/ui/section-tabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,11 +18,12 @@ export default async function ClientesPage() {
   return (
     <div className="container mx-auto px-6 py-12">
       <ClientesPageClient />
-      <div className="mb-6">
-        <p className="text-eyebrow mb-3">Indicadores</p>
-        <ClientesDashboard />
-      </div>
-      <ClientesList />
+      <SectionTabs
+        tabs={[
+          { value: 'lista', label: 'Lista', content: <ClientesList /> },
+          { value: 'indicadores', label: 'Indicadores', content: <ClientesDashboard /> },
+        ]}
+      />
     </div>
   )
 }
