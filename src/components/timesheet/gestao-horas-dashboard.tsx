@@ -107,7 +107,11 @@ export default function GestaoHorasDashboard() {
   }, [refMonth, clienteId])
 
   if (loading && !data) return null
-  if (!data || !data.is_gestor) return null // visível só para sócios/coordenadores
+  if (!data || !data.is_gestor) return (
+    <p className="rounded-xl border border-dashed border-hairline bg-canvas-soft p-6 text-center text-sm text-ink-mute">
+      A gestão de horas da equipe fica disponível para sócios e coordenadores de centro de custo.
+    </p>
+  )
 
   return (
     <section className="mb-6 space-y-3 rounded-xl border bg-canvas-soft p-4">
