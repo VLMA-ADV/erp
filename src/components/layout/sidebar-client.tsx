@@ -78,7 +78,9 @@ export default function SidebarClient() {
     }
   }
 
-  if (loading) {
+  // Skeleton só na primeira carga (sem permissões ainda). Depois de carregadas,
+  // um refresh em background não deve blanknar o menu — evita o "recarregando sozinho".
+  if (loading && permissions.length === 0) {
     return (
       <Sidebar>
         <div className="animate-pulse">

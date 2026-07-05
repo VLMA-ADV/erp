@@ -193,15 +193,15 @@ export function usePermissions() {
     async function loadPermissions() {
       if (isLoadingRef.current) return
       isLoadingRef.current = true
-      setLoading(true)
 
       try {
-        // Tentar ler do cache primeiro
+        // Tentar ler do cache primeiro — NÃO acionar `loading` ainda: com cache,
+        // a atualização é silenciosa (sem piscar o skeleton do menu a cada
+        // navegação/visibilitychange/remount).
         const cached = await getCachedPermissions()
         if (ac.signal.aborted) return
 
         if (cached) {
-          console.log('Using cached permissions')
           setPermissions(cached.permissions)
           setLoading(false)
 
@@ -217,8 +217,8 @@ export function usePermissions() {
             console.error(err)
           })
         } else {
-          // Cache não disponível ou expirado, buscar da API
-          console.log('Fetching permissions from API')
+          // Sem cache: só aqui vale mostrar o loading (primeira carga real).
+          setLoading(true)
           const permissionsList = await fetchPermissions(ac.signal)
           if (ac.signal.aborted) return
           setPermissions(permissionsList)
