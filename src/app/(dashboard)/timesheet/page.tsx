@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import TimesheetList from '@/components/timesheet/timesheet-list'
 import GestaoHorasDashboard from '@/components/timesheet/gestao-horas-dashboard'
+import MinhasHorasResumo from '@/components/timesheet/minhas-horas-resumo'
+import { SectionTabs } from '@/components/ui/section-tabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,8 +22,21 @@ export default async function TimesheetPage() {
         <h1 className="mt-2 display-lg text-ink">Timesheet</h1>
         <p className="mt-2 text-sm text-ink-mute">Lançamentos de horas por contrato e caso</p>
       </header>
-      <GestaoHorasDashboard />
-      <TimesheetList />
+      <SectionTabs
+        tabs={[
+          {
+            value: 'meus',
+            label: 'Meus lançamentos',
+            content: (
+              <div>
+                <MinhasHorasResumo />
+                <TimesheetList />
+              </div>
+            ),
+          },
+          { value: 'gestao', label: 'Gestão da equipe', content: <GestaoHorasDashboard /> },
+        ]}
+      />
     </div>
   )
 }
