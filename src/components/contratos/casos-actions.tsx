@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { Eye, Pencil, Paperclip, Power, Trash2 } from 'lucide-react'
+import { Eye, Pencil, Paperclip, Power, Trash2, Copy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -27,7 +28,40 @@ export default function CasosActions({
   const [loading, setLoading] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
   const { success, error: toastError } = useToast()
+  const router = useRouter()
+
+  const duplicarCaso = async () => {
+    try {
+      setLoading(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/duplicar-caso`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origem_caso_id: casoId, contrato_destino_id: contratoId }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) {
+        toastError(data.error || 'Erro ao duplicar caso')
+        return
+      }
+      success('Caso duplicado — abrindo a cópia para edição')
+      if (data.contrato_id && data.id) {
+        router.push(`/contratos/${data.contrato_id}/casos/${data.id}/editar`)
+      } else {
+        onRefresh()
+      }
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao duplicar caso')
+    } finally {
+      setLoading(false)
+      setDuplicateOpen(false)
+    }
+  }
 
   const deleteCaso = async () => {
     try {
@@ -114,6 +148,11 @@ export default function CasosActions({
               </Button>
             </Link>
           </Tooltip>
+          <Tooltip content="Duplicar caso">
+            <Button variant="ghost" size="sm" onClick={() => setDuplicateOpen(true)} disabled={loading}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </Tooltip>
           <Tooltip content="Inserir anexo">
             <Button variant="ghost" size="sm" onClick={() => setAnexoOpen(true)}>
               <Paperclip className="h-4 w-4" />
@@ -144,6 +183,16 @@ export default function CasosActions({
             confirmLabel="Confirmar"
             cancelLabel="Cancelar"
             onConfirm={toggleStatus}
+            loading={loading}
+          />
+          <AlertDialog
+            open={duplicateOpen}
+            onOpenChange={setDuplicateOpen}
+            title="Duplicar caso?"
+            description="Uma cópia deste caso será criada neste mesmo contrato e aberta para edição."
+            confirmLabel="Duplicar"
+            cancelLabel="Cancelar"
+            onConfirm={duplicarCaso}
             loading={loading}
           />
           <AlertDialog
