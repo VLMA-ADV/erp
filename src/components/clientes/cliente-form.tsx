@@ -87,6 +87,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!clienteId)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [form, setForm] = useState<ClientePayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
@@ -272,6 +273,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
 
   const submit = async () => {
     setError(null)
+    setSaved(false)
 
     if (!canWrite) {
       setError('Você não tem permissão para realizar esta operação')
@@ -344,8 +346,15 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
         return
       }
 
-      router.push('/pessoas/clientes')
-      router.refresh()
+      if (isEdit) {
+        // Permanecer na tela ao salvar (pedido do cliente) — mostra sucesso e recarrega os dados.
+        setSaved(true)
+        window.setTimeout(() => setSaved(false), 4000)
+        router.refresh()
+      } else {
+        router.push('/pessoas/clientes')
+        router.refresh()
+      }
     } catch (e) {
       console.error(e)
       setError('Erro ao salvar cliente')
@@ -381,6 +390,11 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       {(error || optionsError) && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
           <p className="text-sm text-destructive">{error || optionsError}</p>
+        </div>
+      )}
+      {saved && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm text-emerald-800">Cliente atualizado com sucesso.</p>
         </div>
       )}
 
