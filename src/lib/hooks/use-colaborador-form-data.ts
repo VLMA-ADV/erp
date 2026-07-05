@@ -68,7 +68,6 @@ export function useColaboradorFormData(): UseColaboradorFormDataReturn {
           cache.timestamp !== null &&
           (now - cache.timestamp) < CACHE_TTL_MS
         ) {
-          console.log('Using cached form data')
           setCargos(cache.cargos)
           setAreas(cache.areas)
           setRoles(cache.roles)
@@ -76,8 +75,6 @@ export function useColaboradorFormData(): UseColaboradorFormDataReturn {
           setLoading(false)
           return
         }
-
-        console.log('Fetching form data from API')
 
         // Buscar todos os dados em paralelo
         const [cargosResponse, areasResponse, rolesResponse, permissionsResponse] = await Promise.all([

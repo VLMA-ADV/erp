@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
-import { usePermissions } from '@/lib/hooks/use-permissions'
+import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 
 interface RevisaoItem {
   id: string
@@ -617,7 +617,7 @@ function getCaseBaseMetrics(casoGroup: CasoGroup): CaseMetrics {
 
 export default function RevisaoDeFaturaList() {
   const { success, error: toastError } = useToast()
-  const { hasPermission } = usePermissions()
+  const { hasPermission } = usePermissionsContext()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cliente, setCliente] = useState('')
