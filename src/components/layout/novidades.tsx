@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.14.0'
+export const APP_VERSION = '1.19.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,75 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.19.0',
+    date: '05/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'PDI: consolidação do ciclo',
+        desc: 'Novo painel de consolidação para sócios e coordenadores: indicadores do ciclo, "onde atuar prioritariamente" (críticos, em risco, discrepâncias, a melhorar), progresso por área e por hierarquia, distribuição por faixa, ranking de pessoas e autoavaliação × progresso.',
+      },
+      {
+        title: 'Timesheet: minhas horas',
+        desc: 'Resumo pessoal no topo do Timesheet para todo colaborador — horas de hoje, da semana e do mês, com quebra por cliente e por caso. A tela ganhou as abas "Meus lançamentos" e "Gestão da equipe".',
+      },
+    ],
+  },
+  {
+    version: '1.18.0',
+    date: '05/07/2026',
+    items: [
+      {
+        title: 'Abas em telas com muita informação',
+        desc: 'Clientes, Despesas, CRM, Contratos e a avaliação do PDI passaram a organizar o conteúdo em abas, deixando cada tela mais leve e focada.',
+      },
+    ],
+  },
+  {
+    version: '1.17.0',
+    date: '04/07/2026',
+    items: [
+      {
+        title: 'PDI: bônus e PLR',
+        desc: 'Na avaliação do gestor, painel de Bônus e PLR conforme o PDP (13º, Bônus PDI, PLR Plus e Bônus Comercial), com os critérios e a elegibilidade por faixa.',
+      },
+    ],
+  },
+  {
+    version: '1.16.0',
+    date: '04/07/2026',
+    items: [
+      {
+        title: 'Colaborador: carreira e logo oficial',
+        desc: 'Novo campo Carreira no cadastro do colaborador (Contencioso, Consultoria, Plus, Jr. Partner, Administrativo/Financeiro). Logo oficial VLMA na barra lateral.',
+      },
+      {
+        title: 'PDI: salário sugerido na progressão',
+        desc: 'Ao aplicar a progressão de cargo, o salário sugerido do quadro de remuneração já vem preenchido (e é ajustável).',
+      },
+    ],
+  },
+  {
+    version: '1.15.0',
+    date: '03/07/2026',
+    items: [
+      {
+        title: 'PDI: avaliação pelo gestor',
+        desc: 'Sócios e coordenadores avaliam a equipe: autoavaliação × avaliação do gestor lado a lado, validação de metas, faixa final, parecer e aplicação da progressão de cargo/salário.',
+      },
+      {
+        title: 'Solicitações de contrato: excluir',
+        desc: 'Agora é possível excluir solicitações de contrato antigas.',
+      },
+      {
+        title: 'Correção: menu lateral',
+        desc: 'O menu lateral não "recarrega" mais ao navegar entre as telas.',
+      },
+    ],
+  },
+  {
     version: '1.14.0',
     date: '29/06/2026',
-    destaque: true,
     items: [
       {
         title: 'CRM: novos campos e colunas',
