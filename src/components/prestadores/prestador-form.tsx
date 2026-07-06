@@ -107,6 +107,7 @@ export default function PrestadorForm({
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(!!prestadorId)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const [form, setForm] = useState<PrestadorPayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
   const [lastCepFetched, setLastCepFetched] = useState<string>('')
@@ -357,8 +358,16 @@ export default function PrestadorForm({
         return
       }
 
-      router.push(redirectBasePath)
-      router.refresh()
+      if (isEdit) {
+        // Permanecer na tela ao salvar (pedido do cliente).
+        setSaved(true)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        window.setTimeout(() => setSaved(false), 4000)
+        router.refresh()
+      } else {
+        router.push(redirectBasePath)
+        router.refresh()
+      }
     } catch (e) {
       console.error(e)
       setError(`Erro ao salvar ${entityLabel}`)
@@ -394,6 +403,11 @@ export default function PrestadorForm({
       {error && (
         <div className="rounded-md bg-red-50 p-4">
           <p className="text-sm text-red-800">{error}</p>
+        </div>
+      )}
+      {saved && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm text-emerald-800">{entityLabel} atualizado com sucesso.</p>
         </div>
       )}
 
