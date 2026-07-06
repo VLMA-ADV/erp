@@ -234,6 +234,23 @@ export default function TimesheetList() {
       .map((item) => ({ value: item.id, label: `${item.categoria} - ${item.texto}` }))
   }, [templateCategoria])
 
+  // Agrupamento cronológico por dia (mais recente no topo), estilo Despesas.
+  const groupedByDay = useMemo(() => {
+    const g = new Map<string, TimesheetItem[]>()
+    for (const it of items) {
+      const d = it.data_lancamento || ''
+      if (!g.has(d)) g.set(d, [])
+      g.get(d)!.push(it)
+    }
+    return Array.from(g.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [items])
+
+  const fmtDia = (d: string) => {
+    if (!d) return '—'
+    const dt = new Date(d + 'T12:00:00')
+    return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
+  }
+
   const statusOptions = [
     { value: '', label: 'Todos os status' },
     { value: 'em_lancamento', label: 'Em lançamento' },
@@ -528,7 +545,13 @@ export default function TimesheetList() {
                 <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum timesheet encontrado.</td>
               </tr>
             ) : (
-              items.map((item) => {
+              groupedByDay.flatMap(([dia, linhas]) => [
+                <tr key={`sep-${dia}`} className="bg-canvas-soft/60">
+                  <td colSpan={6} className="px-4 py-1.5 text-xs font-semibold uppercase text-ink-secondary">
+                    {fmtDia(dia)} · {linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0)} min
+                  </td>
+                </tr>,
+                ...linhas.map((item) => {
                 const statusClassName =
                   item.status === 'aprovado'
                     ? 'border-green-200 bg-green-100 text-green-700'
@@ -573,7 +596,7 @@ export default function TimesheetList() {
                     </td>
                   </tr>
                 )
-              })
+              })])
             )}
           </tbody>
         </Table>
