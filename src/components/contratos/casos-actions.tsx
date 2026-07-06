@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { Eye, Pencil, Paperclip, Power, Trash2, Copy } from 'lucide-react'
+import { Eye, Pencil, Paperclip, Power, Trash2, Copy, ArrowRightLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { useToast } from '@/components/ui/toast'
 import AnexoModal from './anexo-modal'
+import TransferirCasoDialog from './transferir-caso-dialog'
 
 export default function CasosActions({
   contratoId,
@@ -29,6 +30,7 @@ export default function CasosActions({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
+  const [transferOpen, setTransferOpen] = useState(false)
   const { success, error: toastError } = useToast()
   const router = useRouter()
 
@@ -153,6 +155,11 @@ export default function CasosActions({
               <Copy className="h-4 w-4" />
             </Button>
           </Tooltip>
+          <Tooltip content="Transferir para outro contrato">
+            <Button variant="ghost" size="sm" onClick={() => setTransferOpen(true)} disabled={loading}>
+              <ArrowRightLeft className="h-4 w-4" />
+            </Button>
+          </Tooltip>
           <Tooltip content="Inserir anexo">
             <Button variant="ghost" size="sm" onClick={() => setAnexoOpen(true)}>
               <Paperclip className="h-4 w-4" />
@@ -184,6 +191,13 @@ export default function CasosActions({
             cancelLabel="Cancelar"
             onConfirm={toggleStatus}
             loading={loading}
+          />
+          <TransferirCasoDialog
+            open={transferOpen}
+            onOpenChange={setTransferOpen}
+            casoId={casoId}
+            contratoAtualId={contratoId}
+            onDone={onRefresh}
           />
           <AlertDialog
             open={duplicateOpen}
