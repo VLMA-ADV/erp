@@ -31,10 +31,11 @@
     /* Brand dark (sidebar/superfícies featured) */
     --brand-dark: 280 27% 11%;           /* #1E1423 */
 
-    /* Roxo de marca (acento complementar ao laranja) */
-    --brand-purple: 258 68% 62%;         /* #7a5ce0 */
-    --brand-purple-fg: 258 55% 36%;      /* texto roxo com contraste AA */
-    --brand-purple-soft: 258 60% 96%;    /* lavanda p/ fundos (sidebar) */
+    /* Roxo de marca — hue oficial do manual (#1E1423, hue 280); antes era um
+       lavanda #7a5ce0 fora do manual. Agora é o roxo-escuro da VLMA. */
+    --brand-purple: 280 27% 16%;         /* roxo-escuro de marca (acento sólido) */
+    --brand-purple-fg: 280 30% 22%;      /* texto roxo-escuro com contraste AA */
+    --brand-purple-soft: 280 30% 96%;    /* tint sutil no hue da marca (fundos) */
 
     /* Secondary = cinza base neutro */
     --secondary: 0 0% 96%;
