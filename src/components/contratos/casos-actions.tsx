@@ -132,8 +132,8 @@ export default function CasosActions({
 
   return (
     <div className="flex items-center justify-end gap-2">
-      <Tooltip content="Visualizar">
-        <Link href={`/contratos/${contratoId}/casos/${casoId}/editar?view=1`}>
+      <Tooltip content="Visualizar (nova aba)">
+        <Link href={`/contratos/${contratoId}/casos/${casoId}/editar?view=1`} target="_blank" rel="noopener noreferrer">
           <Button variant="ghost" size="sm">
             <Eye className="h-4 w-4" />
           </Button>

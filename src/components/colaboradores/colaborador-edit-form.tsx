@@ -25,6 +25,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
   const [loadingStep, setLoadingStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const [colaboradorPermissionIds, setColaboradorPermissionIds] = useState<string[]>([])
   const [cepPreenchido, setCepPreenchido] = useState(false)
   
@@ -534,7 +535,12 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         return
       }
 
-      router.push('/pessoas/colaboradores')
+      // Permanecer na tela ao salvar (pedido do cliente).
+      setSaved(true)
+      setSaving(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      window.setTimeout(() => setSaved(false), 4000)
+      router.refresh()
     } catch (err) {
       setError('Erro ao atualizar colaborador. Tente novamente.')
       setSaving(false)
@@ -1148,6 +1154,11 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
       {error && (
         <div className="rounded-md bg-red-50 p-4">
           <p className="text-sm text-red-800">{error}</p>
+        </div>
+      )}
+      {saved && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm text-emerald-800">Colaborador atualizado com sucesso.</p>
         </div>
       )}
 
