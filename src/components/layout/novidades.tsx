@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.19.0'
+export const APP_VERSION = '1.20.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,35 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.20.0',
+    date: '06/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Contratos: transferir caso',
+        desc: 'Nas ações do caso, o botão "Transferir" permite mover o caso para outro contrato, com busca por cliente ou número do contrato.',
+      },
+      {
+        title: 'Contratos: valor fechado no mês por regra',
+        desc: 'Novo indicador no painel com o valor dos casos fechados no mês, por regra de cobrança (projeto = valor total, hora = valor da hora, mensalidade = projeção anual).',
+      },
+      {
+        title: 'Timesheet: lista cronológica',
+        desc: 'Os lançamentos passam a ser agrupados por dia (com total de minutos), facilitando a leitura do que foi lançado em cada data.',
+      },
+      {
+        title: 'Usabilidade: abrir em nova aba e permanecer na tela',
+        desc: 'Visualizar um caso agora abre em nova aba. E ao salvar a edição de cliente, colaborador ou prestador, você permanece na própria tela (não volta mais para a lista).',
+      },
+      {
+        title: 'Identidade visual',
+        desc: 'Ajuste das cores para seguir o manual de marca oficial (laranja, roxo-escuro e vermelho).',
+      },
+    ],
+  },
+  {
     version: '1.19.0',
     date: '05/07/2026',
-    destaque: true,
     items: [
       {
         title: 'PDI: consolidação do ciclo',
