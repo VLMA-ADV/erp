@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.20.0'
+export const APP_VERSION = '1.21.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,19 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.20.0',
+    version: '1.21.0',
     date: '06/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Contratos: conciliação financeira das parcelas',
+        desc: 'Na configuração de parcelas do caso, cada parcela agora pode ser marcada como "Faturada" (NF emitida) e "Paga" (crédito baixado), com data de registro. O financeiro acompanha o que já foi emitido e recebido, parcela a parcela.',
+      },
+    ],
+  },
+  {
+    version: '1.20.0',
+    date: '06/07/2026',
     items: [
       {
         title: 'Contratos: transferir caso',

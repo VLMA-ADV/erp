@@ -24,6 +24,7 @@ import { useToast } from '@/components/ui/toast'
 import AnexoModal from './anexo-modal'
 import CapEncontroSimple from './cap-encontro-simple'
 import RateioSlider from './rateio-slider'
+import ParcelasConciliacao from './parcelas-conciliacao'
 import { parseCarteiraCsv, type ProcessoCarteira } from '@/lib/utils/parse-carteira-csv'
 import type { CasoPayload, ContratoFormOptions } from './types'
 
@@ -2975,6 +2976,8 @@ export default function CasoForm({
                   ))}
                 </div>
               )}
+
+              {isEdit && casoId ? <ParcelasConciliacao casoId={casoId} canWrite={canWrite} /> : null}
 
               {form.regra_cobranca === 'exito' && (
                 <div className="space-y-3 md:col-span-2" data-testid="bloco-exito">
