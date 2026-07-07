@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.21.0'
+export const APP_VERSION = '1.21.1'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,19 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.21.1',
+    date: '07/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Faturamento: casos de salário mínimo em "Itens a faturar"',
+        desc: 'Casos com regra "Mensalidade de processo" no formato salário mínimo passam a aparecer na etapa "Itens a faturar", com o valor calculado (quantidade de SM × salário mínimo vigente). Antes eles ficavam invisíveis nessa etapa.',
+      },
+    ],
+  },
+  {
     version: '1.21.0',
     date: '06/07/2026',
-    destaque: true,
     items: [
       {
         title: 'Contratos: conciliação financeira das parcelas',
