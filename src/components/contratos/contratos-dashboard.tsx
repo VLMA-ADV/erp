@@ -573,6 +573,46 @@ function RegraCard({ items, onSelect }: { items: DashboardListItem[]; onSelect?:
   )
 }
 
+function ValorFechadoRegraCard({ refMonth }: { refMonth: string }) {
+  const { data } = useQuery({
+    queryKey: ['valor-fechado-regra', refMonth],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return { itens: [] as Array<{ regra: string; valor: number; qtd: number }> }
+      const { data: res } = await supabase.rpc('get_valor_fechado_regra', {
+        p_user_id: session.user.id,
+        p_ref_month: refMonth ? `${refMonth}-01` : null,
+      })
+      return (res as { itens: Array<{ regra: string; valor: number; qtd: number }> }) || { itens: [] }
+    },
+  })
+  const itens = (data?.itens || []).filter((i) => i.valor > 0)
+  const max = Math.max(1, ...itens.map((i) => i.valor))
+  const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return (
+    <CardShell title="Valor fechado no mês por regra" hint="projeto=total · hora=valor/h · mensal=ano">
+      {itens.length === 0 ? (
+        <p className="text-xs text-ink-mute">Sem valores no mês selecionado</p>
+      ) : (
+        <div className="space-y-1.5">
+          {itens.map((it) => (
+            <div key={`vregra-${it.regra}`} className="space-y-1">
+              <div className="flex items-center justify-between gap-2 text-[12px]">
+                <span className="truncate text-ink">{REGRA_LABEL[it.regra] || it.regra}</span>
+                <span className="font-tabular font-medium text-ink">{brl(it.valor)}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-canvas-soft">
+                <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(it.valor / max) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </CardShell>
+  )
+}
+
 const DRILL_TITULOS: Record<string, string> = {
   por_responsavel: 'Responsável',
   por_servico: 'Serviço',
@@ -696,6 +736,7 @@ export default function ContratosDashboard() {
         <DonutChart title="Por produto" items={data.por_produto} hint="distribuição" onSelect={(nome) => setDrill({ dim: 'por_produto', valor: nome })} />
         <CentroCustoCard items={data.por_centro_custo} totalCasos={data.kpis.casos_ativos} onSelect={(nome) => setDrill({ dim: 'por_centro_custo', valor: nome })} />
         <RegraCard items={data.por_regra_cobranca_mes} onSelect={(nome) => setDrill({ dim: 'por_regra_cobranca_mes', valor: nome })} />
+        <ValorFechadoRegraCard refMonth={refMonth} />
         <PodiumList title="Top 10 clientes (por contratos)" items={data.por_cliente_top} hint="ranking" onSelect={(nome) => setDrill({ dim: 'por_cliente_top', valor: nome })} />
         <StatusStackedBar items={data.por_status} hint="proporção" onSelect={(nome) => setDrill({ dim: 'por_status', valor: nome })} />
       </div>
