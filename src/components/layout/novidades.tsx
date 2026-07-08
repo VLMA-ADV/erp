@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.22.0'
+export const APP_VERSION = '1.23.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,28 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.22.0',
+    version: '1.23.0',
     date: '08/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'CRM: filtro por intervalo de datas',
+        desc: 'No pipeline do CRM, o filtro de mês virou um seletor de datas (De / até), que ocupa menos espaço e permite qualquer intervalo.',
+      },
+      {
+        title: 'Timesheet: duração em horas e minutos',
+        desc: 'A coluna de tempo do timesheet passa a mostrar a duração como "Xh Ymin" (ex.: 2h 30min) em vez de só o total de minutos.',
+      },
+      {
+        title: 'Gráficos: detalhe ao passar o mouse',
+        desc: 'Nos gráficos de rosca (donut) e na evolução mensal de contratos, ao passar o mouse aparece o detalhe da métrica (rótulo, valor e percentual).',
+      },
+    ],
+  },
+  {
+    version: '1.22.0',
+    date: '08/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Correção: solicitar novo contrato',

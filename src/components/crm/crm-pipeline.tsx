@@ -191,7 +191,8 @@ export default function CrmPipeline() {
   const [areas, setAreas] = useState<OptionItem[]>([])
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [filterMonth, setFilterMonth] = useState('')
+  const [filterInicio, setFilterInicio] = useState('')
+  const [filterFim, setFilterFim] = useState('')
   const [form, setForm] = useState<FormState>(emptyForm)
   const [solicitacaoOpen, setSolicitacaoOpen] = useState(false)
   const [solicitacaoSubmitting, setSolicitacaoSubmitting] = useState(false)
@@ -418,8 +419,14 @@ export default function CrmPipeline() {
       suspensa: [],
     }
 
-    const filtrados = filterMonth
-      ? cards.filter((c) => (c.created_at || '').slice(0, 7) === filterMonth)
+    const filtrados = (filterInicio || filterFim)
+      ? cards.filter((c) => {
+          const d = (c.created_at || '').slice(0, 10)
+          if (!d) return false
+          if (filterInicio && d < filterInicio) return false
+          if (filterFim && d > filterFim) return false
+          return true
+        })
       : cards
     for (const card of filtrados) {
       byEtapa[card.etapa]?.push(card)
@@ -433,17 +440,7 @@ export default function CrmPipeline() {
     }
 
     return byEtapa
-  }, [cards, filterMonth])
-
-  const monthOptions = useMemo(() => {
-    const opts: Array<{ value: string; label: string }> = [{ value: '', label: 'Todos os meses' }]
-    const now = new Date()
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      opts.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) })
-    }
-    return opts
-  }, [])
+  }, [cards, filterInicio, filterFim])
 
   const totalValor = useMemo(() => cards.reduce((acc, card) => acc + Number(card.valor || 0), 0), [cards])
 
@@ -877,16 +874,25 @@ export default function CrmPipeline() {
           <p className="text-sm text-ink-mute">Total de cards: {cards.length} • Valor potencial: {formatMoney(totalValor)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <NativeSelect
-            value={filterMonth}
-            onChange={(e) => setFilterMonth(e.target.value)}
-            className="h-9 rounded-md border px-2 text-sm capitalize"
-            title="Filtrar por mês de cadastro do card"
-          >
-            {monthOptions.map((m) => (
-              <option key={m.value || 'all'} value={m.value}>{m.label}</option>
-            ))}
-          </NativeSelect>
+          <div className="flex items-center gap-1.5" title="Filtrar por data de cadastro do card">
+            <span className="text-xs text-ink-mute">De</span>
+            <input
+              type="date"
+              value={filterInicio}
+              onChange={(e) => setFilterInicio(e.target.value)}
+              className="h-9 rounded-md border px-2 text-sm"
+            />
+            <span className="text-xs text-ink-mute">até</span>
+            <input
+              type="date"
+              value={filterFim}
+              onChange={(e) => setFilterFim(e.target.value)}
+              className="h-9 rounded-md border px-2 text-sm"
+            />
+            {(filterInicio || filterFim) ? (
+              <Button variant="ghost" size="sm" onClick={() => { setFilterInicio(''); setFilterFim('') }}>Limpar</Button>
+            ) : null}
+          </div>
           <Button variant="outline" onClick={() => void loadAll()} disabled={loading}>
             Atualizar
           </Button>
