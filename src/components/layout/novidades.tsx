@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.21.1'
+export const APP_VERSION = '1.21.2'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,19 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.21.2',
+    date: '08/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: quem enviou e quem revisa',
+        desc: 'Na revisão de fatura, a tela agora mostra de forma confiável quem lançou/enviou a origem (timesheet ou regra) e quem é o revisor. Quando o caso não tem revisor cadastrado, aparece "Sem revisor definido" em vez de ficar em branco.',
+      },
+    ],
+  },
+  {
     version: '1.21.1',
     date: '07/07/2026',
-    destaque: true,
     items: [
       {
         title: 'Faturamento: casos de salário mínimo em "Itens a faturar"',
