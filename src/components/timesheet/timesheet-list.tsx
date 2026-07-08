@@ -105,6 +105,16 @@ function splitMinutosTotal(total: number | string | null | undefined) {
   return { horas: String(Math.floor(inteiro / 60)), minutos: String(inteiro % 60) }
 }
 
+// Exibe uma duração (em minutos) como "Xh Ymin" / "Xh" / "Ymin".
+function formatDuracao(totalMinutos: number | string | null | undefined) {
+  const parsed = Math.max(0, Math.floor(Number(totalMinutos || 0)))
+  const h = Math.floor(parsed / 60)
+  const m = parsed % 60
+  if (h && m) return `${h}h ${m}min`
+  if (h) return `${h}h`
+  return `${m}min`
+}
+
 function computeMinutosTotal(horas: string, minutos: string) {
   const h = Math.max(0, Math.floor(Number(horas || 0)))
   const mRaw = Math.max(0, Math.floor(Number(minutos || 0)))
@@ -529,7 +539,7 @@ export default function TimesheetList() {
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Data</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Contrato/Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Minutos</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Duração</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Lançado por</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
@@ -548,7 +558,7 @@ export default function TimesheetList() {
               groupedByDay.flatMap(([dia, linhas]) => [
                 <tr key={`sep-${dia}`} className="bg-canvas-soft/60">
                   <td colSpan={6} className="px-4 py-1.5 text-xs font-semibold uppercase text-ink-secondary">
-                    {fmtDia(dia)} · {linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0)} min
+                    {fmtDia(dia)} · {formatDuracao(linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0))}
                   </td>
                 </tr>,
                 ...linhas.map((item) => {
@@ -568,7 +578,7 @@ export default function TimesheetList() {
                       <p className="text-muted-foreground">{item.caso_numero || '-'} - {item.caso_nome}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{item.descricao || '-'}</p>
                     </td>
-                    <td className="px-4 py-3 text-sm font-tabular">{item.duracao_minutos != null ? String(item.duracao_minutos) : toMinutes(item.horas)}</td>
+                    <td className="px-4 py-3 text-sm font-tabular">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
                     <td className="px-4 py-3 text-sm">
                       <Badge className={statusClassName}>{timesheetStatusLabel(item.status)}</Badge>
                     </td>

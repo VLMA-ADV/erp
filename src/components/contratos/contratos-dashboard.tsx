@@ -223,6 +223,17 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
                 </text>
               )}
               <text x={xCoord(i)} y={height - 10} textAnchor="middle" className="fill-ink-mute text-[10px]">{rotuloPtBr(s.rotulo)}</text>
+              <rect
+                x={xCoord(i) - 12}
+                y={padding.top}
+                width={24}
+                height={height - padding.top - padding.bottom}
+                fill="#ffffff"
+                fillOpacity={0}
+                style={{ pointerEvents: 'all' }}
+              >
+                <title>{`${rotuloPtBr(s.rotulo)} — Contratos: ${s.contratos_novos} · Casos: ${s.casos_novos} · Total: ${s.contratos_novos + s.casos_novos}`}</title>
+              </rect>
             </g>
           ))}
         </svg>
@@ -320,7 +331,9 @@ function DonutChart({ title, items, hint, maxSlices = 6, onSelect }: { title: st
                   strokeDasharray={`${dash} ${circ - dash}`}
                   strokeDashoffset={-offset}
                   transform={`rotate(-90 ${cx} ${cy})`}
-                />
+                >
+                  <title>{`${s.nome}: ${s.total} (${Math.round(frac * 100)}%)`}</title>
+                </circle>
               )
               offset += dash
               return el

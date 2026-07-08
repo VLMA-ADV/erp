@@ -46,6 +46,7 @@ export function DonutBreakdown({
             <circle cx={cx} cy={cy} r={r} fill="none" stroke="hsl(var(--secondary))" strokeWidth={16} />
             {slices.map((g, i) => {
               const dash = (g.count / total) * circ
+              const pct = Math.round((g.count / total) * 100)
               const node = (
                 <circle
                   key={g.label}
@@ -57,7 +58,9 @@ export function DonutBreakdown({
                   strokeWidth={16}
                   strokeDasharray={`${dash} ${circ - dash}`}
                   strokeDashoffset={-offset}
-                />
+                >
+                  <title>{`${labelMap?.[g.label] || g.label}: ${g.count} (${pct}%)`}</title>
+                </circle>
               )
               offset += dash
               return node
