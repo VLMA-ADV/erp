@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -186,8 +187,13 @@ export default function SidebarClient() {
         <SidebarMenuRelatorios pathname={pathname} hasPermission={checkPermission} />
       </SidebarContent>
       
-      {/* Botão de Logout */}
+      {/* Perfil + Logout */}
       <SidebarFooter>
+        <Link href="/perfil" className="w-full">
+          <Button variant="ghost" className="w-full justify-center">
+            Meu perfil
+          </Button>
+        </Link>
         <Button
           variant="outline"
           className="w-full"

@@ -98,7 +98,7 @@ export default function ContratosActions({
   return (
     <div className="flex items-center justify-end gap-2">
       <Tooltip content="Visualizar">
-        <Link href={`/contratos/${contratoId}/editar?view=1`}>
+        <Link href={`/contratos/${contratoId}/editar?view=1`} target="_blank" rel="noopener noreferrer">
           <Button variant="ghost" size="sm">
             <Eye className="h-4 w-4" />
           </Button>
@@ -107,8 +107,8 @@ export default function ContratosActions({
 
       {canWrite && (
         <>
-          <Tooltip content="Editar">
-            <Link href={`/contratos/${contratoId}/editar`}>
+          <Tooltip content="Editar (nova aba)">
+            <Link href={`/contratos/${contratoId}/editar`} target="_blank" rel="noopener noreferrer">
               <Button variant="ghost" size="sm">
                 <Pencil className="h-4 w-4" />
               </Button>

@@ -89,3 +89,4 @@ supabase/migrations/.z6-build/
 
 # Supabase CLI: estado local efêmero (não versionar)
 supabase/.temp/
+.playwright-mcp/
