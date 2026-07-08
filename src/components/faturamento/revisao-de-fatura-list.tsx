@@ -38,6 +38,8 @@ interface RevisaoItem {
   responsavelRevisaoNome: string | null
   responsavelAprovacaoId: string | null
   responsavelAprovacaoNome: string | null
+  enviadoPorId: string | null
+  enviadoPorNome: string | null
   dataRevisao: string | null
   dataAprovacao: string | null
   timesheetDataLancamento: string
@@ -542,6 +544,8 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     responsavelRevisaoNome: asString(pickFirstDefined(data.responsavel_revisao_nome, snapshot.responsavel_revisao_nome)) || null,
     responsavelAprovacaoId: asString(pickFirstDefined(data.responsavel_aprovacao_id, snapshot.responsavel_aprovacao_id)) || null,
     responsavelAprovacaoNome: asString(pickFirstDefined(data.responsavel_aprovacao_nome, snapshot.responsavel_aprovacao_nome)) || null,
+    enviadoPorId: asString(pickFirstDefined(data.enviado_por_id, snapshot.enviado_por_id)) || null,
+    enviadoPorNome: asString(pickFirstDefined(data.enviado_por_nome, snapshot.enviado_por_nome)) || null,
     dataRevisao: normalizeDateInput(asString(pickFirstDefined(data.data_revisao, snapshot.data_revisao))),
     dataAprovacao: normalizeDateInput(asString(pickFirstDefined(data.data_aprovacao, snapshot.data_aprovacao))),
     timesheetDataLancamento: normalizeDateInput(asString(data.timesheet_data_lancamento)),
@@ -1068,7 +1072,7 @@ export default function RevisaoDeFaturaList() {
 
     const draft = drafts[item.id]
     const originalDate = item.timesheetDataLancamento || item.dataReferencia
-    const originalUser = item.timesheetProfissional || item.responsavelFluxoNome || '-'
+    const originalUser = item.enviadoPorNome || item.timesheetProfissional || '-'
     const reviewedUser =
       mode === 'timesheet'
         ? draft?.timesheetRows?.[0]?.profissional || item.timesheetProfissional || item.responsavelFluxoNome || '-'
@@ -1086,7 +1090,7 @@ export default function RevisaoDeFaturaList() {
         label: 'USUARIO',
         dateText: formatDate(originalDate),
         userName: originalUser,
-        reviewerName: item.responsavelRevisaoNome || '-',
+        reviewerName: item.responsavelRevisaoNome || 'Sem revisor definido',
         text: originalText,
         hoursText: formatHistoryHours(getOriginalItemHours(item)),
         value: getOriginalItemValue(item),
@@ -1104,7 +1108,7 @@ export default function RevisaoDeFaturaList() {
         label: 'REVISOR',
         dateText: formatDate(item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento),
         userName: reviewedUser,
-        reviewerName: item.responsavelRevisaoNome || '-',
+        reviewerName: item.responsavelRevisaoNome || 'Sem revisor definido',
         text: reviewedText,
         hoursText: formatHistoryHours(item.horasRevisadas ?? getOriginalItemHours(item)),
         value: item.valorRevisado ?? getOriginalItemValue(item),
