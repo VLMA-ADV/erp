@@ -623,7 +623,7 @@ const DRILL_TITULOS: Record<string, string> = {
   por_regra_cobranca_mes: 'Regra de cobrança',
 }
 
-interface DrillRow { numero: number | null; nome: string; cliente: string; caso: string | null }
+interface DrillRow { contrato_id: string | null; numero: number | null; nome: string; cliente: string; caso: string | null }
 
 export default function ContratosDashboard() {
   const { hasPermission } = usePermissionsContext()
@@ -758,7 +758,18 @@ export default function ContratosDashboard() {
               <ul className="divide-y divide-hairline">
                 {drillRows.map((row, i) => (
                   <li key={`${row.numero}-${i}`} className="py-2 text-sm">
-                    <span className="font-medium text-ink">{row.numero ? `Contrato ${row.numero}` : row.nome}</span>
+                    {row.contrato_id ? (
+                      <a
+                        href={`/contratos/${row.contrato_id}/editar?view=1`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {row.numero ? `Contrato ${row.numero}` : row.nome}
+                      </a>
+                    ) : (
+                      <span className="font-medium text-ink">{row.numero ? `Contrato ${row.numero}` : row.nome}</span>
+                    )}
                     <span className="text-ink-mute"> · {row.cliente}</span>
                     {row.caso ? <p className="text-xs text-ink-mute">{row.caso}</p> : null}
                   </li>

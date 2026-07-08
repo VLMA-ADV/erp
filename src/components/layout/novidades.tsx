@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.21.2'
+export const APP_VERSION = '1.22.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,35 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.21.2',
+    version: '1.22.0',
     date: '08/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Correção: solicitar novo contrato',
+        desc: 'Corrigido o erro ao salvar uma solicitação de contrato com centro de custo — a validação apontava para a tabela errada. Agora salva normalmente.',
+      },
+      {
+        title: 'Contratos: editar abre em nova aba',
+        desc: 'Os botões de visualizar e editar contrato agora abrem em uma nova aba, sem perder a lista.',
+      },
+      {
+        title: 'Contratos: contrato clicável nos indicadores',
+        desc: 'Nos detalhamentos dos indicadores (ex.: "Regra de cobrança"), o nome do contrato virou link e abre o contrato em nova aba.',
+      },
+      {
+        title: 'Logo VLMA na tela de login',
+        desc: 'A tela de login agora exibe a marca VLMA.',
+      },
+      {
+        title: 'Alterar a própria senha pelo painel',
+        desc: 'Novo "Meu perfil" (rodapé do menu) onde cada usuário pode alterar a própria senha sem precisar do fluxo de "esqueci minha senha".',
+      },
+    ],
+  },
+  {
+    version: '1.21.2',
+    date: '08/07/2026',
     items: [
       {
         title: 'Revisão de fatura: quem enviou e quem revisa',
