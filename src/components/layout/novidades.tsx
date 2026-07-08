@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.23.0'
+export const APP_VERSION = '1.23.1'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.23.0',
+    version: '1.23.1',
     date: '08/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Correção: enviar caso de salário mínimo para faturamento',
+        desc: 'Casos com regra "salário mínimo" que davam "nenhum item disponível" ao enviar para revisão passam a gerar o item corretamente (valor = quantidade de SM × salário mínimo vigente).',
+      },
+    ],
+  },
+  {
+    version: '1.23.0',
+    date: '08/07/2026',
+    destaque: false,
     items: [
       {
         title: 'CRM: filtro por intervalo de datas',
