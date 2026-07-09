@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.24.0'
+export const APP_VERSION = '1.24.1'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.24.0',
+    version: '1.24.1',
     date: '09/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: histórico mais simples',
+        desc: 'No histórico de cada item, as colunas "Autor" e "Responsável" viraram uma só ("Responsável"), ao lado da etapa. E os papéis passaram a se chamar Envio / Revisão / Aprovação (em vez de Usuário / Revisor / Aprovador).',
+      },
+    ],
+  },
+  {
+    version: '1.24.0',
+    date: '09/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Horas de casos "projeto" aparecem na aba Projeto',

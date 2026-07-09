@@ -138,6 +138,13 @@ type RuleFilterKey =
 type HistoryStageKey = 'usuario' | 'revisor' | 'aprovador'
 type HistoricoRole = 'USUARIO' | 'REVISOR' | 'APROVADOR'
 
+// Rótulo amigável da etapa (substitui USUARIO/REVISOR/APROVADOR).
+function stageLabelFromKey(key: HistoryStageKey): string {
+  if (key === 'usuario') return 'Envio'
+  if (key === 'revisor') return 'Revisão'
+  return 'Aprovação'
+}
+
 interface RevisaoHistoricoEntry {
   id: string
   billingItemId: string
@@ -1657,10 +1664,9 @@ export default function RevisaoDeFaturaList() {
                                           <thead className="bg-white">
                                             <tr className="border-b text-[11px] uppercase tracking-wide text-ink-mute">
                                               <th className="w-10 px-3 py-2 text-left" />
-                                              <th className="px-3 py-2 text-left">Role</th>
+                                              <th className="px-3 py-2 text-left">Etapa</th>
+                                              <th className="px-3 py-2 text-left">Responsável</th>
                                               <th className="px-3 py-2 text-left">Data/hora</th>
-                                              <th className="px-3 py-2 text-left">Autor</th>
-                                              <th className="px-3 py-2 text-left">Responsavel</th>
                                               <th className="px-3 py-2 text-left">Texto</th>
                                               <th className="px-3 py-2 text-right">Horas</th>
                                               <th className="px-3 py-2 text-right">Valor</th>
@@ -1701,11 +1707,12 @@ export default function RevisaoDeFaturaList() {
                                                           </td>
                                                         ) : null}
                                                         <td className="px-3 py-3 text-sm font-semibold">
-                                                          <span className={historyRow.labelClass}>{historyRow.label}</span>
+                                                          <span className={historyRow.labelClass}>{stageLabelFromKey(historyRow.stageKey)}</span>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-sm text-ink-secondary">
+                                                          {historyRow.stageKey === 'usuario' ? historyRow.userName : historyRow.reviewerName}
                                                         </td>
                                                         <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.dateText}</td>
-                                                        <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.userName}</td>
-                                                        <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.reviewerName}</td>
                                                         <td className="px-3 py-3 text-sm text-ink-secondary">
                                                           <div className="max-w-[340px] whitespace-normal break-words">{historyRow.text}</div>
                                                         </td>
@@ -1761,7 +1768,7 @@ export default function RevisaoDeFaturaList() {
                                                       </tr>
                                                       {historyIndex === 0 && reviewerToggleVisible ? (
                                                         <tr className="border-b bg-canvas-soft">
-                                                          <td colSpan={8} className="px-3 py-2">
+                                                          <td colSpan={7} className="px-3 py-2">
                                                             <Button
                                                               size="sm"
                                                               variant="ghost"
@@ -1784,7 +1791,7 @@ export default function RevisaoDeFaturaList() {
 
                                                   {editorKey === key ? (
                                                     <tr className="border-b bg-canvas-soft/60">
-                                                      <td colSpan={9} className="px-4 py-4">
+                                                      <td colSpan={8} className="px-4 py-4">
                                                         <div className="space-y-4 rounded-xl border bg-white p-4">
                                                           <div className="flex flex-wrap items-center justify-between gap-3">
                                                             <div>
