@@ -57,6 +57,7 @@ export default function ColaboradorFormComplete() {
     cargo_id: '',
     area_id: '',
     carreira: '',
+    eh_coordenador: false,
     adicional: '',
     percentual_adicional: '',
     salario: '',
@@ -716,6 +717,37 @@ export default function ColaboradorFormComplete() {
                     <option value="JR_PARTNER">Jr. Partner</option>
                     <option value="ADM_FIN">Administrativo e Financeiro</option>
                   </NativeSelect>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Label>É coordenador(a)?</Label>
+                  <p className="mt-0.5 text-xs text-ink-mute">
+                    Coordenadores(as) revisam e aprovam as horas e itens do seu centro de custo.
+                  </p>
+                  <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {[
+                      { value: true, label: 'Sim' },
+                      { value: false, label: 'Não' },
+                    ].map((item) => {
+                      const active = profissional.eh_coordenador === item.value
+                      return (
+                        <Button
+                          key={String(item.value)}
+                          type="button"
+                          variant={active ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() =>
+                            setProfissional((prev) => ({
+                              ...prev,
+                              eh_coordenador: item.value,
+                            }))
+                          }
+                        >
+                          {item.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 <div className="md:col-span-2">

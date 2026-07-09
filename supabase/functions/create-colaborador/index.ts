@@ -358,6 +358,7 @@ Deno.serve(async (req) => {
       data_saida: data_saida || null,
       categoria,
       carreira: body.carreira || null,
+      eh_coordenador: Boolean(body.eh_coordenador),
       oab: categoria === "advogado" ? oab : null,
       whatsapp: whatsapp || null,
       cep: formattedCEP,
