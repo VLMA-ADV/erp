@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.23.1'
+export const APP_VERSION = '1.23.2'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,24 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.23.1',
+    version: '1.23.2',
     date: '08/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Timesheet: horas visíveis por centro de custo',
+        desc: 'Coordenadores e sócios de uma área passam a ver as horas apenas das pessoas do seu centro de custo. Sócios diretores continuam vendo o escritório todo.',
+      },
+      {
+        title: 'Revisão de fatura: por centro de custo + revisor automático',
+        desc: 'Na revisão de fatura, cada coordenador/sócio vê apenas os itens do seu centro de custo (diretores e financeiro veem tudo). E, quando o caso usa revisor automático por centro de custo, o revisor passa a ser o coordenador da área — some o "Sem revisor definido".',
+      },
+    ],
+  },
+  {
+    version: '1.23.1',
+    date: '08/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Correção: enviar caso de salário mínimo para faturamento',
