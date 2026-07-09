@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 interface Faixa { codigo: string; rotulo: string; ordem: number; reflexo: string }
 interface Skill { id: string; trilha: string; pilar_numero: number; pilar_nome: string; item_codigo: string; titulo: string | null; nome: string; descricao: string | null; faixa_auto: string | null; texto_auto: string | null }
 interface Dna { id: string; numero: number; nome: string; faixa_auto: string | null; texto_auto: string | null }
-interface Meta { id: string; nome: string | null; descricao: string | null; indicadores: string | null; semestre: number | null; progresso_pct: number | null; _new?: boolean }
+interface Meta { id: string; nome: string | null; descricao: string | null; indicadores: string | null; semestre: number | null; progresso_pct: number | null; faixa_auto: string | null; _new?: boolean }
 interface Feedback { id: string; mes: number; realizado: boolean; funcionou: string | null; nao_funcionou: string | null; onde_focar: string | null; persiste: string | null }
 interface Avaliacao { id: string; ano: number; status: string; bloqueada: boolean; cargo_nome_snapshot: string | null; nivel_codigo_snapshot: string | null; carreira_codigo: string | null; adicional_snapshot: string | null; area_nome_snapshot: string | null; colaborador_nome: string | null }
 
@@ -31,6 +31,19 @@ function faixaColor(codigo: string | null, active: boolean): string {
 }
 
 function tempId() { return 'new-' + Math.random().toString(36).slice(2) }
+
+// Skills de um mesmo pilar podem compartilhar o título (ex.: "Alta performance"
+// com itens 2.1–2.4). Agrupa por título consecutivo para não repetir o cabeçalho.
+function groupByTitulo(items: Skill[]): { titulo: string; items: Skill[] }[] {
+  const out: { titulo: string; items: Skill[] }[] = []
+  for (const s of items) {
+    const titulo = s.titulo || s.nome || ''
+    const last = out[out.length - 1]
+    if (last && last.titulo === titulo) last.items.push(s)
+    else out.push({ titulo, items: [s] })
+  }
+  return out
+}
 
 export default function MeuPdiPage() {
   const [aval, setAval] = useState<Avaliacao | null>(null)
@@ -65,7 +78,7 @@ export default function MeuPdiPage() {
   const setDnaItem = (id: string, patch: Partial<Dna>) => setDna((prev) => prev.map((d) => d.id === id ? { ...d, ...patch } : d))
   const setFb = (id: string, patch: Partial<Feedback>) => setFeedbacks((prev) => prev.map((f) => f.id === id ? { ...f, ...patch } : f))
   const setMeta = (id: string, patch: Partial<Meta>) => setMetas((prev) => prev.map((m) => m.id === id ? { ...m, ...patch } : m))
-  const addMeta = () => setMetas((prev) => [...prev, { id: tempId(), nome: '', descricao: '', indicadores: '', semestre: 1, progresso_pct: 0, _new: true }])
+  const addMeta = () => setMetas((prev) => [...prev, { id: tempId(), nome: '', descricao: '', indicadores: '', semestre: 1, progresso_pct: 0, faixa_auto: null, _new: true }])
   const removeMeta = (id: string) => setMetas((prev) => prev.filter((m) => m.id !== id))
 
   const save = async (enviar: boolean) => {
@@ -77,7 +90,7 @@ export default function MeuPdiPage() {
         p_avaliacao_id: aval!.id,
         p_skills: skills.map((s) => ({ id: s.id, faixa_auto: s.faixa_auto, texto_auto: s.texto_auto })),
         p_dna: dna.map((d) => ({ id: d.id, faixa_auto: d.faixa_auto, texto_auto: d.texto_auto })),
-        p_metas: metas.map((m) => ({ id: m._new ? '' : m.id, nome: m.nome, descricao: m.descricao, indicadores: m.indicadores, semestre: m.semestre, progresso_pct: m.progresso_pct })),
+        p_metas: metas.map((m) => ({ id: m._new ? '' : m.id, nome: m.nome, descricao: m.descricao, indicadores: m.indicadores, semestre: m.semestre, progresso_pct: m.progresso_pct, faixa_auto: m.faixa_auto })),
         p_feedbacks: feedbacks.map((f) => ({ id: f.id, realizado: f.realizado, funcionou: f.funcionou, nao_funcionou: f.nao_funcionou, onde_focar: f.onde_focar, persiste: f.persiste })),
         p_enviar: enviar,
       })
@@ -138,16 +151,20 @@ export default function MeuPdiPage() {
                 <div key={pil} className="overflow-hidden rounded-xl border border-hairline bg-card">
                   <div className="border-b border-hairline bg-canvas-soft px-4 py-2 text-sm font-semibold text-ink">{pil}. {items[0]?.pilar_nome}</div>
                   <div className="divide-y divide-hairline">
-                    {items.map((s) => (
-                      <div key={s.id} className="p-4">
-                        <div className="mb-2">
-                          <span className="text-sm font-medium text-ink">{s.titulo || s.nome}</span>
-                          {s.descricao ? <p className="mt-0.5 text-xs text-ink-mute"><span className="font-tabular">{s.item_codigo}</span> {s.descricao}</p> : null}
+                    {groupByTitulo(items).map((grp, gi) => (
+                      <div key={`${grp.titulo}:${gi}`} className="p-4">
+                        <div className="mb-2 text-sm font-medium text-ink">{grp.titulo}</div>
+                        <div className="space-y-3">
+                          {grp.items.map((s) => (
+                            <div key={s.id} className={grp.items.length > 1 ? 'border-l-2 border-hairline pl-3' : ''}>
+                              {s.descricao ? <p className="mb-1 text-xs text-ink-mute"><span className="font-tabular">{s.item_codigo}</span> {s.descricao}</p> : null}
+                              <FaixaPicker value={s.faixa_auto} onChange={(v) => setSkill(s.id, { faixa_auto: v })} />
+                              <textarea value={s.texto_auto || ''} disabled={bloqueada} onChange={(e) => setSkill(s.id, { texto_auto: e.target.value })}
+                                placeholder="Desafios, conquistas, evidências…" rows={2}
+                                className="mt-2 w-full resize-none rounded-md border border-hairline-input bg-background px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
+                            </div>
+                          ))}
                         </div>
-                        <FaixaPicker value={s.faixa_auto} onChange={(v) => setSkill(s.id, { faixa_auto: v })} />
-                        <textarea value={s.texto_auto || ''} disabled={bloqueada} onChange={(e) => setSkill(s.id, { texto_auto: e.target.value })}
-                          placeholder="Desafios, conquistas, evidências…" rows={2}
-                          className="mt-2 w-full resize-none rounded-md border border-hairline-input bg-background px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
                       </div>
                     ))}
                   </div>
@@ -182,7 +199,11 @@ export default function MeuPdiPage() {
                 className="mt-2 w-full resize-none rounded-md border border-hairline-input bg-background px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
               <textarea value={m.indicadores || ''} disabled={bloqueada} onChange={(e) => setMeta(m.id, { indicadores: e.target.value })} placeholder="Indicadores" rows={2}
                 className="mt-2 w-full resize-none rounded-md border border-hairline-input bg-background px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" />
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-3">
+                <span className="mb-1 block text-xs text-ink-mute">Avaliação</span>
+                <FaixaPicker value={m.faixa_auto} onChange={(v) => setMeta(m.id, { faixa_auto: v })} />
+              </div>
+              <div className="mt-3 flex items-center gap-2">
                 <span className="text-xs text-ink-mute">Progresso</span>
                 <input type="range" min={0} max={100} step={5} value={m.progresso_pct ?? 0} disabled={bloqueada} onChange={(e) => setMeta(m.id, { progresso_pct: Number(e.target.value) })} className="flex-1" />
                 <span className="w-10 text-right font-tabular text-sm text-ink">{m.progresso_pct ?? 0}%</span>

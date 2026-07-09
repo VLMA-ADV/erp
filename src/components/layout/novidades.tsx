@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.24.3'
+export const APP_VERSION = '1.24.4'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.24.3',
+    version: '1.24.4',
     date: '09/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'PDI: skills sem repetição e avaliação por meta',
+        desc: 'Na autoavaliação, skills que compartilham o mesmo título (ex.: "Alta performance" 2.1–2.4) agora aparecem agrupadas sob um único título, sem parecer duplicadas. E cada meta do PDI passou a ter a escala de avaliação (baixa performance, a melhorar, dentro da média…), igual às skills.',
+      },
+    ],
+  },
+  {
+    version: '1.24.3',
+    date: '09/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Novo colaborador: marcar coordenador(a) já na criação',
