@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
     
     // Campos permitidos para atualização
     const allowedFields = [
-      'nome', 'email', 'cpf', 'data_nascimento', 'data_entrada', 'data_saida', 'categoria', 'carreira', 'oab', 'whatsapp',
+      'nome', 'email', 'cpf', 'data_nascimento', 'data_entrada', 'data_saida', 'categoria', 'carreira', 'eh_coordenador', 'oab', 'whatsapp',
       'rua', 'numero', 'complemento', 'cidade', 'estado',
       'cargo_id', 'area_id', 'adicional', 'percentual_adicional', 'salario',
       'conta_contabil', 'skills',

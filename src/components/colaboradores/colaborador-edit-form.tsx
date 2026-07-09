@@ -61,7 +61,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
     cargo_id: '',
     area_id: '',
     carreira: '',
-    categoria_profissional: '',
+    eh_coordenador: false,
     adicional: '',
     percentual_adicional: '',
     salario: '',
@@ -74,14 +74,6 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
     { value: 'advogado', label: 'Advogado' },
     { value: 'administrativo', label: 'Administrativo' },
     { value: 'estagiario', label: 'Estagiário' },
-  ]
-
-  const categoriasProfissionais = [
-    { value: 'contencioso', label: 'Contencioso' },
-    { value: 'consultoria', label: 'Consultoria' },
-    { value: 'administrativo', label: 'Administrativo' },
-    { value: 'coordenacao', label: 'Coordenação' },
-    { value: 'socios', label: 'Sócios' },
   ]
 
   // Form fields - Bancário
@@ -166,7 +158,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
           cargo_id: colaborador.cargo_id || '',
           area_id: colaborador.area_id || '',
           carreira: colaborador.carreira || '',
-          categoria_profissional: colaborador.categoria_profissional || '',
+          eh_coordenador: Boolean(colaborador.eh_coordenador),
           adicional: colaborador.adicional || '',
           percentual_adicional: colaborador.percentual_adicional?.toString() || '',
           salario: colaborador.salario?.toString() || '',
@@ -501,7 +493,7 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
         ...profissional,
         ...bancario,
         area_id: profissional.area_id || null,
-        categoria_profissional: profissional.categoria_profissional || null,
+        eh_coordenador: profissional.eh_coordenador,
         adicional: profissional.adicional || null,
         percentual_adicional: profissional.percentual_adicional ? parseFloat(profissional.percentual_adicional) : null,
         salario: profissional.salario ? parseFloat(profissional.salario) : null,
@@ -862,20 +854,26 @@ export default function ColaboradorEditForm({ colaboradorId }: ColaboradorEditFo
                 </div>
 
                 <div className="md:col-span-2">
-                  <Label>Categoria</Label>
-                  <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-5">
-                    {categoriasProfissionais.map((item) => {
-                      const active = profissional.categoria_profissional === item.value
+                  <Label>É coordenador(a)?</Label>
+                  <p className="mt-0.5 text-xs text-ink-mute">
+                    Coordenadores(as) revisam e aprovam as horas e itens do seu centro de custo.
+                  </p>
+                  <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {[
+                      { value: true, label: 'Sim' },
+                      { value: false, label: 'Não' },
+                    ].map((item) => {
+                      const active = profissional.eh_coordenador === item.value
                       return (
                         <Button
-                          key={item.value}
+                          key={String(item.value)}
                           type="button"
                           variant={active ? 'default' : 'outline'}
                           className="justify-start"
                           onClick={() =>
                             setProfissional((prev) => ({
                               ...prev,
-                              categoria_profissional: item.value,
+                              eh_coordenador: item.value,
                             }))
                           }
                         >

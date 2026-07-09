@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.24.1'
+export const APP_VERSION = '1.24.2'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.24.1',
+    version: '1.24.2',
     date: '09/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Colaborador: marcar coordenador(a) na edição',
+        desc: 'No cadastro do colaborador (Dados Profissionais), o campo "Categoria" que não salvava foi substituído por um "É coordenador(a)?" que grava de verdade. Antes, coordenador só dava para marcar pela lista de colaboradores.',
+      },
+    ],
+  },
+  {
+    version: '1.24.1',
+    date: '09/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Revisão de fatura: histórico mais simples',
