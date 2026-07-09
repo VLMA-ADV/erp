@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.23.2'
+export const APP_VERSION = '1.24.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.24.0',
+    date: '09/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Horas de casos "projeto" aparecem na aba Projeto',
+        desc: 'Quando um caso é do tipo projeto mas tem horas lançadas, essas horas passam a aparecer para aprovação na aba "Projeto" (Revisão de fatura e Fluxo de faturamento), e não mais em "Horas".',
+      },
+    ],
+  },
+  {
     version: '1.23.2',
     date: '08/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'Timesheet: horas visíveis por centro de custo',

@@ -20,6 +20,7 @@ interface RevisaoItem {
   timesheetId: string | null
   status: string
   origemTipo: string
+  casoRegraCobranca: string
   dataReferencia: string
   clienteNome: string
   contratoNome: string
@@ -374,6 +375,11 @@ function getRuleTitle(item: RevisaoItem) {
 function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
   if (item.origemTipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
+  const casoKind = (item.casoRegraCobranca || '').trim().toLowerCase()
+  // Horas lançadas num caso do tipo projeto aparecem na aba "Projeto", não em "Horas".
+  if (item.origemTipo === 'timesheet' && (casoKind === 'projeto' || casoKind === 'projeto_parcelado')) {
+    return casoKind === 'projeto_parcelado' ? 'projeto_parcelado' : 'projeto'
+  }
   if (item.origemTipo === 'timesheet' || kind === 'hora' || kind === 'hora_com_cap') return 'hora'
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
@@ -526,6 +532,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     timesheetId: asString(data.timesheet_id) || null,
     status: asString(data.status, 'em_revisao'),
     origemTipo: asString(data.origem_tipo, ''),
+    casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     dataReferencia: asString(data.data_referencia, ''),
     clienteNome: asString(data.cliente_nome, 'Cliente sem nome'),
     contratoNome: asString(data.contrato_nome, 'Contrato sem nome'),

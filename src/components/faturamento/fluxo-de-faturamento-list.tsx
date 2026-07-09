@@ -43,6 +43,7 @@ interface RevisaoItem {
   caso_numero?: number | null
   caso_nome?: string | null
   origem_tipo: string
+  caso_regra_cobranca?: string | null
   data_referencia?: string | null
   regra_nome?: string | null
   status: 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado' | 'cancelado' | 'disponivel'
@@ -265,6 +266,11 @@ function getRuleTitle(item: RevisaoItem) {
 }
 
 function getRuleType(item: RevisaoItem) {
+  const casoKind = asText(item.caso_regra_cobranca).trim().toLowerCase()
+  // Horas de casos do tipo projeto são agrupadas em Projeto, não em Hora.
+  if (item.origem_tipo === 'timesheet' && (casoKind === 'projeto' || casoKind === 'projeto_parcelado')) {
+    return casoKind === 'projeto_parcelado' ? 'projeto_parcelado' : 'projeto'
+  }
   if (item.origem_tipo === 'timesheet') return 'hora'
   if (item.origem_tipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
