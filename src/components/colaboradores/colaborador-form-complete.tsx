@@ -57,7 +57,6 @@ export default function ColaboradorFormComplete() {
     cargo_id: '',
     area_id: '',
     carreira: '',
-    categoria_profissional: '',
     adicional: '',
     percentual_adicional: '',
     salario: '',
@@ -70,14 +69,6 @@ export default function ColaboradorFormComplete() {
     { value: 'advogado', label: 'Advogado' },
     { value: 'administrativo', label: 'Administrativo' },
     { value: 'estagiario', label: 'Estagiário' },
-  ]
-
-  const categoriasProfissionais = [
-    { value: 'contencioso', label: 'Contencioso' },
-    { value: 'consultoria', label: 'Consultoria' },
-    { value: 'administrativo', label: 'Administrativo' },
-    { value: 'coordenacao', label: 'Coordenação' },
-    { value: 'socios', label: 'Sócios' },
   ]
 
   // Form fields - Bancário
@@ -364,7 +355,6 @@ export default function ColaboradorFormComplete() {
         ...profissional,
         ...bancario,
         area_id: profissional.area_id || null,
-        categoria_profissional: profissional.categoria_profissional || null,
         adicional: profissional.adicional || null,
         percentual_adicional: profissional.percentual_adicional ? parseFloat(profissional.percentual_adicional) : null,
         salario: profissional.salario ? parseFloat(profissional.salario) : null,
@@ -726,31 +716,6 @@ export default function ColaboradorFormComplete() {
                     <option value="JR_PARTNER">Jr. Partner</option>
                     <option value="ADM_FIN">Administrativo e Financeiro</option>
                   </NativeSelect>
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label>Categoria</Label>
-                  <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-5">
-                    {categoriasProfissionais.map((item) => {
-                      const active = profissional.categoria_profissional === item.value
-                      return (
-                        <Button
-                          key={item.value}
-                          type="button"
-                          variant={active ? 'default' : 'outline'}
-                          className="justify-start"
-                          onClick={() =>
-                            setProfissional((prev) => ({
-                              ...prev,
-                              categoria_profissional: item.value,
-                            }))
-                          }
-                        >
-                          {item.label}
-                        </Button>
-                      )
-                    })}
-                  </div>
                 </div>
 
                 <div className="md:col-span-2">
