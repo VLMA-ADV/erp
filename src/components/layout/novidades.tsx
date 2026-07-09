@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.24.2'
+export const APP_VERSION = '1.24.3'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.24.2',
+    version: '1.24.3',
     date: '09/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Novo colaborador: marcar coordenador(a) já na criação',
+        desc: 'O toggle "É coordenador(a)?" também passa a aparecer no cadastro de um colaborador novo, gravando corretamente desde a criação.',
+      },
+    ],
+  },
+  {
+    version: '1.24.2',
+    date: '09/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Colaborador: marcar coordenador(a) na edição',
