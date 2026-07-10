@@ -441,6 +441,13 @@ export default function CasoForm({
         .map((item) => ({ value: item.id, label: item.nome })),
     [options.colaboradores],
   )
+  // Aprovador de fatura é sempre um sócio diretor (Renata ou Douglas).
+  const aprovadorOptions = useMemo(() => {
+    const diretores = (options as { diretores?: Array<{ id: string; nome: string }> }).diretores || []
+    return diretores.length > 0
+      ? diretores.map((item) => ({ value: item.id, label: item.nome }))
+      : colaboradorOptions
+  }, [options, colaboradorOptions])
   const indicacaoOptions = useMemo(
     () => [
       ...(options.colaboradores || []).map((p) => ({
@@ -3591,7 +3598,7 @@ export default function CasoForm({
                       const list = [...(timesheet.aprovadores || [])]
                       list[idx] = { ...list[idx], colaborador_id: value }
                       setTimesheet('aprovadores', list)
-                    }} disabled={isReadOnly} options={colaboradorOptions} placeholder="Selecione..." searchPlaceholder="Buscar aprovador..." emptyText="Nenhum colaborador encontrado." />
+                    }} disabled={isReadOnly} options={aprovadorOptions} placeholder="Selecione..." searchPlaceholder="Buscar aprovador..." emptyText="Nenhum sócio diretor encontrado." />
                     {!isReadOnly && <Button type="button" variant="outline" onClick={() => {
                       const list = [...(timesheet.aprovadores || [])]
                       list.splice(idx, 1)

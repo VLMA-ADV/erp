@@ -162,6 +162,7 @@ Deno.serve(async (req) => {
         data: {
           itens_criados: resultData?.itens_criados ?? 0,
           batch_numero: resultData?.batch_numero ?? null,
+          mensagem: resultData?.mensagem ?? null,
           source: resultData?.source ?? "rpc",
         },
       }),

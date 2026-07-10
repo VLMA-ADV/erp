@@ -265,13 +265,21 @@ function getRuleTitle(item: RevisaoItem) {
   return asText(item.regra_nome).trim() || 'Regra financeira'
 }
 
+// Hora herda a regra do caso: cai na aba da regra, não em Hora.
+function ruleTypeFromKind(kind: string): string | null {
+  if (kind === 'mensalidade_processo' || kind === 'salario_minimo') return 'mensalidade_processo'
+  if (kind === 'mensal') return 'mensalidade'
+  if (kind === 'projeto') return 'projeto'
+  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'exito') return 'exito'
+  return null
+}
+
 function getRuleType(item: RevisaoItem) {
   const casoKind = asText(item.caso_regra_cobranca).trim().toLowerCase()
-  // Horas de casos do tipo projeto são agrupadas em Projeto, não em Hora.
-  if (item.origem_tipo === 'timesheet' && (casoKind === 'projeto' || casoKind === 'projeto_parcelado')) {
-    return casoKind === 'projeto_parcelado' ? 'projeto_parcelado' : 'projeto'
+  if (item.origem_tipo === 'timesheet') {
+    return ruleTypeFromKind(casoKind) ?? 'hora'
   }
-  if (item.origem_tipo === 'timesheet') return 'hora'
   if (item.origem_tipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'

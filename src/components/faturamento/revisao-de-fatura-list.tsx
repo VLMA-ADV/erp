@@ -297,8 +297,15 @@ function formatHours(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Horas como no timesheet: "1h 20min" (1,33 confunde o revisor).
 function formatHistoryHours(value: number | null | undefined) {
-  return `${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} h`
+  const total = Number(value || 0)
+  if (!total) return '0h'
+  const totalMin = Math.round(total * 60)
+  const h = Math.floor(totalMin / 60)
+  const min = totalMin % 60
+  if (h === 0) return `${min}min`
+  return min > 0 ? `${h}h ${min}min` : `${h}h`
 }
 
 function getOriginalItemHours(item: RevisaoItem) {
@@ -328,6 +335,26 @@ function hasReviewerHistory(item: RevisaoItem) {
     !areStageNumbersEqual(item.horasRevisadas, getOriginalItemHours(item)) ||
     !areStageNumbersEqual(item.valorRevisado, getOriginalItemValue(item))
   )
+}
+
+// Linha de aprovação pendente: mostra quem vai aprovar antes mesmo da ação
+// (aprovador é sempre um sócio diretor — Renata ou Douglas).
+function pendingAprovadorRow(item: RevisaoItem): HistoricalDisplayRow {
+  return {
+    rowKey: 'aprovador:pendente',
+    stageKey: 'aprovador',
+    label: 'APROVADOR',
+    dateText: '—',
+    userName: '',
+    reviewerName: item.responsavelAprovacaoNome || 'Renata ou Douglas',
+    text: item.status === 'em_aprovacao' ? 'Aguardando aprovação' : 'Aprova após a revisão',
+    hoursText: '',
+    value: item.valorAprovado ?? item.valorRevisado ?? item.valorInformado ?? 0,
+    rowClass: 'bg-indigo-50/30 opacity-70',
+    labelClass: 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
+    showEdit: false,
+    showPostergar: false,
+  }
 }
 
 function hasApproverHistory(item: RevisaoItem) {
@@ -379,15 +406,25 @@ function getRuleTitle(item: RevisaoItem) {
   return item.regraNome || 'Regra financeira'
 }
 
+// Aba pela regra do caso: hora lançada em caso que não é hora pura
+// cai na aba da regra (mensalidade de processo, projeto, êxito...).
+function ruleKeyFromKind(kind: string): RuleFilterKey | null {
+  if (kind === 'mensalidade_processo' || kind === 'salario_minimo') return 'mensalidade_processo'
+  if (kind === 'mensal') return 'mensalidade'
+  if (kind === 'projeto') return 'projeto'
+  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'exito') return 'exito'
+  return null
+}
+
 function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
   if (item.origemTipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
   const casoKind = (item.casoRegraCobranca || '').trim().toLowerCase()
-  // Horas lançadas num caso do tipo projeto aparecem na aba "Projeto", não em "Horas".
-  if (item.origemTipo === 'timesheet' && (casoKind === 'projeto' || casoKind === 'projeto_parcelado')) {
-    return casoKind === 'projeto_parcelado' ? 'projeto_parcelado' : 'projeto'
+  if (item.origemTipo === 'timesheet') {
+    return ruleKeyFromKind(casoKind) ?? 'hora'
   }
-  if (item.origemTipo === 'timesheet' || kind === 'hora' || kind === 'hora_com_cap') return 'hora'
+  if (kind === 'hora' || kind === 'hora_com_cap') return 'hora'
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
   if (kind === 'projeto') return 'projeto'
@@ -648,6 +685,14 @@ export default function RevisaoDeFaturaList() {
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
   const [expandedContratos, setExpandedContratos] = useState<Record<string, boolean>>({})
   const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
+  // Default: tudo recolhido (revisor abre o que interessa); botão alterna geral.
+  const [allExpanded, setAllExpanded] = useState(false)
+  const toggleAllExpanded = () => {
+    setAllExpanded((prev) => !prev)
+    setExpandedClientes({})
+    setExpandedContratos({})
+    setExpandedCasos({})
+  }
   const [expandedHistorico, setExpandedHistorico] = useState<Record<string, boolean>>({})
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
@@ -685,9 +730,9 @@ export default function RevisaoDeFaturaList() {
     }))
   }
 
-  const loadItems = async () => {
+  const loadItems = async (options?: { silent?: boolean }) => {
     try {
-      setLoading(true)
+      if (!options?.silent) setLoading(true)
       setError(null)
       const accessToken = await getSessionToken()
       if (!accessToken) return
@@ -954,18 +999,19 @@ export default function RevisaoDeFaturaList() {
   const getReviewRows = useCallback((casoGroup: CasoGroup) => {
     const metrics = getLiveCaseMetrics(casoGroup)
     const rows: Array<{ item: RevisaoItem; mode: ReviewMode; key: string }> = []
-    if (metrics.timesheetAnchorItem) {
-      rows.push({
-        item: metrics.timesheetAnchorItem,
-        mode: 'timesheet',
-        key: `timesheet:${metrics.timesheetAnchorItem.id}`,
-      })
-    }
+    // Valor da regra primeiro (o que é cobrado); horas embaixo, para validação.
     for (const item of metrics.nonTimesheetItems) {
       rows.push({
         item,
         mode: 'default',
         key: `default:${item.id}`,
+      })
+    }
+    if (metrics.timesheetAnchorItem) {
+      rows.push({
+        item: metrics.timesheetAnchorItem,
+        mode: 'timesheet',
+        key: `timesheet:${metrics.timesheetAnchorItem.id}`,
       })
     }
     return rows
@@ -1055,6 +1101,10 @@ export default function RevisaoDeFaturaList() {
         const stageKey = entry.role.toLowerCase() as HistoryStageKey
         const isUsuario = entry.role === 'USUARIO'
         const isRevisor = entry.role === 'REVISOR'
+        // etapa já superada fica riscada: revisor vê o que já tratou, aprovador o histórico
+        const isSuperseded =
+          (isUsuario && (revisores.length > 0 || item.status === 'em_aprovacao' || item.status === 'aprovado')) ||
+          (isRevisor && (item.status === 'aprovado' || aprovadores.length > 0))
 
         return {
           rowKey: `${entry.id}:${index}`,
@@ -1066,7 +1116,9 @@ export default function RevisaoDeFaturaList() {
           text: entry.texto || (mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)),
           hoursText: formatHistoryHours(entry.horas),
           value: entry.valor,
-          rowClass: isUsuario ? 'bg-white' : isRevisor ? 'bg-emerald-50/50' : 'bg-indigo-50/50',
+          rowClass:
+            (isUsuario ? 'bg-white' : isRevisor ? 'bg-emerald-50/50' : 'bg-indigo-50/50') +
+            (isSuperseded ? ' line-through opacity-60' : ''),
           labelClass: isUsuario
             ? 'rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary'
             : isRevisor
@@ -1078,6 +1130,10 @@ export default function RevisaoDeFaturaList() {
       }
 
       const rows = [usuario, ...visibleRevisores, ...(aprovador ? [aprovador] : [])].map(toDisplayRow)
+      // Faixa de aprovação sempre visível: mostra quem vai aprovar mesmo antes da ação.
+      if (!aprovador && (item.status === 'em_revisao' || item.status === 'em_aprovacao')) {
+        rows.push(pendingAprovadorRow(item))
+      }
       return {
         rows,
         hiddenReviewerCount: Math.max(0, revisores.length - 1),
@@ -1108,7 +1164,11 @@ export default function RevisaoDeFaturaList() {
         text: originalText,
         hoursText: formatHistoryHours(getOriginalItemHours(item)),
         value: getOriginalItemValue(item),
-        rowClass: 'bg-white',
+        rowClass:
+          'bg-white' +
+          (hasReviewerHistory(item) || item.status === 'em_aprovacao' || item.status === 'aprovado'
+            ? ' line-through opacity-60'
+            : ''),
         labelClass: 'rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary',
         showEdit: true,
         showPostergar: Boolean(item.timesheetId),
@@ -1149,6 +1209,8 @@ export default function RevisaoDeFaturaList() {
         showEdit: false,
         showPostergar: false,
       })
+    } else if (item.status === 'em_revisao' || item.status === 'em_aprovacao') {
+      rows.push(pendingAprovadorRow(item))
     }
 
     return { rows, hiddenReviewerCount: 0 }
@@ -1288,7 +1350,8 @@ export default function RevisaoDeFaturaList() {
       }
 
       success('Revisão salva com sucesso.')
-      await loadItems()
+      // atualização silenciosa: a tela não some/recarrega no meio da revisão
+      void loadItems({ silent: true })
       return true
     } catch (saveError) {
       console.error(saveError)
@@ -1324,7 +1387,15 @@ export default function RevisaoDeFaturaList() {
       }
 
       success('Item avançado com sucesso.')
-      await loadItems()
+      // avanço otimista: status muda na hora, refetch em silêncio por trás
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.id === item.id
+            ? { ...entry, status: entry.status === 'em_revisao' ? 'em_aprovacao' : 'aprovado' }
+            : entry,
+        ),
+      )
+      void loadItems({ silent: true })
       return true
     } catch (advanceError) {
       console.error(advanceError)
@@ -1507,7 +1578,12 @@ export default function RevisaoDeFaturaList() {
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
           </span>
         </div>
-        <div className="font-semibold font-tabular">{formatMoney(totals.valor)}</div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
+            {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
+          </Button>
+          <div className="font-semibold font-tabular">{formatMoney(totals.valor)}</div>
+        </div>
       </div>
 
       {loading ? (
@@ -1521,7 +1597,7 @@ export default function RevisaoDeFaturaList() {
       ) : (
         <div className="space-y-5">
           {tree.map((clienteGroup) => {
-            const clienteExpanded = expandedClientes[clienteGroup.key] !== false
+            const clienteExpanded = expandedClientes[clienteGroup.key] ?? allExpanded
             const clienteTotals = clienteGroup.contratos.reduce(
               (acc, contratoGroup) => {
                 for (const casoGroup of contratoGroup.casos) {
@@ -1559,7 +1635,7 @@ export default function RevisaoDeFaturaList() {
                 {clienteExpanded ? (
                   <div className="space-y-4 p-4">
                     {clienteGroup.contratos.map((contratoGroup) => {
-                      const contratoExpanded = expandedContratos[contratoGroup.key] !== false
+                      const contratoExpanded = expandedContratos[contratoGroup.key] ?? allExpanded
                       const contratoTotals = contratoGroup.casos.reduce(
                         (acc, casoGroup) => {
                           const metrics = getLiveCaseMetrics(casoGroup)
@@ -1630,7 +1706,7 @@ export default function RevisaoDeFaturaList() {
                           {contratoExpanded ? (
                             <div className="space-y-4 p-4">
                               {contratoGroup.casos.map((casoGroup) => {
-                                const casoExpanded = expandedCasos[casoGroup.key] !== false
+                                const casoExpanded = expandedCasos[casoGroup.key] ?? allExpanded
                                 const caseMetrics = getLiveCaseMetrics(casoGroup)
                                 const reviewRows = getReviewRows(casoGroup)
 
