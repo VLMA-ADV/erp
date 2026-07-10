@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import ItensAFaturarList from '@/components/faturamento/itens-a-faturar-list'
 import GerarFaturamentoMesButton from '@/components/faturamento/gerar-faturamento-mes-button'
+import ResetFaturamentoButton from '@/components/faturamento/reset-faturamento-button'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,10 @@ export default async function ItensAFaturarPage() {
           <h1 className="mt-2 display-lg text-ink">Itens a faturar</h1>
           <p className="mt-2 text-sm text-ink-mute">Consolidação por cliente, contrato e caso para início do fluxo de faturamento.</p>
         </div>
-        <GerarFaturamentoMesButton />
+        <div className="flex flex-wrap items-center gap-2">
+          <ResetFaturamentoButton />
+          <GerarFaturamentoMesButton />
+        </div>
       </header>
       <ItensAFaturarList />
     </div>

@@ -124,6 +124,35 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Aprovadores de fatura: apenas sócios diretores (categoria=socio, centro de custo VLMA).
+    try {
+      const { data: areaVlma } = await supabase
+        .schema("people")
+        .from("areas")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("nome", "VLMA")
+        .limit(1)
+        .maybeSingle();
+
+      if (areaVlma?.id) {
+        const { data: diretoresData } = await supabase
+          .schema("people")
+          .from("colaboradores")
+          .select("id,nome")
+          .eq("tenant_id", tenantId)
+          .eq("ativo", true)
+          .eq("categoria", "socio")
+          .eq("area_id", areaVlma.id)
+          .order("nome", { ascending: true });
+        (normalizedData as any).diretores = diretoresData ?? [];
+      } else {
+        (normalizedData as any).diretores = [];
+      }
+    } catch (_diretoresError) {
+      (normalizedData as any).diretores = [];
+    }
+
     if (!Array.isArray((normalizedData as any).servicos)) {
       try {
         const { data: servicosData } = await supabase.rpc("get_servicos", { p_user_id: user.id });

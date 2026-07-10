@@ -120,6 +120,8 @@ export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true,
           data_inicio: preview.periodo_inicio,
           data_fim: preview.periodo_fim,
           alvo_tipo: 'itens',
+          // horas ficam fora do gerar do mês: entram conforme lançadas
+          somente_regras: true,
         }),
       })
       const data = await resp.json()
@@ -127,10 +129,13 @@ export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true,
         toastError(data.error || 'Erro ao gerar faturamento do mês')
         return
       }
-      const itemsCount = typeof data === 'object' && data && 'items_count' in data
-        ? Number((data as Record<string, unknown>).items_count ?? 0)
-        : 0
-      success(`Faturamento do mês gerado: ${itemsCount} item${itemsCount !== 1 ? 's' : ''} processado${itemsCount !== 1 ? 's' : ''}.`)
+      const payloadData = (data as { data?: { itens_criados?: number; mensagem?: string | null } })?.data
+      const itemsCount = Number(payloadData?.itens_criados ?? 0)
+      success(
+        itemsCount === 0
+          ? payloadData?.mensagem || 'Todas as regras do período já estavam geradas — nenhum item novo.'
+          : `Faturamento do mês gerado: ${itemsCount} item${itemsCount !== 1 ? 's' : ''} novo${itemsCount !== 1 ? 's' : ''}.`,
+      )
       setOpen(false)
       setPreview(null)
       onSuccess?.()

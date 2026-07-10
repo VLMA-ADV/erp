@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.24.4'
+export const APP_VERSION = '1.25.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,24 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.25.0',
+    date: '10/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Fluxo de faturamento: papéis, abas e usabilidade',
+        desc: 'Excluir uma hora não revisada agora some da revisão na hora (e o autor do lançamento aparece correto). Horas herdam a regra do caso em todas as abas, desde Itens a faturar. Em casos multi-centro de custo, a aprovação final só libera quando todos os coordenadores revisarem. Aprovador do caso restrito aos sócios diretores, com a etapa de aprovação sempre visível.',
+      },
+      {
+        title: 'Revisão de fatura: mais fluida',
+        desc: 'O OK atualiza a linha sem recarregar a tela. Tudo começa recolhido, com botão "Expandir tudo". Horas exibidas como 1h 20min. Etapas já concluídas ficam riscadas. E o "Gerar faturamento do mês" processa só as regras do mês (horas entram conforme lançadas), avisando quando tudo já foi gerado. Novo botão "Reiniciar mês (teste)" para testes ponta a ponta.',
+      },
+    ],
+  },
+  {
     version: '1.24.4',
     date: '09/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'PDI: skills sem repetição e avaliação por meta',

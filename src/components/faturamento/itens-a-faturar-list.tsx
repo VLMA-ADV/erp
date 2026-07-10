@@ -30,6 +30,7 @@ interface CasoAgrupado {
   extrato?: Array<{
     origem_id?: string
     tipo: string
+    caso_regra?: string | null
     descricao: string
     data_referencia: string | null
     horas: string
@@ -138,9 +139,19 @@ function normalizeRuleType(tipo: string | null | undefined) {
   return normalized
 }
 
-function matchRuleTab(tab: RegraTabKey, tipo: string | null | undefined) {
+// Aba efetiva da linha: hora lançada herda a regra de cobrança do caso
+// (ex.: hora em caso 'projeto' cai na aba Projeto, não em Horas).
+function effectiveRuleType(linha: { tipo: string; caso_regra?: string | null }) {
+  const base = normalizeRuleType(linha.tipo)
+  if (base !== 'hora') return base
+  const casoRegra = normalizeRuleType(linha.caso_regra)
+  if (casoRegra === 'salario_minimo') return 'mensalidade_processo'
+  return casoRegra && casoRegra !== 'hora' && casoRegra !== 'hora_com_cap' ? casoRegra : 'hora'
+}
+
+function matchRuleTab(tab: RegraTabKey, linha: { tipo: string; caso_regra?: string | null }) {
   if (tab === 'todas') return true
-  return normalizeRuleType(tipo) === tab
+  return effectiveRuleType(linha) === tab
 }
 
 function filterTreeByRule(items: ClienteAgrupado[], regraTab: RegraTabKey): ClienteAgrupado[] {
@@ -154,7 +165,7 @@ function filterTreeByRule(items: ClienteAgrupado[], regraTab: RegraTabKey): Clie
 
       for (const caso of contrato.casos || []) {
         const filteredExtrato = (Array.isArray(caso.extrato) ? caso.extrato : []).filter((linha) =>
-          matchRuleTab(regraTab, linha.tipo),
+          matchRuleTab(regraTab, linha),
         )
         if (filteredExtrato.length === 0) continue
 
