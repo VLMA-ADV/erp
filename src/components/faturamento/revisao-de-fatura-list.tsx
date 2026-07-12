@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -746,6 +746,7 @@ export default function RevisaoDeFaturaList() {
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura${params.toString() ? `?${params}` : ''}`,
         {
           method: 'GET',
+          cache: 'no-store',
           headers: {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
@@ -857,6 +858,25 @@ export default function RevisaoDeFaturaList() {
     void loadAllContratos()
     void loadColaboradores()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRead])
+
+  // A grid reflete envios/revisões de outros usuários sem depender de F5:
+  // refetch silencioso ao focar a janela + polling a cada 60s.
+  const loadItemsRef = useRef<(options?: { silent?: boolean }) => Promise<void>>()
+  loadItemsRef.current = loadItems
+  useEffect(() => {
+    if (!canRead) return
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadItemsRef.current?.({ silent: true })
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    const interval = window.setInterval(refresh, 60_000)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+      window.clearInterval(interval)
+    }
   }, [canRead])
 
   const visibleItems = useMemo(

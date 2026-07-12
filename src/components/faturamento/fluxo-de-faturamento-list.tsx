@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRightLeft,
   ChevronDown,
@@ -591,10 +591,12 @@ export default function FluxoDeFaturamentoList() {
     nota_id: string | null
   } | null>(null)
 
-  const loadContratosEmRevisao = async () => {
+  const loadContratosEmRevisao = async (options?: { silent?: boolean }) => {
     try {
-      setLoading(true)
-      setLoadingContratos(true)
+      if (!options?.silent) {
+        setLoading(true)
+        setLoadingContratos(true)
+      }
       setError(null)
       const supabase = createClient()
       const {
@@ -606,6 +608,7 @@ export default function FluxoDeFaturamentoList() {
       if (caso) params.set('caso', caso)
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura?${params.toString()}`, {
         method: 'GET',
+        cache: 'no-store',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
@@ -650,6 +653,23 @@ export default function FluxoDeFaturamentoList() {
     void loadContratosEmRevisao()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, caso])
+
+  // Aprovador vê revisões dos coordenadores sem F5: refetch no foco + polling 60s.
+  const loadRef = useRef<(options?: { silent?: boolean }) => Promise<void>>()
+  loadRef.current = loadContratosEmRevisao
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadRef.current?.({ silent: true })
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    const interval = window.setInterval(refresh, 60_000)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+      window.clearInterval(interval)
+    }
+  }, [])
 
   const itensPorRegra = useMemo(() => {
     if (regraTipoTab === 'all') return rawItems
