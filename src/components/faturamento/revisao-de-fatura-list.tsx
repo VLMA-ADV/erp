@@ -121,7 +121,7 @@ interface CaseMetrics {
   totalHoras: number
   totalValor: number
   itemCount: number
-  timesheetAnchorItem: RevisaoItem | null
+  timesheetItems: RevisaoItem[]
   nonTimesheetItems: RevisaoItem[]
 }
 
@@ -655,17 +655,19 @@ function buildTree(items: RevisaoItem[]): ClienteGroup[] {
   return Array.from(clientes.values())
 }
 
+// TODOS os lançamentos de timesheet do caso contam e aparecem — antes só o
+// primeiro ([0]) era exibido/revisável e os demais ficavam invisíveis na grid.
 function getCaseBaseMetrics(casoGroup: CasoGroup): CaseMetrics {
   const timesheetItems = casoGroup.itens.filter((item) => item.origemTipo === 'timesheet')
   const nonTimesheetItems = casoGroup.itens.filter((item) => item.origemTipo !== 'timesheet')
 
   return {
     totalHoras: nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0) +
-      (timesheetItems[0] ? getEffectiveItemHours(timesheetItems[0]) : 0),
+      timesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0),
     totalValor: nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0) +
-      (timesheetItems[0] ? getEffectiveItemValue(timesheetItems[0]) : 0),
-    itemCount: nonTimesheetItems.length + (timesheetItems[0] ? 1 : 0),
-    timesheetAnchorItem: timesheetItems[0] || null,
+      timesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0),
+    itemCount: nonTimesheetItems.length + timesheetItems.length,
+    timesheetItems,
     nonTimesheetItems,
   }
 }
@@ -1001,17 +1003,16 @@ export default function RevisaoDeFaturaList() {
 
   const getLiveCaseMetrics = useCallback((casoGroup: CasoGroup): CaseMetrics => {
     const baseMetrics = getCaseBaseMetrics(casoGroup)
-    const timesheetAnchor = baseMetrics.timesheetAnchorItem
-    const timesheetHours = timesheetAnchor ? getLiveItemHours(timesheetAnchor, 'timesheet') : 0
-    const timesheetValue = timesheetAnchor ? getLiveItemValue(timesheetAnchor, 'timesheet') : 0
+    const timesheetHours = baseMetrics.timesheetItems.reduce((acc, item) => acc + getLiveItemHours(item, 'timesheet'), 0)
+    const timesheetValue = baseMetrics.timesheetItems.reduce((acc, item) => acc + getLiveItemValue(item, 'timesheet'), 0)
     const nonTimesheetHours = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + getLiveItemHours(item, 'default'), 0)
     const nonTimesheetValue = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + getLiveItemValue(item, 'default'), 0)
 
     return {
-      totalHoras: nonTimesheetHours + (timesheetAnchor ? timesheetHours : 0),
-      totalValor: nonTimesheetValue + (timesheetAnchor ? timesheetValue : 0),
+      totalHoras: nonTimesheetHours + timesheetHours,
+      totalValor: nonTimesheetValue + timesheetValue,
       itemCount: baseMetrics.itemCount,
-      timesheetAnchorItem: timesheetAnchor,
+      timesheetItems: baseMetrics.timesheetItems,
       nonTimesheetItems: baseMetrics.nonTimesheetItems,
     }
   }, [getLiveItemHours, getLiveItemValue])
@@ -1027,11 +1028,12 @@ export default function RevisaoDeFaturaList() {
         key: `default:${item.id}`,
       })
     }
-    if (metrics.timesheetAnchorItem) {
+    // cada lançamento de hora enviado é um bloco revisável próprio
+    for (const item of metrics.timesheetItems) {
       rows.push({
-        item: metrics.timesheetAnchorItem,
+        item,
         mode: 'timesheet',
-        key: `timesheet:${metrics.timesheetAnchorItem.id}`,
+        key: `timesheet:${item.id}`,
       })
     }
     return rows
