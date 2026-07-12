@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.25.0'
+export const APP_VERSION = '1.25.1'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.25.1',
+    date: '12/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Revisão e fluxo se atualizam sozinhos',
+        desc: 'As grids de Revisão de fatura e Fluxo de faturamento agora se atualizam automaticamente ao voltar para a janela e a cada 60 segundos — horas enviadas ou revisadas por outra pessoa aparecem sem precisar recarregar a página.',
+      },
+    ],
+  },
+  {
     version: '1.25.0',
     date: '10/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'Fluxo de faturamento: papéis, abas e usabilidade',

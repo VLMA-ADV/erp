@@ -4,6 +4,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2"
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // grid de revisão precisa ser sempre fresca (nada de resposta cacheada)
+  "Cache-Control": "no-store",
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
