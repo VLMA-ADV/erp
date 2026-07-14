@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.26.0'
+export const APP_VERSION = '1.26.1'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.26.0',
+    version: '1.26.1',
     date: '12/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: editor completo e novas ações',
+        desc: 'No "Revisar" (e no "Alterar" do aprovador) agora dá para editar a data do lançamento, o profissional, as horas (h/min), o texto e reatribuir o responsável pela etapa — quem for indicado passa a ver o item mesmo sendo de outro centro de custo. Novas ações na linha: "Transferir caso" (move o lançamento para outro caso) e "Devolver" (volta para a etapa anterior). O "Reagendar timesheet" agora deixa escolher a data no calendário. A tag Alterado/Sem alterações ficou simples (o histórico guarda os detalhes).',
+      },
+    ],
+  },
+  {
+    version: '1.26.0',
+    date: '12/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Revisão de fatura: novo layout de revisão e aprovação (prévia)',

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
+import { ArrowLeftRight, ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -106,6 +106,7 @@ interface DraftFields {
   horas: string
   valor: string
   observacao: string
+  etapaResponsavelId: string
   timesheetRows: TimesheetRowDraft[]
   valueRows: ValueRowDraft[]
 }
@@ -231,6 +232,16 @@ function normalizeDateFromDisplay(value: string) {
   return normalizeDateInput(trimmed) || trimmed
 }
 
+function isoToDisplay(iso: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '')
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ''
+}
+
+function displayToIso(display: string) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(display || '')
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+
 function getNextBillingPeriodDate(item: RevisaoItem) {
   const reference = normalizeDateFromDisplay(item.dataReferencia || item.timesheetDataLancamento)
   const fallbackDate = new Date()
@@ -351,17 +362,16 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
   return { alterado: changes.length > 0, changes, quando: stage.createdAt, texto: (stage.texto || '').trim() }
 }
 
-function StageTag({ alterado, changes }: { alterado: boolean; changes: string[] }) {
+// Tag da etapa: cliente pediu só a sinalização (sem detalhar o diff — o
+// histórico guarda os valores).
+function StageTag({ alterado }: { alterado: boolean; changes?: string[] }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      <span
-        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-          alterado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
-        }`}
-      >
-        {alterado ? 'Alterado' : 'Sem alterações'}
-      </span>
-      {alterado && changes.length > 0 ? <span className="text-xs text-ink-mute">{changes.join(' · ')}</span> : null}
+    <span
+      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        alterado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
+      }`}
+    >
+      {alterado ? 'Alterado' : 'Sem alterações'}
     </span>
   )
 }
@@ -660,6 +670,9 @@ export default function RevisaoDeFaturaList() {
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
+  const [postergarData, setPostergarData] = useState('')
+  const [transferItemId, setTransferItemId] = useState<string | null>(null)
+  const [transferCasoId, setTransferCasoId] = useState('')
   const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
   const [colaboradores, setColaboradores] = useState<ColaboradorOption[]>([])
 
@@ -686,6 +699,7 @@ export default function RevisaoDeFaturaList() {
         horas: prev[itemId]?.horas || '0',
         valor: prev[itemId]?.valor || '0',
         observacao: prev[itemId]?.observacao || '',
+        etapaResponsavelId: prev[itemId]?.etapaResponsavelId || '',
         timesheetRows: prev[itemId]?.timesheetRows || [],
         valueRows: prev[itemId]?.valueRows || [],
         ...patch,
@@ -750,6 +764,7 @@ export default function RevisaoDeFaturaList() {
           horas: String(item.origemTipo === 'timesheet' ? totalHoras : getEffectiveItemHours(item)),
           valor: String(item.origemTipo === 'timesheet' ? totalValorTimesheet : totalValorRegras || getEffectiveItemValue(item)),
           observacao: '',
+          etapaResponsavelId: '',
           timesheetRows,
           valueRows,
         }
@@ -1043,6 +1058,19 @@ export default function RevisaoDeFaturaList() {
     ]
   }, [allRows])
 
+  const transferCasoOptions = useMemo<CommandSelectOption[]>(() => {
+    const options: CommandSelectOption[] = []
+    for (const contratoOption of allContratos) {
+      for (const casoOption of contratoOption.casos || []) {
+        options.push({
+          value: casoOption.id,
+          label: `${casoOption.numero ? `${casoOption.numero} - ` : ''}${casoOption.nome} · ${contratoOption.cliente_nome || contratoOption.nome_contrato || ''}`,
+        })
+      }
+    }
+    return options.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+  }, [allContratos])
+
   const totals = useMemo(() => {
     return tree.reduce(
       (acc, clienteGroup) => {
@@ -1162,6 +1190,10 @@ export default function RevisaoDeFaturaList() {
               },
       }
 
+      if (draft.etapaResponsavelId) {
+        body.novo_responsavel_colaborador_id = draft.etapaResponsavelId
+      }
+
       const liveHours = getLiveItemHours(item, mode)
       const liveValue = getLiveItemValue(item, mode)
       if (item.status === 'em_aprovacao') {
@@ -1249,6 +1281,62 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  // Devolver para a etapa anterior (aprovação -> revisão / aprovado -> aprovação)
+  const returnItem = async (item: RevisaoItem) => {
+    try {
+      setBusyKey(`return:${item.id}`)
+      const accessToken = await getSessionToken()
+      if (!accessToken) return false
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-revisao-fatura-status`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ billing_item_id: item.id, action: 'retornar' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toastError(payload.error || 'Erro ao devolver item')
+        return false
+      }
+      success('Item devolvido para a etapa anterior.')
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.id === item.id
+            ? { ...entry, status: entry.status === 'em_aprovacao' ? 'em_revisao' : 'em_aprovacao' }
+            : entry,
+        ),
+      )
+      void loadItems({ silent: true })
+      return true
+    } catch (returnError) {
+      console.error(returnError)
+      toastError('Erro ao devolver item')
+      return false
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  // Transferir o item para outro caso (setas uma contra a outra do mock)
+  const transferItem = async () => {
+    const item = items.find((entry) => entry.id === transferItemId)
+    if (!item || !transferCasoId) return
+    try {
+      setBusyKey(`transfer:${item.id}`)
+      const moved = await updateItemCase(item.id, transferCasoId)
+      if (moved) {
+        success('Item transferido de caso.')
+        setTransferItemId(null)
+        setTransferCasoId('')
+        void loadItems({ silent: true })
+      }
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   const saveAndAdvance = async (item: RevisaoItem, mode: ReviewMode) => {
     const saved = await saveReviewItem(item, mode)
     if (!saved) return false
@@ -1317,13 +1405,13 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
-  const postergarItem = async (item: RevisaoItem) => {
+  const postergarItem = async (item: RevisaoItem, targetDateIso?: string) => {
     try {
       setBusyKey(`postergar:${item.id}`)
       const accessToken = await getSessionToken()
       if (!accessToken) return false
 
-      const proximoMes = getNextBillingPeriodDate(item)
+      const proximoMes = targetDateIso ? new Date(`${targetDateIso}T12:00:00`) : getNextBillingPeriodDate(item)
       const periodoFaturamento = proximoMes.toISOString().slice(0, 10)
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-timesheet`, {
@@ -1694,12 +1782,28 @@ export default function RevisaoDeFaturaList() {
                                                 >
                                                   Revisar
                                                 </Button>
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  title="Transferir para outro caso"
+                                                  onClick={() => {
+                                                    setTransferCasoId('')
+                                                    setTransferItemId(item.id)
+                                                  }}
+                                                  disabled={busy}
+                                                >
+                                                  <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir caso
+                                                </Button>
                                                 {item.timesheetId ? (
                                                   <Button
                                                     size="sm"
                                                     variant="ghost"
                                                     className="text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
-                                                    onClick={() => setPostergarConfirmId(item.id)}
+                                                    onClick={() => {
+                                                      const base = getNextBillingPeriodDate(item)
+                                                      setPostergarData(base.toISOString().slice(0, 10))
+                                                      setPostergarConfirmId(item.id)
+                                                    }}
                                                     disabled={busy}
                                                   >
                                                     <Clock className="mr-1 h-3.5 w-3.5" /> Reagendar timesheet
@@ -1723,6 +1827,16 @@ export default function RevisaoDeFaturaList() {
                                                       disabled={busy}
                                                     />
                                                     <div className="flex flex-wrap items-end gap-4">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Data:</span>
+                                                        <Input
+                                                          type="date"
+                                                          className="w-40"
+                                                          value={(tsRow.dataLancamento || '').slice(0, 10)}
+                                                          onChange={(event) => syncTimesheetRow(item.id, tsRow.id, { dataLancamento: event.target.value })}
+                                                          disabled={busy}
+                                                        />
+                                                      </div>
                                                       <div className="flex items-center gap-2">
                                                         <span className="text-sm text-ink-mute">Horas:</span>
                                                         <Input
@@ -1766,7 +1880,23 @@ export default function RevisaoDeFaturaList() {
                                                           ))}
                                                         </select>
                                                       </div>
-                                                    </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Responsável pela etapa:</span>
+                                                        <select
+                                                          className="h-9 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink"
+                                                          value={draft?.etapaResponsavelId || ''}
+                                                          onChange={(event) => updateDraft(item.id, { etapaResponsavelId: event.target.value })}
+                                                          disabled={busy}
+                                                        >
+                                                          <option value="">Manter atual</option>
+                                                          {colaboradores.map((colab) => (
+                                                            <option key={colab.id} value={colab.id}>
+                                                              {colab.nome}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+                                                      </div>
+                                                      </div>
                                                   </>
                                                 ) : (
                                                   <>
@@ -1780,7 +1910,38 @@ export default function RevisaoDeFaturaList() {
                                                       rows={3}
                                                       disabled={busy}
                                                     />
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex flex-wrap items-end gap-4">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Data:</span>
+                                                        <Input
+                                                          type="date"
+                                                          className="w-40"
+                                                          value={displayToIso(draft?.valueRows?.[0]?.referencia || '')}
+                                                          onChange={(event) => {
+                                                            if (draft?.valueRows?.[0]) {
+                                                              syncValueRow(item.id, draft.valueRows[0].id, { referencia: isoToDisplay(event.target.value) })
+                                                            }
+                                                          }}
+                                                          disabled={busy}
+                                                        />
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Responsável pela etapa:</span>
+                                                        <select
+                                                          className="h-9 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink"
+                                                          value={draft?.etapaResponsavelId || ''}
+                                                          onChange={(event) => updateDraft(item.id, { etapaResponsavelId: event.target.value })}
+                                                          disabled={busy}
+                                                        >
+                                                          <option value="">Manter atual</option>
+                                                          {colaboradores.map((colab) => (
+                                                            <option key={colab.id} value={colab.id}>
+                                                              {colab.nome}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
                                                       <span className="text-sm text-ink-mute">Valor (R$):</span>
                                                       <Input
                                                         className="w-36 text-right"
@@ -1793,6 +1954,7 @@ export default function RevisaoDeFaturaList() {
                                                         }}
                                                         disabled={busy}
                                                       />
+                                                    </div>
                                                     </div>
                                                   </>
                                                 )}
@@ -1866,6 +2028,9 @@ export default function RevisaoDeFaturaList() {
                                                 >
                                                   Alterar
                                                 </Button>
+                                                <Button size="sm" variant="ghost" onClick={() => void returnItem(item)} disabled={busy}>
+                                                  Devolver
+                                                </Button>
                                               </div>
                                             ) : item.status === 'em_revisao' ? (
                                               <div className="flex flex-wrap items-center justify-end gap-2 opacity-50">
@@ -1892,7 +2057,34 @@ export default function RevisaoDeFaturaList() {
                                                       rows={3}
                                                       disabled={busy}
                                                     />
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex flex-wrap items-end gap-4">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Data:</span>
+                                                        <Input
+                                                          type="date"
+                                                          className="w-40"
+                                                          value={(tsRow.dataLancamento || '').slice(0, 10)}
+                                                          onChange={(event) => syncTimesheetRow(item.id, tsRow.id, { dataLancamento: event.target.value })}
+                                                          disabled={busy}
+                                                        />
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Responsável pela etapa:</span>
+                                                        <select
+                                                          className="h-9 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink"
+                                                          value={draft?.etapaResponsavelId || ''}
+                                                          onChange={(event) => updateDraft(item.id, { etapaResponsavelId: event.target.value })}
+                                                          disabled={busy}
+                                                        >
+                                                          <option value="">Manter atual</option>
+                                                          {colaboradores.map((colab) => (
+                                                            <option key={colab.id} value={colab.id}>
+                                                              {colab.nome}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
                                                       <span className="text-sm text-ink-mute">Horas:</span>
                                                       <Input
                                                         className="w-16 text-right"
@@ -1917,6 +2109,7 @@ export default function RevisaoDeFaturaList() {
                                                       />
                                                       <span className="text-sm text-ink-mute">min</span>
                                                     </div>
+                                                    </div>
                                                   </>
                                                 ) : (
                                                   <>
@@ -1930,7 +2123,38 @@ export default function RevisaoDeFaturaList() {
                                                       rows={3}
                                                       disabled={busy}
                                                     />
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex flex-wrap items-end gap-4">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Data:</span>
+                                                        <Input
+                                                          type="date"
+                                                          className="w-40"
+                                                          value={displayToIso(draft?.valueRows?.[0]?.referencia || '')}
+                                                          onChange={(event) => {
+                                                            if (draft?.valueRows?.[0]) {
+                                                              syncValueRow(item.id, draft.valueRows[0].id, { referencia: isoToDisplay(event.target.value) })
+                                                            }
+                                                          }}
+                                                          disabled={busy}
+                                                        />
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Responsável pela etapa:</span>
+                                                        <select
+                                                          className="h-9 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink"
+                                                          value={draft?.etapaResponsavelId || ''}
+                                                          onChange={(event) => updateDraft(item.id, { etapaResponsavelId: event.target.value })}
+                                                          disabled={busy}
+                                                        >
+                                                          <option value="">Manter atual</option>
+                                                          {colaboradores.map((colab) => (
+                                                            <option key={colab.id} value={colab.id}>
+                                                              {colab.nome}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
                                                       <span className="text-sm text-ink-mute">Valor (R$):</span>
                                                       <Input
                                                         className="w-36 text-right"
@@ -1943,6 +2167,7 @@ export default function RevisaoDeFaturaList() {
                                                         }}
                                                         disabled={busy}
                                                       />
+                                                    </div>
                                                     </div>
                                                   </>
                                                 )}
@@ -1990,10 +2215,15 @@ export default function RevisaoDeFaturaList() {
             <DialogTitle>Postergar lançamento</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-ink-mute">
-            Mover este lançamento para o faturamento do próximo mês?
+            Escolha para quando este lançamento deve ser reagendado:
           </p>
+          <Input
+            type="date"
+            value={postergarData}
+            onChange={(event) => setPostergarData(event.target.value)}
+          />
           <p className="text-xs text-ink-mute">
-            O item será removido da lista atual e reaparecerá no período seguinte.
+            O item sai da lista atual e reaparece no faturamento do período escolhido.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPostergarConfirmId(null)}>
@@ -2007,11 +2237,41 @@ export default function RevisaoDeFaturaList() {
                 setPostergarConfirmId(null)
                 if (confirmId) {
                   const item = items.find((i) => i.id === confirmId)
-                  if (item) void postergarItem(item)
+                  if (item) void postergarItem(item, postergarData || undefined)
                 }
               }}
             >
-              Postergar
+              Reagendar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={transferItemId !== null} onOpenChange={(open) => !open && setTransferItemId(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Transferir para outro caso</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-ink-mute">O lançamento passa a contar no caso escolhido (cliente/contrato do caso).</p>
+          <CommandSelect
+            value={transferCasoId}
+            onValueChange={setTransferCasoId}
+            options={transferCasoOptions}
+            placeholder="Selecione o caso de destino"
+            searchPlaceholder="Buscar caso..."
+            emptyText="Nenhum caso encontrado."
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferItemId(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-primary hover:bg-primary-deep text-primary-foreground"
+              onClick={() => void transferItem()}
+              disabled={!transferCasoId || busyKey === `transfer:${transferItemId}`}
+            >
+              {busyKey === `transfer:${transferItemId}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Transferir
             </Button>
           </DialogFooter>
         </DialogContent>
