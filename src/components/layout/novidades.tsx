@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.26.1'
+export const APP_VERSION = '1.26.2'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.26.2',
+    date: '14/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: ações agrupadas e texto mais compacto',
+        desc: 'Os botões do card (OK sem alterações, Revisar/Alterar, Postergar, Transferir caso, Devolver) agora ficam agrupados num painel à direita, e o texto do timesheet ficou menor para caber mais conteúdo no bloco.',
+      },
+    ],
+  },
+  {
     version: '1.26.1',
     date: '12/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'Revisão de fatura: editor completo e novas ações',
