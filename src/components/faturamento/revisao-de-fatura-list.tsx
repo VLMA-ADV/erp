@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -59,17 +59,10 @@ interface CasoGroup {
   itens: RevisaoItem[]
 }
 
-interface ContratoGroup {
-  key: string
-  nome: string
-  numero: number | null
-  casos: CasoGroup[]
-}
-
 interface ClienteGroup {
   key: string
   nome: string
-  contratos: ContratoGroup[]
+  casos: CasoGroup[]
 }
 
 interface ContratoOption {
@@ -135,15 +128,8 @@ type RuleFilterKey =
   | 'projeto_parcelado'
   | 'exito'
   | 'despesa'
-type HistoryStageKey = 'usuario' | 'revisor' | 'aprovador'
 type HistoricoRole = 'USUARIO' | 'REVISOR' | 'APROVADOR'
 
-// Rótulo amigável da etapa (substitui USUARIO/REVISOR/APROVADOR).
-function stageLabelFromKey(key: HistoryStageKey): string {
-  if (key === 'usuario') return 'Envio'
-  if (key === 'revisor') return 'Revisão'
-  return 'Aprovação'
-}
 
 interface RevisaoHistoricoEntry {
   id: string
@@ -158,21 +144,6 @@ interface RevisaoHistoricoEntry {
   createdAt: string
 }
 
-interface HistoricalDisplayRow {
-  rowKey: string
-  stageKey: HistoryStageKey
-  label: string
-  dateText: string
-  userName: string
-  reviewerName: string
-  text: string
-  hoursText: string
-  value: number
-  rowClass: string
-  labelClass: string
-  showEdit: boolean
-  showPostergar: boolean
-}
 
 function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback
@@ -328,42 +299,8 @@ function areStageNumbersEqual(left: number | null | undefined, right: number | n
   return Number(left) === Number(right)
 }
 
-function hasReviewerHistory(item: RevisaoItem) {
-  return (
-    item.status === 'em_aprovacao' ||
-    item.status === 'aprovado' ||
-    !areStageNumbersEqual(item.horasRevisadas, getOriginalItemHours(item)) ||
-    !areStageNumbersEqual(item.valorRevisado, getOriginalItemValue(item))
-  )
-}
 
-// Linha de aprovação pendente: mostra quem vai aprovar antes mesmo da ação
-// (aprovador é sempre um sócio diretor — Renata ou Douglas).
-function pendingAprovadorRow(item: RevisaoItem): HistoricalDisplayRow {
-  return {
-    rowKey: 'aprovador:pendente',
-    stageKey: 'aprovador',
-    label: 'APROVADOR',
-    dateText: '—',
-    userName: '',
-    reviewerName: item.responsavelAprovacaoNome || 'Renata ou Douglas',
-    text: item.status === 'em_aprovacao' ? 'Aguardando aprovação' : 'Aprova após a revisão',
-    hoursText: '',
-    value: item.valorAprovado ?? item.valorRevisado ?? item.valorInformado ?? 0,
-    rowClass: 'bg-indigo-50/30 opacity-70',
-    labelClass: 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
-    showEdit: false,
-    showPostergar: false,
-  }
-}
 
-function hasApproverHistory(item: RevisaoItem) {
-  return (
-    (item.horasAprovadas !== null && item.horasAprovadas !== undefined) ||
-    (item.valorAprovado !== null && item.valorAprovado !== undefined) ||
-    item.status === 'aprovado'
-  )
-}
 
 function isReviewQueueStatus(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
@@ -389,6 +326,44 @@ function getEffectiveItemValue(item: RevisaoItem) {
   if (item.valorRevisado !== null && item.valorRevisado !== undefined) return item.valorRevisado
   if (item.valorInformado !== null && item.valorInformado !== undefined) return item.valorInformado
   return 0
+}
+
+// Compara a etapa com a anterior para exibir a tag (Sem alterações / Alterado)
+// e o resumo do que mudou — substitui o antigo texto tachado.
+function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
+  const hist = item.historico || []
+  const stage = [...hist].reverse().find((h) => h.role === role)
+  if (!stage) return null
+  const baseRole = role === 'REVISOR' ? 'USUARIO' : 'REVISOR'
+  const base = [...hist].reverse().find((h) => h.role === baseRole) || hist.find((h) => h.role === 'USUARIO')
+  const changes: string[] = []
+  if (base) {
+    if (Number(stage.horas || 0) !== Number(base.horas || 0)) {
+      changes.push(`${formatHistoryHours(base.horas)} \u2192 ${formatHistoryHours(stage.horas)}`)
+    }
+    if (Number(stage.valor || 0) !== Number(base.valor || 0)) {
+      changes.push(`${formatMoney(base.valor)} \u2192 ${formatMoney(stage.valor)}`)
+    }
+    if ((stage.texto || '').trim() && (stage.texto || '').trim() !== (base.texto || '').trim()) {
+      changes.push('texto editado')
+    }
+  }
+  return { alterado: changes.length > 0, changes, quando: stage.createdAt, texto: (stage.texto || '').trim() }
+}
+
+function StageTag({ alterado, changes }: { alterado: boolean; changes: string[] }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <span
+        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+          alterado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
+        }`}
+      >
+        {alterado ? 'Alterado' : 'Sem alterações'}
+      </span>
+      {alterado && changes.length > 0 ? <span className="text-xs text-ink-mute">{changes.join(' · ')}</span> : null}
+    </span>
+  )
 }
 
 function getRuleKind(item: RevisaoItem) {
@@ -612,33 +587,22 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
 function buildTree(items: RevisaoItem[]): ClienteGroup[] {
   const clientes = new Map<string, ClienteGroup>()
 
+  // agrupamento direto cliente -> caso (sem a camada de contrato, mock A-Tabela)
   for (const item of items) {
     const clienteKey = item.clienteNome || 'cliente'
     if (!clientes.has(clienteKey)) {
       clientes.set(clienteKey, {
         key: clienteKey,
         nome: item.clienteNome,
-        contratos: [],
+        casos: [],
       })
     }
 
     const cliente = clientes.get(clienteKey)
     if (!cliente) continue
 
-    const contratoKey = `${item.contratoNumero || 'sem-numero'}-${item.contratoNome}`
-    let contrato = cliente.contratos.find((entry) => entry.key === contratoKey)
-    if (!contrato) {
-      contrato = {
-        key: contratoKey,
-        nome: item.contratoNome,
-        numero: item.contratoNumero,
-        casos: [],
-      }
-      cliente.contratos.push(contrato)
-    }
-
     const casoKey = `${item.casoNumero || 'sem-numero'}-${item.casoNome}`
-    let caso = contrato.casos.find((entry) => entry.key === casoKey)
+    let caso = cliente.casos.find((entry) => entry.key === casoKey)
     if (!caso) {
       caso = {
         key: casoKey,
@@ -646,7 +610,7 @@ function buildTree(items: RevisaoItem[]): ClienteGroup[] {
         numero: item.casoNumero,
         itens: [],
       }
-      contrato.casos.push(caso)
+      cliente.casos.push(caso)
     }
 
     caso.itens.push(item)
@@ -685,17 +649,14 @@ export default function RevisaoDeFaturaList() {
   const [ruleFilter, setRuleFilter] = useState<RuleFilterKey>('all')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
-  const [expandedContratos, setExpandedContratos] = useState<Record<string, boolean>>({})
   const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
   // Default: tudo recolhido (revisor abre o que interessa); botão alterna geral.
   const [allExpanded, setAllExpanded] = useState(false)
   const toggleAllExpanded = () => {
     setAllExpanded((prev) => !prev)
     setExpandedClientes({})
-    setExpandedContratos({})
     setExpandedCasos({})
   }
-  const [expandedHistorico, setExpandedHistorico] = useState<Record<string, boolean>>({})
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
@@ -886,6 +847,16 @@ export default function RevisaoDeFaturaList() {
     [items, ruleFilter],
   )
 
+  const statusSummary = useMemo(() => {
+    const counts = { revisao: 0, aprovacao: 0, aprovado: 0 }
+    for (const item of visibleItems) {
+      if (item.status === 'em_revisao') counts.revisao += 1
+      else if (item.status === 'em_aprovacao') counts.aprovacao += 1
+      else if (item.status === 'aprovado') counts.aprovado += 1
+    }
+    return counts
+  }, [visibleItems])
+
   const tree = useMemo(() => buildTree(visibleItems), [visibleItems])
   const fullTree = useMemo(() => buildTree(items), [items])
 
@@ -1042,10 +1013,8 @@ export default function RevisaoDeFaturaList() {
   const allRows = useMemo(() => {
     const rows: Array<{ item: RevisaoItem; mode: ReviewMode; key: string }> = []
     for (const clienteGroup of fullTree) {
-      for (const contratoGroup of clienteGroup.contratos) {
-        for (const casoGroup of contratoGroup.casos) {
-          rows.push(...getReviewRows(casoGroup))
-        }
+      for (const casoGroup of clienteGroup.casos) {
+        rows.push(...getReviewRows(casoGroup))
       }
     }
     return rows
@@ -1077,13 +1046,11 @@ export default function RevisaoDeFaturaList() {
   const totals = useMemo(() => {
     return tree.reduce(
       (acc, clienteGroup) => {
-        for (const contratoGroup of clienteGroup.contratos) {
-          for (const casoGroup of contratoGroup.casos) {
-            const metrics = getLiveCaseMetrics(casoGroup)
-            acc.horas += metrics.totalHoras
-            acc.valor += metrics.totalValor
-            acc.itens += metrics.itemCount
-          }
+        for (const casoGroup of clienteGroup.casos) {
+          const metrics = getLiveCaseMetrics(casoGroup)
+          acc.horas += metrics.totalHoras
+          acc.valor += metrics.totalValor
+          acc.itens += metrics.itemCount
         }
         return acc
       },
@@ -1091,152 +1058,6 @@ export default function RevisaoDeFaturaList() {
     )
   }, [tree, getLiveCaseMetrics])
 
-  const getHistoricalRows = useCallback((item: RevisaoItem, mode: ReviewMode, expanded: boolean) => {
-    if (item.historico.length > 0) {
-      const usuario = item.historico.find((entry) => entry.role === 'USUARIO') ?? item.historico[0]
-      const revisores = item.historico.filter((entry) => entry.role === 'REVISOR')
-      const aprovadores = item.historico.filter((entry) => entry.role === 'APROVADOR')
-      const aprovador = aprovadores[aprovadores.length - 1] ?? null
-
-      const itemPassedReview =
-        item.status === 'em_aprovacao' ||
-        item.status === 'aprovado' ||
-        aprovadores.length > 0
-      if (revisores.length === 0 && itemPassedReview) {
-        const syntheticRevisor: RevisaoHistoricoEntry = {
-          id: `${item.id}:synthetic-revisor`,
-          billingItemId: item.id,
-          role: 'REVISOR',
-          authorId: '',
-          authorName: item.responsavelRevisaoNome || '-',
-          horas: item.horasRevisadas ?? getOriginalItemHours(item),
-          valor: item.valorRevisado ?? getOriginalItemValue(item),
-          texto: null,
-          tenantId: '',
-          createdAt: item.dataRevisao || usuario.createdAt,
-        }
-        revisores.push(syntheticRevisor)
-      }
-      const visibleRevisores = expanded ? revisores : revisores.slice(-1)
-
-      const toDisplayRow = (entry: RevisaoHistoricoEntry, index: number): HistoricalDisplayRow => {
-        const stageKey = entry.role.toLowerCase() as HistoryStageKey
-        const isUsuario = entry.role === 'USUARIO'
-        const isRevisor = entry.role === 'REVISOR'
-        // etapa já superada fica riscada: revisor vê o que já tratou, aprovador o histórico
-        const isSuperseded =
-          (isUsuario && (revisores.length > 0 || item.status === 'em_aprovacao' || item.status === 'aprovado')) ||
-          (isRevisor && (item.status === 'aprovado' || aprovadores.length > 0))
-
-        return {
-          rowKey: `${entry.id}:${index}`,
-          stageKey,
-          label: entry.role,
-          dateText: formatDateTime(entry.createdAt),
-          userName: entry.authorName,
-          reviewerName: isUsuario ? '-' : entry.authorName,
-          text: entry.texto || (mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)),
-          hoursText: formatHistoryHours(entry.horas),
-          value: entry.valor,
-          rowClass:
-            (isUsuario ? 'bg-white' : isRevisor ? 'bg-emerald-50/50' : 'bg-indigo-50/50') +
-            (isSuperseded ? ' line-through opacity-60' : ''),
-          labelClass: isUsuario
-            ? 'rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary'
-            : isRevisor
-              ? 'rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700'
-              : 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
-          showEdit: false,
-          showPostergar: false,
-        }
-      }
-
-      const rows = [usuario, ...visibleRevisores, ...(aprovador ? [aprovador] : [])].map(toDisplayRow)
-      // Faixa de aprovação sempre visível: mostra quem vai aprovar mesmo antes da ação.
-      if (!aprovador && (item.status === 'em_revisao' || item.status === 'em_aprovacao')) {
-        rows.push(pendingAprovadorRow(item))
-      }
-      return {
-        rows,
-        hiddenReviewerCount: Math.max(0, revisores.length - 1),
-      }
-    }
-
-    const draft = drafts[item.id]
-    const originalDate = item.timesheetDataLancamento || item.dataReferencia
-    const originalUser = item.enviadoPorNome || item.timesheetProfissional || '-'
-    const reviewedUser =
-      mode === 'timesheet'
-        ? draft?.timesheetRows?.[0]?.profissional || item.timesheetProfissional || item.responsavelFluxoNome || '-'
-        : draft?.profissional || item.timesheetProfissional || item.responsavelFluxoNome || '-'
-    const originalText = mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
-    const reviewedText =
-      mode === 'timesheet'
-        ? draft?.timesheetRows?.[0]?.atividade || item.timesheetDescricao || 'Sem descrição'
-        : draft?.valueRows?.[0]?.descricao || getRuleTitle(item)
-
-    const rows: HistoricalDisplayRow[] = [
-      {
-        rowKey: 'usuario:fallback',
-        stageKey: 'usuario',
-        label: 'USUARIO',
-        dateText: formatDate(originalDate),
-        userName: originalUser,
-        reviewerName: item.responsavelRevisaoNome || 'Sem revisor definido',
-        text: originalText,
-        hoursText: formatHistoryHours(getOriginalItemHours(item)),
-        value: getOriginalItemValue(item),
-        rowClass:
-          'bg-white' +
-          (hasReviewerHistory(item) || item.status === 'em_aprovacao' || item.status === 'aprovado'
-            ? ' line-through opacity-60'
-            : ''),
-        labelClass: 'rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary',
-        showEdit: true,
-        showPostergar: Boolean(item.timesheetId),
-      },
-    ]
-
-    if (hasReviewerHistory(item)) {
-      rows.push({
-        rowKey: 'revisor:fallback',
-        stageKey: 'revisor',
-        label: 'REVISOR',
-        dateText: formatDate(item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento),
-        userName: reviewedUser,
-        reviewerName: item.responsavelRevisaoNome || 'Sem revisor definido',
-        text: reviewedText,
-        hoursText: formatHistoryHours(item.horasRevisadas ?? getOriginalItemHours(item)),
-        value: item.valorRevisado ?? getOriginalItemValue(item),
-        rowClass: 'bg-emerald-50/50',
-        labelClass: 'rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700',
-        showEdit: true,
-        showPostergar: false,
-      })
-    }
-
-    if (hasApproverHistory(item)) {
-      rows.push({
-        rowKey: 'aprovador:fallback',
-        stageKey: 'aprovador',
-        label: 'APROVADOR',
-        dateText: formatDate(item.dataAprovacao || item.dataRevisao || item.dataReferencia || item.timesheetDataLancamento),
-        userName: reviewedUser,
-        reviewerName: item.responsavelAprovacaoNome || item.responsavelRevisaoNome || '-',
-        text: reviewedText,
-        hoursText: formatHistoryHours(item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item)),
-        value: item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item),
-        rowClass: 'bg-indigo-50/50',
-        labelClass: 'rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700',
-        showEdit: false,
-        showPostergar: false,
-      })
-    } else if (item.status === 'em_revisao' || item.status === 'em_aprovacao') {
-      rows.push(pendingAprovadorRow(item))
-    }
-
-    return { rows, hiddenReviewerCount: 0 }
-  }, [drafts])
 
   const syncTimesheetRow = (itemId: string, rowId: string, patch: Partial<TimesheetRowDraft>) => {
     setDrafts((prev) => {
@@ -1434,6 +1255,35 @@ export default function RevisaoDeFaturaList() {
     return advanceItem(item)
   }
 
+  // "Revisar selecionados · OK": conclui a revisão sem alterações dos itens marcados.
+  const reviewSelectedOk = async (scopeKey: string, itemIds: string[]) => {
+    const uniqueIds = Array.from(new Set(itemIds))
+    if (uniqueIds.length === 0) {
+      toastError('Nenhum item selecionado para revisão.')
+      return
+    }
+    let successCount = 0
+    let failCount = 0
+    try {
+      setBusyKey(scopeKey)
+      for (const itemId of uniqueIds) {
+        const item = items.find((entry) => entry.id === itemId)
+        if (!item || item.status !== 'em_revisao') {
+          failCount += 1
+          continue
+        }
+        const ok = await advanceItem(item)
+        if (ok) successCount += 1
+        else failCount += 1
+      }
+      setSelectedItemIds((prev) => prev.filter((id) => !uniqueIds.includes(id)))
+      if (successCount > 0) success(`${successCount} item(ns) revisado(s) sem alterações.`)
+      if (failCount > 0) toastError(`${failCount} item(ns) não puderam ser revisados.`)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   const approveSelected = async (scopeKey: string, itemIds: string[]) => {
     const uniqueIds = Array.from(new Set(itemIds))
     if (uniqueIds.length === 0) {
@@ -1596,8 +1446,11 @@ export default function RevisaoDeFaturaList() {
           <span className="mr-4">
             Itens: <strong className="text-foreground">{totals.itens}</strong>
           </span>
-          <span>
+          <span className="mr-4">
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
+          </span>
+          <span>
+            {statusSummary.revisao} aguarda(m) revisão · {statusSummary.aprovacao} aguarda(m) aprovação · {statusSummary.aprovado} aprovado(s)
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -1620,14 +1473,12 @@ export default function RevisaoDeFaturaList() {
         <div className="space-y-5">
           {tree.map((clienteGroup) => {
             const clienteExpanded = expandedClientes[clienteGroup.key] ?? allExpanded
-            const clienteTotals = clienteGroup.contratos.reduce(
-              (acc, contratoGroup) => {
-                for (const casoGroup of contratoGroup.casos) {
-                  const metrics = getLiveCaseMetrics(casoGroup)
-                  acc.horas += metrics.totalHoras
-                  acc.valor += metrics.totalValor
-                  acc.itens += metrics.itemCount
-                }
+            const clienteTotals = clienteGroup.casos.reduce(
+              (acc, casoGroup) => {
+                const metrics = getLiveCaseMetrics(casoGroup)
+                acc.horas += metrics.totalHoras
+                acc.valor += metrics.totalValor
+                acc.itens += metrics.itemCount
                 return acc
               },
               { horas: 0, valor: 0, itens: 0 },
@@ -1646,7 +1497,7 @@ export default function RevisaoDeFaturaList() {
                       <div>
                         <p className="text-sm font-semibold text-ink">{clienteGroup.nome}</p>
                         <p className="text-xs text-ink-mute">
-                          {clienteTotals.itens} item(ns) | {formatHours(clienteTotals.horas)} h
+                          {clienteTotals.itens} item(ns) · {formatHours(clienteTotals.horas)} h
                         </p>
                       </div>
                     </div>
@@ -1656,40 +1507,32 @@ export default function RevisaoDeFaturaList() {
 
                 {clienteExpanded ? (
                   <div className="space-y-4 p-4">
-                    {clienteGroup.contratos.map((contratoGroup) => {
-                      const contratoExpanded = expandedContratos[contratoGroup.key] ?? allExpanded
-                      const contratoTotals = contratoGroup.casos.reduce(
-                        (acc, casoGroup) => {
-                          const metrics = getLiveCaseMetrics(casoGroup)
-                          acc.horas += metrics.totalHoras
-                          acc.valor += metrics.totalValor
-                          acc.itens += metrics.itemCount
-                          return acc
-                        },
-                        { horas: 0, valor: 0, itens: 0 },
-                      )
-                      const contractRows = contratoGroup.casos.flatMap((casoGroup) => getReviewRows(casoGroup))
-                      const contractRowIds = contractRows.filter((row) => canAdvance(row.item.status)).map((row) => row.item.id)
-                      const allSelected = contractRowIds.length > 0 && contractRowIds.every((id) => selectedItemIds.includes(id))
-                      const selectedCount = contractRowIds.filter((id) => selectedItemIds.includes(id)).length
+                    {clienteGroup.casos.map((casoGroup) => {
+                      const casoExpanded = expandedCasos[casoGroup.key] ?? allExpanded
+                      const caseMetrics = getLiveCaseMetrics(casoGroup)
+                      const reviewRows = getReviewRows(casoGroup)
+                      const caseRowIds = reviewRows.filter((row) => canAdvance(row.item.status)).map((row) => row.item.id)
+                      const allSelected = caseRowIds.length > 0 && caseRowIds.every((id) => selectedItemIds.includes(id))
+                      const selectedIds = caseRowIds.filter((id) => selectedItemIds.includes(id))
+                      const batchKey = `batch:${clienteGroup.key}:${casoGroup.key}`
 
                       return (
-                        <div key={`${clienteGroup.key}-${contratoGroup.key}`} className="rounded-xl border border-hairline">
+                        <div key={casoGroup.key} className="rounded-xl border border-hairline">
                           <div className="border-b bg-white px-4 py-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <button
                                 type="button"
                                 className="flex items-center gap-2 text-left"
-                                onClick={() => setExpandedContratos((prev) => ({ ...prev, [contratoGroup.key]: !contratoExpanded }))}
+                                onClick={() => setExpandedCasos((prev) => ({ ...prev, [casoGroup.key]: !casoExpanded }))}
                               >
-                                {contratoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
+                                {casoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
                                 <div>
                                   <p className="text-sm font-semibold text-ink">
-                                    {contratoGroup.numero ? `${contratoGroup.numero} - ` : ''}
-                                    {contratoGroup.nome}
+                                    {casoGroup.numero ? `${casoGroup.numero} - ` : ''}
+                                    {casoGroup.nome}
                                   </p>
                                   <p className="text-xs text-ink-mute">
-                                    {contratoTotals.itens} item(ns) | {formatHours(contratoTotals.horas)} h
+                                    {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} h
                                   </p>
                                 </div>
                               </button>
@@ -1704,8 +1547,8 @@ export default function RevisaoDeFaturaList() {
                                       const checked = event.target.checked
                                       setSelectedItemIds((prev) =>
                                         checked
-                                          ? Array.from(new Set([...prev, ...contractRowIds]))
-                                          : prev.filter((id) => !contractRowIds.includes(id)),
+                                          ? Array.from(new Set([...prev, ...caseRowIds]))
+                                          : prev.filter((id) => !caseRowIds.includes(id)),
                                       )
                                     }}
                                   />
@@ -1714,403 +1557,417 @@ export default function RevisaoDeFaturaList() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => void approveSelected(`batch:${contratoGroup.key}`, contractRowIds.filter((id) => selectedItemIds.includes(id)))}
-                                  disabled={selectedCount === 0 || busyKey === `batch:${contratoGroup.key}`}
+                                  onClick={() => void reviewSelectedOk(batchKey, selectedIds)}
+                                  disabled={selectedIds.length === 0 || busyKey === batchKey}
                                 >
-                                  {busyKey === `batch:${contratoGroup.key}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                  {busyKey === batchKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                  Revisar selecionados · OK
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void approveSelected(batchKey, selectedIds)}
+                                  disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                >
                                   Aprovar selecionados
                                 </Button>
-                                <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(contratoTotals.valor)}</p>
+                                <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
                               </div>
                             </div>
                           </div>
 
-                          {contratoExpanded ? (
-                            <div className="space-y-4 p-4">
-                              {contratoGroup.casos.map((casoGroup) => {
-                                const casoExpanded = expandedCasos[casoGroup.key] ?? allExpanded
-                                const caseMetrics = getLiveCaseMetrics(casoGroup)
-                                const reviewRows = getReviewRows(casoGroup)
+                          {casoExpanded ? (
+                            <div className="space-y-3 bg-canvas-soft/40 p-3">
+                              {reviewRows.map(({ item, mode, key }) => {
+                                const draft = drafts[item.id]
+                                const busy = busyKey === key || busyKey === `advance:${item.id}` || busyKey === batchKey || busyKey === `${mode}:${item.id}`
+                                const isEditing = editorKey === key
+                                const badge =
+                                  item.status === 'em_revisao'
+                                    ? { label: 'Aguarda revisão', cls: 'bg-amber-100 text-amber-800' }
+                                    : item.status === 'em_aprovacao'
+                                      ? { label: 'Aguarda aprovação', cls: 'bg-indigo-100 text-indigo-700' }
+                                      : { label: 'Aprovado', cls: 'bg-emerald-100 text-emerald-700' }
+                                const envioData = item.timesheetDataLancamento || item.dataReferencia
+                                const envioTexto = mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
+                                const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
+                                const revChanges = getStageChanges(item, 'REVISOR')
+                                const aprChanges = getStageChanges(item, 'APROVADOR')
+                                const tsRow = draft?.timesheetRows?.[0]
+                                const tsHorasValor = parseDecimalInput(tsRow?.horasRevisadas || tsRow?.horasIniciais || '0')
+                                const tsHoras = Math.floor(tsHorasValor)
+                                const tsMinutos = Math.round((tsHorasValor - tsHoras) * 60)
 
                                 return (
-                                  <div key={`${contratoGroup.key}-${casoGroup.key}`} className="rounded-xl border border-dashed border-hairline bg-canvas-soft/60">
-                                    <div className="border-b border-hairline px-4 py-3">
-                                      <button
-                                        type="button"
-                                        className="flex w-full items-center justify-between gap-3 text-left"
-                                        onClick={() => setExpandedCasos((prev) => ({ ...prev, [casoGroup.key]: !casoExpanded }))}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          {casoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
-                                          <div>
-                                            <p className="text-sm font-semibold text-ink-secondary">
-                                              {casoGroup.numero ? `${casoGroup.numero} - ` : ''}
-                                              {casoGroup.nome}
-                                            </p>
-                                            <p className="text-xs text-ink-mute">
-                                              {caseMetrics.itemCount} item(ns) | {formatHours(caseMetrics.totalHoras)} h
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
-                                      </button>
+                                  <div key={key} className="overflow-hidden rounded-xl border border-hairline bg-white shadow-sm">
+                                    <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-hairline"
+                                        checked={selectedItemIds.includes(item.id)}
+                                        onChange={(event) =>
+                                          setSelectedItemIds((prev) =>
+                                            event.target.checked
+                                              ? Array.from(new Set([...prev, item.id]))
+                                              : prev.filter((id) => id !== item.id),
+                                          )
+                                        }
+                                        disabled={!canAdvance(item.status) || busy}
+                                      />
+                                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                                      <span className="text-xs text-ink-mute">
+                                        Lançado por <strong className="text-ink-secondary">{item.enviadoPorNome || item.timesheetProfissional || '-'}</strong>
+                                        {envioData ? ` em ${formatDate(envioData)}` : ''}
+                                      </span>
                                     </div>
 
-                                    {casoExpanded ? (
-                                      <div className="px-3 py-3">
-                                        <Table className="min-w-[1120px]">
-                                          <thead className="bg-white">
-                                            <tr className="border-b text-[11px] uppercase tracking-wide text-ink-mute">
-                                              <th className="w-10 px-3 py-2 text-left" />
-                                              <th className="px-3 py-2 text-left">Etapa</th>
-                                              <th className="px-3 py-2 text-left">Responsável</th>
-                                              <th className="px-3 py-2 text-left">Data/hora</th>
-                                              <th className="px-3 py-2 text-left">Texto</th>
-                                              <th className="px-3 py-2 text-right">Horas</th>
-                                              <th className="px-3 py-2 text-right">Valor</th>
-                                              <th className="px-3 py-2 text-right">Acoes</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {reviewRows.map(({ item, mode, key }) => {
-                                              const draft = drafts[item.id]
-                                              const busy = busyKey === key || busyKey === `advance:${item.id}` || busyKey === `batch:${contratoGroup.key}`
-                                              const historyExpanded = expandedHistorico[key] === true
-                                              const {
-                                                rows: historicalRows,
-                                                hiddenReviewerCount,
-                                              } = getHistoricalRows(item, mode, historyExpanded)
-                                              const reviewerToggleVisible = hiddenReviewerCount > 0
+                                    <Table className="min-w-[980px]">
+                                      <thead className="bg-white">
+                                        <tr className="border-b text-[11px] uppercase tracking-wide text-ink-mute">
+                                          <th className="px-3 py-2 text-left">Etapa</th>
+                                          <th className="px-3 py-2 text-left">Responsável</th>
+                                          <th className="px-3 py-2 text-left">Data</th>
+                                          <th className="px-3 py-2 text-left">Texto</th>
+                                          <th className="px-3 py-2 text-right">Horas</th>
+                                          <th className="px-3 py-2 text-right">Valor</th>
+                                          <th className="px-3 py-2 text-right">Ações</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {/* ENVIO */}
+                                        <tr className="border-b align-top">
+                                          <td className="px-3 py-3">
+                                            <span className="rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary">Envio</span>
+                                          </td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">{item.enviadoPorNome || item.timesheetProfissional || '-'}</td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">{envioData ? formatDate(envioData) : '—'}</td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                            <div className="max-w-[420px] whitespace-normal break-words">{envioTexto}</div>
+                                          </td>
+                                          <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
+                                            {mode === 'timesheet' ? formatHistoryHours(getOriginalItemHours(item)) : '—'}
+                                          </td>
+                                          <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
+                                          <td className="px-3 py-3" />
+                                        </tr>
 
-                                              return (
-                                                <Fragment key={key}>
-                                                  {historicalRows.map((historyRow, historyIndex) => (
-                                                    <Fragment key={`${key}:${historyRow.rowKey}`}>
-                                                      <tr className={`border-b align-top ${historyRow.rowClass}`}>
-                                                        {historyIndex === 0 ? (
-                                                          <td rowSpan={historicalRows.length + (reviewerToggleVisible ? 1 : 0)} className="px-3 py-3">
-                                                            <input
-                                                              type="checkbox"
-                                                              className="mt-1 h-4 w-4 rounded border-hairline"
-                                                              checked={selectedItemIds.includes(item.id)}
-                                                              onChange={(event) =>
-                                                                setSelectedItemIds((prev) =>
-                                                                  event.target.checked
-                                                                    ? Array.from(new Set([...prev, item.id]))
-                                                                    : prev.filter((id) => id !== item.id),
-                                                                )
-                                                              }
-                                                              disabled={!canAdvance(item.status) || busy}
-                                                            />
-                                                          </td>
-                                                        ) : null}
-                                                        <td className="px-3 py-3 text-sm font-semibold">
-                                                          <span className={historyRow.labelClass}>{stageLabelFromKey(historyRow.stageKey)}</span>
-                                                        </td>
-                                                        <td className="px-3 py-3 text-sm text-ink-secondary">
-                                                          {historyRow.stageKey === 'usuario' ? historyRow.userName : historyRow.reviewerName}
-                                                        </td>
-                                                        <td className="px-3 py-3 text-sm text-ink-secondary">{historyRow.dateText}</td>
-                                                        <td className="px-3 py-3 text-sm text-ink-secondary">
-                                                          <div className="max-w-[340px] whitespace-normal break-words">{historyRow.text}</div>
-                                                        </td>
-                                                        <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">{historyRow.hoursText}</td>
-                                                        <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">{formatMoney(historyRow.value)}</td>
-                                                        <td className="px-3 py-3">
-                                                          <div className="flex items-center justify-end gap-2">
-                                                            {(() => {
-                                                              const isActorRow =
-                                                                (item.status === 'em_revisao' && historyRow.stageKey === 'usuario') ||
-                                                                (item.status === 'em_aprovacao' && historyRow.stageKey === 'revisor')
-                                                              if (!isActorRow) return null
-                                                              return (
-                                                                <>
-                                                                  <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    onClick={() => void saveAndAdvance(item, mode)}
-                                                                    disabled={!canAdvance(item.status) || busy}
-                                                                  >
-                                                                    {busy && busyKey !== `postergar:${item.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                                    OK
-                                                                  </Button>
-                                                                  <Button
-                                                                    size="sm"
-                                                                    variant="ghost"
-                                                                    onClick={() => setEditorKey((current) => (current === key ? null : key))}
-                                                                    disabled={busy}
-                                                                  >
-                                                                    Editar
-                                                                  </Button>
-                                                                </>
-                                                              )
-                                                            })()}
-                                                            {historyRow.showPostergar ? (
-                                                              <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                className="text-primary hover:text-primary-deep hover:bg-primary-soft-bg"
-                                                                onClick={() => setPostergarConfirmId(item.id)}
-                                                                disabled={busy}
-                                                                title="Postergar para próximo mês"
-                                                              >
-                                                                {busyKey === `postergar:${item.id}` ? (
-                                                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : (
-                                                                  <Clock className="h-4 w-4" />
-                                                                )}
-                                                              </Button>
-                                                            ) : null}
-                                                          </div>
-                                                        </td>
-                                                      </tr>
-                                                      {historyIndex === 0 && reviewerToggleVisible ? (
-                                                        <tr className="border-b bg-canvas-soft">
-                                                          <td colSpan={7} className="px-3 py-2">
-                                                            <Button
-                                                              size="sm"
-                                                              variant="ghost"
-                                                              onClick={() =>
-                                                                setExpandedHistorico((prev) => ({
-                                                                  ...prev,
-                                                                  [key]: !historyExpanded,
-                                                                }))
-                                                              }
-                                                            >
-                                                              {historyExpanded
-                                                                ? 'Ocultar edições anteriores'
-                                                                : `Ver ${hiddenReviewerCount} edição${hiddenReviewerCount > 1 ? 'es' : ''} anterior${hiddenReviewerCount > 1 ? 'es' : ''}`}
-                                                            </Button>
-                                                          </td>
-                                                        </tr>
-                                                      ) : null}
-                                                    </Fragment>
-                                                  ))}
+                                        {/* REVISÃO */}
+                                        <tr className="border-b bg-emerald-50/50 align-top">
+                                          <td className="px-3 py-3">
+                                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">Revisão</span>
+                                          </td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">{item.responsavelRevisaoNome || 'Sem revisor definido'}</td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">{revisado && item.dataRevisao ? formatDate(item.dataRevisao) : '—'}</td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                            {revisado ? (
+                                              <div className="max-w-[420px] space-y-1 whitespace-normal break-words">
+                                                <div>{revChanges?.texto || envioTexto}</div>
+                                                <StageTag alterado={Boolean(revChanges?.alterado)} changes={revChanges?.changes || []} />
+                                              </div>
+                                            ) : (
+                                              <span className="italic text-ink-mute">Aguardando sua revisão do lançamento acima.</span>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
+                                            {revisado && mode === 'timesheet' ? formatHistoryHours(item.horasRevisadas ?? getOriginalItemHours(item)) : revisado ? '—' : ''}
+                                          </td>
+                                          <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">
+                                            {revisado ? formatMoney(item.valorRevisado ?? getOriginalItemValue(item)) : ''}
+                                          </td>
+                                          <td className="px-3 py-3">
+                                            {item.status === 'em_revisao' ? (
+                                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                                <Button
+                                                  size="sm"
+                                                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                                  onClick={() => void advanceItem(item)}
+                                                  disabled={busy}
+                                                >
+                                                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                  ✓ OK, sem alterações
+                                                </Button>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => setEditorKey((current) => (current === key ? null : key))}
+                                                  disabled={busy}
+                                                >
+                                                  Revisar
+                                                </Button>
+                                                {item.timesheetId ? (
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
+                                                    onClick={() => setPostergarConfirmId(item.id)}
+                                                    disabled={busy}
+                                                  >
+                                                    <Clock className="mr-1 h-3.5 w-3.5" /> Reagendar timesheet
+                                                  </Button>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
+                                          </td>
+                                        </tr>
 
-                                                  {editorKey === key ? (
-                                                    <tr className="border-b bg-canvas-soft/60">
-                                                      <td colSpan={8} className="px-4 py-4">
-                                                        <div className="space-y-4 rounded-xl border bg-white p-4">
-                                                          <div className="flex flex-wrap items-center justify-between gap-3">
-                                                            <div>
-                                                              <p className="text-sm font-semibold text-ink">Historico do lancamento</p>
-                                                              <p className="text-xs text-ink-mute">
-                                                                O bloco do usuario permanece read-only; a edicao abaixo alimenta a linha de revisor ou aprovador.
-                                                              </p>
-                                                            </div>
-                                                            <Button
-                                                              onClick={() =>
-                                                                void (async () => {
-                                                                  const saved = await saveReviewItem(item, mode)
-                                                                  if (saved) setEditorKey(null)
-                                                                })()
-                                                              }
-                                                              disabled={busy}
-                                                            >
-                                                              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                              Confirmar edicao
-                                                            </Button>
-                                                          </div>
+                                        {isEditing && item.status === 'em_revisao' ? (
+                                          <tr className="border-b bg-canvas-soft/60">
+                                            <td colSpan={7} className="px-4 py-3">
+                                              <div className="space-y-3 rounded-lg border bg-white p-4">
+                                                {mode === 'timesheet' && tsRow ? (
+                                                  <>
+                                                    <Textarea
+                                                      value={tsRow.atividade}
+                                                      onChange={(event) => syncTimesheetRow(item.id, tsRow.id, { atividade: event.target.value })}
+                                                      rows={3}
+                                                      disabled={busy}
+                                                    />
+                                                    <div className="flex flex-wrap items-end gap-4">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Horas:</span>
+                                                        <Input
+                                                          className="w-16 text-right"
+                                                          inputMode="numeric"
+                                                          value={String(tsHoras)}
+                                                          onChange={(event) => {
+                                                            const h = Math.max(0, parseInt(event.target.value || '0', 10) || 0)
+                                                            syncTimesheetRow(item.id, tsRow.id, { horasRevisadas: String(h + tsMinutos / 60) })
+                                                          }}
+                                                          disabled={busy}
+                                                        />
+                                                        <span className="text-sm text-ink-mute">h</span>
+                                                        <Input
+                                                          className="w-16 text-right"
+                                                          inputMode="numeric"
+                                                          value={String(tsMinutos)}
+                                                          onChange={(event) => {
+                                                            const m = Math.min(59, Math.max(0, parseInt(event.target.value || '0', 10) || 0))
+                                                            syncTimesheetRow(item.id, tsRow.id, { horasRevisadas: String(tsHoras + m / 60) })
+                                                          }}
+                                                          disabled={busy}
+                                                        />
+                                                        <span className="text-sm text-ink-mute">min</span>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="text-sm text-ink-mute">Profissional:</span>
+                                                        <select
+                                                          className="h-9 rounded-md border border-hairline-input bg-background px-2 text-sm text-ink"
+                                                          value={tsRow.profissional}
+                                                          onChange={(event) => syncTimesheetRow(item.id, tsRow.id, { profissional: event.target.value })}
+                                                          disabled={busy}
+                                                        >
+                                                          {tsRow.profissional && !colaboradores.some((c) => c.nome === tsRow.profissional) ? (
+                                                            <option value={tsRow.profissional}>{tsRow.profissional}</option>
+                                                          ) : null}
+                                                          {colaboradores.map((colab) => (
+                                                            <option key={colab.id} value={colab.nome}>
+                                                              {colab.nome}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+                                                      </div>
+                                                    </div>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Textarea
+                                                      value={draft?.valueRows?.[0]?.descricao || ''}
+                                                      onChange={(event) => {
+                                                        if (draft?.valueRows?.[0]) {
+                                                          syncValueRow(item.id, draft.valueRows[0].id, { descricao: event.target.value })
+                                                        }
+                                                      }}
+                                                      rows={3}
+                                                      disabled={busy}
+                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-sm text-ink-mute">Valor (R$):</span>
+                                                      <Input
+                                                        className="w-36 text-right"
+                                                        value={draft?.valueRows?.[0]?.valorRevisado || draft?.valor || ''}
+                                                        onChange={(event) => {
+                                                          updateDraft(item.id, { valor: event.target.value })
+                                                          if (draft?.valueRows?.[0]) {
+                                                            syncValueRow(item.id, draft.valueRows[0].id, { valorRevisado: event.target.value })
+                                                          }
+                                                        }}
+                                                        disabled={busy}
+                                                      />
+                                                    </div>
+                                                  </>
+                                                )}
+                                                <div className="flex items-center justify-end gap-2">
+                                                  <Button size="sm" variant="ghost" onClick={() => setEditorKey(null)} disabled={busy}>
+                                                    Cancelar
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                                    onClick={() => {
+                                                      setEditorKey(null)
+                                                      void saveAndAdvance(item, mode)
+                                                    }}
+                                                    disabled={busy}
+                                                  >
+                                                    Salvar revisão
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ) : null}
 
-                                                          <div className="grid gap-3 lg:grid-cols-2">
-                                                            <div className="space-y-3 rounded-xl bg-canvas-soft p-3">
-                                                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">Usuario</p>
-                                                              <div className="grid gap-3 md:grid-cols-2">
-                                                                <div>
-                                                                  <p className="text-xs text-ink-mute">Caso</p>
-                                                                  <p className="text-sm text-ink-secondary">{caseLabelById.get(item.casoId) || casoGroup.nome}</p>
-                                                                </div>
-                                                                <div>
-                                                                  <p className="text-xs text-ink-mute">Profissional</p>
-                                                                  <p className="text-sm text-ink-secondary">{item.timesheetProfissional || item.responsavelFluxoNome || '-'}</p>
-                                                                </div>
-                                                                <div className="md:col-span-2">
-                                                                  <p className="text-xs text-ink-mute">Texto</p>
-                                                                  <p className="text-sm text-ink-secondary">{mode === 'timesheet' ? item.timesheetDescricao || '-' : getRuleTitle(item)}</p>
-                                                                </div>
-                                                                <div>
-                                                                  <p className="text-xs text-ink-mute">Minutos</p>
-                                                                  <p className="text-sm text-ink-secondary">{hoursToMinutes(getOriginalItemHours(item))}</p>
-                                                                </div>
-                                                                <div>
-                                                                  <p className="text-xs text-ink-mute">Valor</p>
-                                                                  <p className="text-sm text-ink-secondary font-tabular">{formatMoney(getOriginalItemValue(item))}</p>
-                                                                </div>
-                                                              </div>
-                                                            </div>
+                                        {/* APROVAÇÃO */}
+                                        <tr className="bg-indigo-50/40 align-top">
+                                          <td className="px-3 py-3">
+                                            <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700">Aprovação</span>
+                                          </td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">{item.responsavelAprovacaoNome || 'Renata ou Douglas'}</td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                            {item.status === 'aprovado' && item.dataAprovacao ? formatDate(item.dataAprovacao) : '—'}
+                                          </td>
+                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                            {item.status === 'aprovado' ? (
+                                              <div className="max-w-[420px] space-y-1 whitespace-normal break-words">
+                                                <div>{aprChanges?.texto || revChanges?.texto || envioTexto}</div>
+                                                <StageTag alterado={Boolean(aprChanges?.alterado)} changes={aprChanges?.changes || []} />
+                                              </div>
+                                            ) : item.status === 'em_aprovacao' ? (
+                                              <span className="italic text-ink-secondary">Revisão concluída — disponível para aprovar.</span>
+                                            ) : (
+                                              <span className="italic text-ink-mute">🔒 Disponível após a revisão.</span>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
+                                            {item.status === 'aprovado' && mode === 'timesheet'
+                                              ? formatHistoryHours(item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item))
+                                              : ''}
+                                          </td>
+                                          <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">
+                                            {item.status === 'aprovado' ? formatMoney(item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item)) : ''}
+                                          </td>
+                                          <td className="px-3 py-3">
+                                            {item.status === 'em_aprovacao' ? (
+                                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                                <Button
+                                                  size="sm"
+                                                  className="bg-indigo-600 text-white hover:bg-indigo-700"
+                                                  onClick={() => void advanceItem(item)}
+                                                  disabled={busy}
+                                                >
+                                                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                  ✓ OK, sem alterações
+                                                </Button>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => setEditorKey((current) => (current === `apr:${key}` ? null : `apr:${key}`))}
+                                                  disabled={busy}
+                                                >
+                                                  Alterar
+                                                </Button>
+                                              </div>
+                                            ) : item.status === 'em_revisao' ? (
+                                              <div className="flex flex-wrap items-center justify-end gap-2 opacity-50">
+                                                <Button size="sm" variant="outline" disabled>
+                                                  ✓ OK, sem alterações
+                                                </Button>
+                                                <Button size="sm" variant="ghost" disabled>
+                                                  Alterar
+                                                </Button>
+                                              </div>
+                                            ) : null}
+                                          </td>
+                                        </tr>
 
-                                                            <div className="space-y-3 rounded-xl border border-hairline p-3">
-                                                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
-                                                                {item.status === 'em_aprovacao' ? 'Aprovador' : 'Revisor'}
-                                                              </p>
-                                                              <div className="grid gap-3 md:grid-cols-2">
-                                                                <div className="md:col-span-2">
-                                                                  <label className="mb-1 block text-xs text-ink-mute">Caso</label>
-                                                                  <CommandSelect
-                                                                    value={draft?.casoId || item.casoId}
-                                                                    onValueChange={(value) => updateDraft(item.id, { casoId: value })}
-                                                                    options={caseOptions}
-                                                                    placeholder="Selecione o caso"
-                                                                    searchPlaceholder="Buscar caso ou contrato..."
-                                                                    emptyText="Nenhum caso encontrado."
-                                                                    disabled={busy}
-                                                                  />
-                                                                </div>
-
-                                                                {mode === 'timesheet' ? (
-                                                                  <div className="md:col-span-2 space-y-3">
-                                                                    {draft?.timesheetRows.map((row) => {
-                                                                      const revisedMinutes = hoursToMinutes(parseDecimalInput(row.horasRevisadas || row.horasIniciais))
-                                                                      const revisedValue =
-                                                                        parseDecimalInput(row.horasRevisadas || row.horasIniciais) * parseDecimalInput(row.valorHora)
-                                                                      const rowProfissionalOptions = row.profissional && !colaboradorOptions.some((option) => option.value === row.profissional)
-                                                                        ? [{ value: row.profissional, label: row.profissional }, ...colaboradorOptions]
-                                                                        : colaboradorOptions
-                                                                      return (
-                                                                        <div key={row.id} className="rounded-lg border p-3">
-                                                                          <div className="grid gap-3 md:grid-cols-2">
-                                                                            <div>
-                                                                              <label className="mb-1 block text-xs text-ink-mute">Profissional</label>
-                                                                              <CommandSelect
-                                                                                value={row.profissional}
-                                                                                onValueChange={(value) => syncTimesheetRow(item.id, row.id, { profissional: value })}
-                                                                                options={rowProfissionalOptions}
-                                                                                placeholder="Selecione o profissional"
-                                                                                searchPlaceholder="Buscar colaborador..."
-                                                                                emptyText="Nenhum colaborador encontrado."
-                                                                                disabled={busy}
-                                                                              />
-                                                                            </div>
-                                                                            <div>
-                                                                              <label className="mb-1 block text-xs text-ink-mute">Duração</label>
-                                                                              {(() => {
-                                                                                const split = splitMinutosTotal(revisedMinutes)
-                                                                                const syncHHMM = (h: string, m: string) => {
-                                                                                  const totalMin = computeMinutosFromHHMM(h, m)
-                                                                                  syncTimesheetRow(item.id, row.id, { horasRevisadas: minutesToHoursString(String(totalMin)) })
-                                                                                }
-                                                                                return (
-                                                                                  <div className="flex items-center gap-2">
-                                                                                    <Input
-                                                                                      value={split.horas}
-                                                                                      onChange={(event) => syncHHMM(sanitizeMinutesInput(event.target.value), split.minutos)}
-                                                                                      inputMode="numeric"
-                                                                                      placeholder="h"
-                                                                                      disabled={busy}
-                                                                                      className="w-16 text-center"
-                                                                                      aria-label="Horas"
-                                                                                    />
-                                                                                    <span className="text-xs text-ink-mute">h</span>
-                                                                                    <Input
-                                                                                      value={split.minutos}
-                                                                                      onChange={(event) => syncHHMM(split.horas, sanitizeMinutesInput(event.target.value))}
-                                                                                      inputMode="numeric"
-                                                                                      placeholder="min"
-                                                                                      disabled={busy}
-                                                                                      className="w-16 text-center"
-                                                                                      aria-label="Minutos"
-                                                                                    />
-                                                                                    <span className="text-xs text-ink-mute">min</span>
-                                                                                  </div>
-                                                                                )
-                                                                              })()}
-                                                                            </div>
-                                                                            <div className="md:col-span-2">
-                                                                              <label className="mb-1 block text-xs text-ink-mute">Texto</label>
-                                                                              <Textarea
-                                                                                value={row.atividade}
-                                                                                onChange={(event) => syncTimesheetRow(item.id, row.id, { atividade: event.target.value })}
-                                                                                rows={2}
-                                                                                disabled={busy}
-                                                                              />
-                                                                            </div>
-                                                                            <div>
-                                                                              <p className="text-xs text-ink-mute">Valor recalculado</p>
-                                                                              <p className="mt-2 text-sm font-medium text-ink font-tabular">{formatMoney(revisedValue)}</p>
-                                                                            </div>
-                                                                          </div>
-                                                                        </div>
-                                                                      )
-                                                                    })}
-                                                                  </div>
-                                                                ) : (
-                                                                  <>
-                                                                    {(() => {
-                                                                      const currentProfissional = draft?.profissional || ''
-                                                                      const profissionalSelectOptions = currentProfissional && !colaboradorOptions.some((option) => option.value === currentProfissional)
-                                                                        ? [{ value: currentProfissional, label: currentProfissional }, ...colaboradorOptions]
-                                                                        : colaboradorOptions
-                                                                      return (
-                                                                        <div>
-                                                                          <label className="mb-1 block text-xs text-ink-mute">Profissional</label>
-                                                                          <CommandSelect
-                                                                            value={currentProfissional}
-                                                                            onValueChange={(value) => updateDraft(item.id, { profissional: value })}
-                                                                            options={profissionalSelectOptions}
-                                                                            placeholder="Selecione o profissional"
-                                                                            searchPlaceholder="Buscar colaborador..."
-                                                                            emptyText="Nenhum colaborador encontrado."
-                                                                            disabled={busy}
-                                                                          />
-                                                                        </div>
-                                                                      )
-                                                                    })()}
-                                                                    <div>
-                                                                      <label className="mb-1 block text-xs text-ink-mute">Minutos</label>
-                                                                      <Input
-                                                                        value={String(hoursToMinutes(parseDecimalInput(draft?.horas || '0')))}
-                                                                        onChange={(event) => {
-                                                                          const nextHours = minutesToHoursString(event.target.value)
-                                                                          const currentRate =
-                                                                            getEffectiveItemHours(item) > 0
-                                                                              ? getEffectiveItemValue(item) / getEffectiveItemHours(item)
-                                                                              : item.timesheetValorHora || 0
-                                                                          const nextValue =
-                                                                            getRuleFilterKey(item) === 'hora' && currentRate > 0
-                                                                              ? String(parseDecimalInput(nextHours) * currentRate)
-                                                                              : draft?.valor || '0'
-                                                                          updateDraft(item.id, { horas: nextHours, valor: nextValue })
-                                                                          if (draft?.valueRows?.[0]) {
-                                                                            syncValueRow(item.id, draft.valueRows[0].id, { valorRevisado: nextValue })
-                                                                          }
-                                                                        }}
-                                                                        inputMode="numeric"
-                                                                        disabled={busy}
-                                                                      />
-                                                                    </div>
-                                                                    <div className="md:col-span-2">
-                                                                      <label className="mb-1 block text-xs text-ink-mute">Texto</label>
-                                                                      <Textarea
-                                                                        value={draft?.valueRows?.[0]?.descricao || ''}
-                                                                        onChange={(event) => {
-                                                                          if (draft?.valueRows?.[0]) {
-                                                                            syncValueRow(item.id, draft.valueRows[0].id, { descricao: event.target.value })
-                                                                          }
-                                                                        }}
-                                                                        rows={2}
-                                                                        disabled={busy}
-                                                                      />
-                                                                    </div>
-                                                                    <div>
-                                                                      <p className="text-xs text-ink-mute">Valor revisado</p>
-                                                                      <p className="mt-2 text-sm font-medium text-ink font-tabular">{formatMoney(getLiveItemValue(item, 'default'))}</p>
-                                                                    </div>
-                                                                  </>
-                                                                )}
-                                                              </div>
-                                                            </div>
-                                                          </div>
-                                                        </div>
-                                                      </td>
-                                                    </tr>
-                                                  ) : null}
-                                                </Fragment>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </Table>
-                                      </div>
-                                    ) : null}
+                                        {editorKey === `apr:${key}` && item.status === 'em_aprovacao' ? (
+                                          <tr className="border-t bg-canvas-soft/60">
+                                            <td colSpan={7} className="px-4 py-3">
+                                              <div className="space-y-3 rounded-lg border bg-white p-4">
+                                                {mode === 'timesheet' && tsRow ? (
+                                                  <>
+                                                    <Textarea
+                                                      value={tsRow.atividade}
+                                                      onChange={(event) => syncTimesheetRow(item.id, tsRow.id, { atividade: event.target.value })}
+                                                      rows={3}
+                                                      disabled={busy}
+                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-sm text-ink-mute">Horas:</span>
+                                                      <Input
+                                                        className="w-16 text-right"
+                                                        inputMode="numeric"
+                                                        value={String(tsHoras)}
+                                                        onChange={(event) => {
+                                                          const h = Math.max(0, parseInt(event.target.value || '0', 10) || 0)
+                                                          syncTimesheetRow(item.id, tsRow.id, { horasRevisadas: String(h + tsMinutos / 60) })
+                                                        }}
+                                                        disabled={busy}
+                                                      />
+                                                      <span className="text-sm text-ink-mute">h</span>
+                                                      <Input
+                                                        className="w-16 text-right"
+                                                        inputMode="numeric"
+                                                        value={String(tsMinutos)}
+                                                        onChange={(event) => {
+                                                          const m = Math.min(59, Math.max(0, parseInt(event.target.value || '0', 10) || 0))
+                                                          syncTimesheetRow(item.id, tsRow.id, { horasRevisadas: String(tsHoras + m / 60) })
+                                                        }}
+                                                        disabled={busy}
+                                                      />
+                                                      <span className="text-sm text-ink-mute">min</span>
+                                                    </div>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Textarea
+                                                      value={draft?.valueRows?.[0]?.descricao || ''}
+                                                      onChange={(event) => {
+                                                        if (draft?.valueRows?.[0]) {
+                                                          syncValueRow(item.id, draft.valueRows[0].id, { descricao: event.target.value })
+                                                        }
+                                                      }}
+                                                      rows={3}
+                                                      disabled={busy}
+                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="text-sm text-ink-mute">Valor (R$):</span>
+                                                      <Input
+                                                        className="w-36 text-right"
+                                                        value={draft?.valueRows?.[0]?.valorRevisado || draft?.valor || ''}
+                                                        onChange={(event) => {
+                                                          updateDraft(item.id, { valor: event.target.value })
+                                                          if (draft?.valueRows?.[0]) {
+                                                            syncValueRow(item.id, draft.valueRows[0].id, { valorRevisado: event.target.value })
+                                                          }
+                                                        }}
+                                                        disabled={busy}
+                                                      />
+                                                    </div>
+                                                  </>
+                                                )}
+                                                <div className="flex items-center justify-end gap-2">
+                                                  <Button size="sm" variant="ghost" onClick={() => setEditorKey(null)} disabled={busy}>
+                                                    Cancelar
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    className="bg-indigo-600 text-white hover:bg-indigo-700"
+                                                    onClick={() => {
+                                                      setEditorKey(null)
+                                                      void saveAndAdvance(item, mode)
+                                                    }}
+                                                    disabled={busy}
+                                                  >
+                                                    Salvar aprovação
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ) : null}
+                                      </tbody>
+                                    </Table>
                                   </div>
                                 )
                               })}
