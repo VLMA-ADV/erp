@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.25.2'
+export const APP_VERSION = '1.26.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.25.2',
+    version: '1.26.0',
     date: '12/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: novo layout de revisão e aprovação (prévia)',
+        desc: 'A tela segue o novo desenho: cliente → caso direto (sem a camada de contrato), cada lançamento em um card com status (Aguarda revisão / Aguarda aprovação / Aprovado) e "Lançado por". O revisor resolve na própria tela: "OK, sem alterações" em um clique ou "Revisar" para editar texto, horas (h/min) e profissional — gerando as tags "Sem alterações" ou "Alterado" (com o que mudou). A aprovação mostra "Disponível após a revisão" e libera com "Revisão concluída". Sem textos riscados. Inclui "Revisar selecionados · OK" em lote.',
+      },
+    ],
+  },
+  {
+    version: '1.25.2',
+    date: '12/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Correção: todas as horas do caso aparecem na revisão',
