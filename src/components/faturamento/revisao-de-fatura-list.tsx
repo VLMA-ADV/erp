@@ -1709,7 +1709,9 @@ export default function RevisaoDeFaturaList() {
                                       </span>
                                     </div>
 
-                                    <Table className="min-w-[980px]">
+                                    <div className="flex flex-col md:flex-row">
+                                    <div className="min-w-0 flex-1 overflow-x-auto">
+                                    <Table className="min-w-[860px]">
                                       <thead className="bg-white">
                                         <tr className="border-b text-[11px] uppercase tracking-wide text-ink-mute">
                                           <th className="px-3 py-2 text-left">Etapa</th>
@@ -1718,7 +1720,6 @@ export default function RevisaoDeFaturaList() {
                                           <th className="px-3 py-2 text-left">Texto</th>
                                           <th className="px-3 py-2 text-right">Horas</th>
                                           <th className="px-3 py-2 text-right">Valor</th>
-                                          <th className="px-3 py-2 text-right">Ações</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -1730,13 +1731,12 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-3 text-sm text-ink-secondary">{item.enviadoPorNome || item.timesheetProfissional || '-'}</td>
                                           <td className="px-3 py-3 text-sm text-ink-secondary">{envioData ? formatDate(envioData) : '—'}</td>
                                           <td className="px-3 py-3 text-sm text-ink-secondary">
-                                            <div className="max-w-[420px] whitespace-normal break-words">{envioTexto}</div>
+                                            <div className="max-w-[560px] whitespace-normal break-words text-[11px] leading-snug">{envioTexto}</div>
                                           </td>
                                           <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
                                             {mode === 'timesheet' ? formatHistoryHours(getOriginalItemHours(item)) : '—'}
                                           </td>
                                           <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
-                                          <td className="px-3 py-3" />
                                         </tr>
 
                                         {/* REVISÃO */}
@@ -1748,7 +1748,7 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-3 text-sm text-ink-secondary">{revisado && item.dataRevisao ? formatDate(item.dataRevisao) : '—'}</td>
                                           <td className="px-3 py-3 text-sm text-ink-secondary">
                                             {revisado ? (
-                                              <div className="max-w-[420px] space-y-1 whitespace-normal break-words">
+                                              <div className="max-w-[560px] space-y-1 whitespace-normal break-words text-[11px] leading-snug">
                                                 <div>{revChanges?.texto || envioTexto}</div>
                                                 <StageTag alterado={Boolean(revChanges?.alterado)} changes={revChanges?.changes || []} />
                                               </div>
@@ -1762,61 +1762,11 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">
                                             {revisado ? formatMoney(item.valorRevisado ?? getOriginalItemValue(item)) : ''}
                                           </td>
-                                          <td className="px-3 py-3">
-                                            {item.status === 'em_revisao' ? (
-                                              <div className="flex flex-wrap items-center justify-end gap-2">
-                                                <Button
-                                                  size="sm"
-                                                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                                                  onClick={() => void advanceItem(item)}
-                                                  disabled={busy}
-                                                >
-                                                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                  ✓ OK, sem alterações
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => setEditorKey((current) => (current === key ? null : key))}
-                                                  disabled={busy}
-                                                >
-                                                  Revisar
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="ghost"
-                                                  title="Transferir para outro caso"
-                                                  onClick={() => {
-                                                    setTransferCasoId('')
-                                                    setTransferItemId(item.id)
-                                                  }}
-                                                  disabled={busy}
-                                                >
-                                                  <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir caso
-                                                </Button>
-                                                {item.timesheetId ? (
-                                                  <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
-                                                    onClick={() => {
-                                                      const base = getNextBillingPeriodDate(item)
-                                                      setPostergarData(base.toISOString().slice(0, 10))
-                                                      setPostergarConfirmId(item.id)
-                                                    }}
-                                                    disabled={busy}
-                                                  >
-                                                    <Clock className="mr-1 h-3.5 w-3.5" /> Reagendar timesheet
-                                                  </Button>
-                                                ) : null}
-                                              </div>
-                                            ) : null}
-                                          </td>
                                         </tr>
 
                                         {isEditing && item.status === 'em_revisao' ? (
                                           <tr className="border-b bg-canvas-soft/60">
-                                            <td colSpan={7} className="px-4 py-3">
+                                            <td colSpan={6} className="px-4 py-3">
                                               <div className="space-y-3 rounded-lg border bg-white p-4">
                                                 {mode === 'timesheet' && tsRow ? (
                                                   <>
@@ -1990,7 +1940,7 @@ export default function RevisaoDeFaturaList() {
                                           </td>
                                           <td className="px-3 py-3 text-sm text-ink-secondary">
                                             {item.status === 'aprovado' ? (
-                                              <div className="max-w-[420px] space-y-1 whitespace-normal break-words">
+                                              <div className="max-w-[560px] space-y-1 whitespace-normal break-words text-[11px] leading-snug">
                                                 <div>{aprChanges?.texto || revChanges?.texto || envioTexto}</div>
                                                 <StageTag alterado={Boolean(aprChanges?.alterado)} changes={aprChanges?.changes || []} />
                                               </div>
@@ -2008,46 +1958,11 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">
                                             {item.status === 'aprovado' ? formatMoney(item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item)) : ''}
                                           </td>
-                                          <td className="px-3 py-3">
-                                            {item.status === 'em_aprovacao' ? (
-                                              <div className="flex flex-wrap items-center justify-end gap-2">
-                                                <Button
-                                                  size="sm"
-                                                  className="bg-indigo-600 text-white hover:bg-indigo-700"
-                                                  onClick={() => void advanceItem(item)}
-                                                  disabled={busy}
-                                                >
-                                                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                  ✓ OK, sem alterações
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => setEditorKey((current) => (current === `apr:${key}` ? null : `apr:${key}`))}
-                                                  disabled={busy}
-                                                >
-                                                  Alterar
-                                                </Button>
-                                                <Button size="sm" variant="ghost" onClick={() => void returnItem(item)} disabled={busy}>
-                                                  Devolver
-                                                </Button>
-                                              </div>
-                                            ) : item.status === 'em_revisao' ? (
-                                              <div className="flex flex-wrap items-center justify-end gap-2 opacity-50">
-                                                <Button size="sm" variant="outline" disabled>
-                                                  ✓ OK, sem alterações
-                                                </Button>
-                                                <Button size="sm" variant="ghost" disabled>
-                                                  Alterar
-                                                </Button>
-                                              </div>
-                                            ) : null}
-                                          </td>
                                         </tr>
 
                                         {editorKey === `apr:${key}` && item.status === 'em_aprovacao' ? (
                                           <tr className="border-t bg-canvas-soft/60">
-                                            <td colSpan={7} className="px-4 py-3">
+                                            <td colSpan={6} className="px-4 py-3">
                                               <div className="space-y-3 rounded-lg border bg-white p-4">
                                                 {mode === 'timesheet' && tsRow ? (
                                                   <>
@@ -2193,6 +2108,88 @@ export default function RevisaoDeFaturaList() {
                                         ) : null}
                                       </tbody>
                                     </Table>
+                                    </div>
+
+                                    {/* bundle de ações do card (lado direito, como no mock) */}
+                                    <div className="flex shrink-0 flex-row flex-wrap items-start gap-2 border-t border-hairline p-3 md:w-52 md:flex-col md:border-l md:border-t-0">
+                                      {item.status === 'em_revisao' ? (
+                                        <>
+                                          <Button
+                                            size="sm"
+                                            className="w-full justify-start bg-emerald-600 text-white hover:bg-emerald-700"
+                                            onClick={() => void advanceItem(item)}
+                                            disabled={busy}
+                                          >
+                                            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            ✓ OK, sem alterações
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="w-full justify-start"
+                                            onClick={() => setEditorKey((current) => (current === key ? null : key))}
+                                            disabled={busy}
+                                          >
+                                            Revisar
+                                          </Button>
+                                        </>
+                                      ) : null}
+                                      {item.status === 'em_aprovacao' ? (
+                                        <>
+                                          <Button
+                                            size="sm"
+                                            className="w-full justify-start bg-indigo-600 text-white hover:bg-indigo-700"
+                                            onClick={() => void advanceItem(item)}
+                                            disabled={busy}
+                                          >
+                                            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            ✓ OK, aprovar
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="w-full justify-start"
+                                            onClick={() => setEditorKey((current) => (current === `apr:${key}` ? null : `apr:${key}`))}
+                                            disabled={busy}
+                                          >
+                                            Alterar
+                                          </Button>
+                                        </>
+                                      ) : null}
+                                      {item.timesheetId && item.status === 'em_revisao' ? (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
+                                          onClick={() => {
+                                            const base = getNextBillingPeriodDate(item)
+                                            setPostergarData(base.toISOString().slice(0, 10))
+                                            setPostergarConfirmId(item.id)
+                                          }}
+                                          disabled={busy}
+                                        >
+                                          <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
+                                        </Button>
+                                      ) : null}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full justify-start"
+                                        onClick={() => {
+                                          setTransferCasoId('')
+                                          setTransferItemId(item.id)
+                                        }}
+                                        disabled={busy}
+                                      >
+                                        <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir caso
+                                      </Button>
+                                      {item.status === 'em_aprovacao' ? (
+                                        <Button size="sm" variant="ghost" className="w-full justify-start" onClick={() => void returnItem(item)} disabled={busy}>
+                                          Devolver
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                    </div>
                                   </div>
                                 )
                               })}
