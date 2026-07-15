@@ -22,6 +22,8 @@ interface RevisaoItem {
   origemTipo: string
   casoRegraCobranca: string
   revisoresModo: string
+  timesheetDescricaoOriginal: string
+  valorHoraAtual: number
   dataReferencia: string
   clienteNome: string
   contratoNome: string
@@ -392,7 +394,9 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
     const row = rows[0]
     if (row) {
       const atividade = String(row.atividade ?? '').trim()
-      const original = String(snapshot.timesheet_descricao ?? item.timesheetDescricao ?? '').trim()
+      const original = String(
+        snapshot.timesheet_descricao_original ?? snapshot.timesheet_descricao ?? item.timesheetDescricao ?? '',
+      ).trim()
       if (atividade && original && atividade !== original) {
         if (!changes.includes('texto editado')) changes.push('texto editado')
         textoRevisado = atividade
@@ -634,7 +638,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
   if (!id) return null
   const snapshot = toObject(data.snapshot) || {}
 
-  return {
+  const normalized: RevisaoItem = {
     id,
     contratoId: asString(data.contrato_id),
     casoId: asString(data.caso_id),
@@ -643,6 +647,8 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     origemTipo: asString(data.origem_tipo, ''),
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     revisoresModo: asString(data.revisores_modo, ''),
+    timesheetDescricaoOriginal: asString(data.timesheet_descricao_original, ''),
+    valorHoraAtual: asOptionalNumber(data.valor_hora_atual) ?? 0,
     dataReferencia: asString(data.data_referencia, ''),
     clienteNome: asString(data.cliente_nome, 'Cliente sem nome'),
     contratoNome: asString(data.contrato_nome, 'Contrato sem nome'),
@@ -676,6 +682,25 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     snapshot,
     historico: normalizeHistorico(data.historico),
   }
+
+  // Valor/hora VIGENTE da regra do caso: itens ainda pendentes refletem a
+  // mudança feita na origem (bug do cliente: 'alterei o valor da hora na
+  // regra financeira e não veio'). Aprovados/faturados ficam congelados.
+  if (
+    normalized.origemTipo === 'timesheet' &&
+    (normalized.status === 'em_revisao' || normalized.status === 'em_aprovacao') &&
+    normalized.valorHoraAtual > 0
+  ) {
+    normalized.timesheetValorHora = normalized.valorHoraAtual
+    if (normalized.horasInformadas !== null && normalized.horasInformadas !== undefined) {
+      normalized.valorInformado = Math.round(normalized.horasInformadas * normalized.valorHoraAtual * 100) / 100
+    }
+    if (normalized.horasRevisadas !== null && normalized.horasRevisadas !== undefined) {
+      normalized.valorRevisado = Math.round(normalized.horasRevisadas * normalized.valorHoraAtual * 100) / 100
+    }
+  }
+
+  return normalized
 }
 
 function buildTree(items: RevisaoItem[]): ClienteGroup[] {
@@ -1908,7 +1933,7 @@ export default function RevisaoDeFaturaList() {
                                       ? { label: 'Aguarda aprovação', cls: 'bg-indigo-100 text-indigo-700' }
                                       : { label: 'Aprovado', cls: 'bg-emerald-100 text-emerald-700' }
                                 const envioData = item.timesheetDataLancamento || item.dataReferencia
-                                const envioTexto = mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
+                                const envioTexto = mode === 'timesheet' ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
                                 const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
                                 // trava multi-CC: aprovação só libera quando nenhuma hora do caso
                                 // estiver em revisão (cadeado explicado em vez de erro ao clicar)
