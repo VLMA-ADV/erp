@@ -42,6 +42,9 @@ interface RevisaoItem {
   responsavelAprovacaoNome: string | null
   enviadoPorId: string | null
   enviadoPorNome: string | null
+  enviadoPorFoto: string | null
+  revisorFoto: string | null
+  aprovadorFoto: string | null
   dataRevisao: string | null
   dataAprovacao: string | null
   timesheetDataLancamento: string
@@ -318,6 +321,16 @@ function isReviewQueueStatus(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
 }
 
+// Aprovado permanece visível (pedido do Douglas) até o "Enviar para faturamento".
+function isVisibleInReview(item: RevisaoItem) {
+  if (isReviewQueueStatus(item.status)) return true
+  if (item.status === 'aprovado') {
+    const snapshot = (item.snapshot || {}) as Record<string, unknown>
+    return snapshot.enviado_faturamento !== true
+  }
+  return false
+}
+
 function canAdvance(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
 }
@@ -408,11 +421,34 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
 function StageTag({ alterado }: { alterado: boolean; changes?: string[] }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-        alterado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
+      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+        alterado ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
       }`}
     >
-      {alterado ? 'Alterado' : 'Sem alterações'}
+      {alterado ? 'Com alterações' : 'Sem alterações'}
+    </span>
+  )
+}
+
+// Avatar (foto ou iniciais) ao lado do nome nas etapas — pedido do cliente.
+function PersonBadge({ nome, foto }: { nome: string; foto?: string | null }) {
+  const iniciais = (nome || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((parte) => parte[0]?.toUpperCase() || '')
+    .join('')
+  return (
+    <span className="inline-flex items-center gap-2">
+      {foto ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={foto} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
+      ) : (
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-canvas-soft text-[9px] font-semibold text-ink-secondary">
+          {iniciais || '?'}
+        </span>
+      )}
+      <span>{nome}</span>
     </span>
   )
 }
@@ -448,7 +484,10 @@ function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
   const kind = getRuleKind(item)
   const casoKind = (item.casoRegraCobranca || '').trim().toLowerCase()
   if (item.origemTipo === 'timesheet') {
-    return ruleKeyFromKind(casoKind) ?? 'hora'
+    const mapped = ruleKeyFromKind(casoKind)
+    if (mapped) return mapped
+    // aba Horas é exclusiva de casos que cobram por hora; sem regra => só em Todas
+    return casoKind === 'hora' || casoKind === 'hora_com_cap' ? 'hora' : null
   }
   if (kind === 'hora' || kind === 'hora_com_cap') return 'hora'
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
@@ -623,6 +662,9 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     responsavelAprovacaoId: asString(pickFirstDefined(data.responsavel_aprovacao_id, snapshot.responsavel_aprovacao_id)) || null,
     responsavelAprovacaoNome: asString(pickFirstDefined(data.responsavel_aprovacao_nome, snapshot.responsavel_aprovacao_nome)) || null,
     enviadoPorId: asString(pickFirstDefined(data.enviado_por_id, snapshot.enviado_por_id)) || null,
+    enviadoPorFoto: asString(data.enviado_por_foto) || null,
+    revisorFoto: asString(data.revisor_foto) || null,
+    aprovadorFoto: asString(data.aprovador_foto) || null,
     enviadoPorNome: asString(pickFirstDefined(data.enviado_por_nome, snapshot.enviado_por_nome)) || null,
     dataRevisao: normalizeDateInput(asString(pickFirstDefined(data.data_revisao, snapshot.data_revisao))),
     dataAprovacao: normalizeDateInput(asString(pickFirstDefined(data.data_aprovacao, snapshot.data_aprovacao))),
@@ -715,6 +757,12 @@ export default function RevisaoDeFaturaList() {
   const [postergarData, setPostergarData] = useState('')
   const [transferItemId, setTransferItemId] = useState<string | null>(null)
   const [transferCasoId, setTransferCasoId] = useState('')
+  // lote: postergar/ignorar/transferir vários de uma vez (feedback 15/07)
+  const [postergarIds, setPostergarIds] = useState<string[]>([])
+  const [transferIds, setTransferIds] = useState<string[]>([])
+  const [ignorarIds, setIgnorarIds] = useState<string[]>([])
+  const [ignorarMotivo, setIgnorarMotivo] = useState('')
+  const [ignorarOutro, setIgnorarOutro] = useState('')
   const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
   const [colaboradores, setColaboradores] = useState<ColaboradorOption[]>([])
 
@@ -783,7 +831,7 @@ export default function RevisaoDeFaturaList() {
       const parsed: RevisaoItem[] = Array.isArray(payload.data)
         ? payload.data
             .map((entry: unknown) => normalizeItem(entry))
-            .filter((entry: RevisaoItem | null): entry is RevisaoItem => entry !== null && isReviewQueueStatus(entry.status))
+            .filter((entry: RevisaoItem | null): entry is RevisaoItem => entry !== null && isVisibleInReview(entry))
         : []
 
       setItems(parsed)
@@ -1361,6 +1409,98 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  // Ignorar a fatura: zera a cobrança; o lançamento continua existindo e sai
+  // da relação de cobrança. Justificativa obrigatória (auditoria da gestão).
+  const ignorarItens = async () => {
+    const motivo = ignorarMotivo === 'outro' ? ignorarOutro.trim() : ignorarMotivo
+    if (!motivo) {
+      toastError('Escolha a justificativa para ignorar.')
+      return
+    }
+    try {
+      setBusyKey('ignorar')
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('ignorar_billing_items', {
+        p_ids: ignorarIds,
+        p_motivo: motivo,
+      })
+      if (error) {
+        toastError(error.message || 'Erro ao ignorar itens')
+        return
+      }
+      const count = Number((data as { ignorados?: number })?.ignorados ?? 0)
+      success(`${count} item(ns) ignorado(s) — fora da relação de cobrança.`)
+      setItems((prev) => prev.filter((entry) => !ignorarIds.includes(entry.id)))
+      setSelectedItemIds((prev) => prev.filter((id) => !ignorarIds.includes(id)))
+      setIgnorarIds([])
+      setIgnorarMotivo('')
+      setIgnorarOutro('')
+      void loadItems({ silent: true })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  // Enviar aprovados para o faturamento: só aqui o aprovado sai da revisão.
+  const enviarParaFaturamento = async (ids: string[]) => {
+    const aprovados = ids.filter((id) => items.find((entry) => entry.id === id)?.status === 'aprovado')
+    if (aprovados.length === 0) {
+      toastError('Selecione itens aprovados para enviar ao faturamento.')
+      return
+    }
+    if (!window.confirm(`Enviar ${aprovados.length} item(ns) aprovado(s) para o faturamento (etapa 3)?`)) return
+    try {
+      setBusyKey('enviar-faturamento')
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('marcar_enviado_faturamento', { p_ids: aprovados })
+      if (error) {
+        toastError(error.message || 'Erro ao enviar para faturamento')
+        return
+      }
+      const count = Number((data as { enviados?: number })?.enviados ?? 0)
+      success(`${count} item(ns) enviado(s) para o faturamento.`)
+      setItems((prev) => prev.filter((entry) => !aprovados.includes(entry.id)))
+      setSelectedItemIds((prev) => prev.filter((id) => !aprovados.includes(id)))
+      void loadItems({ silent: true })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  // Postergar/transferir vários: reutilizam os diálogos com lista de ids.
+  const postergarLote = async () => {
+    const ids = postergarIds
+    setPostergarIds([])
+    let ok = 0
+    for (const id of ids) {
+      const item = items.find((entry) => entry.id === id)
+      if (item?.timesheetId) {
+        const done = await postergarItem(item, postergarData || undefined)
+        if (done) ok += 1
+      }
+    }
+    if (ok > 0) success(`${ok} lançamento(s) postergado(s).`)
+  }
+
+  const transferirLote = async () => {
+    if (!transferCasoId) return
+    const ids = transferIds
+    setTransferIds([])
+    let ok = 0
+    try {
+      setBusyKey('transferir-lote')
+      for (const id of ids) {
+        const moved = await updateItemCase(id, transferCasoId)
+        if (moved) ok += 1
+      }
+      if (ok > 0) success(`${ok} item(ns) transferido(s) de caso.`)
+      setTransferCasoId('')
+      void loadItems({ silent: true })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   // Transferir o item para outro caso (setas uma contra a outra do mock)
   const transferItem = async () => {
     const item = items.find((entry) => entry.id === transferItemId)
@@ -1428,7 +1568,7 @@ export default function RevisaoDeFaturaList() {
       setBusyKey(scopeKey)
       for (const itemId of uniqueIds) {
         const item = items.find((entry) => entry.id === itemId)
-        if (!item) {
+        if (!item || item.status !== 'em_aprovacao') {
           failCount += 1
           continue
         }
@@ -1641,7 +1781,7 @@ export default function RevisaoDeFaturaList() {
                       const casoExpanded = expandedCasos[casoGroup.key] ?? allExpanded
                       const caseMetrics = getLiveCaseMetrics(casoGroup)
                       const reviewRows = getReviewRows(casoGroup)
-                      const caseRowIds = reviewRows.filter((row) => canAdvance(row.item.status)).map((row) => row.item.id)
+                      const caseRowIds = reviewRows.filter((row) => canAdvance(row.item.status) || row.item.status === 'aprovado').map((row) => row.item.id)
                       const allSelected = caseRowIds.length > 0 && caseRowIds.every((id) => selectedItemIds.includes(id))
                       const selectedIds = caseRowIds.filter((id) => selectedItemIds.includes(id))
                       const batchKey = `batch:${clienteGroup.key}:${casoGroup.key}`
@@ -1696,10 +1836,59 @@ export default function RevisaoDeFaturaList() {
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  className="text-xs"
                                   onClick={() => void approveSelected(batchKey, selectedIds)}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
                                 >
                                   Aprovar selecionados
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => {
+                                    const base = new Date()
+                                    base.setMonth(base.getMonth() + 1)
+                                    base.setDate(1)
+                                    setPostergarData(base.toISOString().slice(0, 10))
+                                    setPostergarIds(selectedIds)
+                                  }}
+                                  disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                >
+                                  <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => {
+                                    setTransferCasoId('')
+                                    setTransferIds(selectedIds)
+                                  }}
+                                  disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                >
+                                  <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs text-destructive"
+                                  onClick={() => {
+                                    setIgnorarMotivo('')
+                                    setIgnorarOutro('')
+                                    setIgnorarIds(selectedIds)
+                                  }}
+                                  disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                >
+                                  Ignorar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="bg-primary text-primary-foreground text-xs hover:bg-primary-deep"
+                                  onClick={() => void enviarParaFaturamento(selectedIds)}
+                                  disabled={selectedIds.length === 0 || busyKey === 'enviar-faturamento'}
+                                >
+                                  Enviar p/ faturamento
                                 </Button>
                                 <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
                               </div>
@@ -1751,9 +1940,9 @@ export default function RevisaoDeFaturaList() {
                                               : prev.filter((id) => id !== item.id),
                                           )
                                         }
-                                        disabled={!canAdvance(item.status) || busy}
+                                        disabled={(!canAdvance(item.status) && item.status !== 'aprovado') || busy}
                                       />
-                                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>{badge.label}</span>
                                       <span className="text-xs text-ink-mute">
                                         Lançado por <strong className="text-ink-secondary">{item.enviadoPorNome || item.timesheetProfissional || '-'}</strong>
                                         {envioData ? ` em ${formatDate(envioData)}` : ''}
@@ -1764,7 +1953,7 @@ export default function RevisaoDeFaturaList() {
                                     <div className="min-w-0 flex-1 overflow-x-auto">
                                     <Table className="min-w-[860px]">
                                       <thead className="bg-white">
-                                        <tr className="border-b text-[11px] uppercase tracking-wide text-ink-mute">
+                                        <tr className="border-b text-[10px] uppercase tracking-wide text-ink-mute">
                                           <th className="px-3 py-2 text-left">Etapa</th>
                                           <th className="px-3 py-2 text-left">Responsável</th>
                                           <th className="px-3 py-2 text-left">Data</th>
@@ -1777,27 +1966,27 @@ export default function RevisaoDeFaturaList() {
                                         {/* ENVIO */}
                                         <tr className="border-b align-top">
                                           <td className="px-3 py-3">
-                                            <span className="rounded-full bg-canvas-soft px-2 py-1 text-xs text-ink-secondary">Envio</span>
+                                            <span className="rounded-full bg-canvas-soft px-2 py-0.5 text-[11px] text-ink-secondary">Envio</span>
                                           </td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">{item.enviadoPorNome || item.timesheetProfissional || '-'}</td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">{envioData ? formatDate(envioData) : '—'}</td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={item.enviadoPorNome || item.timesheetProfissional || '-'} foto={item.enviadoPorFoto} /></td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">{envioData ? formatDate(envioData) : '—'}</td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             <div className="max-w-[560px] whitespace-normal break-words text-[11px] leading-snug">{envioTexto}</div>
                                           </td>
-                                          <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
+                                          <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
                                             {mode === 'timesheet' ? formatHistoryHours(getOriginalItemHours(item)) : '—'}
                                           </td>
-                                          <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
+                                          <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
                                         </tr>
 
                                         {/* REVISÃO */}
                                         <tr className="border-b bg-emerald-50/50 align-top">
                                           <td className="px-3 py-3">
-                                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">Revisão</span>
+                                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700">Revisão</span>
                                           </td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">{item.responsavelRevisaoNome || 'Sem revisor definido'}</td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">{revisado && item.dataRevisao ? formatDate(item.dataRevisao) : '—'}</td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={item.responsavelRevisaoNome || 'Sem revisor definido'} foto={item.revisorFoto} /></td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">{revisado && item.dataRevisao ? formatDate(item.dataRevisao) : '—'}</td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {revisado ? (
                                               <div className="max-w-[560px] space-y-1 whitespace-normal break-words text-[11px] leading-snug">
                                                 <div>{revChanges?.texto || envioTexto}</div>
@@ -1807,10 +1996,10 @@ export default function RevisaoDeFaturaList() {
                                               <span className="italic text-ink-mute">Aguardando sua revisão do lançamento acima.</span>
                                             )}
                                           </td>
-                                          <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
+                                          <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
                                             {revisado && mode === 'timesheet' ? formatHistoryHours(item.horasRevisadas ?? getOriginalItemHours(item)) : revisado ? '—' : ''}
                                           </td>
-                                          <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">
+                                          <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">
                                             {revisado ? formatMoney(item.valorRevisado ?? getOriginalItemValue(item)) : ''}
                                           </td>
                                         </tr>
@@ -1983,13 +2172,13 @@ export default function RevisaoDeFaturaList() {
                                         {/* APROVAÇÃO */}
                                         <tr className="bg-indigo-50/40 align-top">
                                           <td className="px-3 py-3">
-                                            <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs text-indigo-700">Aprovação</span>
+                                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-700">Aprovação</span>
                                           </td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">{item.responsavelAprovacaoNome || 'Renata ou Douglas'}</td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={item.responsavelAprovacaoNome || 'Renata ou Douglas'} foto={item.aprovadorFoto} /></td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {item.status === 'aprovado' && item.dataAprovacao ? formatDate(item.dataAprovacao) : '—'}
                                           </td>
-                                          <td className="px-3 py-3 text-sm text-ink-secondary">
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {item.status === 'aprovado' ? (
                                               <div className="max-w-[560px] space-y-1 whitespace-normal break-words text-[11px] leading-snug">
                                                 <div>{aprChanges?.texto || revChanges?.texto || envioTexto}</div>
@@ -2005,12 +2194,12 @@ export default function RevisaoDeFaturaList() {
                                               <span className="italic text-ink-mute">🔒 Disponível após a revisão.</span>
                                             )}
                                           </td>
-                                          <td className="px-3 py-3 text-right text-sm text-ink-secondary font-tabular">
+                                          <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
                                             {item.status === 'aprovado' && mode === 'timesheet'
                                               ? formatHistoryHours(item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item))
                                               : ''}
                                           </td>
-                                          <td className="px-3 py-3 text-right text-sm font-medium text-ink font-tabular">
+                                          <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">
                                             {item.status === 'aprovado' ? formatMoney(item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item)) : ''}
                                           </td>
                                         </tr>
@@ -2239,6 +2428,21 @@ export default function RevisaoDeFaturaList() {
                                       >
                                         <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir caso
                                       </Button>
+                                      {item.status === 'em_revisao' || item.status === 'em_aprovacao' ? (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start text-destructive hover:bg-destructive/5"
+                                          onClick={() => {
+                                            setIgnorarMotivo('')
+                                            setIgnorarOutro('')
+                                            setIgnorarIds([item.id])
+                                          }}
+                                          disabled={busy}
+                                        >
+                                          Ignorar fatura
+                                        </Button>
+                                      ) : null}
                                       {item.status === 'em_aprovacao' ? (
                                         <Button size="sm" variant="ghost" className="w-full justify-start" onClick={() => void returnItem(item)} disabled={busy}>
                                           Devolver
@@ -2262,7 +2466,15 @@ export default function RevisaoDeFaturaList() {
         </div>
       )}
 
-      <Dialog open={postergarConfirmId !== null} onOpenChange={(open) => !open && setPostergarConfirmId(null)}>
+      <Dialog
+        open={postergarConfirmId !== null || postergarIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPostergarConfirmId(null)
+            setPostergarIds([])
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Postergar lançamento</DialogTitle>
@@ -2288,7 +2500,9 @@ export default function RevisaoDeFaturaList() {
               onClick={() => {
                 const confirmId = postergarConfirmId
                 setPostergarConfirmId(null)
-                if (confirmId) {
+                if (postergarIds.length > 0) {
+                  void postergarLote()
+                } else if (confirmId) {
                   const item = items.find((i) => i.id === confirmId)
                   if (item) void postergarItem(item, postergarData || undefined)
                 }
@@ -2300,7 +2514,15 @@ export default function RevisaoDeFaturaList() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={transferItemId !== null} onOpenChange={(open) => !open && setTransferItemId(null)}>
+      <Dialog
+        open={transferItemId !== null || transferIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTransferItemId(null)
+            setTransferIds([])
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Transferir para outro caso</DialogTitle>
@@ -2320,11 +2542,62 @@ export default function RevisaoDeFaturaList() {
             </Button>
             <Button
               className="bg-primary hover:bg-primary-deep text-primary-foreground"
-              onClick={() => void transferItem()}
-              disabled={!transferCasoId || busyKey === `transfer:${transferItemId}`}
+              onClick={() => (transferIds.length > 0 ? void transferirLote() : void transferItem())}
+              disabled={!transferCasoId || busyKey === `transfer:${transferItemId}` || busyKey === 'transferir-lote'}
             >
               {busyKey === `transfer:${transferItemId}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Transferir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={ignorarIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIgnorarIds([])
+            setIgnorarMotivo('')
+            setIgnorarOutro('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ignorar a fatura</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-ink-mute">
+            A cobrança de {ignorarIds.length} lançamento(s) será zerada e sairá da relação de cobrança.
+            O lançamento continua registrado no sistema.
+          </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Justificativa</label>
+            <select
+              className="h-9 w-full rounded-md border border-hairline-input bg-background px-2 text-sm text-ink"
+              value={ignorarMotivo}
+              onChange={(event) => setIgnorarMotivo(event.target.value)}
+            >
+              <option value="">Selecione...</option>
+              <option value="Não cabe na fatura">Não cabe na fatura</option>
+              <option value="Lançamento desnecessário/excessivo">Lançamento desnecessário/excessivo</option>
+              <option value="outro">Outro (descrever)</option>
+            </select>
+            {ignorarMotivo === 'outro' ? (
+              <Textarea rows={2} value={ignorarOutro} onChange={(event) => setIgnorarOutro(event.target.value)} placeholder="Descreva a justificativa" />
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIgnorarIds([])}>
+              Cancelar
+            </Button>
+            <Button
+              variant="default"
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => void ignorarItens()}
+              disabled={busyKey === 'ignorar' || !ignorarMotivo || (ignorarMotivo === 'outro' && !ignorarOutro.trim())}
+            >
+              {busyKey === 'ignorar' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Ignorar fatura
             </Button>
           </DialogFooter>
         </DialogContent>

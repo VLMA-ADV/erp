@@ -278,7 +278,9 @@ function ruleTypeFromKind(kind: string): string | null {
 function getRuleType(item: RevisaoItem) {
   const casoKind = asText(item.caso_regra_cobranca).trim().toLowerCase()
   if (item.origem_tipo === 'timesheet') {
-    return ruleTypeFromKind(casoKind) ?? 'hora'
+    const mapped = ruleTypeFromKind(casoKind)
+    if (mapped) return mapped
+    return casoKind === 'hora' || casoKind === 'hora_com_cap' ? 'hora' : 'outros'
   }
   if (item.origem_tipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)

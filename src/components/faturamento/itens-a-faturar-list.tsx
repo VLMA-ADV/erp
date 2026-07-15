@@ -146,7 +146,9 @@ function effectiveRuleType(linha: { tipo: string; caso_regra?: string | null }) 
   if (base !== 'hora') return base
   const casoRegra = normalizeRuleType(linha.caso_regra)
   if (casoRegra === 'salario_minimo') return 'mensalidade_processo'
-  return casoRegra && casoRegra !== 'hora' && casoRegra !== 'hora_com_cap' ? casoRegra : 'hora'
+  if (casoRegra === 'hora' || casoRegra === 'hora_com_cap') return 'hora'
+  // sem regra de cobrança => não entra em aba nenhuma (aparece só em Todas)
+  return casoRegra || 'sem_regra'
 }
 
 function matchRuleTab(tab: RegraTabKey, linha: { tipo: string; caso_regra?: string | null }) {
