@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.26.2'
+export const APP_VERSION = '1.26.3'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.26.3',
+    date: '15/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Correções na revisão: tag de alteração e trava de aprovação',
+        desc: 'Editar o texto/profissional/data de um lançamento agora gera a tag "Alterado" e a linha da revisão mostra o texto revisado (antes ficava como "Sem alterações"). E quando o caso tem horas de outros centros de custo aguardando revisão, o botão de aprovar aparece travado com a explicação — em vez de deixar clicar e dar erro.',
+      },
+    ],
+  },
+  {
     version: '1.26.2',
     date: '14/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'Revisão de fatura: ações agrupadas e texto mais compacto',
