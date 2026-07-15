@@ -781,6 +781,7 @@ export default function RevisaoDeFaturaList() {
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
   const [postergarData, setPostergarData] = useState('')
   const [transferItemId, setTransferItemId] = useState<string | null>(null)
+  const [transferClienteId, setTransferClienteId] = useState('')
   const [transferCasoId, setTransferCasoId] = useState('')
   // lote: postergar/ignorar/transferir vários de uma vez (feedback 15/07)
   const [postergarIds, setPostergarIds] = useState<string[]>([])
@@ -1173,18 +1174,32 @@ export default function RevisaoDeFaturaList() {
     ]
   }, [allRows])
 
+  // Transferência em 2 passos (pedido do cliente): primeiro o CLIENTE, depois o caso dele.
+  const transferClienteOptions = useMemo<CommandSelectOption[]>(() => {
+    const map = new Map<string, string>()
+    for (const contratoOption of allContratos) {
+      const id = contratoOption.cliente_id || ''
+      if (!id || map.has(id)) continue
+      map.set(id, contratoOption.cliente_nome || contratoOption.nome_contrato || 'Cliente sem nome')
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+  }, [allContratos])
+
   const transferCasoOptions = useMemo<CommandSelectOption[]>(() => {
     const options: CommandSelectOption[] = []
     for (const contratoOption of allContratos) {
+      if (transferClienteId && contratoOption.cliente_id !== transferClienteId) continue
       for (const casoOption of contratoOption.casos || []) {
         options.push({
           value: casoOption.id,
-          label: `${casoOption.numero ? `${casoOption.numero} - ` : ''}${casoOption.nome} · ${contratoOption.cliente_nome || contratoOption.nome_contrato || ''}`,
+          label: `${casoOption.numero ? `${casoOption.numero} - ` : ''}${casoOption.nome}${transferClienteId ? '' : ` · ${contratoOption.cliente_nome || contratoOption.nome_contrato || ''}`}`,
         })
       }
     }
     return options.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
-  }, [allContratos])
+  }, [allContratos, transferClienteId])
 
   const totals = useMemo(() => {
     return tree.reduce(
@@ -2546,6 +2561,8 @@ export default function RevisaoDeFaturaList() {
           if (!open) {
             setTransferItemId(null)
             setTransferIds([])
+            setTransferClienteId('')
+            setTransferCasoId('')
           }
         }}
       >
@@ -2554,14 +2571,32 @@ export default function RevisaoDeFaturaList() {
             <DialogTitle>Transferir para outro caso</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-ink-mute">O lançamento passa a contar no caso escolhido (cliente/contrato do caso).</p>
-          <CommandSelect
-            value={transferCasoId}
-            onValueChange={setTransferCasoId}
-            options={transferCasoOptions}
-            placeholder="Selecione o caso de destino"
-            searchPlaceholder="Buscar caso..."
-            emptyText="Nenhum caso encontrado."
-          />
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-ink-mute">Cliente</label>
+            <CommandSelect
+              value={transferClienteId}
+              onValueChange={(value) => {
+                setTransferClienteId(value)
+                setTransferCasoId('')
+              }}
+              options={transferClienteOptions}
+              placeholder="Selecione o cliente"
+              searchPlaceholder="Buscar cliente..."
+              emptyText="Nenhum cliente encontrado."
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-ink-mute">Caso</label>
+            <CommandSelect
+              value={transferCasoId}
+              onValueChange={setTransferCasoId}
+              options={transferCasoOptions}
+              placeholder={transferClienteId ? 'Selecione o caso de destino' : 'Escolha o cliente primeiro'}
+              searchPlaceholder="Buscar caso..."
+              emptyText="Nenhum caso encontrado."
+              disabled={!transferClienteId}
+            />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransferItemId(null)}>
               Cancelar

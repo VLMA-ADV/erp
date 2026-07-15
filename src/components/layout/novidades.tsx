@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.27.2'
+export const APP_VERSION = '1.27.3'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.27.2',
+    version: '1.27.3',
     date: '15/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Transferir caso em 2 passos',
+        desc: 'No "Transferir para outro caso", agora você escolhe primeiro o cliente e depois o caso dele — em vez de procurar numa lista única com todos os casos do escritório.',
+      },
+    ],
+  },
+  {
+    version: '1.27.2',
+    date: '15/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Correções: texto original preservado e valor/hora sempre atual',
