@@ -2185,8 +2185,9 @@ export default function RevisaoDeFaturaList() {
                                                 <StageTag alterado={Boolean(aprChanges?.alterado)} changes={aprChanges?.changes || []} />
                                               </div>
                                             ) : aprovacaoTravada ? (
-                                              <span className="italic text-ink-mute">
-                                                🔒 Aguardando revisão de {horasPendentesCC} lançamento(s) deste caso em outros centros de custo.
+                                              <span className="italic text-ink-secondary">
+                                                Revisão concluída — disponível para aprovar.{' '}
+                                                <span className="text-ink-mute">({horasPendentesCC} lançamento(s) deste caso ainda em revisão em outros centros de custo)</span>
                                               </span>
                                             ) : item.status === 'em_aprovacao' ? (
                                               <span className="italic text-ink-secondary">Revisão concluída — disponível para aprovar.</span>
@@ -2382,13 +2383,13 @@ export default function RevisaoDeFaturaList() {
                                         <>
                                           <Button
                                             size="sm"
-                                            className="w-full justify-start bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                                            className="w-full justify-start bg-indigo-600 text-white hover:bg-indigo-700"
                                             onClick={() => void advanceItem(item)}
-                                            disabled={busy || aprovacaoTravada}
-                                            title={aprovacaoTravada ? 'Há horas deste caso aguardando revisão dos coordenadores.' : undefined}
+                                            disabled={busy}
+                                            title={aprovacaoTravada ? `${horasPendentesCC} lançamento(s) deste caso ainda em revisão — você pode aprovar mesmo assim.` : undefined}
                                           >
                                             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                            {aprovacaoTravada ? '🔒 Aguardando revisões' : '✓ OK, aprovar'}
+                                            ✓ OK, aprovar
                                           </Button>
                                           <Button
                                             size="sm"
