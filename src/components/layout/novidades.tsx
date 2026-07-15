@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.27.0'
+export const APP_VERSION = '1.27.1'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.27.0',
+    version: '1.27.1',
     date: '15/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Aprovador com autonomia total',
+        desc: 'Renata e Douglas podem aprovar item a item mesmo com lançamentos de outros centros de custo ainda em revisão no mesmo caso — a trava saiu e virou apenas um aviso informativo ("N lançamentos deste caso ainda em revisão"). Menos fricção na aprovação.',
+      },
+    ],
+  },
+  {
+    version: '1.27.0',
+    date: '15/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Revisão de fatura: aprovado não some + ignorar fatura + lote completo',

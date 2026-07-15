@@ -109,18 +109,16 @@ BEGIN
     INSERT INTO finance.billing_items (tenant_id, cliente_id, contrato_id, caso_id, origem_tipo, origem_id, data_referencia, periodo_inicio, periodo_fim, status, valor_informado, horas_informadas, snapshot, created_by, updated_by)
     VALUES (v_tenant, v_cli_auto, v_contrato_auto, v_caso_auto, 'timesheet', v_ts2, CURRENT_DATE, date_trunc('month',CURRENT_DATE)::date, CURRENT_DATE, 'em_revisao', 100, 1, '{}'::jsonb, v_admin, v_admin) RETURNING id INTO v_bi2;
 
+    -- regra 15/07: aprovador tem autonomia total — aprova MESMO com
+    -- irmão em revisão no caso (a trava dura foi removida)
     BEGIN
       PERFORM public.set_revisao_fatura_status(v_admin, jsonb_build_object('billing_item_id', v_bi1::text, 'action','avancar'));
     EXCEPTION WHEN others THEN v_blk := 'BLOQUEOU';
     END;
-    -- conclui a revisão de TODAS as horas do caso (inclui resíduos do T1)
-    UPDATE finance.billing_items SET status='em_aprovacao'
-    WHERE caso_id=v_caso_auto AND origem_tipo='timesheet' AND status='em_revisao';
-    PERFORM public.set_revisao_fatura_status(v_admin, jsonb_build_object('billing_item_id', v_bi1::text, 'action','avancar'));
     SELECT status INTO v_final FROM finance.billing_items WHERE id=v_bi1;
 
-    IF v_blk='BLOQUEOU' AND v_final='aprovado' THEN
-      v_results := v_results || '[PASS] T2 trava multi-CC bloqueia e depois libera | ';
+    IF v_blk='NAO BLOQUEOU' AND v_final='aprovado' THEN
+      v_results := v_results || '[PASS] T2 aprovador destravado: aprova com irmão em revisão | ';
     ELSE
       v_results := v_results || format('[FAIL] T2 blk=%s final=%s | ', v_blk, v_final);
     END IF;
