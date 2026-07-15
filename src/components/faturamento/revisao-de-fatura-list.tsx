@@ -345,11 +345,10 @@ function getEffectiveItemValue(item: RevisaoItem) {
 function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
   const hist = item.historico || []
   const stage = [...hist].reverse().find((h) => h.role === role)
-  if (!stage) return null
   const baseRole = role === 'REVISOR' ? 'USUARIO' : 'REVISOR'
   const base = [...hist].reverse().find((h) => h.role === baseRole) || hist.find((h) => h.role === 'USUARIO')
   const changes: string[] = []
-  if (base) {
+  if (stage && base) {
     if (Number(stage.horas || 0) !== Number(base.horas || 0)) {
       changes.push(`${formatHistoryHours(base.horas)} \u2192 ${formatHistoryHours(stage.horas)}`)
     }
@@ -364,7 +363,14 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
   // O hist\u00f3rico guarda observa\u00e7\u00e3o \u2014 as edi\u00e7\u00f5es de atividade/profissional/data
   // vivem no snapshot (timesheet_itens_revisao). Sem isto, editar o texto n\u00e3o
   // gerava a tag "Alterado" nem aparecia na linha da revis\u00e3o (bug do cliente).
-  let textoRevisado = (stage.texto || '').trim()
+  let textoRevisado = (stage?.texto || '').trim()
+  if (role === 'REVISOR' && !stage) {
+    const hi = Number(item.horasInformadas ?? 0)
+    const hr = item.horasRevisadas
+    if (hr !== null && hr !== undefined && Number(hr) !== hi) {
+      changes.push(`${formatHistoryHours(hi)} → ${formatHistoryHours(Number(hr))}`)
+    }
+  }
   if (role === 'REVISOR') {
     const snapshot = (item.snapshot || {}) as Record<string, unknown>
     const rows = Array.isArray(snapshot.timesheet_itens_revisao)
@@ -393,7 +399,8 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
     }
   }
 
-  return { alterado: changes.length > 0, changes, quando: stage.createdAt, texto: textoRevisado }
+  if (!stage && changes.length === 0 && !textoRevisado) return null
+  return { alterado: changes.length > 0, changes, quando: stage?.createdAt ?? null, texto: textoRevisado }
 }
 
 // Tag da etapa: cliente pediu só a sinalização (sem detalhar o diff — o
