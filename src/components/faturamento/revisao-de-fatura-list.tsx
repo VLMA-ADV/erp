@@ -21,6 +21,7 @@ interface RevisaoItem {
   status: string
   origemTipo: string
   casoRegraCobranca: string
+  revisoresModo: string
   dataReferencia: string
   clienteNome: string
   contratoNome: string
@@ -359,7 +360,40 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
       changes.push('texto editado')
     }
   }
-  return { alterado: changes.length > 0, changes, quando: stage.createdAt, texto: (stage.texto || '').trim() }
+
+  // O hist\u00f3rico guarda observa\u00e7\u00e3o \u2014 as edi\u00e7\u00f5es de atividade/profissional/data
+  // vivem no snapshot (timesheet_itens_revisao). Sem isto, editar o texto n\u00e3o
+  // gerava a tag "Alterado" nem aparecia na linha da revis\u00e3o (bug do cliente).
+  let textoRevisado = (stage.texto || '').trim()
+  if (role === 'REVISOR') {
+    const snapshot = (item.snapshot || {}) as Record<string, unknown>
+    const rows = Array.isArray(snapshot.timesheet_itens_revisao)
+      ? (snapshot.timesheet_itens_revisao as Array<Record<string, unknown>>)
+      : []
+    const row = rows[0]
+    if (row) {
+      const atividade = String(row.atividade ?? '').trim()
+      const original = String(snapshot.timesheet_descricao ?? item.timesheetDescricao ?? '').trim()
+      if (atividade && original && atividade !== original) {
+        if (!changes.includes('texto editado')) changes.push('texto editado')
+        textoRevisado = atividade
+      } else if (atividade) {
+        textoRevisado = textoRevisado || atividade
+      }
+      const profissional = String(row.profissional ?? '').trim()
+      const profOriginal = String(snapshot.timesheet_profissional ?? item.timesheetProfissional ?? '').trim()
+      if (profissional && profOriginal && profissional !== profOriginal) {
+        changes.push('profissional alterado')
+      }
+      const dataRevisada = String(row.data_lancamento ?? '').slice(0, 10)
+      const dataOriginal = String(snapshot.timesheet_data_lancamento ?? item.timesheetDataLancamento ?? '').slice(0, 10)
+      if (dataRevisada && dataOriginal && dataRevisada !== dataOriginal) {
+        changes.push('data alterada')
+      }
+    }
+  }
+
+  return { alterado: changes.length > 0, changes, quando: stage.createdAt, texto: textoRevisado }
 }
 
 // Tag da etapa: cliente pediu só a sinalização (sem detalhar o diff — o
@@ -562,6 +596,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     status: asString(data.status, 'em_revisao'),
     origemTipo: asString(data.origem_tipo, ''),
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
+    revisoresModo: asString(data.revisores_modo, ''),
     dataReferencia: asString(data.data_referencia, ''),
     clienteNome: asString(data.cliente_nome, 'Cliente sem nome'),
     contratoNome: asString(data.contrato_nome, 'Contrato sem nome'),
@@ -1679,6 +1714,15 @@ export default function RevisaoDeFaturaList() {
                                 const envioData = item.timesheetDataLancamento || item.dataReferencia
                                 const envioTexto = mode === 'timesheet' ? item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
                                 const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
+                                // trava multi-CC: aprovação só libera quando nenhuma hora do caso
+                                // estiver em revisão (cadeado explicado em vez de erro ao clicar)
+                                const horasPendentesCC =
+                                  item.revisoresModo === 'auto_centro_custo' && item.origemTipo === 'timesheet'
+                                    ? casoGroup.itens.filter(
+                                        (sibling) => sibling.origemTipo === 'timesheet' && sibling.status === 'em_revisao' && sibling.id !== item.id,
+                                      ).length
+                                    : 0
+                                const aprovacaoTravada = item.status === 'em_aprovacao' && horasPendentesCC > 0
                                 const revChanges = getStageChanges(item, 'REVISOR')
                                 const aprChanges = getStageChanges(item, 'APROVADOR')
                                 const tsRow = draft?.timesheetRows?.[0]
@@ -1944,6 +1988,10 @@ export default function RevisaoDeFaturaList() {
                                                 <div>{aprChanges?.texto || revChanges?.texto || envioTexto}</div>
                                                 <StageTag alterado={Boolean(aprChanges?.alterado)} changes={aprChanges?.changes || []} />
                                               </div>
+                                            ) : aprovacaoTravada ? (
+                                              <span className="italic text-ink-mute">
+                                                🔒 Aguardando revisão de {horasPendentesCC} lançamento(s) deste caso em outros centros de custo.
+                                              </span>
                                             ) : item.status === 'em_aprovacao' ? (
                                               <span className="italic text-ink-secondary">Revisão concluída — disponível para aprovar.</span>
                                             ) : (
@@ -2138,12 +2186,13 @@ export default function RevisaoDeFaturaList() {
                                         <>
                                           <Button
                                             size="sm"
-                                            className="w-full justify-start bg-indigo-600 text-white hover:bg-indigo-700"
+                                            className="w-full justify-start bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
                                             onClick={() => void advanceItem(item)}
-                                            disabled={busy}
+                                            disabled={busy || aprovacaoTravada}
+                                            title={aprovacaoTravada ? 'Há horas deste caso aguardando revisão dos coordenadores.' : undefined}
                                           >
                                             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                            ✓ OK, aprovar
+                                            {aprovacaoTravada ? '🔒 Aguardando revisões' : '✓ OK, aprovar'}
                                           </Button>
                                           <Button
                                             size="sm"
