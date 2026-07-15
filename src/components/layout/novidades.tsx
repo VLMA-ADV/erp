@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.26.3'
+export const APP_VERSION = '1.27.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.26.3',
+    version: '1.27.0',
     date: '15/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: aprovado não some + ignorar fatura + lote completo',
+        desc: 'Itens aprovados permanecem na tela (badge Aprovado) e só saem no novo "Enviar p/ faturamento" — o aprovador trabalha em lote sem perder o contexto. Novo "Ignorar fatura" (zera a cobrança com justificativa; o lançamento continua registrado). No topo do caso: Postergar, Transferir e Ignorar em lote. Aba Horas ficou exclusiva de casos cobrados por hora. Tags "Com alterações" (vermelho) / "Sem alterações" (verde), fotos de quem envia/revisa/aprova e letras mais compactas.',
+      },
+    ],
+  },
+  {
+    version: '1.26.3',
+    date: '15/07/2026',
+    destaque: false,
     items: [
       {
         title: 'Correções na revisão: tag de alteração e trava de aprovação',
