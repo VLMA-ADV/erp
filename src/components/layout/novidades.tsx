@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.27.3'
+export const APP_VERSION = '1.28.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,20 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.28.0',
+    date: '16/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'Revisão de fatura: aba Indicadores (mini-dash)',
+        desc: 'Nova opção "Indicadores" na barra da revisão, em tempo real: horas lançadas (etapa 1), enviadas, revisadas (etapa 2), aprovadas (etapa 3) e ignoradas — com os percentuais de cut e as justificativas dos cortes. Abaixo, a tabela por cliente com casos, horas por etapa e projeção de faturamento. Dados de gestão do escritório (o cliente final não vê).',
+      },
+    ],
+  },
+  {
     version: '1.27.3',
     date: '15/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'Transferir caso em 2 passos',

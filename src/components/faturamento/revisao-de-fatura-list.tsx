@@ -790,6 +790,30 @@ export default function RevisaoDeFaturaList() {
   const [ignorarMotivo, setIgnorarMotivo] = useState('')
   const [ignorarOutro, setIgnorarOutro] = useState('')
   const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
+  const [showIndicadores, setShowIndicadores] = useState(false)
+  const [indicadores, setIndicadores] = useState<{
+    resumo: Record<string, unknown>
+    por_cliente: Array<Record<string, unknown>>
+  } | null>(null)
+  const [indicadoresLoading, setIndicadoresLoading] = useState(false)
+
+  const loadIndicadores = async () => {
+    try {
+      setIndicadoresLoading(true)
+      const supabase = createClient()
+      const { data, error: rpcError } = await supabase.rpc('get_indicadores_faturamento', {
+        p_data_inicio: null,
+        p_data_fim: null,
+      })
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao carregar indicadores')
+        return
+      }
+      setIndicadores(data as { resumo: Record<string, unknown>; por_cliente: Array<Record<string, unknown>> })
+    } finally {
+      setIndicadoresLoading(false)
+    }
+  }
   const [colaboradores, setColaboradores] = useState<ColaboradorOption[]>([])
 
   const canRead =
@@ -1701,6 +1725,20 @@ export default function RevisaoDeFaturaList() {
             </span>
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            setShowIndicadores((prev) => !prev)
+            if (!indicadores) void loadIndicadores()
+          }}
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs transition-colors ${
+            showIndicadores
+              ? 'border-ink bg-ink text-white'
+              : 'border-hairline bg-canvas-soft text-ink-secondary hover:border-hairline'
+          }`}
+        >
+          Indicadores
+        </button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -1771,7 +1809,102 @@ export default function RevisaoDeFaturaList() {
         </div>
       </div>
 
-      {loading ? (
+      {showIndicadores ? (
+        <div className="space-y-4">
+          {indicadoresLoading || !indicadores ? (
+            <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">Carregando indicadores...</div>
+          ) : (
+            <>
+              {(() => {
+                const r = indicadores.resumo || {}
+                const num = (v: unknown) => Number(v || 0)
+                const lancadas = num(r.horas_lancadas)
+                const enviadas = num(r.horas_enviadas)
+                const revisadas = num(r.horas_revisadas)
+                const aprovadas = num(r.horas_aprovadas)
+                const ignoradas = num(r.horas_ignoradas)
+                const pct = (parte: number, todo: number) => (todo > 0 ? `${Math.round((parte / todo) * 100)}%` : '—')
+                const motivos = Array.isArray(r.ignorados_por_motivo) ? (r.ignorados_por_motivo as Array<Record<string, unknown>>) : []
+                return (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-5">
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-ink-mute">Horas lançadas (etapa 1)</p>
+                        <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(lancadas)}</p>
+                        <p className="text-[11px] text-ink-mute">no período, por todos os usuários</p>
+                      </div>
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-ink-mute">Enviadas p/ revisão</p>
+                        <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(enviadas)}</p>
+                        <p className="text-[11px] text-ink-mute">{pct(enviadas, lancadas)} das lançadas</p>
+                      </div>
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-ink-mute">Revisadas (etapa 2)</p>
+                        <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(revisadas)}</p>
+                        <p className="text-[11px] text-ink-mute">{pct(revisadas, enviadas)} das enviadas</p>
+                      </div>
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-ink-mute">Aprovadas (etapa 3)</p>
+                        <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(aprovadas)}</p>
+                        <p className="text-[11px] text-ink-mute">{pct(aprovadas, revisadas)} das revisadas</p>
+                      </div>
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="text-[11px] uppercase tracking-wide text-ink-mute">Ignoradas (cut)</p>
+                        <p className="mt-1 text-xl font-semibold text-red-600 font-tabular">{formatHistoryHours(ignoradas)}</p>
+                        <p className="text-[11px] text-ink-mute">
+                          {num(r.itens_ignorados)} item(ns) · {formatMoney(num(r.valor_ignorado))}
+                        </p>
+                      </div>
+                    </div>
+
+                    {motivos.length > 0 ? (
+                      <div className="rounded-xl border bg-white p-4">
+                        <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-mute">Ignoradas por justificativa</p>
+                        <div className="flex flex-wrap gap-2">
+                          {motivos.map((m, idx) => (
+                            <span key={idx} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
+                              {String(m.motivo)} · {Number(m.quantidade || 0)} item(ns) · {formatHistoryHours(Number(m.horas || 0))}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="overflow-x-auto rounded-xl border bg-white">
+                      <Table className="min-w-[820px]">
+                        <thead>
+                          <tr className="border-b text-[10px] uppercase tracking-wide text-ink-mute">
+                            <th className="px-3 py-2 text-left">Cliente</th>
+                            <th className="px-3 py-2 text-right">Casos</th>
+                            <th className="px-3 py-2 text-right">Enviadas</th>
+                            <th className="px-3 py-2 text-right">Revisadas</th>
+                            <th className="px-3 py-2 text-right">Aprovadas</th>
+                            <th className="px-3 py-2 text-right">Ignoradas</th>
+                            <th className="px-3 py-2 text-right">Projeção</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(indicadores.por_cliente || []).map((linha, idx) => (
+                            <tr key={idx} className="border-b text-xs">
+                              <td className="px-3 py-2 text-ink">{String(linha.cliente)}</td>
+                              <td className="px-3 py-2 text-right text-ink-secondary font-tabular">{Number(linha.casos || 0)}</td>
+                              <td className="px-3 py-2 text-right text-ink-secondary font-tabular">{formatHistoryHours(Number(linha.horas_enviadas || 0))}</td>
+                              <td className="px-3 py-2 text-right text-ink-secondary font-tabular">{formatHistoryHours(Number(linha.horas_revisadas || 0))}</td>
+                              <td className="px-3 py-2 text-right text-ink-secondary font-tabular">{formatHistoryHours(Number(linha.horas_aprovadas || 0))}</td>
+                              <td className="px-3 py-2 text-right font-tabular text-red-600">{formatHistoryHours(Number(linha.horas_ignoradas || 0))}</td>
+                              <td className="px-3 py-2 text-right font-medium text-ink font-tabular">{formatMoney(Number(linha.projecao_valor || 0))}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
+                  </>
+                )
+              })()}
+            </>
+          )}
+        </div>
+      ) : loading ? (
         <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">
           Carregando revisão de fatura...
         </div>
