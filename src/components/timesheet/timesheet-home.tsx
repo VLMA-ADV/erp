@@ -266,6 +266,10 @@ export default function TimesheetHome() {
       }
     }
     void load()
+    // KPIs/gráfico/treemaps acompanham criar/editar/excluir da lista abaixo.
+    const onChanged = () => void load()
+    window.addEventListener('vlma:timesheet-changed', onChanged)
+    return () => window.removeEventListener('vlma:timesheet-changed', onChanged)
   }, [])
 
   const nome = data?.perfil?.nome ? nomeExibicao(data.perfil.nome) : fallbackNome

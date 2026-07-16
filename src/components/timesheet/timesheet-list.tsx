@@ -425,6 +425,7 @@ export default function TimesheetList() {
       }
 
       success('Lançamento excluído')
+      window.dispatchEvent(new Event('vlma:timesheet-changed'))
       await fetchTimesheets()
     } catch (err) {
       console.error(err)
@@ -485,6 +486,7 @@ export default function TimesheetList() {
       }
 
       success(form.id ? 'Timesheet atualizado' : 'Timesheet criado')
+      window.dispatchEvent(new Event('vlma:timesheet-changed'))
       setDialogOpen(false)
       setForm(emptyForm)
       setTemplateCategoria('')
@@ -556,7 +558,7 @@ export default function TimesheetList() {
         <NativeSelect
           value={String(filterAno)}
           onChange={(e) => setFilterAno(Number(e.target.value))}
-          className="h-8 rounded-full border px-3 text-sm"
+          className="h-8 w-auto rounded-full border px-3 text-sm"
         >
           {anoOptions.map((ano) => (
             <option key={ano} value={ano}>{ano}</option>
