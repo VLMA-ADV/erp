@@ -48,11 +48,12 @@ function Tabela({ titulo, linhas }: { titulo: string; linhas: Linha[] }) {
           <tbody>
             {linhas.map((l) => (
               <tr key={l.label} className="border-t border-hairline">
-                <td className="truncate py-1.5 pr-2 text-ink-secondary" title={l.label}>{l.label}</td>
-                <td className="py-1.5 text-right font-tabular">{horas(l.horas)}</td>
-                <td className="py-1.5 text-right font-tabular">{horas(l.horas_aprovadas)}</td>
-                <td className="py-1.5 text-right font-tabular text-ink">{money(l.valor_projetado)}</td>
-                <td className="py-1.5 text-right font-tabular text-emerald-700">{money(l.valor_aprovado)}</td>
+                {/* w-full + max-w-0 força o truncate dentro da célula (senão o nome longo estica a tabela e vaza do card) */}
+                <td className="w-full max-w-0 truncate py-1.5 pr-2 text-ink-secondary" title={l.label}>{l.label}</td>
+                <td className="whitespace-nowrap py-1.5 text-right font-tabular">{horas(l.horas)}</td>
+                <td className="whitespace-nowrap py-1.5 text-right font-tabular">{horas(l.horas_aprovadas)}</td>
+                <td className="whitespace-nowrap py-1.5 pl-2 text-right font-tabular text-ink">{money(l.valor_projetado)}</td>
+                <td className="whitespace-nowrap py-1.5 pl-2 text-right font-tabular text-emerald-700">{money(l.valor_aprovado)}</td>
               </tr>
             ))}
           </tbody>
