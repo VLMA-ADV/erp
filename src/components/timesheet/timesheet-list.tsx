@@ -12,6 +12,7 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
@@ -19,19 +20,6 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { TIMESHEET_TEMPLATES } from './timesheet-templates'
 
 type TimesheetStatus = 'em_lancamento' | 'revisao' | 'aprovado'
-
-const TIMESHEET_STATUS_LABEL: Record<TimesheetStatus, string> = {
-  em_lancamento: 'Em lançamento',
-  revisao: 'Em revisão (faturamento)',
-  aprovado: 'Aprovado',
-}
-
-function timesheetStatusLabel(status: string): string {
-  if (status === 'em_lancamento' || status === 'revisao' || status === 'aprovado') {
-    return TIMESHEET_STATUS_LABEL[status]
-  }
-  return status || '—'
-}
 
 function canEditTimesheetInList(status: string) {
   return status === 'em_lancamento' || status === 'revisao'
@@ -50,6 +38,8 @@ interface TimesheetItem {
   duracao_minutos?: number | null
   descricao: string
   status: TimesheetStatus
+  ia_auxiliado?: boolean | null
+  ia_minutos?: number | null
   created_by: string
   created_by_nome: string | null
 }
@@ -74,6 +64,10 @@ interface FormState {
   horas_componente: string
   minutos_componente: string
   descricao: string
+  // "Auxiliado por IA" — registrado na origem, oculto nas etapas posteriores.
+  ia_auxiliado: boolean
+  ia_horas_componente: string
+  ia_minutos_componente: string
 }
 
 const emptyForm: FormState = {
@@ -84,6 +78,9 @@ const emptyForm: FormState = {
   horas_componente: '0',
   minutos_componente: '0',
   descricao: '',
+  ia_auxiliado: false,
+  ia_horas_componente: '0',
+  ia_minutos_componente: '0',
 }
 
 function toMinutes(horas: string | number | null | undefined) {
@@ -105,15 +102,17 @@ function splitMinutosTotal(total: number | string | null | undefined) {
   return { horas: String(Math.floor(inteiro / 60)), minutos: String(inteiro % 60) }
 }
 
-// Exibe uma duração (em minutos) como "Xh Ymin" / "Xh" / "Ymin".
+// Exibe uma duração (em minutos) como "2h30min" / "2h" / "45min" (padrão do mock).
 function formatDuracao(totalMinutos: number | string | null | undefined) {
   const parsed = Math.max(0, Math.floor(Number(totalMinutos || 0)))
   const h = Math.floor(parsed / 60)
   const m = parsed % 60
-  if (h && m) return `${h}h ${m}min`
+  if (h && m) return `${h}h${String(m).padStart(2, '0')}min`
   if (h) return `${h}h`
   return `${m}min`
 }
+
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 function computeMinutosTotal(horas: string, minutos: string) {
   const h = Math.max(0, Math.floor(Number(horas || 0)))
@@ -147,11 +146,12 @@ export default function TimesheetList() {
   const [items, setItems] = useState<TimesheetItem[]>([])
   const [contratos, setContratos] = useState<ContratoItem[]>([])
 
-  const [filterContratoId, setFilterContratoId] = useState('')
+  const [filterClienteId, setFilterClienteId] = useState('')
   const [filterCasoId, setFilterCasoId] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterDataInicio, setFilterDataInicio] = useState('')
-  const [filterDataFim, setFilterDataFim] = useState('')
+  // Período: ano + mês em chips (mock do cliente); mês null = ano inteiro.
+  const [filterAno, setFilterAno] = useState(() => new Date().getFullYear())
+  const [filterMes, setFilterMes] = useState<number | null>(() => new Date().getMonth())
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -208,21 +208,21 @@ export default function TimesheetList() {
   }, [contratos, form.cliente_id])
 
   const filterCaseOptions = useMemo(() => {
-    if (!filterContratoId) {
-      return contratos.flatMap((c) =>
-        (c.casos || []).map((caso) => ({
-          value: caso.id,
-          label: `${caso.numero || '-'} - ${caso.nome} (${formatContratoDisplay(c.numero_sequencial ?? c.numero, c.nome_contrato).full})`,
-        })),
-      )
-    }
+    const fonte = filterClienteId ? contratos.filter((c) => c.cliente_id === filterClienteId) : contratos
+    return fonte.flatMap((c) =>
+      (c.casos || []).map((caso) => ({
+        value: caso.id,
+        label: `${caso.numero || '-'} - ${caso.nome}`,
+      })),
+    )
+  }, [contratos, filterClienteId])
 
-    const contrato = contratos.find((c) => c.id === filterContratoId)
-    return (contrato?.casos || []).map((caso) => ({
-      value: caso.id,
-      label: `${caso.numero || '-'} - ${caso.nome}`,
-    }))
-  }, [contratos, filterContratoId])
+  // Nome do cliente por contrato para a coluna Cliente e o filtro client-side.
+  const contratoInfo = useMemo(() => {
+    const m = new Map<string, { cliente_id?: string; cliente_nome?: string }>()
+    for (const c of contratos) m.set(c.id, { cliente_id: c.cliente_id, cliente_nome: c.cliente_nome })
+    return m
+  }, [contratos])
 
   const formCasoOptions = useMemo(
     () =>
@@ -244,22 +244,34 @@ export default function TimesheetList() {
       .map((item) => ({ value: item.id, label: `${item.categoria} - ${item.texto}` }))
   }, [templateCategoria])
 
+  // Filtro por cliente é client-side (a edge filtra por caso/status/período).
+  const visibleItems = useMemo(() => {
+    if (!filterClienteId) return items
+    return items.filter((it) => contratoInfo.get(it.contrato_id)?.cliente_id === filterClienteId)
+  }, [items, filterClienteId, contratoInfo])
+
   // Agrupamento cronológico por dia (mais recente no topo), estilo Despesas.
   const groupedByDay = useMemo(() => {
     const g = new Map<string, TimesheetItem[]>()
-    for (const it of items) {
+    for (const it of visibleItems) {
       const d = it.data_lancamento || ''
       if (!g.has(d)) g.set(d, [])
       g.get(d)!.push(it)
     }
     return Array.from(g.entries()).sort((a, b) => b[0].localeCompare(a[0]))
-  }, [items])
+  }, [visibleItems])
 
+  // "QUA., 15 DE JUL." (mock do cliente)
   const fmtDia = (d: string) => {
     if (!d) return '—'
     const dt = new Date(d + 'T12:00:00')
-    return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
+    return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replaceAll('.', '')
   }
+
+  const anoOptions = useMemo(() => {
+    const atual = new Date().getFullYear()
+    return [atual - 2, atual - 1, atual, atual + 1]
+  }, [])
 
   const statusOptions = [
     { value: '', label: 'Todos os status' },
@@ -295,11 +307,17 @@ export default function TimesheetList() {
       if (!session) return
 
       const params = new URLSearchParams()
-      if (filterContratoId) params.set('contrato_id', filterContratoId)
       if (filterCasoId) params.set('caso_id', filterCasoId)
       if (filterStatus) params.set('status', filterStatus)
-      if (filterDataInicio) params.set('data_inicio', filterDataInicio)
-      if (filterDataFim) params.set('data_fim', filterDataFim)
+      if (filterMes != null) {
+        const mm = String(filterMes + 1).padStart(2, '0')
+        const ultimoDia = new Date(filterAno, filterMes + 1, 0).getDate()
+        params.set('data_inicio', `${filterAno}-${mm}-01`)
+        params.set('data_fim', `${filterAno}-${mm}-${String(ultimoDia).padStart(2, '0')}`)
+      } else {
+        params.set('data_inicio', `${filterAno}-01-01`)
+        params.set('data_fim', `${filterAno}-12-31`)
+      }
       params.set('_ts', String(Date.now()))
 
       const response = await fetch(
@@ -338,14 +356,13 @@ export default function TimesheetList() {
     if (!canRead) return
     void fetchTimesheets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRead, filterContratoId, filterCasoId, filterStatus, filterDataInicio, filterDataFim])
+  }, [canRead, filterCasoId, filterStatus, filterAno, filterMes])
 
   useEffect(() => {
-    if (!filterContratoId) return
-    const contrato = contratos.find((c) => c.id === filterContratoId)
-    const hasCaso = (contrato?.casos || []).some((caso) => caso.id === filterCasoId)
+    if (!filterClienteId || !filterCasoId) return
+    const hasCaso = filterCaseOptions.some((opt) => opt.value === filterCasoId)
     if (!hasCaso) setFilterCasoId('')
-  }, [contratos, filterContratoId, filterCasoId])
+  }, [filterCaseOptions, filterClienteId, filterCasoId])
 
   useEffect(() => {
     if (!form.cliente_id || !form.caso_id) return
@@ -366,6 +383,7 @@ export default function TimesheetList() {
     const contrato = contratos.find((c) => c.id === item.contrato_id)
     const totalMinutos = item.duracao_minutos != null ? Number(item.duracao_minutos) : Number(toMinutes(item.horas))
     const split = splitMinutosTotal(totalMinutos)
+    const iaSplit = splitMinutosTotal(item.ia_minutos ?? 0)
     setForm({
       id: item.id,
       cliente_id: contrato?.cliente_id || '',
@@ -375,6 +393,9 @@ export default function TimesheetList() {
       horas_componente: split.horas,
       minutos_componente: split.minutos,
       descricao: item.descricao || '',
+      ia_auxiliado: Boolean(item.ia_auxiliado),
+      ia_horas_componente: iaSplit.horas,
+      ia_minutos_componente: iaSplit.minutos,
     })
     setTemplateCategoria('')
     setTemplateSelecionadoId('')
@@ -425,6 +446,14 @@ export default function TimesheetList() {
       return
     }
 
+    const iaMinutos = form.ia_auxiliado
+      ? computeMinutosTotal(form.ia_horas_componente, form.ia_minutos_componente)
+      : 0
+    if (form.ia_auxiliado && iaMinutos <= 0) {
+      toastError('Informe quanto tempo foi auxiliado por IA')
+      return
+    }
+
     try {
       setSubmitting(true)
       const session = await getSession()
@@ -444,6 +473,8 @@ export default function TimesheetList() {
           horas: toHoursFromMinutes(minutos),
           duracao_minutos: minutos,
           descricao: form.descricao,
+          ia_auxiliado: form.ia_auxiliado,
+          ia_minutos: form.ia_auxiliado ? iaMinutos : null,
         }),
       })
 
@@ -485,31 +516,30 @@ export default function TimesheetList() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-4">
-        {canWrite ? (
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo lançamento
-          </Button>
-        ) : null}
+      {canWrite ? (
+        <Button onClick={openCreate} className="rounded-full">
+          <Plus className="mr-2 h-4 w-4" />
+          Novo timesheet
+        </Button>
+      ) : null}
 
+      <div className="grid gap-3 md:grid-cols-3">
         <CommandSelect
-          value={filterContratoId}
+          value={filterClienteId}
           onValueChange={(value) => {
-            setFilterContratoId(value)
-            setFilterCasoId('')
+            setFilterClienteId(value)
           }}
-          options={contratoOptions}
-          placeholder="Filtrar por contrato"
-          searchPlaceholder="Buscar contrato..."
-          emptyText="Nenhum contrato"
+          options={clienteOptions}
+          placeholder="Todos os clientes"
+          searchPlaceholder="Buscar cliente..."
+          emptyText="Nenhum cliente"
         />
 
         <CommandSelect
           value={filterCasoId}
           onValueChange={setFilterCasoId}
           options={filterCaseOptions}
-          placeholder="Filtrar por caso"
+          placeholder="Todos os casos"
           searchPlaceholder="Buscar caso..."
           emptyText="Nenhum caso"
         />
@@ -518,91 +548,121 @@ export default function TimesheetList() {
           value={filterStatus}
           onValueChange={setFilterStatus}
           options={statusOptions}
-          placeholder="Status"
+          placeholder="Todos os status"
         />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1">
-          <Label>Data inicial</Label>
-          <DatePicker value={filterDataInicio} onChange={setFilterDataInicio} />
-        </div>
-        <div className="space-y-1">
-          <Label>Data final</Label>
-          <DatePicker value={filterDataFim} onChange={setFilterDataFim} />
-        </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <NativeSelect
+          value={String(filterAno)}
+          onChange={(e) => setFilterAno(Number(e.target.value))}
+          className="h-8 rounded-full border px-3 text-sm"
+        >
+          {anoOptions.map((ano) => (
+            <option key={ano} value={ano}>{ano}</option>
+          ))}
+        </NativeSelect>
+        <span className="px-1 text-ink-mute" aria-hidden>→</span>
+        {MESES_CURTOS.map((mes, i) => (
+          <button
+            key={mes}
+            type="button"
+            onClick={() => setFilterMes((prev) => (prev === i ? null : i))}
+            className={`rounded-full px-3 py-1 text-sm transition ${
+              filterMes === i
+                ? 'bg-[#E8871E] font-medium text-white'
+                : 'text-ink-secondary hover:bg-canvas-soft'
+            }`}
+            title={filterMes === i ? 'Clique para ver o ano inteiro' : undefined}
+          >
+            {mes}
+          </button>
+        ))}
       </div>
 
       <div className="overflow-x-auto rounded-md border">
         <Table className="w-full min-w-full">
           <thead className="bg-canvas-soft">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Data</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Contrato/Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Duração</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Caso</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Descrição</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Tempo</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Lançado por</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Ações</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline bg-white">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">Carregando...</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">Carregando...</td>
               </tr>
-            ) : items.length === 0 ? (
+            ) : visibleItems.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum timesheet encontrado.</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum timesheet encontrado.</td>
               </tr>
             ) : (
               groupedByDay.flatMap(([dia, linhas]) => [
-                <tr key={`sep-${dia}`} className="bg-canvas-soft/60">
-                  <td colSpan={6} className="px-4 py-1.5 text-xs font-semibold uppercase text-ink-secondary">
+                <tr key={`sep-${dia}`} className="bg-amber-50/70">
+                  <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase text-ink-secondary">
                     {fmtDia(dia)} · {formatDuracao(linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0))}
                   </td>
                 </tr>,
                 ...linhas.map((item) => {
-                const statusClassName =
+                const statusUpper =
                   item.status === 'aprovado'
-                    ? 'border-green-200 bg-green-100 text-green-700'
+                    ? { label: 'APROVADO', cls: 'border-emerald-200 bg-emerald-100 text-emerald-700' }
                     : item.status === 'revisao'
-                      ? 'border-yellow-200 bg-yellow-100 text-yellow-700'
-                      : 'border-blue-200 bg-blue-100 text-blue-700'
+                      ? { label: 'EM REVISÃO', cls: 'border-amber-200 bg-amber-100 text-amber-700' }
+                      : { label: 'EM LANÇAMENTO', cls: 'border-blue-200 bg-blue-100 text-blue-700' }
                 const showEdit = canWrite && canEditTimesheetInList(item.status)
+                const clienteNome = contratoInfo.get(item.contrato_id)?.cliente_nome || item.contrato_nome || '-'
+                const autorNome = item.created_by_nome || '-'
+                const autorIniciais = autorNome
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((p) => p[0]?.toUpperCase() || '')
+                  .join('') || '?'
 
                 return (
                   <tr key={item.id}>
-                    <td className="px-4 py-3 text-sm">{item.data_lancamento ? new Date(item.data_lancamento).toLocaleDateString('pt-BR') : '-'}</td>
+                    <td className="max-w-[200px] px-4 py-3 text-sm font-medium text-ink">{clienteNome}</td>
+                    <td className="max-w-[220px] px-4 py-3 text-sm text-ink-secondary">{item.caso_numero || '-'} - {item.caso_nome}</td>
+                    <td className="px-4 py-3 text-sm text-ink-secondary">{item.descricao || '-'}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
                     <td className="px-4 py-3 text-sm">
-                      <p className="font-medium">{item.contrato_numero || '-'} - {item.contrato_nome}</p>
-                      <p className="text-muted-foreground">{item.caso_numero || '-'} - {item.caso_nome}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.descricao || '-'}</p>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
+                          {autorIniciais}
+                        </span>
+                        <span className="text-ink-secondary">{autorNome}</span>
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-sm font-tabular">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <Badge className={statusClassName}>{timesheetStatusLabel(item.status)}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{item.created_by_nome || '-'}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
                         {showEdit ? (
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(item)}>
-                            <Edit className="h-4 w-4" />
+                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => openEdit(item)} title="Editar lançamento">
+                            <Edit className="h-3.5 w-3.5" />
                           </Button>
                         ) : null}
                         {showEdit ? (
                           <Button
                             size="icon"
-                            variant="ghost"
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            variant="outline"
+                            className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
                             onClick={() => void deleteTimesheet(item)}
                             disabled={submitting}
                             title="Excluir lançamento"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         ) : null}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge className={`whitespace-nowrap text-[10px] ${statusUpper.cls}`}>{statusUpper.label}</Badge>
                     </td>
                   </tr>
                 )
@@ -711,6 +771,68 @@ export default function TimesheetList() {
                   <p className="mt-1 text-xs text-muted-foreground">Minutos (0 a 60)</p>
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-2 md:col-span-2 rounded-lg border border-hairline bg-canvas-soft/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Auxiliado por IA?</Label>
+                  <p className="text-xs text-ink-mute">Registro interno para medição — não aparece na revisão nem na fatura.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.ia_auxiliado}
+                  onClick={() => setForm((prev) => ({ ...prev, ia_auxiliado: !prev.ia_auxiliado }))}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${form.ia_auxiliado ? 'bg-[#E8871E]' : 'bg-gray-300'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${form.ia_auxiliado ? 'left-[22px]' : 'left-0.5'}`}
+                  />
+                </button>
+              </div>
+              {form.ia_auxiliado ? (
+                <div>
+                  <Label className="text-xs">Quanto tempo?</Label>
+                  <div className="mt-1 grid grid-cols-2 gap-2">
+                    <div>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={form.ia_horas_componente}
+                        onChange={(event) =>
+                          setForm((prev) => ({ ...prev, ia_horas_componente: event.target.value }))
+                        }
+                        placeholder="Horas"
+                        aria-label="Horas auxiliadas por IA"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Horas</p>
+                    </div>
+                    <div>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="60"
+                        value={form.ia_minutos_componente}
+                        onChange={(event) => {
+                          const raw = event.target.value
+                          const numeric = Number(raw)
+                          const clamped = Number.isFinite(numeric) ? Math.min(Math.max(numeric, 0), 60) : 0
+                          setForm((prev) => ({
+                            ...prev,
+                            ia_minutos_componente: raw === '' ? '' : String(clamped),
+                          }))
+                        }}
+                        placeholder="Minutos"
+                        aria-label="Minutos auxiliados por IA"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Minutos (0 a 60)</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2 md:col-span-2">
