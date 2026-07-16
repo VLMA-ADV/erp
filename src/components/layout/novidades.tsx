@@ -23,6 +23,10 @@ const CHANGELOG: Release[] = [
     destaque: true,
     items: [
       {
+        title: 'Timesheet: campo "Auxiliado por IA" no lançamento',
+        desc: 'Ao lançar (ou editar) uma hora, você pode marcar "Auxiliado por IA?" e informar quanto tempo. É um registro interno para o escritório medir o uso de IA na origem — não aparece na revisão, na aprovação nem na fatura.',
+      },
+      {
         title: 'Timesheet: nova tela (layout do mock)',
         desc: 'A tela do timesheet ganhou a cara nova: saudação com sua foto, cartões Hoje / Esta semana / Este mês / Aprovadas / Média por dia útil / Top cliente, gráfico das horas acumuladas dia a dia (alterne Semana/Mês), mapas de Horas por cliente e Casos mais trabalhados, e a lista com filtros por cliente, caso, status e chips de mês por ano. A tabela agora mostra Cliente, Caso, Descrição, Tempo, quem lançou (com avatar) e o status em destaque, agrupada por dia.',
       },

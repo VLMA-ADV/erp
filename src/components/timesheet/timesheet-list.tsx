@@ -38,6 +38,8 @@ interface TimesheetItem {
   duracao_minutos?: number | null
   descricao: string
   status: TimesheetStatus
+  ia_auxiliado?: boolean | null
+  ia_minutos?: number | null
   created_by: string
   created_by_nome: string | null
 }
@@ -62,6 +64,10 @@ interface FormState {
   horas_componente: string
   minutos_componente: string
   descricao: string
+  // "Auxiliado por IA" — registrado na origem, oculto nas etapas posteriores.
+  ia_auxiliado: boolean
+  ia_horas_componente: string
+  ia_minutos_componente: string
 }
 
 const emptyForm: FormState = {
@@ -72,6 +78,9 @@ const emptyForm: FormState = {
   horas_componente: '0',
   minutos_componente: '0',
   descricao: '',
+  ia_auxiliado: false,
+  ia_horas_componente: '0',
+  ia_minutos_componente: '0',
 }
 
 function toMinutes(horas: string | number | null | undefined) {
@@ -374,6 +383,7 @@ export default function TimesheetList() {
     const contrato = contratos.find((c) => c.id === item.contrato_id)
     const totalMinutos = item.duracao_minutos != null ? Number(item.duracao_minutos) : Number(toMinutes(item.horas))
     const split = splitMinutosTotal(totalMinutos)
+    const iaSplit = splitMinutosTotal(item.ia_minutos ?? 0)
     setForm({
       id: item.id,
       cliente_id: contrato?.cliente_id || '',
@@ -383,6 +393,9 @@ export default function TimesheetList() {
       horas_componente: split.horas,
       minutos_componente: split.minutos,
       descricao: item.descricao || '',
+      ia_auxiliado: Boolean(item.ia_auxiliado),
+      ia_horas_componente: iaSplit.horas,
+      ia_minutos_componente: iaSplit.minutos,
     })
     setTemplateCategoria('')
     setTemplateSelecionadoId('')
@@ -433,6 +446,14 @@ export default function TimesheetList() {
       return
     }
 
+    const iaMinutos = form.ia_auxiliado
+      ? computeMinutosTotal(form.ia_horas_componente, form.ia_minutos_componente)
+      : 0
+    if (form.ia_auxiliado && iaMinutos <= 0) {
+      toastError('Informe quanto tempo foi auxiliado por IA')
+      return
+    }
+
     try {
       setSubmitting(true)
       const session = await getSession()
@@ -452,6 +473,8 @@ export default function TimesheetList() {
           horas: toHoursFromMinutes(minutos),
           duracao_minutos: minutos,
           descricao: form.descricao,
+          ia_auxiliado: form.ia_auxiliado,
+          ia_minutos: form.ia_auxiliado ? iaMinutos : null,
         }),
       })
 
@@ -748,6 +771,68 @@ export default function TimesheetList() {
                   <p className="mt-1 text-xs text-muted-foreground">Minutos (0 a 60)</p>
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-2 md:col-span-2 rounded-lg border border-hairline bg-canvas-soft/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Auxiliado por IA?</Label>
+                  <p className="text-xs text-ink-mute">Registro interno para medição — não aparece na revisão nem na fatura.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.ia_auxiliado}
+                  onClick={() => setForm((prev) => ({ ...prev, ia_auxiliado: !prev.ia_auxiliado }))}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${form.ia_auxiliado ? 'bg-[#E8871E]' : 'bg-gray-300'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${form.ia_auxiliado ? 'left-[22px]' : 'left-0.5'}`}
+                  />
+                </button>
+              </div>
+              {form.ia_auxiliado ? (
+                <div>
+                  <Label className="text-xs">Quanto tempo?</Label>
+                  <div className="mt-1 grid grid-cols-2 gap-2">
+                    <div>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={form.ia_horas_componente}
+                        onChange={(event) =>
+                          setForm((prev) => ({ ...prev, ia_horas_componente: event.target.value }))
+                        }
+                        placeholder="Horas"
+                        aria-label="Horas auxiliadas por IA"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Horas</p>
+                    </div>
+                    <div>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="60"
+                        value={form.ia_minutos_componente}
+                        onChange={(event) => {
+                          const raw = event.target.value
+                          const numeric = Number(raw)
+                          const clamped = Number.isFinite(numeric) ? Math.min(Math.max(numeric, 0), 60) : 0
+                          setForm((prev) => ({
+                            ...prev,
+                            ia_minutos_componente: raw === '' ? '' : String(clamped),
+                          }))
+                        }}
+                        placeholder="Minutos"
+                        aria-label="Minutos auxiliados por IA"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Minutos (0 a 60)</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2 md:col-span-2">
