@@ -410,6 +410,8 @@ export default function CrmPipeline() {
 
   // Painel lateral (mock 2): etapa cujos indicadores aparecem à direita.
   const [railEtapa, setRailEtapa] = useState<EtapaKanban>('prospeccao')
+  // Mock 2 na íntegra: visão em lista vertical é o padrão; kanban continua disponível.
+  const [viewMode, setViewMode] = useState<'lista' | 'kanban'>('lista')
   const areaNomeById = useMemo(() => new Map(areas.map((a) => [a.id, a.nome])), [areas])
 
   const cardsByEtapa = useMemo(() => {
@@ -900,6 +902,18 @@ export default function CrmPipeline() {
               <Button variant="ghost" size="sm" onClick={() => { setFilterInicio(''); setFilterFim('') }}>Limpar</Button>
             ) : null}
           </div>
+          <div className="flex rounded-full border border-hairline bg-canvas-soft p-0.5 text-xs">
+            {(['lista', 'kanban'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setViewMode(m)}
+                className={`rounded-full px-3 py-1 capitalize transition ${viewMode === m ? 'bg-white font-medium text-ink shadow-sm' : 'text-ink-mute'}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
           <Button variant="outline" onClick={() => void loadAll()} disabled={loading}>
             Atualizar
           </Button>
@@ -926,6 +940,83 @@ export default function CrmPipeline() {
       {/* Kanban + painel lateral (mock 2 do cliente): clique no título de uma
           coluna para trazer os indicadores daquela etapa pro painel direito. */}
       <div className="flex flex-col gap-4 xl:flex-row">
+      {viewMode === 'lista' ? (
+      <div className="min-w-0 flex-1 space-y-4">
+        {ETAPAS.map((etapa) => {
+          const etapaCards = cardsByEtapa[etapa.key] || []
+          if (etapaCards.length === 0 && ['negada', 'suspensa'].includes(etapa.key)) return null
+          const totalEtapa = etapaCards.reduce((sum, c2) => sum + Number(c2.valor || 0), 0)
+          return (
+            <section key={etapa.key} className={`overflow-hidden rounded-xl border border-hairline bg-white ${railEtapa === etapa.key ? 'ring-2 ring-[#E8871E]/50' : ''}`}>
+              <button
+                type="button"
+                className="flex w-full flex-wrap items-center justify-between gap-2 bg-[#FFF7ED] px-4 py-2.5 text-left"
+                onClick={() => setRailEtapa(etapa.key)}
+                title="Ver indicadores desta etapa no painel lateral"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-ink">{etapa.label}</span>
+                  <Badge className="border-hairline bg-white text-ink-secondary">{etapaCards.length}</Badge>
+                </span>
+                <span className="text-sm font-semibold font-tabular text-[#B45309]">{formatMoney(totalEtapa)}</span>
+              </button>
+              {etapaCards.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-ink-mute">Sem oportunidades nesta etapa.</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {etapaCards.map((card) => {
+                    const pond = Number(card.valor || 0) * (Number(card.temperatura_pct || 0) / 100)
+                    const proxima = ETAPAS[ETAPAS.findIndex((e2) => e2.key === card.etapa) + 1]
+                    return (
+                      <div key={card.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
+                        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => canWrite && handleOpenEdit(card)} title={canWrite ? 'Editar oportunidade' : undefined}>
+                          <p className="truncate text-sm font-semibold text-ink">{card.cliente_nome}</p>
+                          <p className="truncate text-xs text-ink-mute">
+                            {[card.segmento_nome, [card.cidade, card.estado].filter(Boolean).join(' / ') || 'Sem cidade'].filter(Boolean).join(' · ')}
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {(card.produto_nome || card.servico_nome) ? (
+                              <span className="rounded-full bg-canvas-soft px-2 py-0.5 text-[10px] text-ink-secondary">{card.produto_nome || card.servico_nome}</span>
+                            ) : null}
+                            <span className="rounded-full bg-canvas-soft px-2 py-0.5 text-[10px] text-ink-secondary">
+                              {areaNomeById.get(card.area_id || '') || 'Sem centro de custo'}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="h-1.5 w-36 rounded-full bg-secondary">
+                              <div className="h-1.5 rounded-full" style={{ width: `${Number(card.temperatura_pct || 0)}%`, backgroundColor: tempColor(card.temperatura_pct) }} />
+                            </div>
+                            <span className="text-[10px] font-medium" style={{ color: tempColor(card.temperatura_pct) }}>{Number(card.temperatura_pct || 0)}%</span>
+                          </div>
+                          <p className="mt-1.5 text-[11px] text-ink-mute">
+                            {card.responsavel_interno_nome || 'Sem responsável'} · atualizado {new Date(card.updated_at).toLocaleDateString('pt-BR')}
+                          </p>
+                        </button>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <p className="text-sm font-semibold font-tabular text-ink">{formatMoney(card.valor)}</p>
+                          <p className="text-[10px] font-tabular text-[#B45309]">pond. {formatMoney(pond)}</p>
+                          {canWrite && proxima && !['negada', 'suspensa'].includes(proxima.key) ? (
+                            <button
+                              type="button"
+                              className="mt-1 rounded-full border border-hairline px-2.5 py-1 text-[10px] text-emerald-700 hover:bg-emerald-50"
+                              onClick={() => void handleMoveCard(card.id, proxima.key)}
+                              disabled={movingCardId === card.id}
+                              title={`Avançar para ${proxima.label}`}
+                            >
+                              → {proxima.label}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )
+        })}
+      </div>
+      ) : (
       <div className="min-w-0 flex-1 overflow-x-auto pb-2">
         <div className="grid min-w-[1900px] grid-cols-8 gap-4">
           {ETAPAS.map((etapa) => {
@@ -1093,6 +1184,7 @@ export default function CrmPipeline() {
           })}
         </div>
       </div>
+      )}
 
       <CrmPipelineRail
         cards={ETAPAS.flatMap((item) => cardsByEtapa[item.key] || [])}
