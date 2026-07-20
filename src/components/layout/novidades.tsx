@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.31.0'
+export const APP_VERSION = '1.32.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,36 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.32.0',
+    date: '21/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'CRM: Pipeline em lista vertical',
+        desc: 'O pipeline agora abre em lista vertical por etapa (layout proposto): cards com segmento/cidade, tags de produto e centro de custo, barra de temperatura, valor + valor ponderado e botão para avançar de etapa. O kanban continua disponível no seletor Lista/Kanban.',
+      },
+      {
+        title: 'Clientes: novos no ano',
+        desc: 'Indicador "Clientes novos no ano" na aba Indicadores de Clientes, contando pelo ano do primeiro contrato, com seletor de ano e lista. O ajuste manual fica no cadastro do cliente (campo "Ano de captação").',
+      },
+      {
+        title: 'Faturamento: valor recalcula sozinho ao mudar a regra',
+        desc: 'Mudou o valor/hora ou a regra de cobrança do caso em Contratos? Itens já aprovados (e ainda não enviados ao faturamento) recalculam automaticamente, com registro na auditoria — decisão da migração.',
+      },
+      {
+        title: 'Revisor automático mais esperto',
+        desc: 'Na revisão por centro de custo, o revisor sugerido passa a ser o coordenador responsável pelo caso (ex.: Tiago nos casos dele, Victor nos dele); o autor do lançamento nunca é sugerido para revisar a si mesmo.',
+      },
+      {
+        title: 'Ajustes do teste em prod',
+        desc: 'Etapa 3 do faturamento com o visual da revisão completo (cliente em destaque, contrato como subtítulo do caso) e correção do painel "Últimos contratos cadastrados", que aparecia vazio.',
+      },
+    ],
+  },
+  {
     version: '1.31.0',
     date: '20/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'CRM: Indicadores no layout novo, com funil clicável',
