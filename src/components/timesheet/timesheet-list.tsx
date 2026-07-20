@@ -379,6 +379,15 @@ export default function TimesheetList() {
     setDialogOpen(true)
   }
 
+  // Botão "+ Novo timesheet" do header da página (acima das abas) abre o mesmo dialog.
+  useEffect(() => {
+    if (!canWrite) return
+    const onNovo = () => openCreate()
+    window.addEventListener('vlma:novo-timesheet', onNovo)
+    return () => window.removeEventListener('vlma:novo-timesheet', onNovo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canWrite])
+
   const openEdit = (item: TimesheetItem) => {
     const contrato = contratos.find((c) => c.id === item.contrato_id)
     const totalMinutos = item.duracao_minutos != null ? Number(item.duracao_minutos) : Number(toMinutes(item.horas))
@@ -425,6 +434,7 @@ export default function TimesheetList() {
       }
 
       success('Lançamento excluído')
+      window.dispatchEvent(new Event('vlma:timesheet-changed'))
       await fetchTimesheets()
     } catch (err) {
       console.error(err)
@@ -485,6 +495,7 @@ export default function TimesheetList() {
       }
 
       success(form.id ? 'Timesheet atualizado' : 'Timesheet criado')
+      window.dispatchEvent(new Event('vlma:timesheet-changed'))
       setDialogOpen(false)
       setForm(emptyForm)
       setTemplateCategoria('')
@@ -556,7 +567,7 @@ export default function TimesheetList() {
         <NativeSelect
           value={String(filterAno)}
           onChange={(e) => setFilterAno(Number(e.target.value))}
-          className="h-8 rounded-full border px-3 text-sm"
+          className="h-8 w-auto rounded-full border px-3 text-sm"
         >
           {anoOptions.map((ano) => (
             <option key={ano} value={ano}>{ano}</option>

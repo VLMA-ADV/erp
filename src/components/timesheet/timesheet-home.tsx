@@ -266,6 +266,10 @@ export default function TimesheetHome() {
       }
     }
     void load()
+    // KPIs/gráfico/treemaps acompanham criar/editar/excluir da lista abaixo.
+    const onChanged = () => void load()
+    window.addEventListener('vlma:timesheet-changed', onChanged)
+    return () => window.removeEventListener('vlma:timesheet-changed', onChanged)
   }, [])
 
   const nome = data?.perfil?.nome ? nomeExibicao(data.perfil.nome) : fallbackNome
@@ -299,7 +303,8 @@ export default function TimesheetHome() {
     <div>
       <header className="mb-6">
         <span className="text-eyebrow">OPERAÇÃO · TIMESHEET</span>
-        <div className="mt-3 flex items-center gap-4">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
           {foto ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={foto} alt="" className="h-14 w-14 shrink-0 rounded-full object-cover" />
@@ -314,6 +319,15 @@ export default function TimesheetHome() {
             </h1>
             <p className="mt-1 text-sm text-ink-mute">Lançamentos de horas por cliente e caso</p>
           </div>
+        </div>
+        {/* Primeira ação de quem abre o módulo (feedback 20/07) — a lista abaixo escuta o evento. */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('vlma:novo-timesheet'))}
+          className="inline-flex items-center gap-2 rounded-full bg-[#E8871E] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+        >
+          <span className="text-base leading-none" aria-hidden>+</span> Novo timesheet
+        </button>
         </div>
       </header>
       <SectionTabs

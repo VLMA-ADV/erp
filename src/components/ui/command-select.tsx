@@ -12,6 +12,15 @@ export interface CommandSelectOption {
   group?: string
 }
 
+// Busca sem acento: "Monica" encontra "Mônica" (feedback do cliente 20/07).
+function normalizeSearchText(text: string) {
+  return text
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
 interface CommandSelectProps {
   value: string
   onValueChange: (value: string) => void
@@ -69,9 +78,9 @@ export function CommandSelect({
   const selected = useMemo(() => options.find((o) => o.value === value), [options, value])
 
   const filteredOptions = useMemo(() => {
-    const normalized = query.trim().toLowerCase()
+    const normalized = normalizeSearchText(query)
     if (!normalized) return options
-    return options.filter((option) => option.label.toLowerCase().includes(normalized))
+    return options.filter((option) => normalizeSearchText(option.label).includes(normalized))
   }, [options, query])
 
   const groupedOptions = useMemo(() => {
