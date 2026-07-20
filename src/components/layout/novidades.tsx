@@ -42,6 +42,14 @@ const CHANGELOG: Release[] = [
         title: 'Revisão: devolver para etapa anterior',
         desc: 'Itens aprovados também podem ser devolvidos (aprovado volta para aprovação; em aprovação volta para revisão) direto no painel do lançamento.',
       },
+      {
+        title: 'Relatório de timesheet',
+        desc: 'Botão "Gerar relatório" no módulo de Timesheet e nas etapas 1 e 2 do faturamento: abre uma versão imprimível (salve em PDF) com os lançamentos filtrados na tela. O layout é provisório — será configurado em conjunto.',
+      },
+      {
+        title: 'Contratos: últimos cadastrados na visão geral',
+        desc: 'A visão geral de Contratos ganhou o painel "Últimos contratos cadastrados", com cliente e data, clicável para abrir o contrato.',
+      },
     ],
   },
   {
