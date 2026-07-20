@@ -10,6 +10,7 @@ import { shouldRefetchOnVisibility } from '@/components/faturamento/itens-a-fatu
 import { createClient } from '@/lib/supabase/client'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
@@ -827,6 +828,34 @@ export default function ItensAFaturarList() {
           >
             {sendingTarget === '__bulk__' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
             Enviar selecionados p/ revisão ({selectedVisibleCount})
+          </Button>
+          <Button
+            variant="outline"
+            className="rounded-full"
+            disabled={loading || filteredTree.length === 0}
+            onClick={() =>
+              openTimesheetReport({
+                titulo: 'Relatório de timesheet — Itens a faturar (etapa 1)',
+                subtitulo: `${formatDate(dateStart)} a ${formatDate(dateEnd)}`,
+                mostrarValor: true,
+                rows: filteredTree.flatMap((cliente) =>
+                  (cliente.contratos || []).flatMap((contrato) =>
+                    (contrato.casos || []).flatMap((caso) =>
+                      (Array.isArray(caso.extrato) ? caso.extrato : []).map((linha) => ({
+                        data: formatBillingReference(linha.tipo, linha.data_referencia),
+                        cliente: cliente.cliente_nome,
+                        caso: `${caso.caso_numero || ''} - ${caso.caso_nome}`,
+                        descricao: linha.descricao || linha.tipo,
+                        horas: Number(linha.horas || 0) > 0 ? formatHours(linha.horas) : '—',
+                        valor: Number(linha.valor || 0),
+                      })),
+                    ),
+                  ),
+                ),
+              })
+            }
+          >
+            Gerar relatório
           </Button>
           <Button variant="outline" onClick={() => void loadItems()} disabled={loading}>
             {loading ? 'Atualizando...' : 'Atualizar lista'}

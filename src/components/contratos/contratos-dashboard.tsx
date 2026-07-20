@@ -27,6 +27,15 @@ interface ContratosDashboardData {
     contratos_novos_mes: number
   }
   serie_temporal: SerieTemporalItem[]
+  ultimos_contratos?: Array<{
+    id: string
+    numero_sequencial: number | null
+    numero: number | null
+    nome_contrato: string
+    cliente_nome: string | null
+    status: string | null
+    criado_em: string | null
+  }>
   por_responsavel: DashboardListItem[]
   por_servico: DashboardListItem[]
   por_produto: DashboardListItem[]
@@ -752,6 +761,37 @@ export default function ContratosDashboard() {
         <ValorFechadoRegraCard refMonth={refMonth} />
         <PodiumList title="Top 10 clientes (por contratos)" items={data.por_cliente_top} hint="ranking" onSelect={(nome) => setDrill({ dim: 'por_cliente_top', valor: nome })} />
         <StatusStackedBar items={data.por_status} hint="proporção" onSelect={(nome) => setDrill({ dim: 'por_status', valor: nome })} />
+
+        {/* Últimos contratos cadastrados (pedido Filipe 20/07) */}
+        <div className="rounded-xl border border-hairline bg-card p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-ink">Últimos contratos cadastrados</p>
+            <span className="text-xs text-ink-mute">mais recentes</span>
+          </div>
+          {(data.ultimos_contratos || []).length === 0 ? (
+            <p className="text-sm text-ink-mute">—</p>
+          ) : (
+            <ul className="divide-y divide-hairline">
+              {(data.ultimos_contratos || []).map((ct) => (
+                <li key={ct.id} className="flex items-center gap-2 py-1.5 text-xs">
+                  <a
+                    href={`/contratos/${ct.id}/editar?view=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate font-medium text-primary hover:underline"
+                    title={`${ct.numero_sequencial ?? ct.numero ?? ''} - ${ct.nome_contrato}`}
+                  >
+                    {(ct.numero_sequencial ?? ct.numero) ? `${ct.numero_sequencial ?? ct.numero} · ` : ''}{ct.nome_contrato}
+                  </a>
+                  <span className="min-w-0 max-w-[40%] truncate text-ink-secondary" title={ct.cliente_nome || ''}>{ct.cliente_nome || '—'}</span>
+                  <span className="shrink-0 font-tabular text-ink-mute">
+                    {ct.criado_em ? ct.criado_em.split('-').reverse().join('/') : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <Dialog open={!!drill} onOpenChange={(open) => { if (!open) setDrill(null) }}>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Edit, Plus, Trash2 } from 'lucide-react'
+import { Edit, FileText, Plus, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -17,6 +17,7 @@ import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { TIMESHEET_TEMPLATES } from './timesheet-templates'
 
 type TimesheetStatus = 'em_lancamento' | 'revisao' | 'aprovado'
@@ -527,12 +528,36 @@ export default function TimesheetList() {
         </Alert>
       ) : null}
 
-      {canWrite ? (
-        <Button onClick={openCreate} className="rounded-full">
-          <Plus className="mr-2 h-4 w-4" />
-          Novo timesheet
+      <div className="flex flex-wrap items-center gap-2">
+        {canWrite ? (
+          <Button onClick={openCreate} className="rounded-full">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo timesheet
+          </Button>
+        ) : null}
+        <Button
+          variant="outline"
+          className="rounded-full"
+          disabled={visibleItems.length === 0}
+          onClick={() =>
+            openTimesheetReport({
+              titulo: 'Relatório de timesheet',
+              subtitulo: filterMes != null ? `${MESES_CURTOS[filterMes]}/${filterAno}` : String(filterAno),
+              rows: visibleItems.map((it) => ({
+                data: it.data_lancamento ? it.data_lancamento.split('-').reverse().join('/') : '',
+                cliente: contratoInfo.get(it.contrato_id)?.cliente_nome || it.contrato_nome || '',
+                caso: `${it.caso_numero || ''} - ${it.caso_nome}`,
+                profissional: it.created_by_nome || '',
+                descricao: it.descricao || '',
+                horas: formatDuracao(it.duracao_minutos != null ? it.duracao_minutos : Number(toMinutes(it.horas))),
+              })),
+            })
+          }
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          Gerar relatório
         </Button>
-      ) : null}
+      </div>
 
       <div className="grid gap-3 md:grid-cols-3">
         <CommandSelect
