@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.30.0'
+export const APP_VERSION = '1.31.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,36 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
-    version: '1.30.0',
+    version: '1.31.0',
     date: '20/07/2026',
     destaque: true,
+    items: [
+      {
+        title: 'CRM: Indicadores no layout novo, com funil clicável',
+        desc: 'A aba Indicadores ganhou o formato proposto: oportunidades ativas, valor no funil, taxa de conversão, ticket médio e ciclo médio; funil de conversão com % entre etapas (clique numa etapa para filtrar os painéis), contratos fechados por mês, valor por área, performance por responsável e temperatura do funil com alerta das não classificadas.',
+      },
+      {
+        title: 'CRM: painel lateral no Pipeline',
+        desc: 'Ao lado do kanban, o painel mostra os indicadores da etapa selecionada (valor total × valor ponderado pela temperatura), o mapa de localidades por UF e as quebras por cliente, área, pessoa e produto. Clique no título de uma coluna para trocar a etapa do painel.',
+      },
+      {
+        title: 'Faturamento: etapas 1 e 3 no mesmo visual da revisão',
+        desc: 'Itens a faturar e Fluxo de faturamento agora seguem a estrutura da 2. Revisão: cliente → caso direto, totais no cabeçalho e botões em destaque (na etapa 1, enviar p/ revisão; na etapa 3, Resumo, Prévia NFS-e e Emitir NFS-e).',
+      },
+      {
+        title: 'Faturamento: editar valor final na etapa 3',
+        desc: 'O financeiro pode ajustar o valor de um item aprovado no último momento, sem devolver à etapa anterior — a mudança fica registrada no histórico do item e na auditoria (exige permissão de gestão).',
+      },
+      {
+        title: 'Revisão: devolver para etapa anterior',
+        desc: 'Itens aprovados também podem ser devolvidos (aprovado volta para aprovação; em aprovação volta para revisão) direto no painel do lançamento.',
+      },
+    ],
+  },
+  {
+    version: '1.30.0',
+    date: '20/07/2026',
+    destaque: false,
     items: [
       {
         title: 'PDI: cada um vê só o seu',
