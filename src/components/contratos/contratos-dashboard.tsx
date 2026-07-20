@@ -698,6 +698,10 @@ export default function ContratosDashboard() {
           por_regra_cobranca_mes: normalizeList(payload.por_regra_cobranca_mes),
           por_cliente_top: normalizeList(payload.por_cliente_top),
           por_status: normalizeList(payload.por_status),
+          // não passa pelo normalizeList (shape próprio) — sem isto o card ficava vazio
+          ultimos_contratos: Array.isArray(payload.ultimos_contratos)
+            ? (payload.ultimos_contratos as ContratosDashboardData['ultimos_contratos'])
+            : [],
         }
       } catch {
         return null
