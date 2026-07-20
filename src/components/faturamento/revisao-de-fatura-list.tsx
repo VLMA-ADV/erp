@@ -12,6 +12,7 @@ import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 
 interface RevisaoItem {
   id: string
@@ -1817,6 +1818,30 @@ export default function RevisaoDeFaturaList() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full"
+            disabled={visibleItems.length === 0}
+            onClick={() =>
+              openTimesheetReport({
+                titulo: 'Relatório de timesheet — Revisão de fatura (etapa 2)',
+                subtitulo: `${statusSummary.revisao} em revisão · ${statusSummary.aprovacao} em aprovação · ${statusSummary.aprovado} aprovado(s)`,
+                mostrarValor: true,
+                rows: visibleItems.map((item) => ({
+                  data: item.timesheetDataLancamento ? formatDate(item.timesheetDataLancamento) : formatDate(item.dataReferencia || ''),
+                  cliente: item.clienteNome || '',
+                  caso: `${item.casoNumero || ''} - ${item.casoNome || ''}`,
+                  profissional: item.enviadoPorNome || item.timesheetProfissional || '',
+                  descricao: item.timesheetDescricaoOriginal || item.timesheetDescricao || item.regraNome || '',
+                  horas: formatHistoryHours(getEffectiveItemHours(item)),
+                  valor: getEffectiveItemValue(item),
+                })),
+              })
+            }
+          >
+            Gerar relatório
+          </Button>
           <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
             {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
           </Button>
@@ -2632,9 +2657,11 @@ export default function RevisaoDeFaturaList() {
                                           Ignorar fatura
                                         </Button>
                                       ) : null}
-                                      {item.status === 'em_aprovacao' ? (
+                                      {/* Após revisar/aprovar, o rail mostra também a volta de etapa
+                                          (em_aprovacao -> revisão; aprovado -> aprovação) — pedido 20/07. */}
+                                      {item.status === 'em_aprovacao' || item.status === 'aprovado' ? (
                                         <Button size="sm" variant="ghost" className="w-full justify-start" onClick={() => void returnItem(item)} disabled={busy}>
-                                          Devolver
+                                          Devolver p/ etapa anterior
                                         </Button>
                                       ) : null}
                                     </div>

@@ -583,6 +583,43 @@ export default function FluxoDeFaturamentoList() {
   const [editAtividadeTexto, setEditAtividadeTexto] = useState('')
   const [savingAtividade, setSavingAtividade] = useState(false)
 
+  // Editar valor final na etapa 3 (pedido 20/07): evita devolver à etapa anterior.
+  const [editValorTarget, setEditValorTarget] = useState<{ id: string; descricao: string; valorAtual: number } | null>(null)
+  const [editValorInput, setEditValorInput] = useState('')
+  const [savingValor, setSavingValor] = useState(false)
+
+  const salvarValorFinal = async () => {
+    if (!editValorTarget) return
+    const parsed = Number(editValorInput.replace(/\./g, '').replace(',', '.'))
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toastError('Informe um valor válido.')
+      return
+    }
+    try {
+      setSavingValor(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const { error: rpcError } = await supabase.rpc('editar_valor_aprovado', {
+        p_user_id: session.user.id,
+        p_payload: { billing_item_id: editValorTarget.id, valor: parsed },
+      })
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao ajustar o valor final')
+        return
+      }
+      success('Valor final ajustado (registrado no histórico do item).')
+      setEditValorTarget(null)
+      setEditValorInput('')
+      await loadContratosEmRevisao({ silent: true })
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao ajustar o valor final')
+    } finally {
+      setSavingValor(false)
+    }
+  }
+
   // NFS-e: prévia + emissão direto do Fluxo de Faturamento (PR Filipe 22/05)
   const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string } | null>(null)
   const [emittingNfse, setEmittingNfse] = useState<string | null>(null)
@@ -1141,7 +1178,7 @@ export default function FluxoDeFaturamentoList() {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Fluxo por cliente → contrato → caso</h3>
+        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Fluxo por cliente → caso</h3>
         <Tabs value={regraTipoTab} defaultValue="all" onValueChange={setRegraTipoTab}>
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="all">Todas</TabsTrigger>
@@ -1329,67 +1366,42 @@ export default function FluxoDeFaturamentoList() {
                                   return (
                                     <Fragment key={casoG.key}>
                                       <tr>
-                                        <td className="px-2 py-3">
-                                          <input
-                                            type="checkbox"
-                                            checked={
-                                              eligibleCaso.length > 0 && selectedCaso === eligibleCaso.length
-                                            }
-                                            ref={(element) => {
-                                              if (element) {
-                                                element.indeterminate =
-                                                  selectedCaso > 0 && selectedCaso < eligibleCaso.length
+                                        <td colSpan={9} className="border-t px-4 py-2.5">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <input
+                                              type="checkbox"
+                                              className="h-4 w-4 rounded border-hairline"
+                                              checked={eligibleCaso.length > 0 && selectedCaso === eligibleCaso.length}
+                                              ref={(element) => {
+                                                if (element) {
+                                                  element.indeterminate =
+                                                    selectedCaso > 0 && selectedCaso < eligibleCaso.length
+                                                }
+                                              }}
+                                              onChange={(event) => toggleSelectionForItemIds(eligibleCaso, event.target.checked)}
+                                              disabled={
+                                                eligibleCaso.length === 0 || loading || loadingContratos || faturandoSelecionados
                                               }
-                                            }}
-                                            onChange={(event) =>
-                                              toggleSelectionForItemIds(eligibleCaso, event.target.checked)
-                                            }
-                                            disabled={
-                                              eligibleCaso.length === 0 ||
-                                              loading ||
-                                              loadingContratos ||
-                                              faturandoSelecionados
-                                            }
-                                          />
-                                        </td>
-                                        <td className="px-2 py-3">
-                                          <button
-                                            type="button"
-                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
-                                            onClick={() =>
-                                              setExpandedCasos((p) => ({ ...p, [casoG.key]: !casoExpanded }))
-                                            }
-                                            aria-label={casoExpanded ? 'Recolher caso' : 'Expandir caso'}
-                                          >
-                                            {casoExpanded ? (
-                                              <ChevronDown className="h-4 w-4" />
-                                            ) : (
-                                              <ChevronRight className="h-4 w-4" />
-                                            )}
-                                          </button>
-                                        </td>
-                                        <td className="px-4 py-3 pl-16 text-muted-foreground">
-                                          {casoG.numero ? `${casoG.numero} - ` : ''}
-                                          {casoG.nome}
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                                          {casoSummary.status}
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                                          {casoSummary.responsavel}
-                                        </td>
-                                        <td className="px-4 py-3 text-muted-foreground font-tabular">{caseMetrics.itemCount}</td>
-                                        <td className="px-4 py-3 text-muted-foreground font-tabular">
-                                          {formatHours(caseMetrics.totalHoras)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-muted-foreground font-tabular">
-                                          {formatMoney(caseMetrics.totalValor)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                          <div className="flex items-center justify-end gap-1">
+                                            />
+                                            <button
+                                              type="button"
+                                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                              onClick={() => setExpandedCasos((p) => ({ ...p, [casoG.key]: !casoExpanded }))}
+                                            >
+                                              {casoExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                                              <span className="min-w-0">
+                                                <span className="block truncate text-sm font-medium text-ink">
+                                                  {casoG.numero ? `${casoG.numero} - ` : ''}{casoG.nome}
+                                                </span>
+                                                <span className="block truncate text-xs text-ink-mute">
+                                                  {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} h · {casoSummary.status} · {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
+                                                </span>
+                                              </span>
+                                            </button>
                                             <Button
                                               size="sm"
                                               variant="outline"
+                                              className="rounded-full text-xs"
                                               onClick={() => setResumoCasoKey(casoG.key)}
                                               disabled={casoG.itens.length === 0}
                                               title="Ver detalhes dos itens do caso"
@@ -1400,7 +1412,7 @@ export default function FluxoDeFaturamentoList() {
                                             <Button
                                               size="sm"
                                               variant="outline"
-                                              className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                              className="rounded-full border-blue-300 text-xs text-blue-700 hover:bg-blue-50"
                                               onClick={() => setNfsePreview({
                                                 contratoId: contrato.contratoId,
                                                 label: formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full,
@@ -1413,7 +1425,7 @@ export default function FluxoDeFaturamentoList() {
                                             </Button>
                                             <Button
                                               size="sm"
-                                              className="bg-green-700 hover:bg-green-800 text-white"
+                                              className="rounded-full bg-green-700 text-xs text-white hover:bg-green-800"
                                               onClick={() => void emitNfse(
                                                 contrato.contratoId,
                                                 formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full,
@@ -1428,6 +1440,7 @@ export default function FluxoDeFaturamentoList() {
                                               )}
                                               Emitir NFS-e
                                             </Button>
+                                            <span className="shrink-0 text-sm font-semibold font-tabular text-ink">{formatMoney(caseMetrics.totalValor)}</span>
                                           </div>
                                         </td>
                                       </tr>
@@ -1499,6 +1512,20 @@ export default function FluxoDeFaturamentoList() {
                                                         </td>
                                                         <td className="px-3 py-2 text-right">
                                                           <div className="flex justify-end gap-1">
+                                                            {canBill ? (
+                                                              <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                title="Editar valor final (financeiro) — sem devolver à etapa anterior"
+                                                                onClick={() => {
+                                                                  setEditValorTarget({ id: detalhe.id, descricao: detalhe.descricao, valorAtual: Number(detalhe.valor || 0) })
+                                                                  setEditValorInput(Number(detalhe.valor || 0).toFixed(2).replace('.', ','))
+                                                                }}
+                                                                disabled={busy}
+                                                              >
+                                                                <Pencil className="h-4 w-4" />
+                                                              </Button>
+                                                            ) : null}
                                                             <Button
                                                               size="icon"
                                                               variant="ghost"
@@ -1558,6 +1585,40 @@ export default function FluxoDeFaturamentoList() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={!!editValorTarget} onOpenChange={(open) => !open && !savingValor && setEditValorTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar valor final</DialogTitle>
+            <DialogDescription>
+              Ajuste do financeiro no último momento — o item continua aprovado e a mudança fica registrada no histórico.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-ink-secondary">{editValorTarget?.descricao}</p>
+            <p className="text-xs text-ink-mute">Valor atual: {formatMoney(editValorTarget?.valorAtual)}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-ink-mute">Novo valor (R$):</span>
+              <input
+                className="h-9 w-40 rounded-md border border-hairline-input bg-background px-2 text-right text-sm text-ink"
+                value={editValorInput}
+                onChange={(event) => setEditValorInput(event.target.value)}
+                placeholder="0,00"
+                inputMode="decimal"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditValorTarget(null)} disabled={savingValor}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void salvarValorFinal()} disabled={savingValor}>
+              {savingValor ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Pencil className="mr-2 h-4 w-4" />}
+              Salvar valor
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!resumoCasoKey && !!resumoCasoGroup} onOpenChange={(open) => !open && setResumoCasoKey(null)}>
         <DialogContent className="max-w-7xl">

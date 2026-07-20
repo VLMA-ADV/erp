@@ -88,6 +88,8 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
   const [initialLoading, setInitialLoading] = useState(!!clienteId)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  // Ano de captação (ajuste manual do indicador Clientes novos) — salvo via RPC própria.
+  const [anoCaptacao, setAnoCaptacao] = useState('')
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [form, setForm] = useState<ClientePayload>(emptyPayload)
   const [cepPreenchido, setCepPreenchido] = useState(false)
@@ -223,6 +225,7 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
           resp_int_data_nascimento: ri.data_nascimento || '',
           responsaveis_financeiros: rfs,
         })
+        setAnoCaptacao(cliente.ano_captacao_override ? String(cliente.ano_captacao_override) : '')
         if (cliente.codigo_ibge) setCepPreenchido(true)
       } catch (e) {
         console.error(e)
@@ -347,6 +350,11 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
       }
 
       if (isEdit) {
+        // Ajuste manual do ano de captação (RPC dedicada; vazio limpa).
+        const anoNum = anoCaptacao.trim() ? Number(anoCaptacao.trim()) : null
+        if (anoNum === null || (Number.isInteger(anoNum) && anoNum >= 1990 && anoNum <= 2100)) {
+          await supabase.rpc('set_cliente_ano_captacao', { p_cliente_id: clienteId, p_ano: anoNum })
+        }
         // Permanecer na tela ao salvar (pedido do cliente) — mostra sucesso e recarrega os dados.
         setSaved(true)
         window.setTimeout(() => setSaved(false), 4000)
@@ -697,6 +705,27 @@ export default function ClienteForm({ clienteId }: { clienteId?: string }) {
                   </div>
                 )}
               </div>
+
+              {isEdit ? (
+                <div>
+                  <h2 className="text-base font-semibold">Ano de captação</h2>
+                  <div className="mt-4 max-w-xs space-y-2">
+                    <Label htmlFor="ano-captacao">Ajuste manual (opcional)</Label>
+                    <Input
+                      id="ano-captacao"
+                      type="number"
+                      min={1990}
+                      max={2100}
+                      value={anoCaptacao}
+                      onChange={(e) => setAnoCaptacao(e.target.value)}
+                      placeholder="ex.: 2024"
+                    />
+                    <p className="text-xs text-ink-mute">
+                      Deixe vazio para usar o ano do primeiro contrato (indicador &quot;Clientes novos no ano&quot;).
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
               <div>
                 <h2 className="text-base font-semibold">Observações</h2>
