@@ -789,328 +789,220 @@ export default function ItensAFaturarList() {
         </TabsList>
       </Tabs>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex items-center gap-2 text-sm text-ink-secondary">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-hairline"
+            checked={visibleCaseIds.length > 0 && selectedVisibleCount === visibleCaseIds.length}
+            ref={(element) => {
+              if (element) {
+                element.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleCaseIds.length
+              }
+            }}
+            onChange={(event) => {
+              const checked = event.target.checked
+              setSelectedCasos((prev) => {
+                const next = { ...prev }
+                for (const caseId of visibleCaseIds) {
+                  next[caseId] = checked
+                }
+                return next
+              })
+            }}
+          />
+          Selecionar todos
+        </label>
         <div className="flex items-center gap-2">
           {anyExpanded ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={collapseAll}
-              aria-label="Fechar tudo"
-              title="Fechar tudo (ESC)"
-            >
+            <Button variant="ghost" size="sm" onClick={collapseAll} aria-label="Fechar tudo" title="Fechar tudo (ESC)">
               <X className="mr-2 h-4 w-4" />
               Fechar tudo
             </Button>
           ) : null}
           <Button
-            variant="outline"
+            className="rounded-full bg-[#E8871E] text-white hover:opacity-90"
             onClick={() => void startFlowForSelectedCases()}
             disabled={loading || sendingTarget === '__bulk__' || selectedVisibleCount === 0}
           >
             {sendingTarget === '__bulk__' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-            Enviar selecionados ({selectedVisibleCount})
+            Enviar selecionados p/ revisão ({selectedVisibleCount})
           </Button>
-          <Button onClick={() => void loadItems()} disabled={loading}>
-          {loading ? 'Atualizando...' : 'Atualizar lista'}
-        </Button>
+          <Button variant="outline" onClick={() => void loadItems()} disabled={loading}>
+            {loading ? 'Atualizando...' : 'Atualizar lista'}
+          </Button>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border bg-white">
-        <Table className="w-full min-w-full">
-          <thead className="bg-canvas-soft">
-            <tr>
-              <th className="w-10 px-2 py-3 text-left">
-                <input
-                  type="checkbox"
-                  checked={visibleCaseIds.length > 0 && selectedVisibleCount === visibleCaseIds.length}
-                  ref={(element) => {
-                    if (element) {
-                      element.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleCaseIds.length
-                    }
-                  }}
-                  onChange={(event) => {
-                    const checked = event.target.checked
-                    setSelectedCasos((prev) => {
-                      const next = { ...prev }
-                      for (const caseId of visibleCaseIds) {
-                        next[caseId] = checked
+      {/* Mesma estrutura visual da 2. Revisão de fatura (pedido 20/07):
+          cliente -> caso direto, header com totais, barra de ações por caso.
+          Aqui a única ação de fluxo é enviar para revisão. */}
+      {loading ? (
+        <p className="rounded-xl border border-hairline bg-white px-4 py-8 text-center text-sm text-muted-foreground">Carregando...</p>
+      ) : filteredTree.length === 0 ? (
+        <p className="rounded-xl border border-hairline bg-white px-4 py-8 text-center text-sm text-muted-foreground">
+          Nenhum item pendente de faturamento para o período informado. O período pode já ter sido faturado ou não há lançamentos abertos.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {filteredTree.map((cliente) => {
+            const clienteExpanded = expandedClientes[cliente.cliente_id]
+            const casosDoCliente = (cliente.contratos || []).flatMap((contrato) => contrato.casos || [])
+            const clienteCaseIds = casosDoCliente.map((caso) => caso.caso_id)
+            const clienteSelected = clienteCaseIds.filter((casoId) => selectedCasos[casoId]).length
+            return (
+              <section key={cliente.cliente_id} className="overflow-hidden rounded-xl border border-hairline bg-white">
+                <div className="flex flex-wrap items-center gap-3 bg-canvas-soft/70 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-hairline"
+                    checked={clienteCaseIds.length > 0 && clienteSelected === clienteCaseIds.length}
+                    ref={(element) => {
+                      if (element) {
+                        element.indeterminate = clienteSelected > 0 && clienteSelected < clienteCaseIds.length
                       }
-                      return next
-                    })
-                  }}
-                />
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente / Contrato / Caso</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Horas em aberto</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Itens</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Valor em aberto</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-hairline">
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Carregando...
-                </td>
-              </tr>
-            ) : filteredTree.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Nenhum item pendente de faturamento para o período informado. O período pode já ter sido faturado ou não há lançamentos abertos.
-                </td>
-              </tr>
-            ) : (
-              filteredTree.map((cliente) => {
-                const clienteExpanded = expandedClientes[cliente.cliente_id]
-                const clienteCaseIds = (cliente.contratos || []).flatMap((contrato) => (contrato.casos || []).map((caso) => caso.caso_id))
-                const clienteSelected = clienteCaseIds.filter((casoId) => selectedCasos[casoId]).length
-                return (
-                  <Fragment key={cliente.cliente_id}>
-                    <tr key={cliente.cliente_id} className="bg-muted/10">
-                      <td className="px-2 py-3">
-                        <input
-                          type="checkbox"
-                          checked={clienteCaseIds.length > 0 && clienteSelected === clienteCaseIds.length}
-                          ref={(element) => {
-                            if (element) {
-                              element.indeterminate = clienteSelected > 0 && clienteSelected < clienteCaseIds.length
-                            }
-                          }}
-                          onChange={(event) => {
-                            const checked = event.target.checked
-                            setSelectedCasos((prev) => {
-                              const next = { ...prev }
-                              for (const caseId of clienteCaseIds) {
-                                next[caseId] = checked
+                    }}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setSelectedCasos((prev) => {
+                        const next = { ...prev }
+                        for (const caseId of clienteCaseIds) {
+                          next[caseId] = checked
+                        }
+                        return next
+                      })
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => setExpandedClientes((prev) => ({ ...prev, [cliente.cliente_id]: !clienteExpanded }))}
+                  >
+                    {clienteExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-ink">{cliente.cliente_nome}</span>
+                      <span className="block text-xs text-ink-mute">
+                        {cliente.total_itens} item(ns) · {formatHours(cliente.total_horas)} h
+                      </span>
+                    </span>
+                  </button>
+                  <span className="shrink-0 text-sm font-semibold font-tabular text-ink">{formatMoney(cliente.total_valor)}</span>
+                  <Tooltip content={sendingTarget === cliente.cliente_id ? 'Enviando cliente...' : 'Enviar cliente inteiro p/ revisão'}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!sendingTarget}
+                      onClick={() => void startFlow('cliente', cliente.cliente_id, `Cliente ${cliente.cliente_nome}`)}
+                    >
+                      {sendingTarget === cliente.cliente_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </Tooltip>
+                </div>
+
+                {clienteExpanded ? (
+                  <div className="space-y-3 px-4 py-3">
+                    {casosDoCliente.map((caso) => {
+                      const casoExpanded = expandedCasos[caso.caso_id]
+                      const extrato = Array.isArray(caso.extrato) ? caso.extrato : []
+                      return (
+                        <div key={caso.caso_id} className="overflow-hidden rounded-lg border border-hairline">
+                          <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-3 py-2">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-hairline"
+                              checked={!!selectedCasos[caso.caso_id]}
+                              onChange={(event) =>
+                                setSelectedCasos((prev) => ({ ...prev, [caso.caso_id]: event.target.checked }))
                               }
-                              return next
-                            })
-                          }}
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-semibold">
-                        <button
-                          className="inline-flex items-center gap-2"
-                          onClick={() =>
-                            setExpandedClientes((prev) => ({ ...prev, [cliente.cliente_id]: !clienteExpanded }))
-                          }
-                        >
-                          {clienteExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          {cliente.cliente_nome}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 font-tabular">{formatHours(cliente.total_horas)}</td>
-                      <td className="px-4 py-3 font-tabular">{cliente.total_itens}</td>
-                      <td className="px-4 py-3 text-right font-semibold font-tabular">{formatMoney(cliente.total_valor)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Tooltip content={sendingTarget === cliente.cliente_id ? 'Enviando cliente...' : 'Enviar cliente'}>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={!!sendingTarget}
-                            onClick={() => void startFlow('cliente', cliente.cliente_id, `Cliente ${cliente.cliente_nome}`)}
-                          >
-                            {sendingTarget === cliente.cliente_id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Send className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </Tooltip>
-                      </td>
-                    </tr>
+                            />
+                            <button
+                              type="button"
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                              onClick={() => setExpandedCasos((prev) => ({ ...prev, [caso.caso_id]: !casoExpanded }))}
+                            >
+                              {casoExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium text-ink">
+                                  {caso.caso_numero ? `${caso.caso_numero} - ` : ''}{caso.caso_nome}
+                                </span>
+                                <span className="block text-xs text-ink-mute">
+                                  {caso.total_itens} item(ns) · {formatHours(caso.total_horas)} h
+                                </span>
+                              </span>
+                            </button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full text-xs"
+                              disabled={!!sendingTarget || postergarSubmitting}
+                              onClick={() => openPostergar(caso)}
+                            >
+                              <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="rounded-full bg-[#E8871E] text-xs text-white hover:opacity-90"
+                              disabled={!!sendingTarget}
+                              onClick={() =>
+                                void startFlow(
+                                  'caso',
+                                  caso.caso_id,
+                                  `Caso ${caso.caso_numero ? `${caso.caso_numero} - ` : ''}${caso.caso_nome}`,
+                                )
+                              }
+                            >
+                              {sendingTarget === caso.caso_id ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Send className="mr-1 h-3.5 w-3.5" />
+                              )}
+                              Enviar p/ revisão
+                            </Button>
+                            <span className="shrink-0 text-sm font-semibold font-tabular text-ink">{formatMoney(caso.total_valor)}</span>
+                          </div>
 
-                    {clienteExpanded &&
-                      (cliente.contratos || []).map((contrato) => {
-                        const contratoExpanded = expandedContratos[contrato.contrato_id]
-                        return (
-                          <Fragment key={contrato.contrato_id}>
-                            <tr key={contrato.contrato_id}>
-                              <td className="px-2 py-3">
-                                {(() => {
-                                  const contratoCaseIds = (contrato.casos || []).map((caso) => caso.caso_id)
-                                  const contratoSelected = contratoCaseIds.filter((casoId) => selectedCasos[casoId]).length
-                                  return (
-                                    <input
-                                      type="checkbox"
-                                      checked={contratoCaseIds.length > 0 && contratoSelected === contratoCaseIds.length}
-                                      ref={(element) => {
-                                        if (element) {
-                                          element.indeterminate =
-                                            contratoSelected > 0 && contratoSelected < contratoCaseIds.length
-                                        }
-                                      }}
-                                      onChange={(event) => {
-                                        const checked = event.target.checked
-                                        setSelectedCasos((prev) => {
-                                          const next = { ...prev }
-                                          for (const caseId of contratoCaseIds) {
-                                            next[caseId] = checked
-                                          }
-                                          return next
-                                        })
-                                      }}
-                                    />
-                                  )
-                                })()}
-                              </td>
-                              <td className="px-4 py-3 pl-10">
-                                <button
-                                  className="inline-flex items-center gap-2"
-                                  onClick={() =>
-                                    setExpandedContratos((prev) => ({
-                                      ...prev,
-                                      [contrato.contrato_id]: !contratoExpanded,
-                                    }))
-                                  }
-                                >
-                                  {contratoExpanded ? (
-                                    <ChevronDown className="h-4 w-4" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4" />
-                                  )}
-                                  {formatContratoDisplay(contrato.contrato_numero_sequencial, contrato.contrato_nome).full}
-                                </button>
-                              </td>
-                              <td className="px-4 py-3 font-tabular">{formatHours(contrato.total_horas)}</td>
-                              <td className="px-4 py-3 font-tabular">{contrato.total_itens}</td>
-                              <td className="px-4 py-3 text-right font-tabular">{formatMoney(contrato.total_valor)}</td>
-                              <td className="px-4 py-3 text-right">
-                                <Tooltip
-                                  content={sendingTarget === contrato.contrato_id ? 'Enviando contrato...' : 'Enviar contrato'}
-                                >
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={!!sendingTarget}
-                                    onClick={() =>
-                                      void startFlow(
-                                        'contrato',
-                                        contrato.contrato_id,
-                                        formatContratoDisplay(contrato.contrato_numero_sequencial, contrato.contrato_nome).full,
-                                      )
-                                    }
-                                  >
-                                    {sendingTarget === contrato.contrato_id ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Send className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                </Tooltip>
-                              </td>
-                            </tr>
-
-                            {contratoExpanded &&
-                              (contrato.casos || []).map((caso) => {
-                                const casoExpanded = expandedCasos[caso.caso_id]
-                                const extrato = Array.isArray(caso.extrato) ? caso.extrato : []
-                                return (
-                                  <Fragment key={caso.caso_id}>
-                                    <tr>
-                                      <td className="px-2 py-3">
-                                        <input
-                                          type="checkbox"
-                                          checked={!!selectedCasos[caso.caso_id]}
-                                          onChange={(event) =>
-                                            setSelectedCasos((prev) => ({
-                                              ...prev,
-                                              [caso.caso_id]: event.target.checked,
-                                            }))
-                                          }
-                                        />
+                          {casoExpanded ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[560px] text-left">
+                                <thead>
+                                  <tr className="border-b text-[10px] uppercase tracking-wide text-ink-mute">
+                                    <th className="px-3 py-2">Data</th>
+                                    <th className="px-3 py-2">Descrição</th>
+                                    <th className="px-3 py-2 text-right">Horas</th>
+                                    <th className="px-3 py-2 text-right">Valor</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-hairline">
+                                  {extrato.map((linha, index) => (
+                                    <tr key={`${caso.caso_id}-linha-${index}`}>
+                                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
+                                        {formatBillingReference(linha.tipo, linha.data_referencia)}
                                       </td>
-                                      <td className="px-4 py-3 pl-16 text-muted-foreground">
-                                        <button
-                                          className="inline-flex items-center gap-2"
-                                          onClick={() =>
-                                            setExpandedCasos((prev) => ({ ...prev, [caso.caso_id]: !casoExpanded }))
-                                          }
-                                        >
-                                          {casoExpanded ? (
-                                            <ChevronDown className="h-4 w-4" />
-                                          ) : (
-                                            <ChevronRight className="h-4 w-4" />
-                                          )}
-                                          {caso.caso_numero ? `${caso.caso_numero} - ` : ''}{caso.caso_nome}
-                                        </button>
+                                      <td className="px-3 py-2.5 text-[11px] leading-snug text-ink-secondary">
+                                        <span className="block max-w-[560px] whitespace-normal break-words">{linha.descricao || linha.tipo}</span>
                                       </td>
-                                      <td className="px-4 py-3 text-muted-foreground font-tabular">{formatHours(caso.total_horas)}</td>
-                                      <td className="px-4 py-3 text-muted-foreground font-tabular">{caso.total_itens}</td>
-                                      <td className="px-4 py-3 text-right text-muted-foreground font-tabular">{formatMoney(caso.total_valor)}</td>
-                                      <td className="px-4 py-3 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                          <Tooltip content="Postergar fatura">
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              className="text-primary hover:text-primary-deep hover:bg-primary-soft-bg"
-                                              disabled={!!sendingTarget || postergarSubmitting}
-                                              onClick={() => openPostergar(caso)}
-                                              aria-label="Postergar fatura"
-                                            >
-                                              <Clock className="h-4 w-4" />
-                                            </Button>
-                                          </Tooltip>
-                                          <Tooltip content={sendingTarget === caso.caso_id ? 'Enviando caso...' : 'Enviar caso'}>
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              disabled={!!sendingTarget}
-                                              onClick={() =>
-                                                void startFlow(
-                                                  'caso',
-                                                  caso.caso_id,
-                                                  `Caso ${caso.caso_numero ? `${caso.caso_numero} - ` : ''}${caso.caso_nome}`,
-                                                )
-                                              }
-                                            >
-                                              {sendingTarget === caso.caso_id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                              ) : (
-                                                <Send className="h-4 w-4" />
-                                              )}
-                                            </Button>
-                                          </Tooltip>
-                                        </div>
+                                      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-tabular text-ink-secondary">
+                                        {Number(linha.horas || 0) > 0 ? formatHours(linha.horas) : '—'}
+                                      </td>
+                                      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium font-tabular text-ink">
+                                        {formatMoney(linha.valor)}
                                       </td>
                                     </tr>
-
-                                    {casoExpanded &&
-                                      extrato.map((linha, index) => (
-                                        <tr key={`${caso.caso_id}-linha-${index}`} className="bg-muted/5">
-                                          <td className="px-2 py-2" />
-                                          <td className="px-4 py-2 pl-24 text-xs text-muted-foreground">
-                                            {(linha.descricao || linha.tipo) + ' • ' + formatBillingReference(linha.tipo, linha.data_referencia)}
-                                          </td>
-                                          <td className="px-4 py-2 text-xs text-muted-foreground font-tabular">
-                                            {formatHours(linha.horas)}
-                                          </td>
-                                          <td className="px-4 py-2 text-xs text-muted-foreground">
-                                            -
-                                          </td>
-                                          <td className="px-4 py-2 text-right text-xs text-muted-foreground font-tabular">
-                                            {formatMoney(linha.valor)}
-                                          </td>
-                                          <td className="px-4 py-2 text-right text-xs text-muted-foreground">-</td>
-                    </tr>
-                                      ))}
-                                  </Fragment>
-                                )
-                              })}
-                          </Fragment>
-                        )
-                      })}
-                  </Fragment>
-                )
-              })
-            )}
-          </tbody>
-        </Table>
-      </div>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </section>
+            )
+          })}
+        </div>
+      )}
 
       <Dialog
         open={postergarTarget !== null}
