@@ -2632,9 +2632,11 @@ export default function RevisaoDeFaturaList() {
                                           Ignorar fatura
                                         </Button>
                                       ) : null}
-                                      {item.status === 'em_aprovacao' ? (
+                                      {/* Após revisar/aprovar, o rail mostra também a volta de etapa
+                                          (em_aprovacao -> revisão; aprovado -> aprovação) — pedido 20/07. */}
+                                      {item.status === 'em_aprovacao' || item.status === 'aprovado' ? (
                                         <Button size="sm" variant="ghost" className="w-full justify-start" onClick={() => void returnItem(item)} disabled={busy}>
-                                          Devolver
+                                          Devolver p/ etapa anterior
                                         </Button>
                                       ) : null}
                                     </div>
