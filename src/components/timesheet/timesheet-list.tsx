@@ -379,6 +379,15 @@ export default function TimesheetList() {
     setDialogOpen(true)
   }
 
+  // Botão "+ Novo timesheet" do header da página (acima das abas) abre o mesmo dialog.
+  useEffect(() => {
+    if (!canWrite) return
+    const onNovo = () => openCreate()
+    window.addEventListener('vlma:novo-timesheet', onNovo)
+    return () => window.removeEventListener('vlma:novo-timesheet', onNovo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canWrite])
+
   const openEdit = (item: TimesheetItem) => {
     const contrato = contratos.find((c) => c.id === item.contrato_id)
     const totalMinutos = item.duracao_minutos != null ? Number(item.duracao_minutos) : Number(toMinutes(item.horas))

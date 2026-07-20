@@ -379,11 +379,23 @@ function getStageChanges(item: RevisaoItem, role: 'REVISOR' | 'APROVADOR') {
   // vivem no snapshot (timesheet_itens_revisao). Sem isto, editar o texto n\u00e3o
   // gerava a tag "Alterado" nem aparecia na linha da revis\u00e3o (bug do cliente).
   let textoRevisado = (stage?.texto || '').trim()
-  if (role === 'REVISOR' && !stage) {
+  if (role === 'REVISOR' && (!stage || !base) && changes.length === 0) {
     const hi = Number(item.horasInformadas ?? 0)
     const hr = item.horasRevisadas
     if (hr !== null && hr !== undefined && Number(hr) !== hi) {
       changes.push(`${formatHistoryHours(hi)} → ${formatHistoryHours(Number(hr))}`)
+    }
+  }
+  // Aprovação sem histórico completo (itens antigos ou sem entrada da etapa
+  // anterior): compara aprovado × revisado direto do item.
+  if (role === 'APROVADOR' && (!stage || !base) && changes.length === 0) {
+    const hBase = item.horasRevisadas ?? item.horasInformadas
+    if (item.horasAprovadas !== null && item.horasAprovadas !== undefined && hBase !== null && hBase !== undefined && Number(item.horasAprovadas) !== Number(hBase)) {
+      changes.push(`${formatHistoryHours(Number(hBase))} → ${formatHistoryHours(Number(item.horasAprovadas))}`)
+    }
+    const vBase = item.valorRevisado ?? item.valorInformado
+    if (item.valorAprovado !== null && item.valorAprovado !== undefined && vBase !== null && vBase !== undefined && Number(item.valorAprovado) !== Number(vBase)) {
+      changes.push(`${formatMoney(Number(vBase))} → ${formatMoney(Number(item.valorAprovado))}`)
     }
   }
   if (role === 'REVISOR') {
@@ -612,7 +624,10 @@ function normalizeHistorico(raw: unknown): RevisaoHistoricoEntry[] {
       const authorId = asString(row.author_id)
       const createdAt = asString(row.created_at)
 
-      if (!role || !billingItemId || !authorId || !createdAt) return null
+      // get_revisao_fatura não inclui billing_item_id/tenant_id em cada entrada
+      // do histórico — exigi-los descartava TODAS as entradas e a tag da
+      // aprovação nunca detectava mudança de horas/valor (bug do cliente 20/07).
+      if (!role || !createdAt) return null
 
       return {
         id: asString(row.id) || `${billingItemId}:${role}:${createdAt}:${index}`,

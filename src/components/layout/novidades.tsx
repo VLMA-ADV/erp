@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-export const APP_VERSION = '1.29.0'
+export const APP_VERSION = '1.30.0'
 
 interface ChangeItem {
   title: string
@@ -18,9 +18,40 @@ interface Release {
 // Mantenha o mais recente no topo. `destaque` realça o release novo.
 const CHANGELOG: Release[] = [
   {
+    version: '1.30.0',
+    date: '20/07/2026',
+    destaque: true,
+    items: [
+      {
+        title: 'PDI: cada um vê só o seu',
+        desc: 'A avaliação da equipe ficou restrita a quem gere pessoas: sócios, coordenadores de área (só a própria área) e o administrativo do CC VLMA. Os demais colaboradores veem apenas o próprio PDI.',
+      },
+      {
+        title: 'Revisão de fatura: tag detecta mudança de horas/valor em qualquer etapa',
+        desc: 'Corrigido o caso em que alterar só o tempo (ou o valor) na aprovação mostrava "Sem alterações". O histórico das etapas agora alimenta a tag corretamente, inclusive na aprovação.',
+      },
+      {
+        title: 'Revisor automático não sugere mais o próprio autor',
+        desc: 'Em áreas com mais de um coordenador (ex.: Societário), quem lança a hora não aparece mais como revisor sugerido dela — outro coordenador da área assume; o autor só é sugerido se for o único coordenador.',
+      },
+      {
+        title: 'CRM: anexos da proposta vão junto na solicitação de contrato',
+        desc: 'Ao converter uma proposta e solicitar contrato, os arquivos anexados ao card do CRM agora são levados automaticamente para a solicitação.',
+      },
+      {
+        title: 'Busca sem acento',
+        desc: 'Os campos de busca dos seletores encontram nomes sem precisar digitar acento — "Monica" acha "Mônica".',
+      },
+      {
+        title: 'Timesheet: botão de lançar no topo',
+        desc: 'O "+ Novo timesheet" também aparece no topo da página, ao lado da saudação — é a primeira ação de quem abre o módulo.',
+      },
+    ],
+  },
+  {
     version: '1.29.0',
     date: '16/07/2026',
-    destaque: true,
+    destaque: false,
     items: [
       {
         title: 'Timesheet: campo "Auxiliado por IA" no lançamento',

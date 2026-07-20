@@ -635,6 +635,8 @@ export default function CrmPipeline() {
           cliente_id: solicitacaoClienteId || null,
           centro_custo_id: solicitacaoCentroCustoId || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
+          // Leva os anexos da proposta (card) junto — a RPC copia server-side.
+          origem_card_id: solicitacaoCardId || undefined,
         },
       })
 

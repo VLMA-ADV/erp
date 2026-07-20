@@ -1,13 +1,30 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-// Card do hub /avaliacoes-pdi visível só para quem pode avaliar equipe (sócio/coordenador).
+// Card do hub /avaliacoes-pdi visível só para quem pode avaliar equipe.
+// A decisão vem do servidor (pdi_pode_avaliar): sócio, administrativo do CC
+// VLMA ou coordenador de área — people.pdi.write sozinha não basta (todo
+// colaborador tem, para salvar a própria autoavaliação).
 export default function EquipeCard() {
-  const { hasPermission, loading, permissions } = usePermissionsContext()
-  const pode = (!loading && permissions.length === 0) || hasPermission('people.pdi.write')
+  const [pode, setPode] = useState(false)
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase.rpc('pdi_pode_avaliar')
+        if (!error) setPode(Boolean(data))
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    void check()
+  }, [])
+
   if (!pode) return null
 
   return (
