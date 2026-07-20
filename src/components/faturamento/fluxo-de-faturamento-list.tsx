@@ -1193,36 +1193,6 @@ export default function FluxoDeFaturamentoList() {
         </Tabs>
         <div className="overflow-hidden rounded-md border bg-white">
           <Table className="w-full min-w-full">
-            <thead className="bg-canvas-soft">
-              <tr>
-                <th className="w-10 px-2 py-3 text-left">
-                  <input
-                    type="checkbox"
-                    checked={
-                      faturamentoEligibleIds.length > 0 &&
-                      selectedFaturamentoItemIds.length === faturamentoEligibleIds.length
-                    }
-                    ref={(element) => {
-                      if (element) {
-                        element.indeterminate =
-                          selectedFaturamentoItemIds.length > 0 &&
-                          selectedFaturamentoItemIds.length < faturamentoEligibleIds.length
-                      }
-                    }}
-                    onChange={(event) => toggleSelectionForItemIds(faturamentoEligibleIds, event.target.checked)}
-                    disabled={faturamentoEligibleIds.length === 0 || loading || loadingContratos || faturandoSelecionados}
-                  />
-                </th>
-                <th className="w-10 px-2 py-3" />
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Cliente / Contrato / Caso</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Responsável atual</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Itens</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-ink-mute">Horas</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Valor</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-ink-mute">Ações</th>
-              </tr>
-            </thead>
             <tbody className="divide-y divide-hairline">
               {loadingContratos ? (
                 <tr>
@@ -1246,42 +1216,40 @@ export default function FluxoDeFaturamentoList() {
 
                   return (
                     <Fragment key={cliente.key}>
-                      <tr className="bg-muted/10">
-                        <td className="px-2 py-3">
-                          <input
-                            type="checkbox"
-                            checked={eligibleCliente.length > 0 && selectedCliente === eligibleCliente.length}
-                            ref={(element) => {
-                              if (element) {
-                                element.indeterminate =
-                                  selectedCliente > 0 && selectedCliente < eligibleCliente.length
+                      <tr className="bg-canvas-soft/70">
+                        <td colSpan={9} className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-hairline"
+                              checked={eligibleCliente.length > 0 && selectedCliente === eligibleCliente.length}
+                              ref={(element) => {
+                                if (element) {
+                                  element.indeterminate =
+                                    selectedCliente > 0 && selectedCliente < eligibleCliente.length
+                                }
+                              }}
+                              onChange={(event) => toggleSelectionForItemIds(eligibleCliente, event.target.checked)}
+                              disabled={
+                                eligibleCliente.length === 0 || loading || loadingContratos || faturandoSelecionados
                               }
-                            }}
-                            onChange={(event) => toggleSelectionForItemIds(eligibleCliente, event.target.checked)}
-                            disabled={
-                              eligibleCliente.length === 0 || loading || loadingContratos || faturandoSelecionados
-                            }
-                          />
+                            />
+                            <button
+                              type="button"
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                              onClick={() => setExpandedClientes((p) => ({ ...p, [cliente.key]: !clienteExpanded }))}
+                            >
+                              {clienteExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold text-ink">{cliente.nome}</span>
+                                <span className="block text-xs text-ink-mute">
+                                  {cliente.itemCount} item(ns) · {formatHours(cliente.totalHoras)} h · {clienteSummary.status} · {clienteSummary.responsavel}
+                                </span>
+                              </span>
+                            </button>
+                            <span className="shrink-0 text-sm font-semibold font-tabular text-ink">{formatMoney(cliente.totalValor)}</span>
+                          </div>
                         </td>
-                        <td className="px-2 py-3">
-                          <button
-                            type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
-                            onClick={() =>
-                              setExpandedClientes((p) => ({ ...p, [cliente.key]: !clienteExpanded }))
-                            }
-                            aria-label={clienteExpanded ? 'Recolher cliente' : 'Expandir cliente'}
-                          >
-                            {clienteExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 font-semibold">{cliente.nome}</td>
-                        <td className="px-4 py-3 text-sm">{clienteSummary.status}</td>
-                        <td className="px-4 py-3 text-sm">{clienteSummary.responsavel}</td>
-                        <td className="px-4 py-3 font-tabular">{cliente.itemCount}</td>
-                        <td className="px-4 py-3 font-tabular">{formatHours(cliente.totalHoras)}</td>
-                        <td className="px-4 py-3 text-right font-tabular">{formatMoney(cliente.totalValor)}</td>
-                        <td className="px-4 py-3 text-right text-muted-foreground">—</td>
                       </tr>
 
                       {clienteExpanded &&
@@ -1304,56 +1272,6 @@ export default function FluxoDeFaturamentoList() {
 
                           return (
                             <Fragment key={contrato.key}>
-                              <tr>
-                                <td className="px-2 py-3">
-                                  <input
-                                    type="checkbox"
-                                    checked={
-                                      eligibleContrato.length > 0 && selectedContrato === eligibleContrato.length
-                                    }
-                                    ref={(element) => {
-                                      if (element) {
-                                        element.indeterminate =
-                                          selectedContrato > 0 && selectedContrato < eligibleContrato.length
-                                      }
-                                    }}
-                                    onChange={(event) =>
-                                      toggleSelectionForItemIds(eligibleContrato, event.target.checked)
-                                    }
-                                    disabled={
-                                      eligibleContrato.length === 0 ||
-                                      loading ||
-                                      loadingContratos ||
-                                      faturandoSelecionados
-                                    }
-                                  />
-                                </td>
-                                <td className="px-2 py-3">
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground hover:border-border hover:bg-muted"
-                                    onClick={() =>
-                                      setExpandedContratos((p) => ({ ...p, [contrato.key]: !contratoExpanded }))
-                                    }
-                                    aria-label={contratoExpanded ? 'Recolher contrato' : 'Expandir contrato'}
-                                  >
-                                    {contratoExpanded ? (
-                                      <ChevronDown className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" />
-                                    )}
-                                  </button>
-                                </td>
-                                <td className="px-4 py-3 pl-10 font-medium">
-                                  {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
-                                </td>
-                                <td className="px-4 py-3 text-sm">{contratoSummary.status}</td>
-                                <td className="px-4 py-3 text-sm">{contratoSummary.responsavel}</td>
-                                <td className="px-4 py-3 font-tabular">{metrics.n}</td>
-                                <td className="px-4 py-3 font-tabular">{formatHours(metrics.h)}</td>
-                                <td className="px-4 py-3 text-right font-tabular">{formatMoney(metrics.v)}</td>
-                                <td className="px-4 py-3 text-right text-muted-foreground">—</td>
-                              </tr>
 
                               {contratoExpanded &&
                                 contrato.casos.map((casoG) => {
