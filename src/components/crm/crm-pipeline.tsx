@@ -17,6 +17,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import SolicitacaoContratoFormFields, { type PendingSolicitacaoAnexo } from '@/components/solicitacoes-contrato/solicitacao-contrato-form-fields'
+import CrmPipelineRail from './crm-pipeline-rail'
 
 type EtapaKanban =
   | 'prospeccao'
@@ -406,6 +407,10 @@ export default function CrmPipeline() {
     void loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
+
+  // Painel lateral (mock 2): etapa cujos indicadores aparecem à direita.
+  const [railEtapa, setRailEtapa] = useState<EtapaKanban>('prospeccao')
+  const areaNomeById = useMemo(() => new Map(areas.map((a) => [a.id, a.nome])), [areas])
 
   const cardsByEtapa = useMemo(() => {
     const byEtapa: Record<EtapaKanban, PipelineCard[]> = {
@@ -918,14 +923,17 @@ export default function CrmPipeline() {
         </Alert>
       ) : null}
 
-      <div className="overflow-x-auto pb-2">
+      {/* Kanban + painel lateral (mock 2 do cliente): clique no título de uma
+          coluna para trazer os indicadores daquela etapa pro painel direito. */}
+      <div className="flex flex-col gap-4 xl:flex-row">
+      <div className="min-w-0 flex-1 overflow-x-auto pb-2">
         <div className="grid min-w-[1900px] grid-cols-8 gap-4">
           {ETAPAS.map((etapa) => {
             const etapaCards = cardsByEtapa[etapa.key] || []
             return (
               <div
                 key={etapa.key}
-                className="rounded-lg border bg-canvas-soft p-3"
+                className={`rounded-lg border bg-canvas-soft p-3 ${railEtapa === etapa.key ? 'ring-2 ring-[#E8871E]/60' : ''}`}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                   event.preventDefault()
@@ -935,10 +943,15 @@ export default function CrmPipeline() {
                   void handleMoveCard(cardId, etapa.key)
                 }}
               >
-                <div className="mb-3 flex items-center justify-between">
+                <button
+                  type="button"
+                  className="mb-3 flex w-full items-center justify-between text-left"
+                  onClick={() => setRailEtapa(etapa.key)}
+                  title="Ver indicadores desta etapa no painel lateral"
+                >
                   <h3 className="text-sm font-semibold text-ink-secondary">{etapa.label}</h3>
                   <Badge className="border-hairline bg-canvas-soft text-ink-secondary">{etapaCards.length}</Badge>
-                </div>
+                </button>
 
                 <div className="space-y-2">
                   {etapaCards.map((card) => (
@@ -1079,6 +1092,14 @@ export default function CrmPipeline() {
             )
           })}
         </div>
+      </div>
+
+      <CrmPipelineRail
+        cards={ETAPAS.flatMap((item) => cardsByEtapa[item.key] || [])}
+        etapaSelecionada={railEtapa}
+        etapaLabel={ETAPAS.find((item) => item.key === railEtapa)?.label || railEtapa}
+        areaNomeById={areaNomeById}
+      />
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => {
