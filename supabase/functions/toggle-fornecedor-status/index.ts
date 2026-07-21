@@ -64,37 +64,18 @@ Deno.serve(async (req) => {
     }
 
     // Get current status (tenant-scoped)
-    const { data: fornecedor, error: fetchError } = await supabase
-      .schema("operations")
-      .from("fornecedores")
-      .select("id, ativo")
-      .eq("id", id)
-      .eq("tenant_id", tenantUser.tenant_id)
-      .single();
+    const { data: toggled, error: toggleError } = await supabase.rpc("fornecedor_toggle_status", {
+      p_user_id: user.id,
+      p_id: id,
+    });
 
-    if (fetchError || !fornecedor) {
-      return new Response(JSON.stringify({ error: "Fornecedor não encontrado" }), {
-        status: 404,
+    if (toggleError) {
+      return new Response(JSON.stringify({ error: toggleError.message }), {
+        status: /não encontrado/i.test(toggleError.message || "") ? 404 : 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const novoStatus = !fornecedor.ativo;
-
-    const { error: updateError } = await supabase
-      .schema("operations")
-      .from("fornecedores")
-      .update({ ativo: novoStatus })
-      .eq("id", id)
-      .eq("tenant_id", tenantUser.tenant_id);
-
-    if (updateError) {
-      console.error("Toggle error:", updateError);
-      return new Response(JSON.stringify({ error: updateError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const novoStatus = toggled?.ativo;
 
     return new Response(
       JSON.stringify({ id, ativo: novoStatus, message: `Fornecedor ${novoStatus ? "ativado" : "desativado"} com sucesso` }),
