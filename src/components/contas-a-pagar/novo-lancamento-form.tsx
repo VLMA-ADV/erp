@@ -10,11 +10,13 @@ function fmtMoney(value: number | string | null | undefined) {
 }
 
 type Opt = { id: string; nome?: string; codigo?: string; banco?: string }
+type PlanoConta = { id: string; codigo: string; grupo: string; sintetica: string; analitica: string; natureza: string }
 type Listas = {
   centros_custo: Opt[]
   contas_contabeis: { id: string; codigo: string; nome: string; centro_custo_id: string | null }[]
   empresas: Opt[]
   contas_bancarias: { id: string; banco: string; descricao: string | null }[]
+  plano_contas?: PlanoConta[]
 }
 
 const emptyForm = {
@@ -24,6 +26,7 @@ const emptyForm = {
   empresa_id: '',
   descricao: '',
   conta_contabil_id: '',
+  plano_conta_id: '',
   centro_custo_id: '',
   valor: '',
   vencimento: '',
@@ -48,6 +51,9 @@ export default function NovoLancamentoForm() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showMais, setShowMais] = useState(false)
+  // Cascata do Plano de Contas: Grupo (DRE) -> Conta sintética -> Conta analítica.
+  const [planoGrupo, setPlanoGrupo] = useState('')
+  const [planoSintetica, setPlanoSintetica] = useState('')
 
   useEffect(() => {
     void (async () => {
@@ -68,7 +74,7 @@ export default function NovoLancamentoForm() {
     if (!form.descricao.trim()) { setError('Descrição é obrigatória.'); return }
     if (!form.valor || Number(form.valor) <= 0) { setError('Valor é obrigatório.'); return }
     if (!form.vencimento) { setError('Vencimento é obrigatório.'); return }
-    if (!form.conta_contabil_id) { setError('Conta contábil é obrigatória.'); return }
+    if (!form.plano_conta_id && !form.conta_contabil_id) { setError('Escolha a conta analítica do Plano de Contas.'); return }
     if (!form.centro_custo_id) { setError('Centro de custo é obrigatório.'); return }
     if (!form.empresa_id) { setError('Empresa pagadora é obrigatória.'); return }
 
@@ -102,6 +108,21 @@ export default function NovoLancamentoForm() {
     if (!form.centro_custo_id) return listas.contas_contabeis
     return listas.contas_contabeis.filter((c) => !c.centro_custo_id || c.centro_custo_id === form.centro_custo_id)
   }, [listas, form.centro_custo_id])
+
+  const planoContas = useMemo(() => listas?.plano_contas || [], [listas])
+  const planoGrupos = useMemo(() => Array.from(new Set(planoContas.map((c) => c.grupo))), [planoContas])
+  const planoSinteticas = useMemo(
+    () => Array.from(new Set(planoContas.filter((c) => c.grupo === planoGrupo).map((c) => c.sintetica))),
+    [planoContas, planoGrupo],
+  )
+  const planoAnaliticas = useMemo(
+    () => planoContas.filter((c) => c.grupo === planoGrupo && c.sintetica === planoSintetica),
+    [planoContas, planoGrupo, planoSintetica],
+  )
+  const planoSelecionado = useMemo(
+    () => planoContas.find((c) => c.id === form.plano_conta_id) || null,
+    [planoContas, form.plano_conta_id],
+  )
 
   if (!canWrite) {
     return <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Você não tem permissão para criar lançamentos.</div>
@@ -138,6 +159,55 @@ export default function NovoLancamentoForm() {
           </div>
         )}
 
+        {/* PLANO DE CONTAS — hierarquia da planilha: Grupo (col. B) > Sintética (col. C) > Analítica (col. D). */}
+        <div className="rounded-md border border-dashed border-primary/40 bg-primary/[0.03] p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Plano de contas</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Grupo</label>
+              <select
+                className={inputCls}
+                value={planoGrupo}
+                onChange={(e) => {
+                  setPlanoGrupo(e.target.value)
+                  setPlanoSintetica('')
+                  set('plano_conta_id', '')
+                }}
+              >
+                <option value="">Selecione o grupo…</option>
+                {planoGrupos.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Conta sintética</label>
+              <select
+                className={inputCls}
+                value={planoSintetica}
+                onChange={(e) => {
+                  setPlanoSintetica(e.target.value)
+                  set('plano_conta_id', '')
+                }}
+                disabled={!planoGrupo}
+              >
+                <option value="">{planoGrupo ? 'Selecione…' : 'Escolha o grupo primeiro'}</option>
+                {planoSinteticas.map((sn) => <option key={sn} value={sn}>{sn}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="mt-3">
+            <label className={labelCls}>Conta analítica (recebe o lançamento)</label>
+            <select
+              className={inputCls}
+              value={form.plano_conta_id}
+              onChange={(e) => set('plano_conta_id', e.target.value)}
+              disabled={!planoSintetica}
+            >
+              <option value="">{planoSintetica ? 'Selecione…' : 'Escolha a conta sintética primeiro'}</option>
+              {planoAnaliticas.map((c) => <option key={c.id} value={c.id}>{c.codigo} — {c.analitica}</option>)}
+            </select>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Empresa pagadora</label>
@@ -165,10 +235,14 @@ export default function NovoLancamentoForm() {
           </div>
           <div>
             <label className={labelCls}>Conta contábil</label>
-            <select className={inputCls} value={form.conta_contabil_id} onChange={(e) => set('conta_contabil_id', e.target.value)}>
-              <option value="">Selecione…</option>
-              {contasFiltradas.map((c) => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
-            </select>
+            {planoSelecionado ? (
+              <input className={`${inputCls} bg-canvas-soft text-ink-mute`} readOnly value={`${planoSelecionado.codigo} — ${planoSelecionado.analitica}`} title="Preenchida pela conta analítica" />
+            ) : (
+              <select className={inputCls} value={form.conta_contabil_id} onChange={(e) => set('conta_contabil_id', e.target.value)}>
+                <option value="">Preenchida pela conta analítica…</option>
+                {contasFiltradas.map((c) => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
+              </select>
+            )}
           </div>
         </div>
 
