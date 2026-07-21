@@ -111,7 +111,7 @@ function Treemap({ titulo, subtitulo, linhas }: { titulo: string; subtitulo: str
   )
 }
 
-// Linha acumulada dia a dia (mock: pontos com rótulo nos dias com lançamento).
+// Horas lançadas por dia (pontos com rótulo nos dias com lançamento).
 function ChartHoras({ serie }: { serie: SerieDia[] }) {
   const [modo, setModo] = useState<'semana' | 'mes'>('mes')
 
@@ -135,14 +135,13 @@ function ChartHoras({ serie }: { serie: SerieDia[] }) {
       })
     }
 
-    let cum = 0
+    // Horas DO DIA (sem acumular) — pedido Filipe 21/07.
     const pontos = dias.map((d, i) => {
       const passado = d.getTime() <= hoje.getTime()
       const min = byDay.get(iso(d)) || 0
-      if (passado) cum += min
-      return { i, d, passado, temLancamento: passado && min > 0, cum: passado ? cum : null }
+      return { i, d, passado, temLancamento: passado && min > 0, cum: passado ? min : null }
     })
-    const yMax = Math.max(cum, 60)
+    const yMax = Math.max(...pontos.map((p) => p.cum || 0), 60)
     const mesLabel = hoje.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     return { dias, pontos, yMax, mesLabel }
   }, [serie, modo])
@@ -172,7 +171,7 @@ function ChartHoras({ serie }: { serie: SerieDia[] }) {
         <div>
           <p className="text-sm font-semibold text-ink">Horas lançadas</p>
           <p className="text-xs capitalize text-ink-mute">
-            {modo === 'mes' ? `${mesLabel} · acumulado dia a dia (1 a ${ultimoDia})` : 'Semana atual · acumulado dia a dia'}
+            {modo === 'mes' ? `${mesLabel} · horas por dia (1 a ${ultimoDia})` : 'Semana atual · horas por dia'}
           </p>
         </div>
         <div className="flex rounded-full border border-hairline bg-canvas-soft p-0.5 text-xs">
