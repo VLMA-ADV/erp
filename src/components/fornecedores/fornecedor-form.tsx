@@ -15,6 +15,7 @@ export default function FornecedorForm({ fornecedorId }: { fornecedorId?: string
       entityNameField="nome_fornecedor"
       entityLabel="fornecedor"
       entityPluralLabel="fornecedores"
+      validacaoMinima
     />
   )
 }
