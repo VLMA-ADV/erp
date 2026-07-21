@@ -20,6 +20,7 @@ import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
+import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
 
 interface CasoAgrupado {
   caso_id: string
@@ -363,6 +364,7 @@ function mergeFallbackDespesas(
 }
 
 export default function ItensAFaturarList() {
+  const fotoDe = useFotosColaboradores()
   const today = new Date()
   const { success, error: toastError } = useToast()
   const [loading, setLoading] = useState(true)
@@ -1015,9 +1017,14 @@ export default function ItensAFaturarList() {
                                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
                                         {linha.lancado_por ? (
                                           <span className="inline-flex items-center gap-1.5">
-                                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">
-                                              {linha.lancado_por.split(/\s+/).filter(Boolean).slice(0, 2).map((parte) => parte[0]?.toUpperCase() || '').join('') || '?'}
-                                            </span>
+                                            {fotoDe(linha.lancado_por) ? (
+                                              // eslint-disable-next-line @next/next/no-img-element
+                                              <img src={fotoDe(linha.lancado_por) as string} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
+                                            ) : (
+                                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">
+                                                {iniciaisDe(linha.lancado_por)}
+                                              </span>
+                                            )}
                                             {linha.lancado_por}
                                           </span>
                                         ) : (

@@ -1823,12 +1823,22 @@ export default function RevisaoDeFaturaList() {
             size="sm"
             className="rounded-full"
             disabled={visibleItems.length === 0}
-            onClick={() =>
+            title={selectedItemIds.length > 0 ? `Gera a prévia dos ${selectedItemIds.length} lançamento(s) selecionado(s)` : 'Selecione lançamentos para gerar a prévia de um cliente/caso; sem seleção, sai tudo o que está na tela'}
+            onClick={() => {
+              // Pedido 21/07: com seleção, o relatório é a prévia de faturamento
+              // apenas dos lançamentos selecionados (por cliente/caso).
+              const base = selectedItemIds.length > 0
+                ? visibleItems.filter((item) => selectedItemIds.includes(item.id))
+                : visibleItems
               openTimesheetReport({
-                titulo: 'Relatório de timesheet — Revisão de fatura (etapa 2)',
-                subtitulo: `${statusSummary.revisao} em revisão · ${statusSummary.aprovacao} em aprovação · ${statusSummary.aprovado} aprovado(s)`,
+                titulo: selectedItemIds.length > 0
+                  ? 'Prévia de faturamento — lançamentos selecionados'
+                  : 'Relatório de timesheet — Revisão de fatura (etapa 2)',
+                subtitulo: selectedItemIds.length > 0
+                  ? `${base.length} lançamento(s) selecionado(s)`
+                  : `${statusSummary.revisao} em revisão · ${statusSummary.aprovacao} em aprovação · ${statusSummary.aprovado} aprovado(s)`,
                 mostrarValor: true,
-                rows: visibleItems.map((item) => ({
+                rows: base.map((item) => ({
                   data: item.timesheetDataLancamento ? formatDate(item.timesheetDataLancamento) : formatDate(item.dataReferencia || ''),
                   cliente: item.clienteNome || '',
                   caso: `${item.casoNumero || ''} - ${item.casoNome || ''}`,
@@ -1838,9 +1848,9 @@ export default function RevisaoDeFaturaList() {
                   valor: getEffectiveItemValue(item),
                 })),
               })
-            }
+            }}
           >
-            Gerar relatório
+            Gerar relatório{selectedItemIds.length > 0 ? ` (${selectedItemIds.length})` : ''}
           </Button>
           <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
             {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}

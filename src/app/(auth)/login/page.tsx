@@ -20,9 +20,6 @@ export default async function LoginPage() {
           <VlmaLogo className="mx-auto h-8 w-auto text-ink" />
           <span className="mt-5 block text-eyebrow">ERP</span>
           <h2 className="mt-3 display-md text-ink">Entre na sua conta</h2>
-          <p className="mt-2 text-sm text-ink-mute">
-            Sistema Voa Legal Marcas e Advocacia
-          </p>
         </div>
         <LoginForm />
       </div>
