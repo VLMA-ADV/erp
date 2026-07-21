@@ -1375,7 +1375,13 @@ export default function FluxoDeFaturamentoList() {
                                                       Regra / tipo
                                                     </th>
                                                     <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
-                                                      Referência
+                                                      Data
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
+                                                      Texto
+                                                    </th>
+                                                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
+                                                      Lançado por
                                                     </th>
                                                     <th className="px-3 py-2 text-left text-xs font-medium uppercase text-ink-mute">
                                                       Status
@@ -1421,7 +1427,25 @@ export default function FluxoDeFaturamentoList() {
                                                           />
                                                         </td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.descricao}</td>
-                                                        <td className="px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
+                                                        <td className="whitespace-nowrap px-3 py-2 text-sm">{detalhe.referencia || '-'}</td>
+                                                        <td className="px-3 py-2 text-[11px] leading-snug text-ink-secondary">
+                                                          <span className="block max-w-[420px] whitespace-normal break-words">
+                                                            {String(itemRow.snapshot?.timesheet_descricao || '') || '—'}
+                                                          </span>
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-3 py-2 text-xs text-ink-secondary">
+                                                          {(() => {
+                                                            const autor = String(itemRow.snapshot?.timesheet_profissional || '').trim()
+                                                            if (!autor) return '—'
+                                                            const iniciais = autor.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
+                                                            return (
+                                                              <span className="inline-flex items-center gap-1.5">
+                                                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">{iniciais}</span>
+                                                                {autor}
+                                                              </span>
+                                                            )
+                                                          })()}
+                                                        </td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
                                                         <td className="px-3 py-2 text-sm font-tabular">{formatHours(detalhe.horas)}</td>

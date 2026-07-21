@@ -108,6 +108,9 @@
   }
 
   html {
+    /* Densidade 90% (pedido Filipe 21/07): equivale ao zoom -10% do browser.
+       Todo o layout é rem-based, então textos/paddings/alturas encolhem juntos. */
+    font-size: 14.4px;
     /* ss01 stylistic set globally (single-story a) + kerning */
     font-feature-settings: "ss01", "kern";
     -webkit-font-smoothing: antialiased;
