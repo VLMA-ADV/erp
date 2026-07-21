@@ -33,6 +33,7 @@ interface CasoAgrupado {
     tipo: string
     caso_regra?: string | null
     descricao: string
+    lancado_por?: string | null
     data_referencia: string | null
     horas: string
     valor: string
@@ -997,6 +998,7 @@ export default function ItensAFaturarList() {
                                   <tr className="border-b text-[10px] uppercase tracking-wide text-ink-mute">
                                     <th className="px-3 py-2">Data</th>
                                     <th className="px-3 py-2">Descrição</th>
+                                    <th className="px-3 py-2">Lançado por</th>
                                     <th className="px-3 py-2 text-right">Horas</th>
                                     <th className="px-3 py-2 text-right">Valor</th>
                                   </tr>
@@ -1009,6 +1011,18 @@ export default function ItensAFaturarList() {
                                       </td>
                                       <td className="px-3 py-2.5 text-[11px] leading-snug text-ink-secondary">
                                         <span className="block max-w-[560px] whitespace-normal break-words">{linha.descricao || linha.tipo}</span>
+                                      </td>
+                                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
+                                        {linha.lancado_por ? (
+                                          <span className="inline-flex items-center gap-1.5">
+                                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">
+                                              {linha.lancado_por.split(/\s+/).filter(Boolean).slice(0, 2).map((parte) => parte[0]?.toUpperCase() || '').join('') || '?'}
+                                            </span>
+                                            {linha.lancado_por}
+                                          </span>
+                                        ) : (
+                                          '—'
+                                        )}
                                       </td>
                                       <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-tabular text-ink-secondary">
                                         {Number(linha.horas || 0) > 0 ? formatHours(linha.horas) : '—'}
