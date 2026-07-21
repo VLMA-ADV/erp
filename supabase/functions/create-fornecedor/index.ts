@@ -101,8 +101,9 @@ Deno.serve(async (req) => {
       chave_pix,
     } = body;
 
-    if (!nome_fornecedor || !cpf_cnpj) {
-      return new Response(JSON.stringify({ error: "nome_fornecedor e cpf_cnpj são obrigatórios" }), {
+    // Cadastro destravado (pedido 21/07): só o nome é obrigatório.
+    if (!nome_fornecedor) {
+      return new Response(JSON.stringify({ error: "nome_fornecedor é obrigatório" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -113,7 +114,7 @@ Deno.serve(async (req) => {
       .from("fornecedores")
       .insert({
         nome_fornecedor,
-        cpf_cnpj,
+        cpf_cnpj: cpf_cnpj || null,
         tipo_documento: tipo_documento || "cnpj",
         conta_contabil: conta_contabil || null,
         servico_recorrente: servico_recorrente ?? false,

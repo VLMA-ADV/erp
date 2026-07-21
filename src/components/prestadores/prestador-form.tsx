@@ -87,6 +87,8 @@ export default function PrestadorForm({
   entityNameField = 'nome_prestador',
   entityLabel = 'prestador',
   entityPluralLabel = 'prestadores',
+  // Fornecedor (pedido 21/07): cadastro destravado — só o nome é obrigatório.
+  validacaoMinima = false,
 }: {
   prestadorId?: string
   redirectBasePath?: string
@@ -98,6 +100,7 @@ export default function PrestadorForm({
   entityNameField?: 'nome_prestador' | 'nome_fornecedor'
   entityLabel?: string
   entityPluralLabel?: string
+  validacaoMinima?: boolean
 }) {
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
@@ -288,17 +291,24 @@ export default function PrestadorForm({
       setError('Você não tem permissão para realizar esta operação')
       return
     }
-    if (!form.nome_prestador.trim() || !form.cpf_cnpj.trim()) {
-      setError('Nome e CPF/CNPJ são obrigatórios')
-      return
-    }
-    if (!form.resp_nome.trim()) {
-      setError('Responsável é obrigatório')
-      return
-    }
-    if (form.servico_recorrente && !form.valor_recorrente.trim()) {
-      setError('Valor recorrente é obrigatório quando o serviço é recorrente')
-      return
+    if (validacaoMinima) {
+      if (!form.nome_prestador.trim()) {
+        setError('Nome é obrigatório')
+        return
+      }
+    } else {
+      if (!form.nome_prestador.trim() || !form.cpf_cnpj.trim()) {
+        setError('Nome e CPF/CNPJ são obrigatórios')
+        return
+      }
+      if (!form.resp_nome.trim()) {
+        setError('Responsável é obrigatório')
+        return
+      }
+      if (form.servico_recorrente && !form.valor_recorrente.trim()) {
+        setError('Valor recorrente é obrigatório quando o serviço é recorrente')
+        return
+      }
     }
 
     setLoading(true)

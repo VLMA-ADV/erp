@@ -32,6 +32,7 @@ type Row = {
   fornecedor_nome?: string | null
   empresa_nome?: string | null
   conta_codigo?: string | null
+  plano_grupo?: string | null
   centro_nome?: string | null
   valor: number
   vencimento: string
@@ -271,7 +272,12 @@ function ListaColuna({
                 <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-mute">
                   {r.empresa_nome && <span className="rounded bg-secondary px-1.5 py-0.5">{r.empresa_nome}</span>}
                   {r.centro_nome && <span className="rounded bg-secondary px-1.5 py-0.5">{r.centro_nome}</span>}
-                  {r.conta_codigo && <span className="font-mono">{r.conta_codigo}</span>}
+                  {/* categoria = conta do Plano de Contas (grupo no tooltip) */}
+                  {r.conta_codigo && (
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800" title={r.plano_grupo || undefined}>
+                      {r.conta_codigo}
+                    </span>
+                  )}
                   <span>· {fmtDate(r.vencimento)}</span>
                   {r.reembolsavel && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">reembolsável</span>}
                 </p>
