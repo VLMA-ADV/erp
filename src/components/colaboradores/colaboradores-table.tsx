@@ -204,9 +204,8 @@ export default function ColaboradoresTable({
               <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Cargo
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-ink-mute uppercase tracking-wider">
-                Salário
-              </th>
+              {/* Coluna Salário removida da lista (21/07): info confidencial,
+                  fica restrita à edição do colaborador. */}
               <th className="px-6 py-3 text-center text-xs font-medium text-ink-mute uppercase tracking-wider">
                 Coordenador
               </th>
@@ -262,9 +261,6 @@ export default function ColaboradoresTable({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-mute">
                   {colaborador.cargo?.nome || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-tabular text-ink-secondary">
-                  {formatSalario(colaborador.salario)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
                   <input

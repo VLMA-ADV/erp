@@ -447,7 +447,7 @@ export default function PrestadorForm({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cpf_cnpj">CPF/CNPJ *</Label>
+                  <Label htmlFor="cpf_cnpj">CPF/CNPJ{validacaoMinima ? '' : ' *'}</Label>
                   <Input
                     id="cpf_cnpj"
                     value={form.cpf_cnpj}
@@ -616,7 +616,7 @@ export default function PrestadorForm({
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="resp_nome">Nome *</Label>
+                  <Label htmlFor="resp_nome">Nome{validacaoMinima ? '' : ' *'}</Label>
                   <Input id="resp_nome" value={form.resp_nome} onChange={(e) => setForm({ ...form, resp_nome: e.target.value })} />
                 </div>
                 <div className="space-y-2">

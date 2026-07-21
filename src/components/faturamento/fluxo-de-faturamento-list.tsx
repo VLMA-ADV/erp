@@ -30,6 +30,7 @@ import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import NfsePreviewDialog from './nfse-preview-dialog'
 
@@ -553,6 +554,7 @@ function buildResumoCasoDialogRows(resumoCasoGroup: {
 }
 
 export default function FluxoDeFaturamentoList() {
+  const fotoDe = useFotosColaboradores()
   const { success, error: toastError } = useToast()
   const [loading, setLoading] = useState(true)
   const [loadingContratos, setLoadingContratos] = useState(true)
@@ -1437,10 +1439,15 @@ export default function FluxoDeFaturamentoList() {
                                                           {(() => {
                                                             const autor = String(itemRow.snapshot?.timesheet_profissional || '').trim()
                                                             if (!autor) return '—'
-                                                            const iniciais = autor.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
+                                                            const foto = fotoDe(autor)
                                                             return (
                                                               <span className="inline-flex items-center gap-1.5">
-                                                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">{iniciais}</span>
+                                                                {foto ? (
+                                                                  // eslint-disable-next-line @next/next/no-img-element
+                                                                  <img src={foto} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
+                                                                ) : (
+                                                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">{iniciaisDe(autor)}</span>
+                                                                )}
                                                                 {autor}
                                                               </span>
                                                             )

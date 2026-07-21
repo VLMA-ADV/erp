@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
+import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
 import { TIMESHEET_TEMPLATES } from './timesheet-templates'
 
 type TimesheetStatus = 'em_lancamento' | 'revisao' | 'aprovado'
@@ -139,6 +140,7 @@ export default function TimesheetList() {
   const { success, error: toastError } = useToast()
 
   const canRead = hasPermission('operations.timesheet.read')
+  const fotoDe = useFotosColaboradores()
   const canWrite = hasPermission('operations.timesheet.write')
 
   const [loading, setLoading] = useState(true)
@@ -655,12 +657,7 @@ export default function TimesheetList() {
                 const showEdit = canWrite && canEditTimesheetInList(item.status)
                 const clienteNome = contratoInfo.get(item.contrato_id)?.cliente_nome || item.contrato_nome || '-'
                 const autorNome = item.created_by_nome || '-'
-                const autorIniciais = autorNome
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((p) => p[0]?.toUpperCase() || '')
-                  .join('') || '?'
+                const autorFoto = fotoDe(item.created_by_nome)
 
                 return (
                   <tr key={item.id}>
@@ -670,9 +667,14 @@ export default function TimesheetList() {
                     <td className="px-4 py-3 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
                     <td className="px-4 py-3 text-sm">
                       <span className="inline-flex items-center gap-2">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
-                          {autorIniciais}
-                        </span>
+                        {autorFoto ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={autorFoto} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                        ) : (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
+                            {iniciaisDe(autorNome)}
+                          </span>
+                        )}
                         <span className="text-ink-secondary">{autorNome}</span>
                       </span>
                     </td>
@@ -749,16 +751,8 @@ export default function TimesheetList() {
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
-              <Label>Contrato (preenchido automaticamente)</Label>
-              <Input
-                readOnly
-                value={
-                  contratoOptions.find((item) => item.value === form.contrato_id)?.label || ''
-                }
-                placeholder="Selecione cliente e caso"
-              />
-            </div>
+            {/* Campo "Contrato (preenchido automaticamente)" removido (21/07):
+                o contrato segue vinculado internamente via caso selecionado. */}
 
             <div className="space-y-2">
               <Label>Data de lançamento</Label>
