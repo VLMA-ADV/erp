@@ -104,6 +104,34 @@ Deno.serve(async (req) => {
       permissions: colaboradorData.permissions || [],
     };
 
+    // Salário e dados bancários (CPF, banco, agência, conta, PIX) só para quem tem
+    // a capacidade 'people.salario.read' (sócios + Jessika Lira) OU para o próprio
+    // colaborador vendo seu cadastro. Para os demais, os campos são zerados.
+    const isOwnRecord = colaboradorData.user_id === user.id;
+    let canSeeSalario = isOwnRecord;
+    if (!canSeeSalario) {
+      const { data: canSalarioData } = await supabase.rpc(
+        "tem_capacidade_sensivel",
+        { p_user_id: user.id, p_capacidade: "people.salario.read" },
+      );
+      canSeeSalario = canSalarioData === true;
+    }
+    if (!canSeeSalario) {
+      for (const campo of [
+        "cpf",
+        "salario",
+        "adicional",
+        "percentual_adicional",
+        "banco",
+        "agencia",
+        "conta_com_digito",
+        "chave_pix",
+        "conta_contabil",
+      ]) {
+        if (campo in colaborador) (colaborador as any)[campo] = null;
+      }
+    }
+
     return new Response(
       JSON.stringify({ data: colaborador }),
       {

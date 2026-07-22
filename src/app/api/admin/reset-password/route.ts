@@ -10,6 +10,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
+  // Redefinir a senha de terceiros é restrito (sócios, Filipe incluso). Antes,
+  // qualquer usuário logado conseguia resetar a senha de qualquer conta.
+  const { data: podeResetar, error: capErr } = await supabaseServer.rpc(
+    'tem_capacidade_sensivel',
+    { p_user_id: session.user.id, p_capacidade: 'users.reset_password' },
+  )
+  if (capErr || podeResetar !== true) {
+    return NextResponse.json(
+      { error: 'Sem permissão para redefinir senhas' },
+      { status: 403 },
+    )
+  }
+
   // Verificar se tem service role key configurada
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

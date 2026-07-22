@@ -33,7 +33,6 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^4.39.0",
     "@playwright/test": "^1.52.0",
     "@types/node": "^20.14.12",
     "@types/react": "^18.3.3",

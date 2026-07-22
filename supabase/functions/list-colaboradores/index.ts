@@ -31,12 +31,22 @@ Deno.serve(async (req) => {
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "10");
     const areaId = url.searchParams.get("area_id") || "";
-    const tenantIdFromQuery = url.searchParams.get("tenant_id") || "";
     const offset = (page - 1) * limit;
 
-    let tenantId = tenantIdFromQuery;
+    // Autenticação OBRIGATÓRIA. Antes, sem Authorization o tenant vinha de um
+    // query param (?tenant_id=) ou de um fallback que pegava o 1º tenant, expondo
+    // a folha de pagamento (salário) sem login. Agora o tenant é SEMPRE derivado
+    // do usuário autenticado.
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    if (authHeader) {
+    let tenantId = "";
+    let canSeeSalario = false;
+    {
       const token = authHeader.replace("Bearer ", "");
       const {
         data: { user },
@@ -95,16 +105,15 @@ Deno.serve(async (req) => {
       }
 
       tenantId = tenantUser.tenant_id;
-    }
 
-    // Modo sem Authorization: usar tenant_id explícito, ou fallback para o tenant com dados.
-    if (!tenantId) {
-      const { data: tenantFallback } = await supabase
-        .schema('people')
-        .from('colaboradores')
-        .select('tenant_id')
-        .limit(1);
-      tenantId = tenantFallback?.[0]?.tenant_id || "";
+      // Salário e adicional são folha de pagamento. Só quem tem a capacidade
+      // 'people.salario.read' (sócios + Jessika Lira) enxerga esses campos;
+      // para os demais, são zerados abaixo. Antes, qualquer logado via a folha.
+      const { data: canSalarioData } = await supabase.rpc(
+        "tem_capacidade_sensivel",
+        { p_user_id: user.id, p_capacidade: "people.salario.read" },
+      );
+      canSeeSalario = canSalarioData === true;
     }
 
     if (!tenantId) {
@@ -141,11 +150,11 @@ Deno.serve(async (req) => {
       cargo_id: item.cargo_id,
       cargo: item.cargo_nome ? { nome: item.cargo_nome } : null,
       foto_url: item.foto_url ?? null,
-      salario: item.salario ?? null,
+      salario: canSeeSalario ? (item.salario ?? null) : null,
       categoria: item.categoria ?? null,
       area_id: item.area_id ?? null,
       area_nome: item.area_nome ?? null,
-      adicional: item.adicional ?? null,
+      adicional: canSeeSalario ? (item.adicional ?? null) : null,
       eh_coordenador: item.eh_coordenador ?? false,
     })) || [];
 

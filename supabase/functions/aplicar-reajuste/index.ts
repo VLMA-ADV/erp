@@ -52,16 +52,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    let tenantId: string | null = null;
-    if (req.method === "POST") {
-      try {
-        const body = await req.json();
-        if (body && typeof body.tenant_id === "string" && body.tenant_id.trim().length > 0) {
-          tenantId = body.tenant_id.trim();
-        }
-      } catch {
-        // body opcional
-      }
+    // Tenant SEMPRE derivado do usuário autenticado — nunca do corpo.
+    // Antes aceitava body.tenant_id (reajuste cross-tenant) e, sem corpo,
+    // p_tenant_id=null reajustava TODOS os tenants.
+    const { data: tenantData, error: tenantErr } = await supabase.rpc("get_user_tenant", { p_user_id: user.id });
+    const tenantId = Array.isArray(tenantData) && tenantData.length > 0 ? tenantData[0].tenant_id : null;
+    if (tenantErr || !tenantId) {
+      return new Response(JSON.stringify({ error: "Usuário não associado a um tenant" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { data, error } = await supabase.rpc("aplicar_reajuste_casos", {
