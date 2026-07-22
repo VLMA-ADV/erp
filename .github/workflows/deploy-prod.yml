@@ -36,6 +36,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
+      # NOTA SEGURANÇA (22/07): removido `secrets: inherit` — passava TODOS os
+      # secrets do repo para a action externa. Só os 2 env necessários abaixo são
+      # expostos. TODO: pinar netlify/actions/cli num SHA fixo (hoje @master é mutável).
       - name: Deploy to Netlify (Production)
         uses: netlify/actions/cli@master
         env:
@@ -43,4 +46,3 @@ jobs:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_PROD }}
         with:
           args: deploy --prod --dir=.next
-          secrets: inherit

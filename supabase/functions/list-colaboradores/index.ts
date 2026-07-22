@@ -31,12 +31,21 @@ Deno.serve(async (req) => {
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "10");
     const areaId = url.searchParams.get("area_id") || "";
-    const tenantIdFromQuery = url.searchParams.get("tenant_id") || "";
     const offset = (page - 1) * limit;
 
-    let tenantId = tenantIdFromQuery;
+    // Autenticação OBRIGATÓRIA. Antes, sem Authorization o tenant vinha de um
+    // query param (?tenant_id=) ou de um fallback que pegava o 1º tenant, expondo
+    // a folha de pagamento (salário) sem login. Agora o tenant é SEMPRE derivado
+    // do usuário autenticado.
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    if (authHeader) {
+    let tenantId = "";
+    {
       const token = authHeader.replace("Bearer ", "");
       const {
         data: { user },
@@ -95,16 +104,6 @@ Deno.serve(async (req) => {
       }
 
       tenantId = tenantUser.tenant_id;
-    }
-
-    // Modo sem Authorization: usar tenant_id explícito, ou fallback para o tenant com dados.
-    if (!tenantId) {
-      const { data: tenantFallback } = await supabase
-        .schema('people')
-        .from('colaboradores')
-        .select('tenant_id')
-        .limit(1);
-      tenantId = tenantFallback?.[0]?.tenant_id || "";
     }
 
     if (!tenantId) {
