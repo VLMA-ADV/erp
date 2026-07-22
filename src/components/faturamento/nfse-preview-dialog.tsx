@@ -137,6 +137,11 @@ interface PreviewData {
     municipio: string
   }
   acumuladoMes: number
+  pagadorInfo: {
+    ambiguo?: boolean
+    has_rateio?: boolean
+    tomador_diferente_do_contrato?: boolean
+  } | null
 }
 
 export default function NfsePreviewDialog({
@@ -232,6 +237,7 @@ export default function NfsePreviewDialog({
           municipio: 'Curitiba/PR',
         },
         acumuladoMes,
+        pagadorInfo: dataset.pagador_info || null,
       })
     } catch (e) {
       console.error('NfsePreviewDialog.loadPreviewData', e)
@@ -381,6 +387,22 @@ export default function NfsePreviewDialog({
                 </p>
                 <p className="text-xs text-ink-mute">{data.prestador.endereco}</p>
               </div>
+
+              {data.pagadorInfo?.ambiguo ? (
+                <div className="mb-2 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900">
+                  <p className="font-semibold">Emissão bloqueada</p>
+                  <p className="mt-1">
+                    {data.pagadorInfo.has_rateio
+                      ? 'Há caso com rateio entre múltiplos pagadores.'
+                      : 'Os itens têm pagadores diferentes entre si.'}{' '}
+                    Ajuste os pagadores do caso ou fature separadamente por pagador — não é possível emitir uma única NFS-e.
+                  </p>
+                </div>
+              ) : data.pagadorInfo?.tomador_diferente_do_contrato ? (
+                <div className="mb-2 rounded-lg border border-brand-purple/30 bg-brand-purple-soft p-3 text-xs text-brand-purple-fg">
+                  O tomador é o <span className="font-semibold">pagador definido no caso</span>, diferente do cliente do contrato.
+                </div>
+              ) : null}
 
               <div className="border-b border-hairline pb-2 mb-2">
                 <p className="text-xs uppercase tracking-wide text-ink-mute">TOMADOR DOS SERVIÇOS</p>
@@ -555,7 +577,7 @@ export default function NfsePreviewDialog({
               <Button
                 className="bg-green-700 hover:bg-green-800 text-white"
                 onClick={() => onConfirmEmit(descricaoEdit)}
-                disabled={loading || !!error || !data || !descricaoEdit.trim()}
+                disabled={loading || !!error || !data || !descricaoEdit.trim() || !!data?.pagadorInfo?.ambiguo}
               >
                 <FileText className="mr-2 h-4 w-4" /> Confirmar e emitir
               </Button>
