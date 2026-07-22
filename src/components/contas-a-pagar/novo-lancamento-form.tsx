@@ -17,6 +17,7 @@ type Listas = {
   empresas: Opt[]
   contas_bancarias: { id: string; banco: string; descricao: string | null }[]
   plano_contas?: PlanoConta[]
+  fornecedores?: Opt[]
 }
 
 const emptyForm = {
@@ -155,7 +156,19 @@ export default function NovoLancamentoForm() {
         {form.natureza === 'pagar' && (
           <div>
             <label className={labelCls}>Fornecedor</label>
-            <input className={inputCls} value={form.fornecedor_nome} onChange={(e) => set('fornecedor_nome', e.target.value)} placeholder="Ex.: Imobiliária Saldanha Marinho Ltda" />
+            <input
+              className={inputCls}
+              list="cp-fornecedores"
+              value={form.fornecedor_nome}
+              onChange={(e) => set('fornecedor_nome', e.target.value)}
+              placeholder="Selecione ou digite o fornecedor"
+              autoComplete="off"
+            />
+            <datalist id="cp-fornecedores">
+              {(listas?.fornecedores || []).map((f) => (
+                <option key={f.id} value={f.nome} />
+              ))}
+            </datalist>
           </div>
         )}
 
