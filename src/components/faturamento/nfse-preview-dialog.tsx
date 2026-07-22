@@ -138,10 +138,11 @@ interface PreviewData {
   }
   acumuladoMes: number
   pagadorInfo: {
-    ambiguo?: boolean
-    has_rateio?: boolean
+    n_pagadores?: number
+    multi?: boolean
     tomador_diferente_do_contrato?: boolean
   } | null
+  pagadores: Array<{ cliente_id: string; cliente: any; valor_total: number }>
 }
 
 export default function NfsePreviewDialog({
@@ -238,6 +239,7 @@ export default function NfsePreviewDialog({
         },
         acumuladoMes,
         pagadorInfo: dataset.pagador_info || null,
+        pagadores: (dataset.pagadores || []) as PreviewData['pagadores'],
       })
     } catch (e) {
       console.error('NfsePreviewDialog.loadPreviewData', e)
@@ -388,15 +390,18 @@ export default function NfsePreviewDialog({
                 <p className="text-xs text-ink-mute">{data.prestador.endereco}</p>
               </div>
 
-              {data.pagadorInfo?.ambiguo ? (
-                <div className="mb-2 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900">
-                  <p className="font-semibold">Emissão bloqueada</p>
-                  <p className="mt-1">
-                    {data.pagadorInfo.has_rateio
-                      ? 'Há caso com rateio entre múltiplos pagadores.'
-                      : 'Os itens têm pagadores diferentes entre si.'}{' '}
-                    Ajuste os pagadores do caso ou fature separadamente por pagador — não é possível emitir uma única NFS-e.
-                  </p>
+              {data.pagadorInfo?.multi ? (
+                <div className="mb-2 rounded-lg border border-brand-purple/30 bg-brand-purple-soft p-3 text-xs text-brand-purple-fg">
+                  <p className="font-semibold">Rateio — {data.pagadores.length} pagadores → {data.pagadores.length} NFS-e</p>
+                  <p className="mt-1">Cada pagador recebe uma nota com a sua parte proporcional:</p>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {data.pagadores.map((p) => (
+                      <li key={p.cliente_id} className="flex justify-between gap-4">
+                        <span className="truncate">{p.cliente?.nome || p.cliente_id}</span>
+                        <span className="font-tabular font-semibold">{fmtMoney(p.valor_total)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : data.pagadorInfo?.tomador_diferente_do_contrato ? (
                 <div className="mb-2 rounded-lg border border-brand-purple/30 bg-brand-purple-soft p-3 text-xs text-brand-purple-fg">
@@ -577,7 +582,7 @@ export default function NfsePreviewDialog({
               <Button
                 className="bg-green-700 hover:bg-green-800 text-white"
                 onClick={() => onConfirmEmit(descricaoEdit)}
-                disabled={loading || !!error || !data || !descricaoEdit.trim() || !!data?.pagadorInfo?.ambiguo}
+                disabled={loading || !!error || !data || !descricaoEdit.trim()}
               >
                 <FileText className="mr-2 h-4 w-4" /> Confirmar e emitir
               </Button>
