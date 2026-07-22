@@ -10,8 +10,16 @@ const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutos em milissegundos
 
 interface CacheData {
   permissions: string[]
+  categoria: string | null
+  ehCoordenador: boolean
   timestamp: number
   userId: string
+}
+
+interface PermissionsPayload {
+  permissions: string[]
+  categoria: string | null
+  ehCoordenador: boolean
 }
 
 /**
@@ -26,6 +34,8 @@ interface CacheData {
  */
 export function usePermissions() {
   const [permissions, setPermissions] = useState<string[]>([])
+  const [categoria, setCategoria] = useState<string | null>(null)
+  const [ehCoordenador, setEhCoordenador] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
   const isLoadingRef = useRef(false)
 
@@ -68,32 +78,18 @@ export function usePermissions() {
   }, [getCacheKey])
 
   // Função para salvar no cache
-  const setCachedPermissions = useCallback(async (permissions: string[]) => {
+  const setCachedPermissions = useCallback(async (payload: PermissionsPayload) => {
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
       const cacheKey = `${CACHE_KEY_PREFIX}${session.user.id}`
-      const existing = localStorage.getItem(cacheKey)
-      if (existing) {
-        const existingCache = JSON.parse(existing) as CacheData
-        const samePermissions =
-          JSON.stringify(existingCache.permissions || []) === JSON.stringify(permissions || [])
-        if (samePermissions) {
-          localStorage.setItem(
-            cacheKey,
-            JSON.stringify({
-              ...existingCache,
-              timestamp: Date.now(),
-            } satisfies CacheData)
-          )
-          return
-        }
-      }
 
       const cacheData: CacheData = {
-        permissions,
+        permissions: payload.permissions,
+        categoria: payload.categoria,
+        ehCoordenador: payload.ehCoordenador,
         timestamp: Date.now(),
         userId: session.user.id,
       }
@@ -117,7 +113,8 @@ export function usePermissions() {
   }, [getCacheKey])
 
   // Função para buscar permissões da API
-  const fetchPermissions = useCallback(async (signal?: AbortSignal): Promise<string[]> => {
+  const fetchPermissions = useCallback(async (signal?: AbortSignal): Promise<PermissionsPayload> => {
+    const EMPTY: PermissionsPayload = { permissions: [], categoria: null, ehCoordenador: false }
     try {
       const supabase = createClient()
 
@@ -126,27 +123,27 @@ export function usePermissions() {
 
       if (sessionError || !session) {
         console.error('Session error:', sessionError)
-        return []
+        return EMPTY
       }
 
-      if (signal?.aborted) return []
+      if (signal?.aborted) return EMPTY
 
       // Garantir que o token está atualizado
       const { data: { user }, error: userError } = await supabase.auth.getUser()
 
       if (userError || !user) {
         console.error('User error:', userError)
-        return []
+        return EMPTY
       }
 
-      if (signal?.aborted) return []
+      if (signal?.aborted) return EMPTY
 
       // Obter token atualizado novamente após getUser
       const { data: { session: updatedSession } } = await supabase.auth.getSession()
 
       if (!updatedSession?.access_token) {
         console.error('No access token available')
-        return []
+        return EMPTY
       }
 
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-user-permissions`
@@ -162,12 +159,16 @@ export function usePermissions() {
 
       if (response.ok) {
         const data = await response.json()
-        const permissionsList = data.permissions || []
+        const payload: PermissionsPayload = {
+          permissions: data.permissions || [],
+          categoria: data.categoria ?? null,
+          ehCoordenador: Boolean(data.eh_coordenador),
+        }
 
         // Salvar no cache
-        await setCachedPermissions(permissionsList)
+        await setCachedPermissions(payload)
 
-        return permissionsList
+        return payload
       } else {
         const errorText = await response.text()
         let errorData
@@ -177,13 +178,13 @@ export function usePermissions() {
           errorData = { error: errorText }
         }
         console.error('Error fetching permissions:', errorData)
-        return []
+        return EMPTY
       }
     } catch (error) {
       // Caller cancelou (unmount/dependency change): silenciar
-      if (error instanceof DOMException && error.name === 'AbortError') return []
+      if (error instanceof DOMException && error.name === 'AbortError') return EMPTY
       console.error('Error fetching permissions:', error)
-      return []
+      return EMPTY
     }
   }, [setCachedPermissions])
 
@@ -203,15 +204,19 @@ export function usePermissions() {
 
         if (cached) {
           setPermissions(cached.permissions)
+          setCategoria(cached.categoria ?? null)
+          setEhCoordenador(Boolean(cached.ehCoordenador))
           setLoading(false)
 
           // Buscar atualizações em background (sem bloquear UI)
-          fetchPermissions(ac.signal).then((freshPermissions) => {
+          fetchPermissions(ac.signal).then((fresh) => {
             if (ac.signal.aborted) return
             // Só atualizar se as permissões mudaram
-            if (JSON.stringify(freshPermissions) !== JSON.stringify(cached.permissions)) {
-              setPermissions(freshPermissions)
+            if (JSON.stringify(fresh.permissions) !== JSON.stringify(cached.permissions)) {
+              setPermissions(fresh.permissions)
             }
+            setCategoria(fresh.categoria)
+            setEhCoordenador(fresh.ehCoordenador)
           }).catch((err) => {
             if (err instanceof DOMException && err.name === 'AbortError') return
             console.error(err)
@@ -219,9 +224,11 @@ export function usePermissions() {
         } else {
           // Sem cache: só aqui vale mostrar o loading (primeira carga real).
           setLoading(true)
-          const permissionsList = await fetchPermissions(ac.signal)
+          const payload = await fetchPermissions(ac.signal)
           if (ac.signal.aborted) return
-          setPermissions(permissionsList)
+          setPermissions(payload.permissions)
+          setCategoria(payload.categoria)
+          setEhCoordenador(payload.ehCoordenador)
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return
@@ -250,6 +257,8 @@ export function usePermissions() {
           return
         }
         setPermissions(cacheData.permissions)
+        setCategoria(cacheData.categoria ?? null)
+        setEhCoordenador(Boolean(cacheData.ehCoordenador))
       } catch {
         void loadPermissions()
       }
@@ -287,11 +296,19 @@ export function usePermissions() {
     return isPermissionSatisfied(permissions, permission)
   }, [permissions])
 
+  // Gestor de módulos = sócio ou coordenador. Só eles enxergam CRM/Contratos e
+  // os demais módulos gerenciais; o restante vê apenas Clientes/Timesheet/Despesas.
+  // Fail-safe: enquanto categoria não carrega, isGestorModulos = false (menu mínimo).
+  const isGestorModulos = categoria === 'socio' || ehCoordenador === true
+
   // Expor função para invalidar cache manualmente
-  return { 
-    permissions, 
-    loading, 
+  return {
+    permissions,
+    categoria,
+    ehCoordenador,
+    isGestorModulos,
+    loading,
     hasPermission,
-    invalidateCache 
+    invalidateCache
   }
 }

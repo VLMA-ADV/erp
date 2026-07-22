@@ -78,8 +78,25 @@ Deno.serve(async (req) => {
 
     console.log("Returning permissions:", uniquePermissions.length);
 
+    // Categoria + flag de coordenador do colaborador — usados no front para
+    // decidir a visibilidade de módulos (CRM/Contratos só p/ sócio e coordenador).
+    // Via RPC em public: o schema people não é exposto no PostgREST runtime.
+    let categoria: string | null = null;
+    let ehCoordenador = false;
+    const { data: perfilData } = await supabase
+      .rpc("get_meu_perfil_acesso", { p_user_id: user.id });
+    const perfil = Array.isArray(perfilData) ? perfilData[0] : perfilData;
+    if (perfil) {
+      categoria = (perfil as any).categoria ?? null;
+      ehCoordenador = Boolean((perfil as any).eh_coordenador);
+    }
+
     return new Response(
-      JSON.stringify({ permissions: uniquePermissions }),
+      JSON.stringify({
+        permissions: uniquePermissions,
+        categoria,
+        eh_coordenador: ehCoordenador,
+      }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

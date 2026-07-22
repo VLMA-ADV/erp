@@ -66,7 +66,7 @@ const menuItems = [
 export default function SidebarClient() {
   const pathname = usePathname()
   const router = useRouter()
-  const { hasPermission, loading, permissions } = usePermissionsContext()
+  const { hasPermission, loading, permissions, isGestorModulos } = usePermissionsContext()
 
   const handleLogout = async () => {
     try {
@@ -96,15 +96,53 @@ export default function SidebarClient() {
     )
   }
 
-  // Se não houver permissões mas não estiver carregando, mostrar todos os itens (fallback temporário)
-  const showAllItems = !loading && permissions.length === 0
-  
-  // Criar uma função hasPermission que sempre retorna true se showAllItems
-  const checkPermission = (permission: string) => {
-    if (showAllItems) {
-      return true
-    }
-    return hasPermission(permission)
+  // Gate de módulos por perfil (pedido Filipe 22/07): CRM, Contratos, Financeiro,
+  // PDI e os demais módulos gerenciais só aparecem para SÓCIO ou COORDENADOR.
+  // Todos os outros (advogado, estagiário, administrativo não-coordenador) veem
+  // apenas Clientes, Timesheet e Despesas — o suficiente para localizar cliente/caso
+  // e lançar horas/despesas. Fail-safe: se o perfil ainda não carregou,
+  // isGestorModulos = false → menu mínimo (nunca abre tudo por engano, como
+  // acontecia no antigo "showAllItems").
+  const checkPermission = (permission: string) => hasPermission(permission)
+
+  // Menu enxuto para quem não é gestor de módulos.
+  if (!isGestorModulos) {
+    const minItems = [
+      { label: 'Clientes', href: '/pessoas/clientes' },
+      { label: 'Timesheet', href: '/timesheet' },
+      { label: 'Despesas dos casos', href: '/despesas' },
+    ]
+    return (
+      <Sidebar className="bg-brand-purple-soft border-r-brand-purple/15">
+        <SidebarHeader>
+          <div className="text-ink"><VlmaLogo className="h-5 w-auto" /></div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="text-sm font-medium text-ink">ERP</span>
+            <Novidades />
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          {minItems.map((item) => (
+            <SidebarItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              active={pathname === item.href}
+            />
+          ))}
+        </SidebarContent>
+        <SidebarFooter>
+          <Link href="/perfil" className="w-full">
+            <Button variant="ghost" className="w-full justify-center">
+              Meu perfil
+            </Button>
+          </Link>
+          <Button variant="outline" className="w-full" onClick={handleLogout}>
+            Sair
+          </Button>
+        </SidebarFooter>
+      </Sidebar>
+    )
   }
 
   return (
