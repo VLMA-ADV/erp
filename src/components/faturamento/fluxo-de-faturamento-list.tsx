@@ -235,6 +235,27 @@ function formatStatus(value: string) {
   }
 }
 
+// Cor por status (pedido cliente): Aprovado = roxo (marca), Faturado = verde.
+function statusTextClass(label: string) {
+  if (label === 'Aprovado') return 'text-brand-purple-fg font-medium'
+  if (label === 'Faturado') return 'text-green-700 font-medium'
+  return ''
+}
+
+function StatusBadge({ label }: { label: string }) {
+  const cls =
+    label === 'Aprovado'
+      ? 'bg-brand-purple-soft text-brand-purple-fg'
+      : label === 'Faturado'
+        ? 'bg-green-100 text-green-700'
+        : 'bg-canvas-soft text-ink-mute'
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {label}
+    </span>
+  )
+}
+
 function getDetalheRowClass(status: RevisaoItem['status']) {
   if (status === 'em_revisao') return 'bg-yellow-50'
   if (status === 'aprovado') return 'bg-green-50'
@@ -1314,7 +1335,7 @@ export default function FluxoDeFaturamentoList() {
                                                   {casoG.numero ? `${casoG.numero} - ` : ''}{casoG.nome}
                                                 </span>
                                                 <span className="block truncate text-xs text-ink-mute">
-                                                  {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} h · {casoSummary.status} · {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
+                                                  {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} h · <span className={statusTextClass(casoSummary.status)}>{casoSummary.status}</span> · {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
                                                 </span>
                                               </span>
                                             </button>
@@ -1453,7 +1474,7 @@ export default function FluxoDeFaturamentoList() {
                                                             )
                                                           })()}
                                                         </td>
-                                                        <td className="px-3 py-2 text-sm">{detalhe.statusLabel}</td>
+                                                        <td className="px-3 py-2 text-sm"><StatusBadge label={detalhe.statusLabel} /></td>
                                                         <td className="px-3 py-2 text-sm">{detalhe.responsavelAtual}</td>
                                                         <td className="px-3 py-2 text-sm font-tabular">{formatHours(detalhe.horas)}</td>
                                                         <td className="px-3 py-2 text-right text-sm font-tabular">

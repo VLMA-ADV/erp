@@ -60,6 +60,21 @@ Deno.serve(async (req) => {
     const tomador = dataset.tomador as Record<string, any> | null
     const grupo = dataset.grupo_imposto as Record<string, any> | null
     const contrato = dataset.contrato as Record<string, any> | null
+    const pagadorInfo = (dataset.pagador_info ?? {}) as Record<string, any>
+
+    // Pagadores do caso: o tomador é resolvido pelo pagador do caso (não pelo
+    // cliente do contrato). Quando os itens têm pagadores divergentes entre si
+    // ou um caso com rateio multi-pagador, a emissão é AMBÍGUA — bloqueia aqui
+    // em vez de faturar na entidade errada. (Split em N notas: fase seguinte.)
+    if (pagadorInfo.ambiguo === true) {
+      const motivo = pagadorInfo.has_rateio
+        ? "há caso com rateio entre múltiplos pagadores"
+        : "os itens têm pagadores diferentes entre si"
+      return new Response(
+        JSON.stringify({ error: `Não é possível emitir uma única NFS-e: ${motivo}. Ajuste os pagadores do caso ou fature os itens separadamente por pagador.` }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
 
     if (!tomador) return new Response(JSON.stringify({ error: "Cliente do contrato não encontrado." }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
@@ -131,7 +146,10 @@ Deno.serve(async (req) => {
     // Pós-Reforma Tributária a retenção de PIS+COFINS+CSLL é UNIFICADA na tag
     // vRetCSLL (campo `valor_csll`); `valor_pis`/`valor_cofins` carregam só o
     // débito de apuração própria do prestador. Comprovado pela NFS-e 1386 (Curitiba).
-    const clienteId = contrato?.cliente_id ?? (tomador as any)?.id ?? null
+    // Acumulado mensal para os mínimos de retenção é por TOMADOR (o pagador que
+    // recebe a nota), não pelo cliente do contrato. Como o tomador já vem
+    // resolvido pelo pagador do caso, prioriza o id dele.
+    const clienteId = (tomador as any)?.id ?? contrato?.cliente_id ?? null
     let acumuladoMes = 0
     if (clienteId) {
       const { data: acum } = await supabase.rpc("get_client_month_accumulated_value", {
