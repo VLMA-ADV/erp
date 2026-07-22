@@ -103,6 +103,18 @@ Deno.serve(async (req) => {
     // Override: se o usuário editou a descrição na prévia, usa o texto dele.
     const descricaoFinal = (descricaoOverride && descricaoOverride.trim()) ? descricaoOverride.trim() : discriminacao
 
+    // ── Idempotência ──────────────────────────────────────────────────────────
+    // Reserva atômica dos itens (aprovado -> faturado) ANTES de alocar DPS e
+    // chamar a Focus. Impede dupla emissão: um 2º clique (mesmo simultâneo) não
+    // encontra mais itens 'aprovado' e é barrado aqui. Se a Focus recusar, o
+    // claim é revertido mais abaixo. All-or-nothing: só segue se reservar todos.
+    const itemIds = itens.map((i) => i.id)
+    const { data: claimed, error: claimErr } = await supabase.rpc("claim_itens_faturamento", { p_user_id: user.id, p_tenant_id: tenantId, p_item_ids: itemIds })
+    if (claimErr) return new Response(JSON.stringify({ error: "Falha ao reservar itens para faturamento", details: claimErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    if (Number(claimed) !== itemIds.length) {
+      return new Response(JSON.stringify({ error: "Estes itens já estão sendo faturados ou já foram faturados. Atualize a página e verifique as notas emitidas." }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    }
+
     const { data: numeroDps } = await supabase.rpc("allocate_numero_dps", { p_tenant_id: tenantId })
 
     const focusToken = Deno.env.get("FOCUS_NFE_TOKEN") ?? ""
@@ -254,6 +266,10 @@ Deno.serve(async (req) => {
     })
 
     if (!accepted) {
+      // A Focus recusou: devolve os itens para 'aprovado' (compensa o claim) para
+      // que o usuário possa corrigir e reemitir. A nota fica registrada como
+      // 'cancelado' acima, com o motivo da recusa no metadata.
+      await supabase.rpc("reverter_itens_faturamento", { p_user_id: user.id, p_tenant_id: tenantId, p_item_ids: itemIds })
       return new Response(JSON.stringify({ error: "Focus NFe recusou a solicitação", focus_response: focusBody, ref, nota_id: noteId }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
