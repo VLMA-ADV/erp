@@ -5,6 +5,9 @@ import { usePermissions } from '@/lib/hooks/use-permissions'
 
 interface PermissionsContextType {
   permissions: string[]
+  categoria: string | null
+  ehCoordenador: boolean
+  isGestorModulos: boolean
   loading: boolean
   hasPermission: (permission: string) => boolean
   invalidateCache: () => Promise<void>
@@ -13,17 +16,20 @@ interface PermissionsContextType {
 const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined)
 
 export function PermissionsProvider({ children }: { children: React.ReactNode }) {
-  const { permissions, loading, hasPermission, invalidateCache } = usePermissions()
+  const { permissions, categoria, ehCoordenador, isGestorModulos, loading, hasPermission, invalidateCache } = usePermissions()
 
   // Memoizar o valor do contexto para evitar re-renders desnecessários
   const value = useMemo(
     () => ({
       permissions,
+      categoria,
+      ehCoordenador,
+      isGestorModulos,
       loading,
       hasPermission,
       invalidateCache,
     }),
-    [permissions, loading, hasPermission, invalidateCache]
+    [permissions, categoria, ehCoordenador, isGestorModulos, loading, hasPermission, invalidateCache]
   )
 
   return (
