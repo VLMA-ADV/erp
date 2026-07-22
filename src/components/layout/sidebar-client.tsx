@@ -111,6 +111,10 @@ export default function SidebarClient() {
       { label: 'Clientes', href: '/pessoas/clientes' },
       { label: 'Timesheet', href: '/timesheet' },
       { label: 'Despesas dos casos', href: '/despesas' },
+      // Todo colaborador enxerga e edita o PRÓPRIO PDI (autoavaliação do ciclo).
+      // Vai direto para /meu — a página é escopada ao próprio usuário
+      // (get_minha_avaliacao_pdi); o hub /avaliacoes-pdi é para gestores.
+      { label: 'Meu PDI', href: '/avaliacoes-pdi/meu' },
     ]
     return (
       <Sidebar className="bg-brand-purple-soft border-r-brand-purple/15">
