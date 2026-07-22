@@ -41,6 +41,11 @@ Deno.serve(async (req) => {
     const { data: tenantId } = await supabase.rpc("get_tenant_for_user", { p_user_id: user.id })
     if (!tenantId) return new Response(JSON.stringify({ error: "Usuário não associado a tenant" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
+    // Emitir NFS-e é restrito à capacidade 'finance.nfse.manage' (sócios + Jessika
+    // Lira). Antes, qualquer usuário autenticado conseguia disparar emissão fiscal.
+    const { data: podeNfse } = await supabase.rpc("tem_capacidade_sensivel", { p_user_id: user.id, p_capacidade: "finance.nfse.manage" })
+    if (podeNfse !== true) return new Response(JSON.stringify({ error: "Sem permissão para emitir NFS-e" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+
     const body = await req.json()
     const { contrato_id, descricao_servico: descricaoOverride } = body as { contrato_id?: string; descricao_servico?: string }
     if (!contrato_id) return new Response(JSON.stringify({ error: "contrato_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } })

@@ -82,23 +82,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check permission usando função RPC
-    const { data: permissionsData, error: permissionsError } = await supabase
-      .rpc('get_user_permissions', { p_user_id: user.id });
+    // Criar colaborador + conta de acesso é restrito à capacidade 'people.create'
+    // (hoje só o Filipe). Antes, a checagem era um no-op e qualquer usuário
+    // autenticado conseguia criar contas.
+    const { data: podeCriar, error: capErr } = await supabase
+      .rpc('tem_capacidade_sensivel', {
+        p_user_id: user.id,
+        p_capacidade: 'people.create',
+      });
 
-    if (permissionsError) {
-      console.error("Permissions error:", permissionsError);
-      // Não bloquear se não houver permissões específicas, apenas logar
-    }
-
-    // Verificar se tem permissões (opcional, não bloquear por enquanto)
-    const hasCreatePermission = permissionsData?.some((p: any) => 
-      p.permission_key === 'people.colaboradores.write' ||
-      p.permission_key === 'people.colaboradores.*'
-    );
-
-    if (!hasCreatePermission && permissionsData && permissionsData.length > 0) {
-      console.warn("User does not have explicit create permissions for collaborators.");
+    if (capErr || podeCriar !== true) {
+      return new Response(
+        JSON.stringify({ error: "Sem permissão para criar colaboradores" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const body = await req.json();

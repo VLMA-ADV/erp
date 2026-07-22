@@ -38,6 +38,10 @@ Deno.serve(async (req) => {
     const { data: tenantId } = await supabase.rpc("get_tenant_for_user", { p_user_id: user.id })
     if (!tenantId) return jsonResponse({ error: "Usuário não associado a tenant" }, 403)
 
+    // Cancelar NFS-e é restrito à capacidade 'finance.nfse.manage' (sócios + Jessika Lira).
+    const { data: podeNfse } = await supabase.rpc("tem_capacidade_sensivel", { p_user_id: user.id, p_capacidade: "finance.nfse.manage" })
+    if (podeNfse !== true) return jsonResponse({ error: "Sem permissão para cancelar NFS-e" }, 403)
+
     const body = await req.json().catch(() => ({}))
     const notaId: string | undefined = body.nota_id
     const justificativa: string = String(body.justificativa || "").trim() || "Cancelamento solicitado pelo prestador (emissão indevida)."

@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
     }
 
     let tenantId = "";
+    let canSeeSalario = false;
     {
       const token = authHeader.replace("Bearer ", "");
       const {
@@ -104,6 +105,15 @@ Deno.serve(async (req) => {
       }
 
       tenantId = tenantUser.tenant_id;
+
+      // Salário e adicional são folha de pagamento. Só quem tem a capacidade
+      // 'people.salario.read' (sócios + Jessika Lira) enxerga esses campos;
+      // para os demais, são zerados abaixo. Antes, qualquer logado via a folha.
+      const { data: canSalarioData } = await supabase.rpc(
+        "tem_capacidade_sensivel",
+        { p_user_id: user.id, p_capacidade: "people.salario.read" },
+      );
+      canSeeSalario = canSalarioData === true;
     }
 
     if (!tenantId) {
@@ -140,11 +150,11 @@ Deno.serve(async (req) => {
       cargo_id: item.cargo_id,
       cargo: item.cargo_nome ? { nome: item.cargo_nome } : null,
       foto_url: item.foto_url ?? null,
-      salario: item.salario ?? null,
+      salario: canSeeSalario ? (item.salario ?? null) : null,
       categoria: item.categoria ?? null,
       area_id: item.area_id ?? null,
       area_nome: item.area_nome ?? null,
-      adicional: item.adicional ?? null,
+      adicional: canSeeSalario ? (item.adicional ?? null) : null,
       eh_coordenador: item.eh_coordenador ?? false,
     })) || [];
 
