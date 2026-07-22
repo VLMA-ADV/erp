@@ -971,13 +971,24 @@ export default function FluxoDeFaturamentoList() {
         toastError(payload.error || 'Focus NFe recusou a emissão')
         return
       }
+      // Emissão parcial (rateio: alguma nota recusada) — HTTP 207.
+      if (payload.partial) {
+        toastError(payload.message || 'Emissão parcial — alguns pagadores foram recusados.')
+        await loadContratosEmRevisao()
+        return
+      }
       setNfseResult({
         ref: String(payload.ref),
         valor_total: Number(payload.valor_total),
         focus_status: String(payload.focus_status ?? 'pendente'),
         nota_id: payload.nota_id ?? null,
       })
-      success(`NFS-e enviada para Focus NFe (${label}). Status: ${payload.focus_status}`)
+      const nNotas = Number(payload.n_notas ?? 1)
+      success(
+        nNotas > 1
+          ? `${nNotas} NFS-e enviadas (rateio) para ${label}. Status: ${payload.focus_status}`
+          : `NFS-e enviada para Focus NFe (${label}). Status: ${payload.focus_status}`,
+      )
     } catch (e) {
       console.error('emitNfse', e)
       toastError('Erro ao emitir NFS-e')
