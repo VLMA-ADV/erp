@@ -21,11 +21,13 @@ function hasWritePermission(permissionKeys: string[]) {
 
 export async function POST(req: NextRequest) {
   const supabaseServer = await createServerClient()
+  // getUser() valida o JWT com o Auth (getSession só lê o cookie). Gate de servidor.
   const {
-    data: { session },
-  } = await supabaseServer.auth.getSession()
+    data: { user },
+    error: userErr,
+  } = await supabaseServer.auth.getUser()
 
-  if (!session) {
+  if (userErr || !user) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data: permissionsData, error: permissionsError } = await supabaseServer.rpc('get_user_permissions', {
-    p_user_id: session.user.id,
+    p_user_id: user.id,
   })
 
   if (permissionsError) {
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
   })
 
   const { data, error } = await adminClient.rpc('import_clientes_csv_lote', {
-    p_user_id: session.user.id,
+    p_user_id: user.id,
     p_items: parsed.data.rows,
   })
 

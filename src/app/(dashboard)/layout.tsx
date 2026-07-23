@@ -29,19 +29,22 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  let session = null
-  
+  let user = null
+
   try {
     const supabase = await createClient()
-    const { data } = await supabase.auth.getSession()
-    session = data.session
+    // getUser() valida o JWT com o servidor de Auth (getSession só lê o cookie,
+    // sem revalidar). Em gate de servidor, usar getUser é o correto.
+    const { data, error } = await supabase.auth.getUser()
+    if (error) throw error
+    user = data.user
   } catch (error) {
     console.error('Error in DashboardLayout:', error)
-    // Se houver erro ao criar cliente, redireciona para login
+    // Se houver erro ao validar o usuário, redireciona para login
     redirect('/login')
   }
 
-  if (!session) {
+  if (!user) {
     redirect('/login')
   }
 
