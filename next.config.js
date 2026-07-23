@@ -19,9 +19,10 @@ const csp = [
 ].join('; ')
 
 const securityHeaders = [
-  // CSP em modo de RELATÓRIO — não bloqueia, só reportaria. Trocar o nome do
-  // header para 'Content-Security-Policy' quando validado (zero violação).
-  { key: 'Content-Security-Policy-Report-Only', value: csp },
+  // CSP ENFORCING. Validado em prod (report-only) com zero violação em
+  // home/timesheet/clientes/CRM + ViaCEP + imagens data:. connect-src cobre
+  // Supabase (REST/Functions/Realtime) e ViaCEP.
+  { key: 'Content-Security-Policy', value: csp },
   { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
