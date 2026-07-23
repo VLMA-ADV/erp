@@ -5,8 +5,9 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 export async function POST(req: NextRequest) {
   // Verificar autenticação e permissão admin do solicitante
   const supabaseServer = await createServerClient()
-  const { data: { session } } = await supabaseServer.auth.getSession()
-  if (!session) {
+  // getUser() valida o JWT com o Auth (getSession só lê o cookie). Gate de servidor.
+  const { data: { user: authUser }, error: userErr } = await supabaseServer.auth.getUser()
+  if (userErr || !authUser) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
   // qualquer usuário logado conseguia resetar a senha de qualquer conta.
   const { data: podeResetar, error: capErr } = await supabaseServer.rpc(
     'tem_capacidade_sensivel',
-    { p_user_id: session.user.id, p_capacidade: 'users.reset_password' },
+    { p_user_id: authUser.id, p_capacidade: 'users.reset_password' },
   )
   if (capErr || podeResetar !== true) {
     return NextResponse.json(
