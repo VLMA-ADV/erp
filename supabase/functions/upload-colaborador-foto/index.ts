@@ -62,9 +62,9 @@ Deno.serve(async (req) => {
     });
     if (upErr) return json({ error: upErr.message }, 500);
 
-    // URL público + cache-buster (upsert mantém o mesmo path)
-    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    const fotoUrl = `${pub.publicUrl}?v=${Date.now()}`;
+    // Bucket privado: guarda o PATH do objeto (não a URL pública). Quem lê
+    // (list-colaboradores, timesheet) gera uma signed URL temporária na hora.
+    const fotoUrl = path;
 
     const { error: setErr } = await supabase.rpc("set_colaborador_foto", {
       p_user_id: user.id,

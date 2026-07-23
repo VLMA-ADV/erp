@@ -7,6 +7,21 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const FOTO_BUCKET = "colaboradores-fotos";
+
+// Extrai o caminho do objeto no bucket a partir do foto_url armazenado, que pode
+// estar em 2 formatos: URL pública antiga (.../colaboradores-fotos/<path>?v=) ou
+// já o próprio path (uploads novos). Retorna null se não houver foto.
+function fotoPath(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const s = String(v).split("?")[0];
+  const marker = "/colaboradores-fotos/";
+  const i = s.indexOf(marker);
+  if (i >= 0) return s.slice(i + marker.length);
+  if (!/^https?:\/\//i.test(s)) return s; // já é um path
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -157,6 +172,27 @@ Deno.serve(async (req) => {
       adicional: canSeeSalario ? (item.adicional ?? null) : null,
       eh_coordenador: item.eh_coordenador ?? false,
     })) || [];
+
+    // Bucket privado: troca a foto (URL pública ou path) por uma signed URL
+    // temporária (1h). createSignedUrls é em lote (1 chamada) e usa service role
+    // (ignora RLS). Se falhar para algum path, mantém o valor original.
+    try {
+      const pathByIndex = transformedData.map((d: any) => fotoPath(d.foto_url));
+      const paths = Array.from(new Set(pathByIndex.filter(Boolean))) as string[];
+      if (paths.length > 0) {
+        const { data: signed } = await supabase.storage.from(FOTO_BUCKET).createSignedUrls(paths, 3600);
+        const byPath = new Map<string, string>();
+        for (const s of signed || []) {
+          if ((s as any).signedUrl && (s as any).path) byPath.set((s as any).path, (s as any).signedUrl);
+        }
+        transformedData.forEach((d: any, idx: number) => {
+          const p = pathByIndex[idx];
+          if (p && byPath.has(p)) d.foto_url = byPath.get(p);
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao assinar fotos:", e);
+    }
 
     if (queryError) {
       console.error("Query error:", queryError);

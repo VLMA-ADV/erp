@@ -272,7 +272,28 @@ export default function TimesheetHome() {
   }, [])
 
   const nome = data?.perfil?.nome ? nomeExibicao(data.perfil.nome) : fallbackNome
-  const foto = data?.perfil?.foto_url || null
+
+  // Bucket de fotos é privado: o foto_url pode vir como URL pública antiga ou já
+  // como path; extrai o path e gera uma signed URL temporária para exibir.
+  const [foto, setFoto] = useState<string | null>(null)
+  useEffect(() => {
+    const raw = data?.perfil?.foto_url || null
+    if (!raw) { setFoto(null); return }
+    const s = String(raw).split('?')[0]
+    const marker = '/colaboradores-fotos/'
+    const i = s.indexOf(marker)
+    const path = i >= 0 ? s.slice(i + marker.length) : (/^https?:\/\//i.test(s) ? null : s)
+    if (!path) { setFoto(raw); return }
+    let cancel = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data: signed } = await supabase.storage.from('colaboradores-fotos').createSignedUrl(path, 3600)
+        if (!cancel) setFoto(signed?.signedUrl || null)
+      } catch { if (!cancel) setFoto(null) }
+    })()
+    return () => { cancel = true }
+  }, [data?.perfil?.foto_url])
   const iniciais = (nome || '?')
     .split(/\s+/)
     .filter(Boolean)
