@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { CircleDollarSign } from 'lucide-react'
+import { CircleDollarSign, ListTree } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 interface SidebarMenuConfiguracaoProps {
@@ -36,6 +36,12 @@ const configuracaoMenuItems = [
     href: '/configuracao/salario-minimo',
     permission: 'config.salario_minimo.read',
     icon: CircleDollarSign,
+  },
+  {
+    label: 'Plano de Contas',
+    href: '/configuracao/plano-de-contas',
+    permission: 'finance.contas_pagar.read',
+    icon: ListTree,
   },
   {
     label: 'Categorias Prest/Parc',
