@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import NfsePreviewDialog from './nfse-preview-dialog'
 
 interface RevisaoItem {
@@ -2108,12 +2109,11 @@ export default function RevisaoDeFaturaList() {
                       // O CasoGroup não carrega o contrato; ele vem dos itens. A NFS-e é
                       // emitida por contrato, então é esse id que vai para a prévia/emissão.
                       const casoContratoId = casoGroup.itens[0]?.contratoId || ''
-                      const casoContratoNumero = casoGroup.itens[0]?.contratoNumero
-                      const casoContratoNome = casoGroup.itens[0]?.contratoNome || ''
-                      const casoLabelNfse = [
-                        casoContratoNumero ? `Contrato ${casoContratoNumero}` : null,
-                        casoContratoNome || clienteGroup.nome,
-                      ].filter(Boolean).join(' · ')
+                      // Mesmo formato de contrato usado no resto do sistema.
+                      const casoLabelNfse = formatContratoDisplay(
+                        casoGroup.itens[0]?.contratoNumero,
+                        casoGroup.itens[0]?.contratoNome,
+                      ).full
 
                       return (
                         <div key={casoGroup.key} className="rounded-xl border border-hairline">
