@@ -1816,7 +1816,7 @@ export default function RevisaoDeFaturaList() {
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
           </span>
           <span>
-            {statusSummary.revisao} aguarda(m) revisão · {statusSummary.aprovacao} aguarda(m) aprovação · {statusSummary.aprovado} aprovado(s)
+            {statusSummary.revisao} liberado(s) · {statusSummary.aprovacao} revisado(s) · {statusSummary.aprovado} aprovado(s)
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -2126,12 +2126,17 @@ export default function RevisaoDeFaturaList() {
                                 const draft = drafts[item.id]
                                 const busy = busyKey === key || busyKey === `advance:${item.id}` || busyKey === batchKey || busyKey === `${mode}:${item.id}`
                                 const isEditing = editorKey === key
+                                // Linguagem de 4 badges (Fase 1): Liberado -> Revisado -> Aprovado -> Faturado.
+                                // Mapeia os estados atuais: em_revisao = liberado p/ revisão (laranja);
+                                // em_aprovacao = já revisado (verde); aprovado (roxo); faturado (branco).
                                 const badge =
                                   item.status === 'em_revisao'
-                                    ? { label: 'Aguarda revisão', cls: 'bg-amber-100 text-amber-800' }
+                                    ? { label: 'Liberado', cls: 'bg-amber-100 text-amber-800' }
                                     : item.status === 'em_aprovacao'
-                                      ? { label: 'Aguarda aprovação', cls: 'bg-indigo-100 text-indigo-700' }
-                                      : { label: 'Aprovado', cls: 'bg-emerald-100 text-emerald-700' }
+                                      ? { label: 'Revisado', cls: 'bg-emerald-100 text-emerald-700' }
+                                      : item.status === 'aprovado'
+                                        ? { label: 'Aprovado', cls: 'bg-purple-100 text-purple-700' }
+                                        : { label: 'Faturado', cls: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200' }
                                 const envioData = item.timesheetDataLancamento || item.dataReferencia
                                 const envioTexto = mode === 'timesheet' ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
                                 const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
