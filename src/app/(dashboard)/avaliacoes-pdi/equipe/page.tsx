@@ -8,7 +8,8 @@ import { createClient } from '@/lib/supabase/client'
 const ANO = 2026
 
 interface Item {
-  id: string
+  // null quando a pessoa ainda não tem avaliação no ciclo (nada para abrir).
+  id: string | null
   status: string
   faixa_final_geral: string | null
   resultado: string | null
@@ -24,6 +25,7 @@ interface Item {
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
+  nao_iniciada: { label: 'Não iniciada', cls: 'bg-canvas-soft text-ink-mute' },
   rascunho: { label: 'Rascunho', cls: 'bg-secondary text-ink-secondary' },
   autoavaliacao_enviada: { label: 'Autoavaliação enviada', cls: 'bg-amber-50 text-amber-700' },
   em_avaliacao_gestor: { label: 'Em avaliação', cls: 'bg-brand-purple-soft text-brand-purple-fg' },
@@ -39,6 +41,7 @@ const RESULTADO_LABEL: Record<string, string> = {
 
 export default function EquipePdiPage() {
   const [itens, setItens] = useState<Item[]>([])
+  const [totais, setTotais] = useState<{ total: number; iniciadas: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -49,7 +52,13 @@ export default function EquipePdiPage() {
       const supabase = createClient()
       const { data, error: err } = await supabase.rpc('get_equipe_avaliacoes_pdi', { p_ano: ANO })
       if (err) { setError(err.message); return }
-      setItens(((data as { itens: Item[] })?.itens) || [])
+      const resp = data as { itens: Item[]; total_pessoas?: number; iniciadas?: number }
+      setItens(resp?.itens || [])
+      setTotais(
+        typeof resp?.total_pessoas === 'number' && typeof resp?.iniciadas === 'number'
+          ? { total: resp.total_pessoas, iniciadas: resp.iniciadas }
+          : null,
+      )
     } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
   }, [])
 
@@ -69,9 +78,8 @@ export default function EquipePdiPage() {
 
   const Linha = (i: Item) => {
     const st = STATUS_META[i.status] || STATUS_META.rascunho
-    return (
-      <Link key={i.id} href={`/avaliacoes-pdi/equipe/${i.id}`}
-        className="flex items-center gap-3 border-b border-hairline px-4 py-3 last:border-b-0 hover:bg-canvas-soft">
+    const conteudo = (
+      <>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">{i.colaborador_nome}</p>
           <p className="truncate text-xs text-ink-mute">
@@ -80,6 +88,24 @@ export default function EquipePdiPage() {
         </div>
         {i.faixa_final_geral ? <span className="hidden shrink-0 rounded-full border border-hairline bg-card px-2.5 py-1 text-[11px] text-ink-secondary sm:inline">{i.resultado ? RESULTADO_LABEL[i.resultado] : i.faixa_final_geral}</span> : null}
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+      </>
+    )
+    const base = 'flex items-center gap-3 border-b border-hairline px-4 py-3 last:border-b-0'
+
+    // Sem avaliação no ciclo: não há o que abrir — a linha existe só para o gestor
+    // enxergar quem ainda não começou (a avaliação nasce quando a pessoa abre "Meu PDI").
+    if (!i.id) {
+      return (
+        <div key={`sem-avaliacao-${i.colaborador_nome}`} className={base} title="Aguardando a autoavaliação da pessoa">
+          {conteudo}
+          <span className="h-4 w-4 shrink-0" aria-hidden />
+        </div>
+      )
+    }
+
+    return (
+      <Link key={i.id} href={`/avaliacoes-pdi/equipe/${i.id}`} className={`${base} hover:bg-canvas-soft`}>
+        {conteudo}
         <ChevronRight className="h-4 w-4 shrink-0 text-ink-mute" />
       </Link>
     )
@@ -91,6 +117,12 @@ export default function EquipePdiPage() {
         <span className="text-eyebrow">PESSOAS · PDI {ANO}</span>
         <h1 className="mt-2 display-lg text-ink">Avaliações da equipe</h1>
         <p className="mt-2 text-sm text-ink-mute">Revise as autoavaliações, atribua a faixa final e aplique a progressão.</p>
+        {totais ? (
+          <p className="mt-2 text-sm text-ink-secondary">
+            <strong className="font-medium text-ink">{totais.iniciadas} de {totais.total}</strong> avaliações iniciadas
+            {totais.total > totais.iniciadas ? ` · ${totais.total - totais.iniciadas} ainda não começaram` : null}
+          </p>
+        ) : null}
         <Link href="/avaliacoes-pdi" className="mt-3 inline-block text-sm text-primary underline underline-offset-2">← Avaliações PDI</Link>
       </header>
 
