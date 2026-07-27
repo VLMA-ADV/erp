@@ -139,6 +139,8 @@ export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true,
       setOpen(false)
       setPreview(null)
       onSuccess?.()
+      // Avisa quem estiver na mesma tela (ex.: revisão consolidada) p/ refetch imediato.
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('faturamento:gerado'))
       if (redirectAfterSuccess) {
         router.push('/financeiro/fluxo-de-faturamento')
         router.refresh()

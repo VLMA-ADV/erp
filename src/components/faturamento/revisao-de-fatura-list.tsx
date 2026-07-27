@@ -1003,12 +1003,16 @@ export default function RevisaoDeFaturaList() {
     const refresh = () => {
       if (document.visibilityState === 'visible') void loadItemsRef.current?.({ silent: true })
     }
+    // Refetch imediato quando o "Gerar faturamento do mês" (no topo desta tela) roda.
+    const onGerado = () => void loadItemsRef.current?.({ silent: true })
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('faturamento:gerado', onGerado)
     const interval = window.setInterval(refresh, 60_000)
     return () => {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('faturamento:gerado', onGerado)
       window.clearInterval(interval)
     }
   }, [canRead])
