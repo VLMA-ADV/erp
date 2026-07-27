@@ -1366,7 +1366,9 @@ export default function RevisaoDeFaturaList() {
 
       const liveHours = getLiveItemHours(item, mode)
       const liveValue = getLiveItemValue(item, mode)
-      if (item.status === 'em_aprovacao') {
+      // 'aprovado' também grava nos campos de aprovação: a edição completa da
+      // etapa final (Jessika) altera o valor aprovado sem mudar de etapa.
+      if (item.status === 'em_aprovacao' || item.status === 'aprovado') {
         body.horas_aprovadas = liveHours
         body.valor_aprovado = liveValue
       } else {
@@ -2428,7 +2430,7 @@ export default function RevisaoDeFaturaList() {
                                           </td>
                                         </tr>
 
-                                        {editorKey === `apr:${key}` && item.status === 'em_aprovacao' ? (
+                                        {editorKey === `apr:${key}` && (item.status === 'em_aprovacao' || item.status === 'aprovado') ? (
                                           <tr className="border-t bg-canvas-soft/60">
                                             <td colSpan={6} className="px-4 py-3">
                                               <div className="space-y-3 rounded-lg border bg-white p-4">
@@ -2563,11 +2565,13 @@ export default function RevisaoDeFaturaList() {
                                                     className="bg-indigo-600 text-white hover:bg-indigo-700"
                                                     onClick={() => {
                                                       setEditorKey(null)
-                                                      void saveAndAdvance(item, mode)
+                                                      // Item já aprovado: salva a edição SEM avançar de etapa.
+                                                      if (item.status === 'aprovado') void saveReviewItem(item, mode)
+                                                      else void saveAndAdvance(item, mode)
                                                     }}
                                                     disabled={busy}
                                                   >
-                                                    Salvar aprovação
+                                                    {item.status === 'aprovado' ? 'Salvar edição' : 'Salvar aprovação'}
                                                   </Button>
                                                 </div>
                                               </div>
@@ -2625,7 +2629,21 @@ export default function RevisaoDeFaturaList() {
                                           </Button>
                                         </>
                                       ) : null}
-                                      {item.timesheetId && item.status === 'em_revisao' ? (
+                                      {/* Editar completo, independente da etapa: item já aprovado
+                                          também pode ser editado (valor, texto, horas) pela Jessika
+                                          na sessão final, sem mudar de etapa. */}
+                                      {item.status === 'aprovado' ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="w-full justify-start"
+                                          onClick={() => setEditorKey((current) => (current === `apr:${key}` ? null : `apr:${key}`))}
+                                          disabled={busy}
+                                        >
+                                          Editar
+                                        </Button>
+                                      ) : null}
+                                      {(item.timesheetId && item.status === 'em_revisao') ? (
                                         <Button
                                           size="sm"
                                           variant="ghost"
