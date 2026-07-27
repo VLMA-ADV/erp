@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
+import { ArrowLeftRight, ChevronDown, ChevronRight, Clock, DollarSign, FileText, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
+import NfsePreviewDialog from './nfse-preview-dialog'
 
 interface RevisaoItem {
   id: string
@@ -325,8 +326,11 @@ function isReviewQueueStatus(status: string) {
 }
 
 // Aprovado permanece visível (pedido do Douglas) até o "Enviar para faturamento".
+// Faturado também permanece: a nota passa a ser emitida aqui mesmo (faixa do caso),
+// então o caso não pode sumir no instante da emissão — fica com o badge "Faturado".
 function isVisibleInReview(item: RevisaoItem) {
   if (isReviewQueueStatus(item.status)) return true
+  if (item.status === 'faturado') return true
   if (item.status === 'aprovado') {
     const snapshot = (item.snapshot || {}) as Record<string, unknown>
     return snapshot.enviado_faturamento !== true
@@ -806,6 +810,19 @@ export default function RevisaoDeFaturaList() {
   const [ignorarMotivo, setIgnorarMotivo] = useState('')
   const [ignorarOutro, setIgnorarOutro] = useState('')
   const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
+  // NFS-e na faixa do caso: a emissão é por CONTRATO (com rateio por pagador), então
+  // "Faturar" sempre passa pela prévia — é ela que mostra o que de fato vai na nota.
+  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string; permitirEmitir: boolean } | null>(null)
+  const [emittingContratoId, setEmittingContratoId] = useState<string | null>(null)
+  const [nfseResult, setNfseResult] = useState<{
+    ref: string
+    valor_total: number
+    focus_status: string
+    nota_id: string | null
+  } | null>(null)
+  // Só quem tem a capacidade finance.nfse.manage (sócios + Jessika) vê o botão de
+  // faturar — esta tela é vista também por revisores/aprovadores/coordenadores.
+  const [podeEmitirNfse, setPodeEmitirNfse] = useState(false)
   const [showIndicadores, setShowIndicadores] = useState(false)
   const [indicadores, setIndicadores] = useState<{
     resumo: Record<string, unknown>
@@ -986,11 +1003,29 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  // Capacidade de emitir NFS-e (sócios + Jessika). O edge já barra quem não tem;
+  // aqui é só para não mostrar "Faturar" a quem tomaria 403 ao clicar.
+  const loadPodeEmitirNfse = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      const { data } = await supabase.rpc('tem_capacidade_sensivel', {
+        p_user_id: session.user.id,
+        p_capacidade: 'finance.nfse.manage',
+      })
+      setPodeEmitirNfse(data === true)
+    } catch (loadError) {
+      console.error('loadPodeEmitirNfse', loadError)
+    }
+  }
+
   useEffect(() => {
     if (!canRead) return
     void loadItems()
     void loadAllContratos()
     void loadColaboradores()
+    void loadPodeEmitirNfse()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -1023,11 +1058,12 @@ export default function RevisaoDeFaturaList() {
   )
 
   const statusSummary = useMemo(() => {
-    const counts = { revisao: 0, aprovacao: 0, aprovado: 0 }
+    const counts = { revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
     for (const item of visibleItems) {
       if (item.status === 'em_revisao') counts.revisao += 1
       else if (item.status === 'em_aprovacao') counts.aprovacao += 1
       else if (item.status === 'aprovado') counts.aprovado += 1
+      else if (item.status === 'faturado') counts.faturado += 1
     }
     return counts
   }, [visibleItems])
@@ -1553,6 +1589,60 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  // Emite a NFS-e via edge emit-nfse. A emissão é por CONTRATO e já trata o rateio
+  // (1 nota por pagador). Só é chamada a partir da prévia, para a pessoa ver antes o
+  // que exatamente vai no documento fiscal.
+  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string) => {
+    try {
+      setEmittingContratoId(contratoId)
+      const accessToken = await getSessionToken()
+      if (!accessToken) {
+        toastError('Sessão expirada — faça login novamente.')
+        return
+      }
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/emit-nfse`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contrato_id: contratoId,
+          ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
+        }),
+      })
+      const payload = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        toastError(payload.error || 'Focus NFe recusou a emissão')
+        return
+      }
+      // Emissão parcial (rateio: alguma nota recusada) — HTTP 207.
+      if (payload.partial) {
+        toastError(payload.message || 'Emissão parcial — alguns pagadores foram recusados.')
+        void loadItems({ silent: true })
+        return
+      }
+      setNfseResult({
+        ref: String(payload.ref),
+        valor_total: Number(payload.valor_total),
+        focus_status: String(payload.focus_status ?? 'pendente'),
+        nota_id: payload.nota_id ?? null,
+      })
+      const nNotas = Number(payload.n_notas ?? 1)
+      success(
+        nNotas > 1
+          ? `${nNotas} NFS-e enviadas (rateio) para ${label}. Status: ${payload.focus_status}`
+          : `NFS-e enviada para Focus NFe (${label}). Status: ${payload.focus_status}`,
+      )
+      void loadItems({ silent: true })
+    } catch (e) {
+      console.error('emitNfse', e)
+      toastError('Erro ao emitir NFS-e')
+    } finally {
+      setEmittingContratoId(null)
+    }
+  }
+
   // Postergar/transferir vários: reutilizam os diálogos com lista de ids.
   const postergarLote = async () => {
     const ids = postergarIds
@@ -1821,6 +1911,7 @@ export default function RevisaoDeFaturaList() {
           </span>
           <span>
             {statusSummary.revisao} liberado(s) · {statusSummary.aprovacao} revisado(s) · {statusSummary.aprovado} aprovado(s)
+            {statusSummary.faturado > 0 ? ` · ${statusSummary.faturado} faturado(s)` : null}
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -2014,6 +2105,15 @@ export default function RevisaoDeFaturaList() {
                       const allSelected = caseRowIds.length > 0 && caseRowIds.every((id) => selectedItemIds.includes(id))
                       const selectedIds = caseRowIds.filter((id) => selectedItemIds.includes(id))
                       const batchKey = `batch:${clienteGroup.key}:${casoGroup.key}`
+                      // O CasoGroup não carrega o contrato; ele vem dos itens. A NFS-e é
+                      // emitida por contrato, então é esse id que vai para a prévia/emissão.
+                      const casoContratoId = casoGroup.itens[0]?.contratoId || ''
+                      const casoContratoNumero = casoGroup.itens[0]?.contratoNumero
+                      const casoContratoNome = casoGroup.itens[0]?.contratoNome || ''
+                      const casoLabelNfse = [
+                        casoContratoNumero ? `Contrato ${casoContratoNumero}` : null,
+                        casoContratoNome || clienteGroup.nome,
+                      ].filter(Boolean).join(' · ')
 
                       return (
                         <div key={casoGroup.key} className="rounded-xl border border-hairline">
@@ -2119,6 +2219,39 @@ export default function RevisaoDeFaturaList() {
                                 >
                                   Enviar p/ faturamento
                                 </Button>
+                                {/* NFS-e na faixa do caso. A nota é emitida por CONTRATO (com
+                                    rateio), então "Faturar" abre a prévia — é ela que mostra o
+                                    que vai no documento. Só quem tem finance.nfse.manage emite. */}
+                                {casoContratoId ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-full border-blue-300 text-xs text-blue-700 hover:bg-blue-50"
+                                      onClick={() => setNfsePreview({ contratoId: casoContratoId, label: casoLabelNfse, permitirEmitir: false })}
+                                      title="Ver a prévia da NFS-e (rascunho) deste contrato"
+                                    >
+                                      <FileText className="mr-1 h-3.5 w-3.5" />
+                                      Prévia da NF
+                                    </Button>
+                                    {podeEmitirNfse ? (
+                                      <Button
+                                        size="sm"
+                                        className="rounded-full bg-green-700 text-xs text-white hover:bg-green-800"
+                                        onClick={() => setNfsePreview({ contratoId: casoContratoId, label: casoLabelNfse, permitirEmitir: true })}
+                                        disabled={emittingContratoId === casoContratoId}
+                                        title="Conferir a prévia e emitir a NFS-e deste contrato"
+                                      >
+                                        {emittingContratoId === casoContratoId ? (
+                                          <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <DollarSign className="mr-1 h-3.5 w-3.5" />
+                                        )}
+                                        Faturar
+                                      </Button>
+                                    ) : null}
+                                  </>
+                                ) : null}
                                 <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
                               </div>
                             </div>
@@ -2872,6 +3005,58 @@ export default function RevisaoDeFaturaList() {
               {busyKey === 'ignorar' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Ignorar fatura
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Prévia da NFS-e. Sem onConfirmEmit o diálogo é só leitura — é assim que o
+          botão "Prévia da NF" abre, inclusive para quem não pode emitir. */}
+      <NfsePreviewDialog
+        open={nfsePreview !== null}
+        contratoId={nfsePreview?.contratoId ?? null}
+        contratoLabel={nfsePreview?.label}
+        onClose={() => setNfsePreview(null)}
+        onConfirmEmit={
+          nfsePreview?.permitirEmitir
+            ? (descricaoServico) => {
+                if (!nfsePreview) return
+                const { contratoId, label } = nfsePreview
+                setNfsePreview(null)
+                void emitNfse(contratoId, label, descricaoServico)
+              }
+            : undefined
+        }
+      />
+
+      {/* Resultado da emissão. Visualizar/cancelar a nota seguem em "4. Notas geradas". */}
+      <Dialog open={nfseResult !== null} onOpenChange={(open) => { if (!open) setNfseResult(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>NFS-e enviada</DialogTitle>
+          </DialogHeader>
+          {nfseResult ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="text-ink-mute">Status: </span>
+                <strong className="text-ink">{nfseResult.focus_status}</strong>
+              </p>
+              <p>
+                <span className="text-ink-mute">Valor: </span>
+                <strong className="font-tabular text-ink">{formatMoney(nfseResult.valor_total)}</strong>
+              </p>
+              <p className="break-all font-mono text-xs text-ink-mute">{nfseResult.ref}</p>
+              <p className="pt-2 text-xs text-ink-mute">
+                A autorização da prefeitura pode levar alguns minutos. Acompanhe, baixe o PDF ou
+                cancele em{' '}
+                <a href="/financeiro/notas-geradas" className="text-primary underline underline-offset-2">
+                  4. Notas geradas
+                </a>
+                .
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button onClick={() => setNfseResult(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
