@@ -149,6 +149,12 @@ export default function TimesheetList() {
   const [items, setItems] = useState<TimesheetItem[]>([])
   const [contratos, setContratos] = useState<ContratoItem[]>([])
 
+  // Resumo do caso (regra de cobrança, produto, responsável, centro de custo)
+  // exibido abaixo do campo Caso. Sem valor aqui — o valor só aparece no faturamento.
+  const [casoResumo, setCasoResumo] = useState<{
+    regra_label?: string; produto?: string | null; responsavel?: string | null; centro_custo?: string | null
+  } | null>(null)
+
   const [filterClienteId, setFilterClienteId] = useState('')
   const [filterCasoId, setFilterCasoId] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -374,6 +380,22 @@ export default function TimesheetList() {
       setForm((prev) => ({ ...prev, caso_id: '', contrato_id: '' }))
     }
   }, [casosFromCliente, form.caso_id, form.cliente_id])
+
+  // Busca o resumo do caso selecionado (regra/produto/responsável/centro de custo).
+  useEffect(() => {
+    if (!dialogOpen || !form.caso_id) { setCasoResumo(null); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data, error: e } = await supabase.rpc('get_caso_resumo', { p_caso_id: form.caso_id })
+        if (!cancelled) setCasoResumo(e ? null : (data as typeof casoResumo))
+      } catch {
+        if (!cancelled) setCasoResumo(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [dialogOpen, form.caso_id])
 
   const openCreate = () => {
     setForm({ ...emptyForm, data_lancamento: new Date().toISOString().slice(0, 10) })
@@ -749,6 +771,30 @@ export default function TimesheetList() {
                 emptyText="Nenhum caso para o cliente"
                 disabled={!form.cliente_id}
               />
+
+              {/* Resumo do caso (sem valor). Regra · Produto · Responsável · Centro de custo. */}
+              {form.caso_id && casoResumo && (
+                <div className="mt-2 rounded-lg border border-line bg-surface-2 px-3 py-2.5">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    <div>
+                      <dt className="text-ink-mute">Regra de cobrança</dt>
+                      <dd className="font-medium text-ink">{casoResumo.regra_label || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-mute">Produto</dt>
+                      <dd className="font-medium text-ink">{casoResumo.produto?.trim() || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-mute">Responsável interno</dt>
+                      <dd className="font-medium text-ink">{casoResumo.responsavel?.trim() || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-mute">Centro de custo</dt>
+                      <dd className="font-medium text-ink">{casoResumo.centro_custo?.trim() || '—'}</dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
             </div>
 
             {/* Campo "Contrato (preenchido automaticamente)" removido (21/07):
