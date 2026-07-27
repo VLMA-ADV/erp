@@ -145,7 +145,7 @@ export function CommandSelect({
                   {groupOptions.map((option) => (
                     <CommandItem
                       key={option.value}
-                      className="max-w-full truncate"
+                      className="flex max-w-full min-w-0 items-center"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         onValueChange(option.value)
@@ -153,8 +153,8 @@ export function CommandSelect({
                         setQuery('')
                       }}
                     >
-                      <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
-                      {option.label}
+                      <Check className={cn('mr-2 h-4 w-4 shrink-0', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                      <span className="min-w-0 flex-1 truncate" title={option.label}>{option.label}</span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
