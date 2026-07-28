@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, ChevronDown, ChevronRight, Clock, DollarSign, FileText, Loader2 } from 'lucide-react'
+import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, FileText, Loader2, Receipt } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,18 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import NfsePreviewDialog from './nfse-preview-dialog'
+import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
+
+// Nota já emitida (finance.billing_notes), usada para "Ver NF"/"Cancelar NF"
+// na faixa do caso. Mesmo shape devolvido por get-notas-geradas.
+interface NotaEmitida {
+  id: string
+  numero: number | null
+  status: string
+  tipo_documento: string
+  arquivo_url: string | null
+  contrato_id: string | null
+}
 
 interface RevisaoItem {
   id: string
@@ -350,6 +362,10 @@ function getEffectiveItemHours(item: RevisaoItem) {
   if (item.horasRevisadas !== null && item.horasRevisadas !== undefined) return item.horasRevisadas
   if (item.horasInformadas !== null && item.horasInformadas !== undefined) return item.horasInformadas
   return 0
+}
+
+function hojeIso() {
+  return new Date().toISOString().slice(0, 10)
 }
 
 function getEffectiveItemValue(item: RevisaoItem) {
@@ -824,6 +840,12 @@ export default function RevisaoDeFaturaList() {
   // Só quem tem a capacidade finance.nfse.manage (sócios + Jessika) vê o botão de
   // faturar — esta tela é vista também por revisores/aprovadores/coordenadores.
   const [podeEmitirNfse, setPodeEmitirNfse] = useState(false)
+  // Notas já emitidas, para mostrar "Ver NF"/"Cancelar NF" na faixa do caso.
+  // A nota é emitida por contrato, então indexamos por contrato_id.
+  const [notasPorContrato, setNotasPorContrato] = useState<Record<string, NotaEmitida[]>>({})
+  const [cancelandoNotaId, setCancelandoNotaId] = useState<string | null>(null)
+  // Nota de despesa (documento não-fiscal) do caso.
+  const [notaDespesa, setNotaDespesa] = useState<NotaDespesaData | null>(null)
   const [showIndicadores, setShowIndicadores] = useState(false)
   const [indicadores, setIndicadores] = useState<{
     resumo: Record<string, unknown>
@@ -1021,12 +1043,68 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  // Notas já emitidas, indexadas por contrato — alimenta "Ver NF"/"Cancelar NF"
+  // na faixa do caso. Reusa a mesma fonte da tela "4. Notas geradas".
+  const loadNotasEmitidas = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-notas-geradas?tipo_documento=nota_fiscal_servico&limit=200`,
+        { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' },
+      )
+      if (!resp.ok) return
+      const payload = await resp.json().catch(() => ({}))
+      const lista = (payload?.data || []) as NotaEmitida[]
+      const porContrato: Record<string, NotaEmitida[]> = {}
+      for (const nota of lista) {
+        if (!nota.contrato_id || nota.status === 'cancelado') continue
+        if (!porContrato[nota.contrato_id]) porContrato[nota.contrato_id] = []
+        porContrato[nota.contrato_id].push(nota)
+      }
+      setNotasPorContrato(porContrato)
+    } catch (loadError) {
+      console.error('loadNotasEmitidas', loadError)
+    }
+  }
+
+  // Cancelamento da NFS-e — mesmo fluxo da tela "4. Notas geradas": exige
+  // justificativa e avisa que, se autorizada, o cancelamento é fiscal.
+  const cancelarNota = async (nota: NotaEmitida) => {
+    const aviso = `Cancelar a NFS-e ${nota.numero ? `#${nota.numero}` : ''}?\n\nSe a nota já estiver autorizada, o cancelamento é fiscal e irreversível.\n\nInforme a justificativa:`
+    const justificativa = window.prompt(aviso, '')
+    if (justificativa === null) return
+    try {
+      setCancelandoNotaId(nota.id)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toastError('Sessão expirada — faça login novamente.'); return }
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/cancelar-nfse`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nota_id: nota.id, justificativa }),
+      })
+      const payload = await resp.json().catch(() => ({}))
+      if (!resp.ok) { toastError(payload.error || 'Erro ao cancelar a nota'); return }
+      success('NFS-e cancelada.')
+      await loadNotasEmitidas()
+      void loadItems({ silent: true })
+    } catch (cancelError) {
+      console.error('cancelarNota', cancelError)
+      toastError('Erro ao cancelar a nota')
+    } finally {
+      setCancelandoNotaId(null)
+    }
+  }
+
   useEffect(() => {
     if (!canRead) return
     void loadItems()
     void loadAllContratos()
     void loadColaboradores()
     void loadPodeEmitirNfse()
+    void loadNotasEmitidas()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -1636,6 +1714,7 @@ export default function RevisaoDeFaturaList() {
           : `NFS-e enviada para Focus NFe (${label}). Status: ${payload.focus_status}`,
       )
       void loadItems({ silent: true })
+      void loadNotasEmitidas()
     } catch (e) {
       console.error('emitNfse', e)
       toastError('Erro ao emitir NFS-e')
@@ -2114,6 +2193,8 @@ export default function RevisaoDeFaturaList() {
                         casoGroup.itens[0]?.contratoNumero,
                         casoGroup.itens[0]?.contratoNome,
                       ).full
+                      // Despesas do caso alimentam a nota de despesa (não geram NFS-e).
+                      const despesasDoCaso = casoGroup.itens.filter((item) => item.origemTipo === 'despesa')
 
                       return (
                         <div key={casoGroup.key} className="rounded-xl border border-hairline">
@@ -2216,8 +2297,9 @@ export default function RevisaoDeFaturaList() {
                                   className="bg-primary text-primary-foreground text-xs hover:bg-primary-deep"
                                   onClick={() => void enviarParaFaturamento(selectedIds)}
                                   disabled={selectedIds.length === 0 || busyKey === 'enviar-faturamento'}
+                                  title="Sinaliza que estes itens estão liberados para a próxima etapa"
                                 >
-                                  Enviar p/ faturamento
+                                  Liberar faturamento
                                 </Button>
                                 {/* NFS-e na faixa do caso. A nota é emitida por CONTRATO (com
                                     rateio), então "Faturar" abre a prévia — é ela que mostra o
@@ -2248,6 +2330,68 @@ export default function RevisaoDeFaturaList() {
                                           <DollarSign className="mr-1 h-3.5 w-3.5" />
                                         )}
                                         Faturar
+                                      </Button>
+                                    ) : null}
+                                    {/* Nota já emitida: ver o PDF e cancelar sem sair da tela. */}
+                                    {(notasPorContrato[casoContratoId] || []).map((nota) => (
+                                      <span key={nota.id} className="inline-flex items-center gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="rounded-full border-slate-300 text-xs"
+                                          onClick={() => window.open(nota.arquivo_url || '/financeiro/notas-geradas', '_blank', 'noopener')}
+                                          title={nota.arquivo_url ? 'Abrir o PDF da NFS-e' : 'Ainda sem PDF — abre a lista de notas geradas'}
+                                        >
+                                          <FileText className="mr-1 h-3.5 w-3.5" />
+                                          Ver NF{nota.numero ? ` ${nota.numero}` : ''}
+                                        </Button>
+                                        {podeEmitirNfse ? (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="rounded-full border-red-200 text-xs text-red-700 hover:bg-red-50"
+                                            onClick={() => void cancelarNota(nota)}
+                                            disabled={cancelandoNotaId !== null}
+                                            title="Cancelar esta NFS-e"
+                                          >
+                                            {cancelandoNotaId === nota.id ? (
+                                              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Ban className="mr-1 h-3.5 w-3.5" />
+                                            )}
+                                            Cancelar NF
+                                          </Button>
+                                        ) : null}
+                                      </span>
+                                    ))}
+                                    {/* Despesa não gera NFS-e: gera nota de despesa
+                                        (documento não-fiscal de reembolso). */}
+                                    {despesasDoCaso.length > 0 ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="rounded-full border-amber-300 text-xs text-amber-800 hover:bg-amber-50"
+                                        onClick={() => setNotaDespesa({
+                                          clienteNome: clienteGroup.nome,
+                                          contratoLabel: casoLabelNfse,
+                                          casoLabel: `${casoGroup.numero ? `${casoGroup.numero} - ` : ''}${casoGroup.nome}`,
+                                          documentoNumero: null,
+                                          emissao: hojeIso(),
+                                          vencimento: hojeIso(),
+                                          itens: despesasDoCaso.map((d) => {
+                                            const snap = (d.snapshot || {}) as Record<string, unknown>
+                                            return {
+                                              data_lancamento: d.dataReferencia,
+                                              categoria: String(snap.categoria || '—'),
+                                              descricao: String(snap.descricao || d.timesheetDescricao || 'Despesa'),
+                                              valor: getEffectiveItemValue(d),
+                                            }
+                                          }),
+                                        })}
+                                        title="Gerar a nota de despesa (documento não-fiscal) deste caso"
+                                      >
+                                        <Receipt className="mr-1 h-3.5 w-3.5" />
+                                        Nota de despesa
                                       </Button>
                                     ) : null}
                                   </>
@@ -3011,6 +3155,9 @@ export default function RevisaoDeFaturaList() {
 
       {/* Prévia da NFS-e. Sem onConfirmEmit o diálogo é só leitura — é assim que o
           botão "Prévia da NF" abre, inclusive para quem não pode emitir. */}
+      {/* Nota de despesa (documento não-fiscal) — mesmo componente da composição da fatura. */}
+      <NotaDespesaPreview open={notaDespesa !== null} onClose={() => setNotaDespesa(null)} data={notaDespesa} />
+
       <NfsePreviewDialog
         open={nfsePreview !== null}
         contratoId={nfsePreview?.contratoId ?? null}
