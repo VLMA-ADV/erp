@@ -830,7 +830,7 @@ export default function ItensAFaturarList() {
             disabled={loading || sendingTarget === '__bulk__' || selectedVisibleCount === 0}
           >
             {sendingTarget === '__bulk__' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-            Enviar selecionados p/ revisão ({selectedVisibleCount})
+            Liberar selecionados ({selectedVisibleCount})
           </Button>
           <Button
             variant="outline"
@@ -988,7 +988,7 @@ export default function ItensAFaturarList() {
                               ) : (
                                 <Send className="mr-1 h-3.5 w-3.5" />
                               )}
-                              Enviar p/ revisão
+                              Liberar faturamento
                             </Button>
                             <span className="shrink-0 text-sm font-semibold font-tabular text-ink">{formatMoney(caso.total_valor)}</span>
                           </div>
