@@ -2297,9 +2297,9 @@ export default function RevisaoDeFaturaList() {
                                   className="bg-primary text-primary-foreground text-xs hover:bg-primary-deep"
                                   onClick={() => void enviarParaFaturamento(selectedIds)}
                                   disabled={selectedIds.length === 0 || busyKey === 'enviar-faturamento'}
-                                  title="Sinaliza que estes itens estão liberados para a próxima etapa"
+                                  title="Envia os itens aprovados para a etapa de faturamento"
                                 >
-                                  Liberar faturamento
+                                  Enviar p/ faturamento
                                 </Button>
                                 {/* NFS-e na faixa do caso. A nota é emitida por CONTRATO (com
                                     rateio), então "Faturar" abre a prévia — é ela que mostra o
