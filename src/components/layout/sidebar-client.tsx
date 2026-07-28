@@ -116,6 +116,19 @@ export default function SidebarClient() {
       // (get_minha_avaliacao_pdi); o hub /avaliacoes-pdi é para gestores.
       { label: 'Meu PDI', href: '/avaliacoes-pdi/meu' },
     ]
+
+    // Revisor de caso que não é sócio nem coordenador (ex.: Bruna Fedatto, Rafael
+    // Küster) precisa chegar na revisão de fatura. Ter a permissão não bastava: o
+    // menu enxuto não mostrava o caminho, e a pessoa ficava com a chave sem a porta.
+    // Só acrescenta o link para quem JÁ tem a permissão — não promove a gestor.
+    if (
+      checkPermission('finance.faturamento.read') ||
+      checkPermission('finance.faturamento.review') ||
+      checkPermission('finance.faturamento.approve') ||
+      checkPermission('finance.faturamento.manage')
+    ) {
+      minItems.push({ label: 'Revisão de fatura', href: '/financeiro/revisao-de-fatura' })
+    }
     return (
       <Sidebar className="bg-brand-purple-soft border-r-brand-purple/15">
         <SidebarHeader>
