@@ -9,39 +9,43 @@ interface SidebarMenuFaturamentoProps {
   hasPermission: (permission: string) => boolean
 }
 
+// A tela única (/financeiro/faturamento) reúne o que antes eram três telas
+// separadas: itens a faturar, revisão e fluxo. Elas saíram do menu, mas as rotas
+// continuam de pé — link antigo, favorito e histórico seguem funcionando, e é
+// para lá que se volta se a tela única precisar ser desligada.
 const faturamentoMenuItems = [
   {
-    label: '1. Itens a faturar',
-    href: '/financeiro/itens-a-faturar',
+    label: 'Faturamento',
+    href: '/financeiro/faturamento',
     permission: 'finance.faturamento.read',
   },
   {
-    label: '2. Revisão de fatura',
-    href: '/financeiro/revisao-de-fatura',
-    permission: 'finance.faturamento.read',
-  },
-  {
-    label: '3. Fluxo de faturamento',
-    href: '/financeiro/fluxo-de-faturamento',
-    permission: 'finance.faturamento.read',
-  },
-  {
-    label: '4. Notas geradas',
+    label: 'Notas geradas',
     href: '/financeiro/notas-geradas',
     permission: 'finance.faturamento.read',
   },
   {
-    label: '5. Composição da fatura',
+    label: 'Composição da fatura',
     href: '/financeiro/composicao-da-fatura',
     permission: 'finance.faturamento.read',
   },
+]
+
+// Rotas que saíram do menu mas seguem ativas — mantidas aqui para o menu abrir
+// sozinho quando alguém chegar nelas por link direto.
+const rotasLegadas = [
+  '/financeiro/itens-a-faturar',
+  '/financeiro/revisao-de-fatura',
+  '/financeiro/fluxo-de-faturamento',
 ]
 
 export default function SidebarMenuFaturamento({
   pathname,
   hasPermission,
 }: SidebarMenuFaturamentoProps) {
-  const isFaturamentoRoute = faturamentoMenuItems.some((item) => pathname.startsWith(item.href))
+  const isFaturamentoRoute =
+    faturamentoMenuItems.some((item) => pathname.startsWith(item.href)) ||
+    rotasLegadas.some((href) => pathname.startsWith(href))
   const [isOpen, setIsOpen] = useState(isFaturamentoRoute)
   const hasVisibleItems = faturamentoMenuItems.some((item) => hasPermission(item.permission))
 
