@@ -890,7 +890,22 @@ export default function CasoForm({
               indicacao_config: { ...(loadedForm.indicacao_config || emptyCaso.indicacao_config) },
             }]
           setBillingRules(initialRules)
-          setSelectedBillingRuleIndex(0)
+          // O formulário acima foi preenchido com caso.regra_cobranca_config, que o
+          // banco copia da regra PRINCIPAL (a ativa). Se a aba selecionada apontasse
+          // para outra regra, a tela mostraria o conteúdo de uma sob o rótulo da
+          // outra — e o primeiro clique em qualquer aba gravava esse conteúdo por
+          // cima da regra errada, trocando valores e apagando parcelas.
+          // Abrimos na regra ATIVA (a que o formulário de fato carregou) e, quando
+          // não houver ativa, alinhamos o formulário à regra que a aba aponta.
+          const idxAtiva = initialRules.findIndex((r) => r.status === 'ativo')
+          const idxInicial = idxAtiva >= 0 ? idxAtiva : 0
+          setSelectedBillingRuleIndex(idxInicial)
+          // Alinha o formulário à aba SEMPRE, sem depender de qual regra o banco
+          // escolheu como principal — assim o que está na tela é sempre o que a
+          // aba diz que é.
+          if (initialRules[idxInicial]) {
+            applyBillingRuleToForm(initialRules[idxInicial])
+          }
           setCaseAnexos(((caso?.anexos || []) as CasoAnexoItem[]) ?? [])
         } else {
           const lastCase =
