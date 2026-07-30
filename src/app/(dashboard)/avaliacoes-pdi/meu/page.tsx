@@ -32,6 +32,16 @@ function faixaColor(codigo: string | null, active: boolean): string {
 
 function tempId() { return 'new-' + Math.random().toString(36).slice(2) }
 
+// "permission denied" aqui significa sessão expirada: sem token válido o
+// PostgREST executa como anon, que não tem EXECUTE em nenhuma função.
+const SESSAO_EXPIRADA =
+  'Sua sessão expirou e o que você preencheu ainda NÃO foi salvo. Abra o sistema em outra aba, entre de novo e volte aqui para salvar — não feche nem recarregue esta tela.'
+
+function mensagemAmigavel(msg: string): string {
+  if (/permission denied|jwt|token|não autenticado/i.test(msg)) return SESSAO_EXPIRADA
+  return msg
+}
+
 // Skills de um mesmo pilar podem compartilhar o título (ex.: "Alta performance"
 // com itens 2.1–2.4). Agrupa por título consecutivo para não repetir o cabeçalho.
 function groupByTitulo(items: Skill[]): { titulo: string; items: Skill[] }[] {
@@ -63,7 +73,7 @@ export default function MeuPdiPage() {
       setLoading(true); setError(null)
       const supabase = createClient()
       const { data, error: err } = await supabase.rpc('get_minha_avaliacao_pdi', { p_ano: ANO })
-      if (err) { setError(err.message); return }
+      if (err) { setError(mensagemAmigavel(err.message)); return }
       const d = data as { avaliacao: Avaliacao; regua: Faixa[]; skills: Skill[]; dna: Dna[]; metas: Meta[]; feedbacks: Feedback[] }
       setAval(d.avaliacao); setRegua(d.regua || []); setSkills(d.skills || []); setDna(d.dna || [])
       setMetas(d.metas || []); setFeedbacks(d.feedbacks || [])
@@ -86,6 +96,10 @@ export default function MeuPdiPage() {
     try {
       setSaving(true); setError(null); setMsg(null)
       const supabase = createClient()
+      // getSession renova o token se der; se nem assim houver sessão, avisa
+      // ANTES de tentar salvar, preservando tudo que foi digitado na tela.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError(SESSAO_EXPIRADA); return }
       const { error: err } = await supabase.rpc('salvar_minha_avaliacao_pdi', {
         p_avaliacao_id: aval!.id,
         p_skills: skills.map((s) => ({ id: s.id, faixa_auto: s.faixa_auto, texto_auto: s.texto_auto })),
@@ -94,7 +108,7 @@ export default function MeuPdiPage() {
         p_feedbacks: feedbacks.map((f) => ({ id: f.id, realizado: f.realizado, funcionou: f.funcionou, nao_funcionou: f.nao_funcionou, onde_focar: f.onde_focar, persiste: f.persiste })),
         p_enviar: enviar,
       })
-      if (err) { setError(err.message); return }
+      if (err) { setError(mensagemAmigavel(err.message)); return }
       setMsg(enviar ? 'Autoavaliação enviada!' : 'Rascunho salvo.')
       await load()
     } catch (e) { setError((e as Error).message) } finally { setSaving(false) }
