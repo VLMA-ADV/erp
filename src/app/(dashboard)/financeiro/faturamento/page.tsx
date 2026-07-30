@@ -3,6 +3,7 @@ import Link from 'next/link'
 import ItensAFaturarList from '@/components/faturamento/itens-a-faturar-list'
 import RevisaoDeFaturaList from '@/components/faturamento/revisao-de-fatura-list'
 import GerarFaturamentoMesButton from '@/components/faturamento/gerar-faturamento-mes-button'
+import ResetFaturamentoButton from '@/components/faturamento/reset-faturamento-button'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +43,7 @@ export default async function FaturamentoUnificadoPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ResetFaturamentoButton />
           <GerarFaturamentoMesButton redirectAfterSuccess={false} />
         </div>
       </header>
