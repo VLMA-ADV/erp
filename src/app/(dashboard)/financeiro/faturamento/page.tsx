@@ -53,8 +53,11 @@ export default async function FaturamentoUnificadoPage() {
       </div>
 
       <section className="mb-12">
-        <div className="mb-3 flex items-baseline gap-3">
-          <h2 className="text-lg font-semibold text-ink">Aguardando liberação</h2>
+        {/* Pill na mesma linguagem dos selos da tela: âmbar = a liberar. */}
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="rounded-full bg-amber-100 px-3.5 py-1.5 text-sm font-semibold text-amber-800">
+            Aguardando liberação
+          </h2>
           <span className="text-xs text-ink-mute">
             lançamentos e regras que ainda não foram para a revisão
           </span>
@@ -63,8 +66,10 @@ export default async function FaturamentoUnificadoPage() {
       </section>
 
       <section>
-        <div className="mb-3 flex items-baseline gap-3">
-          <h2 className="text-lg font-semibold text-ink">Em revisão e aprovação</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="rounded-full bg-emerald-100 px-3.5 py-1.5 text-sm font-semibold text-emerald-700">
+            Em revisão e aprovação
+          </h2>
           <span className="text-xs text-ink-mute">
             já liberados — revisar, aprovar e faturar
           </span>
