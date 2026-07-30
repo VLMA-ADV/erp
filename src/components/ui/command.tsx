@@ -57,7 +57,9 @@ const CommandItem = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttribut
       ref={ref}
       type="button"
       className={cn(
-        'relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50',
+        // text-left é necessário: o item é um <button>, e o navegador centraliza
+        // texto dentro de botão por padrão — a opção saía centralizada na lista.
+        'relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50',
         className,
       )}
       {...props}
