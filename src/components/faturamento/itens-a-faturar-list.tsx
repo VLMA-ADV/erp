@@ -994,53 +994,78 @@ export default function ItensAFaturarList() {
                           </div>
 
                           {casoExpanded ? (
-                            <div className="overflow-x-auto">
-                              <table className="w-full min-w-[560px] text-left">
-                                <thead>
-                                  <tr className="border-b text-[10px] uppercase tracking-wide text-ink-mute">
-                                    <th className="px-3 py-2">Data</th>
-                                    <th className="px-3 py-2">Descrição</th>
-                                    <th className="px-3 py-2">Lançado por</th>
-                                    <th className="px-3 py-2 text-right">Horas</th>
-                                    <th className="px-3 py-2 text-right">Valor</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-hairline">
-                                  {extrato.map((linha, index) => (
-                                    <tr key={`${caso.caso_id}-linha-${index}`}>
-                                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
-                                        {formatBillingReference(linha.tipo, linha.data_referencia)}
-                                      </td>
-                                      <td className="px-3 py-2.5 text-[11px] leading-snug text-ink-secondary">
-                                        <span className="block max-w-[560px] whitespace-normal break-words">{linha.descricao || linha.tipo}</span>
-                                      </td>
-                                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
-                                        {linha.lancado_por ? (
-                                          <span className="inline-flex items-center gap-1.5">
-                                            {fotoDe(linha.lancado_por) ? (
-                                              // eslint-disable-next-line @next/next/no-img-element
-                                              <img src={fotoDe(linha.lancado_por) as string} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
-                                            ) : (
-                                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">
-                                                {iniciaisDe(linha.lancado_por)}
+                            /* Mesmo formato de cartão da etapa de revisão (pedido do cliente):
+                               um cartão por lançamento, com "Lançado por … em …" no topo e a
+                               tabela Responsável · Data · Texto · Horas · Valor embaixo. */
+                            <div className="space-y-3">
+                              {extrato.map((linha, index) => (
+                                <div
+                                  key={`${caso.caso_id}-linha-${index}`}
+                                  className="overflow-hidden rounded-lg border border-hairline bg-white"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2 border-b border-hairline bg-canvas-soft/50 px-3 py-2">
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                                      A liberar
+                                    </span>
+                                    <span className="text-xs text-ink-mute">
+                                      Lançado por{' '}
+                                      <strong className="text-ink-secondary">{linha.lancado_por || '—'}</strong>
+                                      {linha.data_referencia
+                                        ? ` em ${formatBillingReference(linha.tipo, linha.data_referencia)}`
+                                        : ''}
+                                    </span>
+                                  </div>
+
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[680px] text-left">
+                                      <thead className="bg-white">
+                                        <tr className="border-b text-[10px] uppercase tracking-wide text-ink-mute">
+                                          <th className="px-3 py-2">Responsável</th>
+                                          <th className="px-3 py-2">Data</th>
+                                          <th className="px-3 py-2">Texto</th>
+                                          <th className="px-3 py-2 text-right">Horas</th>
+                                          <th className="px-3 py-2 text-right">Valor</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        <tr className="align-top">
+                                          <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
+                                            {linha.lancado_por ? (
+                                              <span className="inline-flex items-center gap-1.5">
+                                                {fotoDe(linha.lancado_por) ? (
+                                                  // eslint-disable-next-line @next/next/no-img-element
+                                                  <img src={fotoDe(linha.lancado_por) as string} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
+                                                ) : (
+                                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-semibold text-amber-700">
+                                                    {iniciaisDe(linha.lancado_por)}
+                                                  </span>
+                                                )}
+                                                {linha.lancado_por}
                                               </span>
+                                            ) : (
+                                              '—'
                                             )}
-                                            {linha.lancado_por}
-                                          </span>
-                                        ) : (
-                                          '—'
-                                        )}
-                                      </td>
-                                      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-tabular text-ink-secondary">
-                                        {Number(linha.horas || 0) > 0 ? formatHours(linha.horas) : '—'}
-                                      </td>
-                                      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium font-tabular text-ink">
-                                        {formatMoney(linha.valor)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                                          </td>
+                                          <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-secondary">
+                                            {formatBillingReference(linha.tipo, linha.data_referencia)}
+                                          </td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary">
+                                            <div className="max-w-[560px] whitespace-normal break-words text-[11px] leading-snug">
+                                              {linha.descricao || linha.tipo}
+                                            </div>
+                                          </td>
+                                          <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-tabular text-ink-secondary">
+                                            {Number(linha.horas || 0) > 0 ? formatHours(linha.horas) : '—'}
+                                          </td>
+                                          <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium font-tabular text-ink">
+                                            {formatMoney(linha.valor)}
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           ) : null}
                         </div>
