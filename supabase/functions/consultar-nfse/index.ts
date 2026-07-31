@@ -52,7 +52,11 @@ Deno.serve(async (req) => {
 
     const { data: cfg } = await supabase.rpc("get_focus_nfe_config", { p_tenant_id: tenantId })
     const focusBase = cfg?.focus_env === "production" ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br"
-    const focusToken = Deno.env.get("FOCUS_NFE_TOKEN") ?? ""
+    // Focus usa tokens distintos por ambiente; em homologacao, cai no token
+    // de homologacao (e nunca no de producao, para o teste nao virar nota real).
+    const focusToken = cfg?.focus_env === "production"
+      ? (Deno.env.get("FOCUS_NFE_TOKEN") ?? "")
+      : (Deno.env.get("FOCUS_NFE_TOKEN_HOMOLOGACAO") ?? "")
 
     let query = supabase
       .schema("finance")
