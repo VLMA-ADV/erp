@@ -33,12 +33,13 @@ export default function ResetFaturamentoButton() {
     const mes = inicio.toLocaleDateString('pt-BR', { month: 'long' }).toLowerCase()
     const label = inicio.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
-    // Confirmação por digitação: impede clique acidental numa ação que apaga o mês.
+    // Confirmação por digitação: impede clique acidental numa ação que apaga a esteira.
     const digitado = window.prompt(
-      `ZERAR O FATURAMENTO DE ${label.toUpperCase()}\n\n` +
-      `Os itens e lotes do período serão APAGADOS e todo o trabalho de revisão do mês será perdido.\n` +
-      `As horas lançadas NÃO são apagadas — voltam para "em lançamento" e podem ser reenviadas.\n\n` +
-      `Para confirmar, digite o mês: ${mes}`,
+      `ZERAR O FATURAMENTO\n\n` +
+      `TODA a esteira será APAGADA — inclusive itens de meses anteriores — e o trabalho de revisão será perdido.\n` +
+      `Regras de cobrança, casos e horas lançadas NÃO são apagados: as horas voltam para "em lançamento" e o ` +
+      `"Gerar faturamento do mês" recarrega tudo para um novo ciclo.\n\n` +
+      `Para confirmar, digite o mês atual: ${mes}`,
       '',
     )
     if (digitado === null) return
