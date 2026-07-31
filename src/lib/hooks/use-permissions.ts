@@ -122,7 +122,11 @@ export function usePermissions() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
       if (sessionError || !session) {
+        // Sem sessão (expirada e sem como renovar): mandar para o login em vez
+        // de devolver zero permissões — senão toda tela vira um falso "Acesso
+        // negado" (caso Leonardo Cruz, 30-31/07: Clientes/Despesas/PDI).
         console.error('Session error:', sessionError)
+        if (typeof window !== 'undefined') window.location.assign('/login')
         return EMPTY
       }
 
