@@ -113,7 +113,11 @@ Deno.serve(async (req) => {
     }
 
     const itemById = new Map(itens.map((i) => [i.id, i]))
-    const focusToken = Deno.env.get("FOCUS_NFE_TOKEN") ?? ""
+    // Focus usa tokens distintos por ambiente; em homologacao, cai no token
+    // de homologacao (e nunca no de producao, para o teste nao virar nota real).
+    const focusToken = cfg?.focus_env === "production"
+      ? (Deno.env.get("FOCUS_NFE_TOKEN") ?? "")
+      : (Deno.env.get("FOCUS_NFE_TOKEN_HOMOLOGACAO") ?? "")
     const focusBase = cfg.focus_env === "production" ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br"
     const dataEmissao = isoBrt(60)
     const dataCompetencia = dataEmissao.slice(0, 10)
