@@ -10,6 +10,7 @@ import { shouldRefetchOnVisibility } from '@/components/faturamento/itens-a-fatu
 import { createClient } from '@/lib/supabase/client'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { formatHorasMin } from '@/lib/utils/format-horas'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -96,10 +97,8 @@ function formatMoney(value: number | string | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount)
 }
 
-function formatHours(value: number | string | null | undefined) {
-  const amount = Number(value || 0)
-  return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+// Horas em "1h 20min" (util compartilhado com a revisão) — decimal confundia.
+const formatHours = formatHorasMin
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '-'
@@ -914,7 +913,7 @@ export default function ItensAFaturarList() {
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-ink">{cliente.cliente_nome}</span>
                       <span className="block text-xs text-ink-mute">
-                        {cliente.total_itens} item(ns) · {formatHours(cliente.total_horas)} h
+                        {cliente.total_itens} item(ns) · {formatHours(cliente.total_horas)}
                       </span>
                     </span>
                   </button>
@@ -958,7 +957,7 @@ export default function ItensAFaturarList() {
                                   {caso.caso_numero ? `${caso.caso_numero} - ` : ''}{caso.caso_nome}
                                 </span>
                                 <span className="block text-xs text-ink-mute">
-                                  {caso.total_itens} item(ns) · {formatHours(caso.total_horas)} h
+                                  {caso.total_itens} item(ns) · {formatHours(caso.total_horas)}
                                 </span>
                               </span>
                             </button>
