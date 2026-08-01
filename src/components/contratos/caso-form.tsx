@@ -52,7 +52,9 @@ const emptyCaso: CasoPayload = {
     regras_adicionais: [],
     valor_hora: '',
     valor_hora_excedente: '',
-    usa_tabela_preco: false,
+    // `usa_tabela_preco` foi removido: quem decide o modo é `modo_preco`
+    // ('valor_hora' | 'tabela'). O campo antigo nunca era escrito e ficava
+    // gravado como false mesmo em caso com tabela — lixo que induzia a erro.
     tabela_preco_nome: '',
     tabela_preco_itens: [],
     cap_enabled: false,
