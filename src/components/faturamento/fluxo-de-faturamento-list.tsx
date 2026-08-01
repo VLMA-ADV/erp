@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { formatHorasMin } from '@/lib/utils/format-horas'
 import NfsePreviewDialog from './nfse-preview-dialog'
 
 interface RevisaoItem {
@@ -213,10 +214,8 @@ function formatMoney(value: number | string | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount)
 }
 
-function formatHours(value: number | string | null | undefined) {
-  const amount = Number(value || 0)
-  return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+// Horas em "1h 20min" — util compartilhado (pedido do cliente 01/08).
+const formatHours = formatHorasMin
 
 function formatStatus(value: string) {
   switch (value) {
@@ -1277,7 +1276,7 @@ export default function FluxoDeFaturamentoList() {
                               <span className="min-w-0">
                                 <span className="block truncate text-sm font-semibold text-ink">{cliente.nome}</span>
                                 <span className="block text-xs text-ink-mute">
-                                  {cliente.itemCount} item(ns) · {formatHours(cliente.totalHoras)} h · {clienteSummary.status} · {clienteSummary.responsavel}
+                                  {cliente.itemCount} item(ns) · {formatHours(cliente.totalHoras)} · {clienteSummary.status} · {clienteSummary.responsavel}
                                 </span>
                               </span>
                             </button>
@@ -1346,7 +1345,7 @@ export default function FluxoDeFaturamentoList() {
                                                   {casoG.numero ? `${casoG.numero} - ` : ''}{casoG.nome}
                                                 </span>
                                                 <span className="block truncate text-xs text-ink-mute">
-                                                  {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} h · <span className={statusTextClass(casoSummary.status)}>{casoSummary.status}</span> · {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
+                                                  {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} · <span className={statusTextClass(casoSummary.status)}>{casoSummary.status}</span> · {formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full}
                                                 </span>
                                               </span>
                                             </button>

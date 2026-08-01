@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { formatHorasMin } from '@/lib/utils/format-horas'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
 
@@ -77,9 +78,8 @@ function formatMoney(value: number | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0))
 }
 
-function formatHours(value: number | null | undefined) {
-  return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+// Horas em "1h 20min" — util compartilhado (pedido do cliente 01/08).
+const formatHours = formatHorasMin
 
 function toObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
@@ -494,7 +494,7 @@ function ContratoKitCard({
           <ComposicaoLinha
             icon={<Clock className="h-4 w-4" />}
             titulo="Relatório de timesheet"
-            descricao={`${formatHours(kit.horasTimesheet)} h aprovadas. Geração de PDF a definir (template pendente).`}
+            descricao={`${formatHours(kit.horasTimesheet)} aprovadas. Geração de PDF a definir (template pendente).`}
             nota={notas['relatorio_honorarios']}
             acaoLabel="Gerar relatório"
             onAcao={() => onStub('Relatório de timesheet')}

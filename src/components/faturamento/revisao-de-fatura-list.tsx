@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
+import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import NfsePreviewDialog from './nfse-preview-dialog'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
@@ -296,20 +297,10 @@ function formatMoney(value: number | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0))
 }
 
-function formatHours(value: number | null | undefined) {
-  return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+// Toda hora exibida é "1h 20min" (pedido do cliente 01/08).
+const formatHours = formatHorasMin
 
-// Horas como no timesheet: "1h 20min" (1,33 confunde o revisor).
-function formatHistoryHours(value: number | null | undefined) {
-  const total = Number(value || 0)
-  if (!total) return '0h'
-  const totalMin = Math.round(total * 60)
-  const h = Math.floor(totalMin / 60)
-  const min = totalMin % 60
-  if (h === 0) return `${min}min`
-  return min > 0 ? `${h}h ${min}min` : `${h}h`
-}
+const formatHistoryHours = formatHorasMin
 
 function getOriginalItemHours(item: RevisaoItem) {
   if (item.horasInformadas !== null && item.horasInformadas !== undefined) return item.horasInformadas
@@ -2167,7 +2158,7 @@ export default function RevisaoDeFaturaList() {
                       <div>
                         <p className="text-sm font-semibold text-ink">{clienteGroup.nome}</p>
                         <p className="text-xs text-ink-mute">
-                          {clienteTotals.itens} item(ns) · {formatHours(clienteTotals.horas)} h
+                          {clienteTotals.itens} item(ns) · {formatHours(clienteTotals.horas)}
                         </p>
                       </div>
                     </div>
@@ -2212,7 +2203,7 @@ export default function RevisaoDeFaturaList() {
                                     {casoGroup.nome}
                                   </p>
                                   <p className="text-xs text-ink-mute">
-                                    {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)} h
+                                    {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)}
                                   </p>
                                 </div>
                               </button>
