@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, FileText, Loader2, Receipt } from 'lucide-react'
+import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, FileText, Layers, Loader2, Receipt } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ interface RevisaoItem {
   casoId: string
   timesheetId: string | null
   status: string
+  grupoId: string | null
   origemTipo: string
   casoRegraCobranca: string
   revisoresModo: string
@@ -672,6 +673,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     casoId: asString(data.caso_id),
     timesheetId: asString(data.timesheet_id) || null,
     status: asString(data.status, 'em_revisao'),
+    grupoId: (() => { const g = asString(data.grupo_id); return g || null })(),
     origemTipo: asString(data.origem_tipo, ''),
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     revisoresModo: asString(data.revisores_modo, ''),
@@ -1772,6 +1774,50 @@ export default function RevisaoDeFaturaList() {
     return advanceItem(item)
   }
 
+  // Agrupar: junta os lançamentos selecionados (mesmo caso) numa linha só.
+  // O backend valida mesmo-caso e status; aqui só disparamos e recarregamos.
+  const agruparSelecionados = async (scopeKey: string, itemIds: string[]) => {
+    const uniqueIds = Array.from(new Set(itemIds))
+    if (uniqueIds.length < 2) {
+      toastError('Selecione ao menos dois lançamentos do mesmo caso para agrupar.')
+      return
+    }
+    try {
+      setBusyKey(scopeKey)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toastError('Sua sessão expirou. Entre novamente.'); return }
+      const { error: rpcError } = await supabase.rpc('agrupar_billing_items', {
+        p_user_id: session.user.id,
+        p_item_ids: uniqueIds,
+      })
+      if (rpcError) { toastError(rpcError.message || 'Não foi possível agrupar.'); return }
+      setSelectedItemIds((prev) => prev.filter((id) => !uniqueIds.includes(id)))
+      success(`${uniqueIds.length} lançamentos agrupados.`)
+      await loadItems()
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const desagrupar = async (scopeKey: string, grupoId: string) => {
+    try {
+      setBusyKey(scopeKey)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toastError('Sua sessão expirou. Entre novamente.'); return }
+      const { error: rpcError } = await supabase.rpc('desagrupar_billing_items', {
+        p_user_id: session.user.id,
+        p_grupo_id: grupoId,
+      })
+      if (rpcError) { toastError(rpcError.message || 'Não foi possível desagrupar.'); return }
+      success('Grupo desfeito.')
+      await loadItems()
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   // "Revisar selecionados · OK": conclui a revisão sem alterações dos itens marcados.
   const reviewSelectedOk = async (scopeKey: string, itemIds: string[]) => {
     const uniqueIds = Array.from(new Set(itemIds))
@@ -2247,6 +2293,16 @@ export default function RevisaoDeFaturaList() {
                                   size="sm"
                                   variant="outline"
                                   className="text-xs"
+                                  title="Junta os lançamentos selecionados (mesmo caso) numa linha só na fatura"
+                                  onClick={() => void agruparSelecionados(batchKey, selectedIds)}
+                                  disabled={selectedIds.length < 2 || busyKey === batchKey}
+                                >
+                                  <Layers className="mr-1 h-3.5 w-3.5" /> Agrupar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
                                   onClick={() => {
                                     const base = new Date()
                                     base.setMonth(base.getMonth() + 1)
@@ -2445,6 +2501,23 @@ export default function RevisaoDeFaturaList() {
                                         disabled={(!canAdvance(item.status) && item.status !== 'aprovado') || busy}
                                       />
                                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>{badge.label}</span>
+                                      {item.grupoId ? (
+                                        <span
+                                          className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700"
+                                          title="Este lançamento faz parte de um grupo — sai como uma linha só na fatura"
+                                        >
+                                          <Layers className="h-3 w-3" /> Agrupado
+                                          <button
+                                            type="button"
+                                            className="ml-0.5 underline underline-offset-2 hover:no-underline disabled:opacity-50"
+                                            onClick={() => item.grupoId && void desagrupar(batchKey, item.grupoId)}
+                                            disabled={item.status === 'aprovado' || busyKey === batchKey}
+                                            title={item.status === 'aprovado' ? 'Devolva para revisão antes de desagrupar' : 'Desfazer o grupo'}
+                                          >
+                                            desagrupar
+                                          </button>
+                                        </span>
+                                      ) : null}
                                       <span className="text-xs text-ink-mute">
                                         Lançado por <strong className="text-ink-secondary">{item.enviadoPorNome || item.timesheetProfissional || '-'}</strong>
                                         {envioData ? ` em ${formatDate(envioData)}` : ''}
