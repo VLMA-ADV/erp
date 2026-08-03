@@ -252,7 +252,9 @@ export default function TimesheetList() {
   const templateOptions = useMemo(() => {
     return TIMESHEET_TEMPLATES
       .filter((item) => !templateCategoria || item.categoria === templateCategoria)
-      .map((item) => ({ value: item.id, label: `${item.categoria} - ${item.texto}` }))
+      // A categoria já tem filtro próprio ao lado; repeti-la em cada opção
+      // roubava espaço do texto, que é o que o advogado precisa ler.
+      .map((item) => ({ value: item.id, label: item.texto, group: item.categoria }))
   }, [templateCategoria])
 
   // Filtro por cliente é client-side (a edge filtra por caso/status/período).
@@ -666,9 +668,14 @@ export default function TimesheetList() {
               </tr>
             ) : (
               groupedByDay.flatMap(([dia, linhas]) => [
-                <tr key={`sep-${dia}`} className="bg-amber-50/70">
-                  <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase text-ink-secondary">
-                    {fmtDia(dia)} · {formatDuracao(linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0))}
+                <tr key={`sep-${dia}`} className="bg-amber-100/80">
+                  {/* Data em evidência (pedido Filipe 03/08): antes era um
+                      cinza claro que sumia no meio das linhas. */}
+                  <td colSpan={7} className="border-y border-amber-200/70 px-4 py-2 text-xs font-bold uppercase tracking-wide text-amber-900">
+                    {fmtDia(dia)}
+                    <span className="ml-2 font-tabular font-semibold text-amber-800/80">
+                      {formatDuracao(linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0))}
+                    </span>
                   </td>
                 </tr>,
                 ...linhas.map((item) => {
@@ -689,11 +696,13 @@ export default function TimesheetList() {
 
                 return (
                   <tr key={item.id}>
-                    <td className="max-w-[200px] px-4 py-3 text-sm font-medium text-ink">{clienteNome}</td>
-                    <td className="max-w-[220px] px-4 py-3 text-sm text-ink-secondary">{item.caso_numero || '-'} - {item.caso_nome}</td>
-                    <td className="px-4 py-3 text-sm text-ink-secondary">{item.descricao || '-'}</td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
-                    <td className="px-4 py-3 text-sm">
+                    {/* Bloco mais junto e descrição menor (pedido Filipe 03/08):
+                        o texto longo competia com cliente/caso e achatava o contraste. */}
+                    <td className="max-w-[200px] px-4 py-2 text-sm font-medium text-ink">{clienteNome}</td>
+                    <td className="max-w-[220px] px-4 py-2 text-sm text-ink-secondary">{item.caso_numero || '-'} - {item.caso_nome}</td>
+                    <td className="px-4 py-2 text-xs leading-snug text-ink-mute">{item.descricao || '-'}</td>
+                    <td className="px-4 py-2 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
+                    <td className="px-4 py-2 text-sm">
                       <span className="inline-flex items-center gap-2">
                         {autorFoto ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -706,7 +715,7 @@ export default function TimesheetList() {
                         <span className="text-ink-secondary">{autorNome}</span>
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-1">
                         {showEdit ? (
                           <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => openEdit(item)} title="Editar lançamento">
@@ -727,7 +736,7 @@ export default function TimesheetList() {
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2">
                       <Badge className={`whitespace-nowrap text-[10px] ${statusUpper.cls}`}>{statusUpper.label}</Badge>
                     </td>
                   </tr>
@@ -947,6 +956,8 @@ export default function TimesheetList() {
                     setForm((prev) => ({ ...prev, descricao: descricaoTemplate }))
                   }}
                   options={templateOptions}
+                  wrapLabel
+                  panelMinWidth={520}
                   placeholder="Escolha um template"
                   searchPlaceholder="Buscar por categoria ou texto..."
                   emptyText="Nenhum template"
