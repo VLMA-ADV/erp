@@ -513,10 +513,6 @@ export default function DespesasList() {
       toastError('Valor da despesa é obrigatório e deve ser maior que zero')
       return
     }
-    if (!form.id && !form.arquivo) {
-      toastError('Arquivo é obrigatório')
-      return
-    }
 
     try {
       setSubmitting(true)
@@ -722,7 +718,17 @@ export default function DespesasList() {
                             >
                               <Download className="h-3 w-3" /> anexo{item.anexos && item.anexos.length > 1 ? `s (${item.anexos.length})` : ''}
                             </button>
-                          ) : null}
+                          ) : (
+                            // Comprovante deixou de ser obrigatório (03/08). Em vez
+                            // de a falta passar despercebida até a hora de cobrar do
+                            // cliente, ela fica visível na lista.
+                            <span
+                              className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                              title="Despesa lançada sem comprovante — anexe o documento antes de faturar"
+                            >
+                              sem comprovante
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-3 py-2.5 align-top text-sm text-ink-secondary">{item.created_by_nome || '-'}</td>
@@ -868,7 +874,11 @@ export default function DespesasList() {
             </div>
 
             <div className="space-y-1 md:col-span-2">
-              <Label>Arquivo principal{form.id ? '' : ' *'}</Label>
+              <Label>Comprovante (opcional)</Label>
+              <p className="text-xs text-ink-mute">
+                Pode lançar agora e anexar depois — a despesa fica marcada como
+                &quot;sem comprovante&quot; na lista até o documento ser enviado.
+              </p>
               <Input
                 type="file"
                 onChange={(event) => {
