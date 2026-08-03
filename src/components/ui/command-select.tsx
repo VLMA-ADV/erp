@@ -33,6 +33,13 @@ interface CommandSelectProps {
   createOptionLabel?: string
   maxVisibleOptions?: number
   panelMinWidth?: number
+  /**
+   * Deixa o texto da opção quebrar em várias linhas em vez de cortar.
+   * Para listas de texto longo (templates de descritivo), onde cortar em uma
+   * linha impede a leitura. Padrão false: nome de cliente/caso segue em uma
+   * linha só, que é o certo para lista longa de itens curtos.
+   */
+  wrapLabel?: boolean
 }
 
 export function CommandSelect({
@@ -47,6 +54,7 @@ export function CommandSelect({
   createOptionLabel = 'Cadastrar',
   maxVisibleOptions,
   panelMinWidth = 360,
+  wrapLabel = false,
 }: CommandSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -145,7 +153,10 @@ export function CommandSelect({
                   {groupOptions.map((option) => (
                     <CommandItem
                       key={option.value}
-                      className="flex max-w-full min-w-0 items-center"
+                      className={cn(
+                        'flex max-w-full min-w-0',
+                        wrapLabel ? 'items-start' : 'items-center',
+                      )}
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         onValueChange(option.value)
@@ -153,8 +164,19 @@ export function CommandSelect({
                         setQuery('')
                       }}
                     >
-                      <Check className={cn('mr-2 h-4 w-4 shrink-0', value === option.value ? 'opacity-100' : 'opacity-0')} />
-                      <span className="min-w-0 flex-1 truncate" title={option.label}>{option.label}</span>
+                      <Check
+                        className={cn(
+                          'mr-2 h-4 w-4 shrink-0',
+                          wrapLabel ? 'mt-0.5' : '',
+                          value === option.value ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
+                      <span
+                        className={cn('min-w-0 flex-1', wrapLabel ? 'whitespace-normal break-words leading-snug' : 'truncate')}
+                        title={option.label}
+                      >
+                        {option.label}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>

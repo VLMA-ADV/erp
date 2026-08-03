@@ -90,19 +90,36 @@ function Treemap({ titulo, subtitulo, linhas }: { titulo: string; subtitulo: str
           </div>
           {top.length > 1 ? (
             <div className="flex flex-1 flex-col gap-1">
-              {top.slice(1).map((l, i) => (
-                <div
-                  key={l.label}
-                  className="flex min-h-0 flex-col justify-start overflow-hidden p-3"
-                  style={{
-                    flexGrow: Math.max(Number(l.minutos), 1),
-                    backgroundColor: TREEMAP_COLORS[(i + 1) % TREEMAP_COLORS.length],
-                  }}
-                >
-                  <p className="truncate text-xs font-semibold text-white" title={l.label}>{l.label}</p>
-                  <p className="text-[11px] text-white/85">{fmtMin(l.minutos)} · {pct(Number(l.minutos))}%</p>
-                </div>
-              ))}
+              {top.slice(1).map((l, i) => {
+                // Bloco proporcional pode ficar baixo demais para caber nome +
+                // valor: aí o texto empilhava e virava borrão (pedido Filipe
+                // 03/08). Abaixo de ~14% da altura, mostra só o valor; o nome
+                // fica no title (toque/mouse).
+                const fatia = pct(Number(l.minutos))
+                const apertado = fatia < 14
+                return (
+                  <div
+                    key={l.label}
+                    className="flex min-h-0 flex-col justify-center overflow-hidden px-3 py-2"
+                    style={{
+                      flexGrow: Math.max(Number(l.minutos), 1),
+                      backgroundColor: TREEMAP_COLORS[(i + 1) % TREEMAP_COLORS.length],
+                    }}
+                    title={`${l.label} — ${fmtMin(l.minutos)} · ${fatia}%`}
+                  >
+                    {apertado ? (
+                      <p className="truncate text-[11px] font-medium text-white/95">
+                        {fmtMin(l.minutos)} · {fatia}%
+                      </p>
+                    ) : (
+                      <>
+                        <p className="truncate text-xs font-semibold text-white">{l.label}</p>
+                        <p className="truncate text-[11px] text-white/85">{fmtMin(l.minutos)} · {fatia}%</p>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ) : null}
         </div>
@@ -146,24 +163,26 @@ function ChartHoras({ serie }: { serie: SerieDia[] }) {
     return { dias, pontos, yMax, mesLabel }
   }, [serie, modo])
 
-  const W = 860
-  const H = 230
-  const padL = 10
-  const padR = 26
-  const padT = 30
-  const padB = 26
+  // Barras verticais (pedido Filipe 03/08). A versão em linha escrevia o total
+  // em cima de cada ponto e só cabia rótulo em dia ímpar — daí a poluição e os
+  // dias faltando. Em barra, o número do dia cabe embaixo de todas.
+  const W = 620
+  const H = 168
+  const padL = 6
+  const padR = 6
+  const padT = 14
+  const padB = 20
   const n = chart.dias.length
-  const x = (i: number) => padL + (i / Math.max(n - 1, 1)) * (W - padL - padR)
+  const plotW = W - padL - padR
+  const slot = plotW / Math.max(n, 1)
+  const barW = Math.max(3, slot * 0.6)
+  const cx = (i: number) => padL + slot * i + slot / 2
   const y = (v: number) => padT + (1 - v / chart.yMax) * (H - padT - padB)
-
-  const passados = chart.pontos.filter((p) => p.passado)
-  const linePath = passados.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${x(p.i).toFixed(1)},${y(p.cum || 0).toFixed(1)}`).join(' ')
-  const areaPath = passados.length > 1
-    ? `${linePath} L${x(passados[passados.length - 1].i).toFixed(1)},${(H - padB).toFixed(1)} L${x(passados[0].i).toFixed(1)},${(H - padB).toFixed(1)} Z`
-    : ''
+  const base = H - padB
 
   const mesLabel = chart.mesLabel
   const ultimoDia = chart.dias.length
+  const totalMin = chart.pontos.reduce((s, p) => s + (p.cum || 0), 0)
 
   return (
     <div className="rounded-xl border border-hairline bg-card p-4">
@@ -171,7 +190,8 @@ function ChartHoras({ serie }: { serie: SerieDia[] }) {
         <div>
           <p className="text-sm font-semibold text-ink">Horas lançadas</p>
           <p className="text-xs capitalize text-ink-mute">
-            {modo === 'mes' ? `${mesLabel} · horas por dia (1 a ${ultimoDia})` : 'Semana atual · horas por dia'}
+            {modo === 'mes' ? `${mesLabel} · dias 1 a ${ultimoDia}` : 'Semana atual'}
+            {totalMin > 0 ? <span className="font-tabular"> · {fmtMin(totalMin)} no total</span> : null}
           </p>
         </div>
         <div className="flex rounded-full border border-hairline bg-canvas-soft p-0.5 text-xs">
@@ -187,28 +207,52 @@ function ChartHoras({ serie }: { serie: SerieDia[] }) {
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" role="img" aria-label="Horas lançadas acumuladas">
-        {chart.dias.map((_, i) => (
-          <line key={i} x1={x(i)} y1={padT - 6} x2={x(i)} y2={H - padB} stroke="#eceae6" strokeWidth={1} />
-        ))}
-        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="#d9d6d0" strokeWidth={1} />
-        {areaPath ? <path d={areaPath} fill="#E8871E" opacity={0.08} /> : null}
-        {linePath ? <path d={linePath} fill="none" stroke="#E8871E" strokeWidth={2} /> : null}
-        {passados.filter((p) => p.temLancamento).map((p) => (
-          <g key={p.i}>
-            <circle cx={x(p.i)} cy={y(p.cum || 0)} r={4.5} fill="#fff" stroke="#E8871E" strokeWidth={2} />
-            <text x={x(p.i)} y={y(p.cum || 0) - 10} textAnchor="middle" fontSize={11} fontWeight={600} fill="#E8871E">
-              {fmtMin(p.cum)}
-            </text>
-          </g>
-        ))}
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" role="img" aria-label="Horas lançadas por dia">
+        {/* referência do topo da escala, discreta */}
+        <line x1={padL} y1={padT} x2={W - padR} y2={padT} stroke="#eceae6" strokeWidth={1} strokeDasharray="2 3" />
+        <line x1={padL} y1={base} x2={W - padR} y2={base} stroke="#d9d6d0" strokeWidth={1} />
+        {chart.pontos.map((p) => {
+          const v = p.cum || 0
+          const alturaReal = base - y(v)
+          // barra mínima visível para dia com lançamento curto
+          const altura = v > 0 ? Math.max(alturaReal, 2) : 0
+          const dia = p.d.getDate()
+          return (
+            <g key={p.i}>
+              {altura > 0 ? (
+                <rect
+                  x={cx(p.i) - barW / 2}
+                  y={base - altura}
+                  width={barW}
+                  height={altura}
+                  rx={Math.min(2, barW / 2)}
+                  fill="#E8871E"
+                  opacity={p.passado ? 1 : 0.35}
+                >
+                  <title>{`Dia ${dia} · ${fmtMin(v)}`}</title>
+                </rect>
+              ) : (
+                // marca fantasma: mostra que o dia existe e está zerado
+                <rect x={cx(p.i) - barW / 2} y={base - 2} width={barW} height={2} rx={1} fill="#eceae6">
+                  <title>{`Dia ${dia} · sem lançamento`}</title>
+                </rect>
+              )}
+            </g>
+          )
+        })}
         {chart.dias.map((d, i) => {
-          if (modo === 'mes' && i % 2 !== 0) return null
           const label = modo === 'mes'
-            ? String(d.getDate()).padStart(2, '0')
+            ? String(d.getDate())
             : d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
           return (
-            <text key={`l-${i}`} x={x(i)} y={H - padB + 16} textAnchor="middle" fontSize={10} fill="#a8a29e">
+            <text
+              key={`l-${i}`}
+              x={cx(i)}
+              y={base + 13}
+              textAnchor="middle"
+              fontSize={modo === 'mes' ? 8.5 : 10}
+              fill="#a8a29e"
+            >
               {label}
             </text>
           )
@@ -227,13 +271,15 @@ function KpiCards({ data }: { data: Resumo }) {
     { label: 'Média / dia útil', value: fmtMin(data.media_dia_util_min) },
     { label: 'Top cliente (mês)', value: data.top_cliente || '—', small: true },
   ]
+  // Coluna estreita ao lado do gráfico (pedido Filipe 03/08): em telas largas
+  // são 2 colunas de caixas compactas; no celular voltam a ocupar a largura.
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3">
       {kpis.map((c) => (
-        <div key={c.label} className="rounded-xl border border-hairline bg-card p-4">
+        <div key={c.label} className="rounded-xl border border-hairline bg-card p-3">
           <p className="text-eyebrow">{c.label}</p>
           <p
-            className={`mt-1 font-tabular font-light ${c.small ? 'truncate pt-1 text-sm font-medium' : 'text-2xl'} ${c.accent ? 'text-emerald-700' : 'text-ink'}`}
+            className={`mt-0.5 font-tabular font-light ${c.small ? 'truncate pt-0.5 text-xs font-medium' : 'text-xl'} ${c.accent ? 'text-emerald-700' : 'text-ink'}`}
             title={c.small ? c.value : undefined}
           >
             {c.value}
@@ -310,8 +356,11 @@ export default function TimesheetHome() {
     </div>
   ) : data ? (
     <div className="space-y-4">
-      <KpiCards data={data} />
-      <ChartHoras serie={data.serie_dia || []} />
+      {/* Gráfico à esquerda, indicadores à direita (pedido Filipe 03/08). */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <ChartHoras serie={data.serie_dia || []} />
+        <KpiCards data={data} />
+      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Treemap titulo="Horas por cliente" subtitulo="Todos os clientes com horas lançadas no mês" linhas={data.por_cliente || []} />
         <Treemap titulo="Casos mais trabalhados" subtitulo="Todos os casos com horas lançadas no mês" linhas={data.por_caso || []} />
@@ -338,16 +387,17 @@ export default function TimesheetHome() {
               {saudacao()}, {nome || 'colega'} <span aria-hidden>👋</span>
             </h1>
             <p className="mt-1 text-sm text-ink-mute">Lançamentos de horas por cliente e caso</p>
+            {/* Botão à esquerda, junto da saudação (pedido Filipe 03/08).
+                A lista abaixo escuta este evento para abrir o formulário. */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('vlma:novo-timesheet'))}
+              className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#E8871E] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+            >
+              <span className="text-base leading-none" aria-hidden>+</span> Novo timesheet
+            </button>
           </div>
         </div>
-        {/* Primeira ação de quem abre o módulo (feedback 20/07) — a lista abaixo escuta o evento. */}
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event('vlma:novo-timesheet'))}
-          className="inline-flex items-center gap-2 rounded-full bg-[#E8871E] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
-        >
-          <span className="text-base leading-none" aria-hidden>+</span> Novo timesheet
-        </button>
         </div>
       </header>
       <SectionTabs
