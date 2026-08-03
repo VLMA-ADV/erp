@@ -44,6 +44,8 @@ interface TimesheetItem {
   ia_minutos?: number | null
   created_by: string
   created_by_nome: string | null
+  /** Vem do banco (pode_editar_timesheet_de) — não recalcular aqui. */
+  pode_editar?: boolean | null
 }
 
 interface ContratoItem {
@@ -676,7 +678,11 @@ export default function TimesheetList() {
                     : item.status === 'revisao'
                       ? { label: 'EM REVISÃO', cls: 'border-amber-200 bg-amber-100 text-amber-700' }
                       : { label: 'EM LANÇAMENTO', cls: 'border-blue-200 bg-blue-100 text-blue-700' }
-                const showEdit = canWrite && canEditTimesheetInList(item.status)
+                // `pode_editar` é a resposta do próprio banco sobre este
+                // lançamento. Sem ele o lápis aparecia em lançamento de outra
+                // pessoa e o servidor recusava depois do clique.
+                const podeEditarEste = item.pode_editar !== false
+                const showEdit = canWrite && canEditTimesheetInList(item.status) && podeEditarEste
                 const clienteNome = contratoInfo.get(item.contrato_id)?.cliente_nome || item.contrato_nome || '-'
                 const autorNome = item.created_by_nome || '-'
                 const autorFoto = fotoDe(item.created_by_nome)
