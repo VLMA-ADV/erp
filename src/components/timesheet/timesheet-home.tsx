@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { SectionTabs } from '@/components/ui/section-tabs'
+import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import TimesheetList from './timesheet-list'
 import GestaoHorasDashboard from './gestao-horas-dashboard'
+import GestaoGeralDashboard from './gestao-geral-dashboard'
 
 interface LinhaMin {
   label: string
@@ -291,6 +293,10 @@ function KpiCards({ data }: { data: Resumo }) {
 }
 
 export default function TimesheetHome() {
+  // A aba Gestão Geral aparece para sócio/administrativo; o backend
+  // (get_gestao_geral) é a autoridade real: sócio + Jessika (grant nominal).
+  const { categoria } = usePermissionsContext()
+  const podeGestaoGeral = categoria === 'socio' || categoria === 'administrativo'
   const [data, setData] = useState<Resumo | null>(null)
   const [loading, setLoading] = useState(true)
   const [fallbackNome, setFallbackNome] = useState('')
@@ -413,6 +419,9 @@ export default function TimesheetHome() {
             ),
           },
           { value: 'gestao', label: 'Gestão da equipe', content: <GestaoHorasDashboard /> },
+          ...(podeGestaoGeral
+            ? [{ value: 'geral', label: 'Gestão Geral', content: <GestaoGeralDashboard /> }]
+            : []),
         ]}
       />
     </div>
