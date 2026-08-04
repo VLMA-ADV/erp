@@ -26,6 +26,9 @@ export interface CasoListItem {
   produto_nome?: string | null
   responsavel_id: string | null
   responsavel_nome?: string | null
+  /** Resolvidos no backend a partir do jsonb (pedido Filipe 04/08). */
+  centro_custo_nome?: string | null
+  revisor_nome?: string | null
   status?: 'rascunho' | 'ativo' | 'inativo'
   ativo: boolean
   created_at: string

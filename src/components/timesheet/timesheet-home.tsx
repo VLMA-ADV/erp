@@ -12,7 +12,7 @@ interface LinhaMin {
   label: string
   minutos: number
 }
-interface SerieDia {
+export interface SerieDia {
   d: string
   min: number
 }
@@ -131,7 +131,7 @@ function Treemap({ titulo, subtitulo, linhas }: { titulo: string; subtitulo: str
 }
 
 // Horas lançadas por dia (pontos com rótulo nos dias com lançamento).
-function ChartHoras({ serie }: { serie: SerieDia[] }) {
+export function ChartHoras({ serie }: { serie: SerieDia[] }) {
   const [modo, setModo] = useState<'semana' | 'mes'>('mes')
 
   const chart = useMemo(() => {
