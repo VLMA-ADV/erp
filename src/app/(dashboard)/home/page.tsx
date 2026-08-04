@@ -16,9 +16,6 @@ export default async function HomePage() {
       <div className="container mx-auto px-6 py-16">
         <span className="text-eyebrow">VLMA · ERP</span>
         <h1 className="mt-3 display-xl text-ink">Dashboard</h1>
-        <p className="mt-4 max-w-prose text-base text-ink-mute">
-          Bem-vindo ao sistema da Voa Legal Marcas e Advocacia.
-        </p>
 
         <section className="cream-band mt-12 max-w-3xl shadow-lift-1">
           <span className="text-eyebrow">Primeiros passos</span>
