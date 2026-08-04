@@ -284,6 +284,8 @@ export default function ContratosList() {
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Caso</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Produto</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Responsável</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Centro de custo</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Revisor</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Status</th>
                                           <th className="px-4 py-2 text-right text-xs font-medium text-ink-mute uppercase">Ações</th>
                                         </tr>
@@ -307,6 +309,8 @@ export default function ContratosList() {
                                               </td>
                                               <td className="px-4 py-3 text-sm text-ink-secondary">{caso.produto_nome || '-'}</td>
                                               <td className="px-4 py-3 text-sm text-ink-secondary">{caso.responsavel_nome || '-'}</td>
+                                              <td className="px-4 py-3 text-sm text-ink-secondary">{caso.centro_custo_nome || '-'}</td>
+                                              <td className="px-4 py-3 text-sm text-ink-secondary">{caso.revisor_nome || '-'}</td>
                                               <td className="px-4 py-3 text-sm">
                                                 <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${caseStatusPill(caso.status || 'rascunho')}`}>
                                                   {caso.status || 'rascunho'}

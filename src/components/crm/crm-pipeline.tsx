@@ -59,6 +59,7 @@ interface PipelineCard {
   forma_pagamento: string | null
   valor_caixa_mes: number
   valor_futuro_projetado: number
+  regra_cobranca: string | null
   observacoes: string
   etapa: EtapaKanban
   ordem: number
@@ -89,6 +90,7 @@ interface FormState {
   forma_pagamento: string
   valor_caixa_mes: string
   valor_futuro_projetado: string
+  regra_cobranca: string
 }
 
 interface NewAnexo {
@@ -122,6 +124,7 @@ const emptyForm: FormState = {
   forma_pagamento: '',
   valor_caixa_mes: '',
   valor_futuro_projetado: '',
+  regra_cobranca: '',
 }
 
 function tempColor(pct: number | null | undefined) {
@@ -505,6 +508,7 @@ export default function CrmPipeline() {
       forma_pagamento: card.forma_pagamento || '',
       valor_caixa_mes: card.valor_caixa_mes ? String(card.valor_caixa_mes) : '',
       valor_futuro_projetado: card.valor_futuro_projetado ? String(card.valor_futuro_projetado) : '',
+      regra_cobranca: card.regra_cobranca || '',
     })
     setExistingAnexos(card.anexos || [])
     setRemoveAnexoIds([])
@@ -719,6 +723,7 @@ export default function CrmPipeline() {
         forma_pagamento: form.forma_pagamento || '',
         valor_caixa_mes: form.valor_caixa_mes || '0',
         valor_futuro_projetado: form.valor_futuro_projetado || '0',
+        regra_cobranca: form.regra_cobranca || '',
         anexos: anexosPayload,
         remove_anexo_ids: removeAnexoIds,
       }
@@ -946,6 +951,10 @@ export default function CrmPipeline() {
           const etapaCards = cardsByEtapa[etapa.key] || []
           if (etapaCards.length === 0 && ['negada', 'suspensa'].includes(etapa.key)) return null
           const totalEtapa = etapaCards.reduce((sum, c2) => sum + Number(c2.valor || 0), 0)
+          // Indicadores da etapa (pedido Filipe 04/08): os dois campos já
+          // existiam no card, só não eram somados em lugar nenhum.
+          const totalProjetado = etapaCards.reduce((sum, c2) => sum + Number(c2.valor_futuro_projetado || 0), 0)
+          const totalCaixaMes = etapaCards.reduce((sum, c2) => sum + Number(c2.valor_caixa_mes || 0), 0)
           return (
             <section key={etapa.key} className={`overflow-hidden rounded-xl border border-hairline bg-white ${railEtapa === etapa.key ? 'ring-2 ring-[#E8871E]/50' : ''}`}>
               <button
@@ -958,7 +967,19 @@ export default function CrmPipeline() {
                   <span className="text-sm font-semibold text-ink">{etapa.label}</span>
                   <Badge className="border-hairline bg-white text-ink-secondary">{etapaCards.length}</Badge>
                 </span>
-                <span className="text-sm font-semibold font-tabular text-[#B45309]">{formatMoney(totalEtapa)}</span>
+                <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {totalProjetado > 0 ? (
+                    <span className="text-[11px] text-ink-mute">
+                      projetado <strong className="font-tabular font-semibold text-ink-secondary">{formatMoney(totalProjetado)}</strong>
+                    </span>
+                  ) : null}
+                  {totalCaixaMes > 0 ? (
+                    <span className="text-[11px] text-ink-mute">
+                      caixa no mês <strong className="font-tabular font-semibold text-emerald-700">{formatMoney(totalCaixaMes)}</strong>
+                    </span>
+                  ) : null}
+                  <span className="text-sm font-semibold font-tabular text-[#B45309]">{formatMoney(totalEtapa)}</span>
+                </span>
               </button>
               {etapaCards.length === 0 ? (
                 <p className="px-4 py-3 text-xs text-ink-mute">Sem oportunidades nesta etapa.</p>
@@ -982,16 +1003,34 @@ export default function CrmPipeline() {
                               {areaNomeById.get(card.area_id || '') || 'Sem centro de custo'}
                             </span>
                           </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="h-1.5 w-36 rounded-full bg-secondary">
-                              <div className="h-1.5 rounded-full" style={{ width: `${Number(card.temperatura_pct || 0)}%`, backgroundColor: tempColor(card.temperatura_pct) }} />
-                            </div>
-                            <span className="text-[10px] font-medium" style={{ color: tempColor(card.temperatura_pct) }}>{Number(card.temperatura_pct || 0)}%</span>
-                          </div>
                           <p className="mt-1.5 text-[11px] text-ink-mute">
                             {card.responsavel_interno_nome || 'Sem responsável'} · atualizado {new Date(card.updated_at).toLocaleDateString('pt-BR')}
                           </p>
                         </button>
+                        {/* Temperatura ajustável também na lista (pedido Filipe 04/08).
+                            Fica FORA do <button> de editar: dentro, o clique no
+                            controle abria o formulário em vez de mover a barra —
+                            era por isso que só o kanban funcionava. */}
+                        <div className="flex w-40 shrink-0 flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 flex-1 rounded-full bg-secondary">
+                              <div className="h-1.5 rounded-full" style={{ width: `${Number(card.temperatura_pct || 0)}%`, backgroundColor: tempColor(card.temperatura_pct) }} />
+                            </div>
+                            <span className="text-[10px] font-medium" style={{ color: tempColor(card.temperatura_pct) }}>{Number(card.temperatura_pct || 0)}%</span>
+                          </div>
+                          {canWrite ? (
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={card.temperatura_pct ?? 0}
+                              onChange={(event) => void handleSetTemperaturaPct(card.id, Number(event.target.value))}
+                              className="w-full"
+                              title="Temperatura de fechamento (%)"
+                            />
+                          ) : null}
+                        </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <p className="text-sm font-semibold font-tabular text-ink">{formatMoney(card.valor)}</p>
                           <p className="text-[10px] font-tabular text-[#B45309]">pond. {formatMoney(pond)}</p>
@@ -1329,6 +1368,26 @@ export default function CrmPipeline() {
             <div className="space-y-2">
               <Label>Valor futuro projetado</Label>
               <MoneyInput value={form.valor_futuro_projetado} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_futuro_projetado: v }))} placeholder="0,00" disabled={saving} />
+            </div>
+
+            {/* Regra de cobrança pretendida (pedido Filipe 04/08) — mesma
+                lista do caso, para a oportunidade já nascer com a intenção. */}
+            <div className="space-y-2">
+              <Label>Regra de cobrança</Label>
+              <NativeSelect
+                value={form.regra_cobranca}
+                onChange={(event) => setForm((prev) => ({ ...prev, regra_cobranca: event.target.value }))}
+                className="h-10 rounded-md border px-3"
+                disabled={!canWrite || saving}
+              >
+                <option value="">Selecione...</option>
+                <option value="hora">Hora</option>
+                <option value="mensal">Mensal</option>
+                <option value="mensalidade_processo">Mensalidade de processo</option>
+                <option value="mensalidade_carteira">Mensalidade de Carteira</option>
+                <option value="projeto">Projeto</option>
+                <option value="exito">Êxito</option>
+              </NativeSelect>
             </div>
 
             {/* 7. Fase */}

@@ -251,51 +251,6 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
   )
 }
 
-function AvatarBarChart({ title, items, hint, onSelect }: { title: string; items: DashboardListItem[]; hint?: string; onSelect?: (nome: string) => void }) {
-  const top = items.slice(0, 6)
-  const max = top.reduce((acc, item) => Math.max(acc, item.total), 0)
-  return (
-    <CardShell title={title} hint={hint}>
-      <div className="space-y-2.5">
-        {top.length === 0 ? (
-          <p className="text-xs text-ink-mute">Sem dados</p>
-        ) : (
-          top.map((item, idx) => {
-            const width = max > 0 ? (item.total / max) * 100 : 0
-            const palette = AVATAR_COLORS[hashIndex(item.nome, AVATAR_COLORS.length)]
-            const isUnassigned = /sem responsável|sem nome/i.test(item.nome)
-            return (
-              <div
-                key={`${title}-${item.nome}-${idx}`}
-                className={`space-y-1 ${onSelect ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-canvas-soft' : ''}`}
-                onClick={onSelect ? () => onSelect(item.nome) : undefined}
-                title={onSelect ? 'Ver contratos' : undefined}
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                    style={{ background: isUnassigned ? '#f1f5f9' : palette.bg, color: isUnassigned ? '#64748b' : palette.fg }}
-                  >
-                    {isUnassigned ? '?' : initials(item.nome)}
-                  </span>
-                  <span className="flex-1 truncate text-[12px] text-ink" title={item.nome}>{item.nome}</span>
-                  <span className="text-[12px] font-medium text-ink font-tabular">{item.total}</span>
-                </div>
-                <div className="ml-8 h-1.5 rounded-full bg-canvas-soft">
-                  <div
-                    className="h-1.5 rounded-full transition-all"
-                    style={{ width: `${width}%`, background: isUnassigned ? '#94a3b8' : palette.fg }}
-                  />
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
-    </CardShell>
-  )
-}
-
 function DonutChart({ title, items, hint, maxSlices = 6, onSelect }: { title: string; items: DashboardListItem[]; hint?: string; maxSlices?: number; onSelect?: (nome: string) => void }) {
   if (items.length === 0) {
     return (
@@ -757,7 +712,9 @@ export default function ContratosDashboard() {
       <StackedAreaChart serie={data.serie_temporal} />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <AvatarBarChart title="Por responsável" items={data.por_responsavel} hint="top 6 ativos" onSelect={(nome) => setDrill({ dim: 'por_responsavel', valor: nome })} />
+        {/* Uniformizado em rosca (pedido Filipe 04/08): era o único em barra
+            no bloco, e a mistura deixava a Visão geral irregular. */}
+        <DonutChart title="Por responsável" items={data.por_responsavel} hint="top 6 ativos" onSelect={(nome) => setDrill({ dim: 'por_responsavel', valor: nome })} />
         <DonutChart title="Por serviço" items={data.por_servico} hint="distribuição" onSelect={(nome) => setDrill({ dim: 'por_servico', valor: nome })} />
         <DonutChart title="Por produto" items={data.por_produto} hint="distribuição" onSelect={(nome) => setDrill({ dim: 'por_produto', valor: nome })} />
         <CentroCustoCard items={data.por_centro_custo} totalCasos={data.kpis.casos_ativos} onSelect={(nome) => setDrill({ dim: 'por_centro_custo', valor: nome })} />

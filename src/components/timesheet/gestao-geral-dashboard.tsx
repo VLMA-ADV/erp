@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Button } from '@/components/ui/button'
+import { ChartHoras, type SerieDia } from './timesheet-home'
 
 interface LinhaPessoa { user_id: string; label: string; area?: string | null; horas: number; valor_projetado: number; valor_aprovado: number }
 interface LinhaArea { area_id: string | null; label: string; pessoas: number; horas: number; valor_projetado: number; valor_aprovado: number }
@@ -12,6 +13,7 @@ interface Totais { pessoas: number; pessoas_com_lancamento: number; horas: numbe
 interface FiltroOpt { areas: { id: string; nome: string }[]; pessoas: { user_id: string; nome: string }[] }
 interface GestaoGeral {
   autorizado: boolean
+  serie_dia?: SerieDia[]
   periodo?: { inicio: string; fim: string }
   totais?: Totais
   por_area?: LinhaArea[]
@@ -135,6 +137,10 @@ export default function GestaoGeralDashboard() {
           <p className="mt-1 text-2xl font-light text-emerald-700">{money(t?.valor_aprovado)}</p>
         </div>
       </div>
+
+      {/* Gráfico diário de lançamentos do escritório (pedido Filipe 04/08) —
+          mesmo componente da tela do usuário, só troca a fonte de dados. */}
+      <ChartHoras serie={data?.serie_dia || []} />
 
       {/* Por centro de custo */}
       <TabelaGeral titulo="Por centro de custo" colPrimeira="Centro de custo" linhas={(data?.por_area || []).map((a) => ({
