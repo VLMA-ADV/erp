@@ -153,7 +153,7 @@ function CardShell({ title, hint, children, className = '' }: { title: string; h
   )
 }
 
-function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
+function StackedAreaChart({ serie, onSelectMes }: { serie: SerieTemporalItem[]; onSelectMes?: (mes: string, rotulo: string) => void }) {
   const width = 800
   const height = 220
   const padding = { top: 20, right: 16, bottom: 32, left: 36 }
@@ -203,7 +203,7 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
         </div>
       </div>
       <div className="relative w-full overflow-hidden">
-        <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" preserveAspectRatio="none">
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full">
           <defs>
             <linearGradient id="grad-contratos" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#1E1423" stopOpacity={0.55} />
@@ -239,9 +239,10 @@ function StackedAreaChart({ serie }: { serie: SerieTemporalItem[] }) {
                 height={height - padding.top - padding.bottom}
                 fill="#ffffff"
                 fillOpacity={0}
-                style={{ pointerEvents: 'all' }}
+                style={{ pointerEvents: 'all', cursor: onSelectMes ? 'pointer' : 'default' }}
+                onClick={() => onSelectMes?.(s.mes, rotuloPtBr(s.rotulo))}
               >
-                <title>{`${rotuloPtBr(s.rotulo)} — Contratos: ${s.contratos_novos} · Casos: ${s.casos_novos} · Total: ${s.contratos_novos + s.casos_novos}`}</title>
+                <title>{`${rotuloPtBr(s.rotulo)} — Contratos: ${s.contratos_novos} · Casos: ${s.casos_novos} · Total: ${s.contratos_novos + s.casos_novos}${onSelectMes ? ' · clique para ver a lista' : ''}`}</title>
               </rect>
             </g>
           ))}
@@ -598,6 +599,7 @@ const DRILL_TITULOS: Record<string, string> = {
   por_cliente_top: 'Cliente',
   por_status: 'Status',
   por_regra_cobranca_mes: 'Regra de cobrança',
+  por_mes: 'Contratos criados em',
 }
 
 interface DrillRow { contrato_id: string | null; numero: number | null; nome: string; cliente: string; caso: string | null }
@@ -606,7 +608,7 @@ export default function ContratosDashboard() {
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('contracts.contratos.read')
   const [refMonth, setRefMonth] = useState('') // '' = mês atual; senão 'YYYY-MM'
-  const [drill, setDrill] = useState<{ dim: string; valor: string } | null>(null)
+  const [drill, setDrill] = useState<{ dim: string; valor: string; rotulo?: string } | null>(null)
 
   const monthOptions = useMemo(() => {
     const opts: Array<{ value: string; label: string }> = [{ value: '', label: 'Mês atual' }]
@@ -709,7 +711,7 @@ export default function ContratosDashboard() {
         <KpiCard label="Contratos novos no mês" value={data.kpis.contratos_novos_mes} />
       </div>
 
-      <StackedAreaChart serie={data.serie_temporal} />
+      <StackedAreaChart serie={data.serie_temporal} onSelectMes={(mes, rotulo) => setDrill({ dim: 'por_mes', valor: mes, rotulo })} />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {/* Uniformizado em rosca (pedido Filipe 04/08): era o único em barra
@@ -759,7 +761,7 @@ export default function ContratosDashboard() {
         <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {drill ? `${DRILL_TITULOS[drill.dim] || ''}: ${drill.valor}` : ''}
+              {drill ? `${DRILL_TITULOS[drill.dim] || ''}: ${drill.rotulo || drill.valor}` : ''}
             </DialogTitle>
           </DialogHeader>
           {drillLoading ? (

@@ -36,6 +36,14 @@ function getVisibleCasos<T extends CasoLike>(casos: T[] | null | undefined): T[]
   return matrizIds.size > 0 ? casos.filter((c) => !matrizIds.has(c.id)) : casos
 }
 
+// Data curta para caber na coluna (pedido Filipe 04/08).
+function fmtData(value?: string | null) {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
+
 export default function ContratosList() {
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissionsContext()
@@ -205,6 +213,7 @@ export default function ContratosList() {
                   <th className="w-10 px-3 py-3" />
                   <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase">Contrato</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase">Criado em</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-ink-mute uppercase">Casos</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-ink-mute uppercase">Ações</th>
                 </tr>
@@ -263,6 +272,7 @@ export default function ContratosList() {
                                   {formatContractStatus(item.status)}
                                 </span>
                               </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-secondary font-tabular">{fmtData(item.created_at)}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-secondary font-tabular">{getVisibleCasos(item.casos).length}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
                                 <ContratosActions
@@ -287,6 +297,7 @@ export default function ContratosList() {
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Centro de custo</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Revisor</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Status</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-mute uppercase">Criado em</th>
                                           <th className="px-4 py-2 text-right text-xs font-medium text-ink-mute uppercase">Ações</th>
                                         </tr>
                                       </thead>
@@ -316,6 +327,7 @@ export default function ContratosList() {
                                                   {caso.status || 'rascunho'}
                                                 </span>
                                               </td>
+                                              <td className="px-4 py-3 text-sm text-ink-secondary font-tabular">{fmtData(caso.created_at)}</td>
                                               <td className="px-4 py-3 text-right">
                                                 <CasosActions
                                                   contratoId={item.id}
