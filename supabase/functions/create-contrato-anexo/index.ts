@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
       p_arquivo_nome: body.arquivo_nome,
       p_mime_type: body.mime_type ?? null,
       p_arquivo_base64: body.arquivo_base64,
+      p_tipo: body.tipo ?? null,
     });
 
     if (error) {

@@ -281,6 +281,8 @@ function getRuleTitle(item: RevisaoItem) {
   if (kind === 'mensal') return 'Mensalidade'
   if (kind === 'projeto') return 'Projeto'
   if (kind === 'projeto_parcelado') return 'Projeto parcelado'
+  if (kind === 'pro_labore') return 'Pró-labore'
+  if (kind === 'pro_labore_parcelado') return 'Pró-labore parcelado'
   if (kind === 'exito') return 'Êxito'
   if (kind === 'hora') return 'Hora'
   return asText(item.regra_nome).trim() || 'Regra financeira'
@@ -290,8 +292,8 @@ function getRuleTitle(item: RevisaoItem) {
 function ruleTypeFromKind(kind: string): string | null {
   if (kind === 'mensalidade_processo' || kind === 'salario_minimo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
-  if (kind === 'projeto') return 'projeto'
-  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
+  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
   if (kind === 'exito') return 'exito'
   return null
 }
@@ -307,8 +309,8 @@ function getRuleType(item: RevisaoItem) {
   const kind = getRuleKind(item)
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
-  if (kind === 'projeto') return 'projeto'
-  if (kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
+  if (kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
   if (kind === 'exito') return 'exito'
   if (kind === 'hora') return 'hora'
   return 'outros'

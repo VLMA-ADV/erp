@@ -1386,6 +1386,7 @@ export default function CrmPipeline() {
                 <option value="mensalidade_processo">Mensalidade de processo</option>
                 <option value="mensalidade_carteira">Mensalidade de Carteira</option>
                 <option value="projeto">Projeto</option>
+                <option value="pro_labore">Pró-labore</option>
                 <option value="exito">Êxito</option>
               </NativeSelect>
             </div>

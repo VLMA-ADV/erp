@@ -5,7 +5,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NativeSelect } from '@/components/ui/native-select'
 import { createClient } from '@/lib/supabase/client'
+import { TIPOS_ANEXO_CONTRATO } from './types'
 
 interface AnexoModalProps {
   open: boolean
@@ -17,12 +19,14 @@ interface AnexoModalProps {
 
 export default function AnexoModal({ open, onOpenChange, mode, targetId, onSuccess }: AnexoModalProps) {
   const [nome, setNome] = useState('')
+  const [tipo, setTipo] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reset = () => {
     setNome('')
+    setTipo('')
     setFile(null)
     setError(null)
   }
@@ -69,7 +73,8 @@ export default function AnexoModal({ open, onOpenChange, mode, targetId, onSucce
         arquivo_nome: file.name,
         mime_type: file.type || null,
         arquivo_base64: base64,
-        ...(mode === 'contrato' ? { contrato_id: targetId } : { caso_id: targetId }),
+        // Tipo só existe no anexo de contrato; o de caso ignora o campo.
+        ...(mode === 'contrato' ? { contrato_id: targetId, tipo: tipo || null } : { caso_id: targetId }),
       }
 
       const resp = await fetch(url, {
@@ -125,6 +130,18 @@ export default function AnexoModal({ open, onOpenChange, mode, targetId, onSucce
               placeholder="Ex: Contrato assinado"
             />
           </div>
+
+          {mode === 'contrato' && (
+            <div className="space-y-2">
+              <Label htmlFor="anexo_tipo">Tipo do anexo</Label>
+              <NativeSelect id="anexo_tipo" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+                <option value="">Sem tipo</option>
+                {TIPOS_ANEXO_CONTRATO.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="anexo_file">Arquivo</Label>

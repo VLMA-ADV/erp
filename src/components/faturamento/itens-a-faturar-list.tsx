@@ -133,9 +133,9 @@ function normalizeRuleType(tipo: string | null | undefined) {
   if (normalized === 'timesheet') return 'hora'
   if (normalized === 'mensal') return 'mensalidade'
   if (normalized === 'mensalidade_processo') return 'mensalidade_processo'
-  if (normalized === 'projeto') return 'projeto'
+  if (normalized === 'projeto' || normalized === 'pro_labore') return 'projeto'
   if (normalized === 'projeto_parcela') return 'projeto_parcelado'
-  if (normalized === 'projeto_parcelado') return 'projeto_parcelado'
+  if (normalized === 'projeto_parcelado' || normalized === 'pro_labore_parcelado') return 'projeto_parcelado'
   if (normalized === 'exito') return 'exito'
   if (normalized === 'despesa') return 'despesa'
   return normalized
