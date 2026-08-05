@@ -61,6 +61,11 @@ interface PipelineCard {
   valor_futuro_projetado: number
   data_projetada: string | null
   valor_faturado_prox_mes: number
+  eh_lead: boolean
+  lead_nome: string | null
+  lead_email: string | null
+  lead_contato: string | null
+  lead_segmento_id: string | null
   regra_cobranca: string | null
   observacoes: string
   etapa: EtapaKanban
@@ -95,6 +100,12 @@ interface FormState {
   data_projetada: string
   valor_faturado_prox_mes: string
   regra_cobranca: string
+  // Modo lead: o card ainda nao tem cliente, so os dados do contato.
+  eh_lead: boolean
+  lead_nome: string
+  lead_email: string
+  lead_contato: string
+  lead_segmento_id: string
 }
 
 interface NewAnexo {
@@ -149,6 +160,11 @@ const emptyForm: FormState = {
   data_projetada: '',
   valor_faturado_prox_mes: '',
   regra_cobranca: '',
+  eh_lead: false,
+  lead_nome: '',
+  lead_email: '',
+  lead_contato: '',
+  lead_segmento_id: '',
 }
 
 function tempColor(pct: number | null | undefined) {
@@ -216,6 +232,7 @@ export default function CrmPipeline() {
   const [produtos, setProdutos] = useState<OptionItem[]>([])
   const [colaboradores, setColaboradores] = useState<OptionItem[]>([])
   const [clientesInfo, setClientesInfo] = useState<Record<string, { segmento_nome: string | null; cidade: string | null; estado: string | null }>>({})
+  const [segmentos, setSegmentos] = useState<OptionItem[]>([])
   const [areas, setAreas] = useState<OptionItem[]>([])
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -321,6 +338,21 @@ export default function CrmPipeline() {
     setClientes(nextClientes)
   }
 
+  // Segmento do lead: o lead ainda não tem cliente, então o segmento fica no
+  // próprio card até a conversão levá-lo para o cadastro.
+  const fetchSegmentos = async () => {
+    const session = await getSession()
+    if (!session) return
+    const supabase = createClient()
+    const { data, error } = await supabase.rpc('get_segmentos_economicos', { p_user_id: session.user.id })
+    if (error || !Array.isArray(data)) return
+    setSegmentos(
+      (data as Array<{ id?: string; nome?: string; ativo?: boolean }>)
+        .filter((item) => item?.id && item?.nome && item.ativo !== false)
+        .map((item) => ({ id: item.id as string, nome: item.nome as string })),
+    )
+  }
+
   const fetchServicos = async () => {
     const session = await getSession()
     if (!session) return
@@ -420,7 +452,7 @@ export default function CrmPipeline() {
     try {
       setLoading(true)
       setError(null)
-      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas(), fetchClientesInfo()])
+      await Promise.all([fetchPipeline(), fetchClientes(), fetchServicos(), fetchProdutos(), fetchColaboradores(), fetchAreas(), fetchClientesInfo(), fetchSegmentos()])
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Erro ao carregar CRM')
@@ -483,6 +515,11 @@ export default function CrmPipeline() {
     [clientes],
   )
 
+  const segmentosOptions = useMemo(
+    () => segmentos.map((item) => ({ value: item.id, label: item.nome })),
+    [segmentos],
+  )
+
   const servicosOptions = useMemo(
     () => servicos.map((item) => ({ value: item.id, label: item.nome })),
     [servicos],
@@ -516,6 +553,44 @@ export default function CrmPipeline() {
     setDialogOpen(true)
   }
 
+  /**
+   * Atalho de cadastro do lead (Filipe, 04/08). O card não é recriado: ele
+   * continua na mesma etapa, com os mesmos valores, e passa a apontar para o
+   * cliente novo. O CNPJ é pedido aqui porque cliente sem CNPJ não passa na
+   * regra do cadastro — e a conversão é justamente quando esse dado aparece.
+   */
+  const handleConverterLead = async (card: PipelineCard) => {
+    const nome = card.lead_nome || card.cliente_nome || ''
+    const cnpj = window.prompt(
+      `Transformar "${nome}" em cliente.\n\nInforme o CNPJ ou CPF (deixe vazio se for cliente estrangeiro):`,
+      '',
+    )
+    if (cnpj === null) return
+    const estrangeiro = cnpj.trim() === ''
+    if (estrangeiro && !window.confirm('Sem CNPJ/CPF o cliente será cadastrado como estrangeiro. Confirma?')) return
+
+    try {
+      setSaving(true)
+      const session = await getSession()
+      if (!session) return
+      const supabase = createClient()
+      const { error } = await supabase.rpc('converter_lead_em_cliente', {
+        p_user_id: session.user.id,
+        p_card_id: card.id,
+        p_payload: { cnpj: cnpj.trim(), cliente_estrangeiro: estrangeiro },
+      })
+      if (error) {
+        setError(error.message)
+        return
+      }
+      await Promise.all([fetchPipeline(), fetchClientes(), fetchClientesInfo()])
+    } catch {
+      setError('Erro ao transformar o lead em cliente')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleOpenEdit = (card: PipelineCard) => {
     setForm({
       id: card.id,
@@ -532,6 +607,11 @@ export default function CrmPipeline() {
       forma_pagamento: card.forma_pagamento || '',
       valor_caixa_mes: card.valor_caixa_mes ? String(card.valor_caixa_mes) : '',
       valor_futuro_projetado: card.valor_futuro_projetado ? String(card.valor_futuro_projetado) : '',
+      eh_lead: !!card.eh_lead,
+      lead_nome: card.lead_nome || '',
+      lead_email: card.lead_email || '',
+      lead_contato: card.lead_contato || '',
+      lead_segmento_id: card.lead_segmento_id || '',
       data_projetada: card.data_projetada || '',
       valor_faturado_prox_mes: card.valor_faturado_prox_mes ? String(card.valor_faturado_prox_mes) : '',
       regra_cobranca: card.regra_cobranca || '',
@@ -736,7 +816,6 @@ export default function CrmPipeline() {
       )
 
       const payload = {
-        cliente_id: form.cliente_id,
         servico_id: form.servico_id || null,
         produto_id: form.produto_id || null,
         valor: form.valor || '0',
@@ -749,6 +828,11 @@ export default function CrmPipeline() {
         forma_pagamento: form.forma_pagamento || '',
         valor_caixa_mes: form.valor_caixa_mes || '0',
         valor_futuro_projetado: form.valor_futuro_projetado || '0',
+        cliente_id: form.eh_lead ? '' : form.cliente_id,
+        lead_nome: form.eh_lead ? form.lead_nome : '',
+        lead_email: form.eh_lead ? form.lead_email : '',
+        lead_contato: form.eh_lead ? form.lead_contato : '',
+        lead_segmento_id: form.eh_lead ? form.lead_segmento_id : '',
         data_projetada: form.data_projetada || '',
         valor_faturado_prox_mes: form.valor_faturado_prox_mes || '0',
         regra_cobranca: form.regra_cobranca || '',
@@ -1035,7 +1119,12 @@ export default function CrmPipeline() {
                     return (
                       <div key={card.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => canWrite && handleOpenEdit(card)} title={canWrite ? 'Editar oportunidade' : undefined}>
-                          <p className="truncate text-sm font-semibold text-ink">{card.cliente_nome}</p>
+                          <p className="truncate text-sm font-semibold text-ink">
+                            {card.cliente_nome}
+                            {card.eh_lead ? (
+                              <span className="ml-1.5 rounded bg-[#FFF7ED] px-1.5 py-0.5 text-[10px] font-medium text-[#B45309]">lead</span>
+                            ) : null}
+                          </p>
                           <p className="truncate text-xs text-ink-mute">
                             {[card.segmento_nome, [card.cidade, card.estado].filter(Boolean).join(' / ') || 'Sem cidade'].filter(Boolean).join(' · ')}
                           </p>
@@ -1077,7 +1166,20 @@ export default function CrmPipeline() {
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <p className="text-sm font-semibold font-tabular text-ink">{formatMoney(card.valor)}</p>
-                          <p className="text-[10px] font-tabular text-[#B45309]">pond. {formatMoney(pond)}</p>
+                          {comTemperatura ? (
+                            <p className="text-[10px] font-tabular text-[#B45309]">pond. {formatMoney(pond)}</p>
+                          ) : null}
+                          {card.eh_lead && canWrite ? (
+                            <button
+                              type="button"
+                              className="mt-1 rounded-full border border-[#E8871E]/40 bg-[#FFF7ED] px-2.5 py-1 text-[10px] font-medium text-[#B45309] hover:bg-[#FFEDD5] disabled:opacity-50"
+                              onClick={() => void handleConverterLead(card)}
+                              disabled={saving}
+                              title="Cadastra o cliente com os dados do lead, mantendo a oportunidade nesta etapa"
+                            >
+                              Transformar em cliente
+                            </button>
+                          ) : null}
                           {canWrite && proxima && !['negada', 'suspensa'].includes(proxima.key) ? (
                             <button
                               type="button"
@@ -1144,11 +1246,28 @@ export default function CrmPipeline() {
                           className="min-w-0 text-left"
                           onClick={() => handleOpenEdit(card)}
                         >
-                          <p className="truncate text-sm font-semibold text-ink">{card.cliente_nome}</p>
+                          <p className="truncate text-sm font-semibold text-ink">
+                            {card.cliente_nome}
+                            {card.eh_lead ? (
+                              <span className="ml-1.5 rounded bg-[#FFF7ED] px-1.5 py-0.5 text-[10px] font-medium text-[#B45309]">lead</span>
+                            ) : null}
+                          </p>
                           <p className="truncate text-xs text-ink-mute">{card.segmento_nome || 'Sem segmento'}</p>
                         </button>
                         {canWrite ? <GripVertical className="h-4 w-4 shrink-0 text-ink-mute" /> : null}
                       </div>
+
+                      {card.eh_lead && canWrite ? (
+                        <button
+                          type="button"
+                          className="w-full rounded-md border border-[#E8871E]/40 bg-[#FFF7ED] px-2 py-1 text-[11px] font-medium text-[#B45309] hover:bg-[#FFEDD5] disabled:opacity-50"
+                          onClick={() => void handleConverterLead(card)}
+                          disabled={saving}
+                          title="Cadastra o cliente com os dados do lead, mantendo a oportunidade nesta etapa"
+                        >
+                          Transformar em cliente
+                        </button>
+                      ) : null}
 
                       <div className="space-y-1 text-xs text-ink-mute">
                         <p className="truncate">{areas.find((a) => a.id === card.area_id)?.nome || 'Sem centro de custo'}</p>
@@ -1289,29 +1408,95 @@ export default function CrmPipeline() {
           </DialogHeader>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* 1. Cliente */}
-            <div className="space-y-2">
-              <Label>Cliente *</Label>
-              <CommandSelect
-                value={form.cliente_id}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, cliente_id: value }))}
-                options={clientesOptions}
-                placeholder="Selecione o cliente"
-                searchPlaceholder="Buscar cliente..."
-                emptyText="Nenhum cliente encontrado."
-                onCreateOption={
-                  canWrite
-                    ? (value) =>
-                        void createClienteOnDemand(value, (clienteId) => {
-                          setForm((prev) => ({ ...prev, cliente_id: clienteId }))
-                        })
-                    : undefined
-                }
-                createOptionLabel="Criar cliente"
-                disabled={saving}
-                maxVisibleOptions={7}
-              />
+            {/* 0. Lead ou cliente. Um lead ainda não existe no cadastro — por
+                isso a oportunidade guarda os dados do contato até virar cliente. */}
+            <div className="space-y-2 md:col-span-2">
+              <label className="flex items-center gap-2 text-sm text-ink-secondary">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={form.eh_lead}
+                  onChange={(e) => setForm((prev) => ({ ...prev, eh_lead: e.target.checked }))}
+                  disabled={saving || (!!form.id && !form.eh_lead)}
+                />
+                É um lead (ainda não é cliente cadastrado)
+              </label>
+              {!!form.id && !form.eh_lead ? (
+                <p className="text-xs text-ink-mute">
+                  Esta oportunidade já está ligada a um cliente e não volta a ser lead.
+                </p>
+              ) : null}
             </div>
+
+            {/* 1. Cliente (ou os dados do lead) */}
+            {form.eh_lead ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Nome do lead *</Label>
+                  <Input
+                    value={form.lead_nome}
+                    onChange={(e) => setForm((prev) => ({ ...prev, lead_nome: e.target.value }))}
+                    placeholder="Ex: Padaria do Centro"
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>E-mail</Label>
+                  <Input
+                    type="email"
+                    value={form.lead_email}
+                    onChange={(e) => setForm((prev) => ({ ...prev, lead_email: e.target.value }))}
+                    placeholder="contato@empresa.com"
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contato</Label>
+                  <Input
+                    value={form.lead_contato}
+                    onChange={(e) => setForm((prev) => ({ ...prev, lead_contato: e.target.value }))}
+                    placeholder="Pessoa de contato no lead"
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Segmento econômico</Label>
+                  <CommandSelect
+                    value={form.lead_segmento_id}
+                    onValueChange={(value) => setForm((prev) => ({ ...prev, lead_segmento_id: value }))}
+                    options={segmentosOptions}
+                    placeholder="Selecione o segmento"
+                    searchPlaceholder="Buscar segmento..."
+                    emptyText="Nenhum segmento encontrado."
+                    disabled={saving}
+                    maxVisibleOptions={7}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label>Cliente *</Label>
+                <CommandSelect
+                  value={form.cliente_id}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, cliente_id: value }))}
+                  options={clientesOptions}
+                  placeholder="Selecione o cliente"
+                  searchPlaceholder="Buscar cliente..."
+                  emptyText="Nenhum cliente encontrado."
+                  onCreateOption={
+                    canWrite
+                      ? (value) =>
+                          void createClienteOnDemand(value, (clienteId) => {
+                            setForm((prev) => ({ ...prev, cliente_id: clienteId }))
+                          })
+                      : undefined
+                  }
+                  createOptionLabel="Criar cliente"
+                  disabled={saving}
+                  maxVisibleOptions={7}
+                />
+              </div>
+            )}
 
             {/* 2. Segmento econômico (do cliente, somente leitura) */}
             <div className="space-y-2">
