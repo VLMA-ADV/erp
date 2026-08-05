@@ -59,6 +59,8 @@ interface PipelineCard {
   forma_pagamento: string | null
   valor_caixa_mes: number
   valor_futuro_projetado: number
+  data_projetada: string | null
+  valor_faturado_prox_mes: number
   regra_cobranca: string | null
   observacoes: string
   etapa: EtapaKanban
@@ -90,6 +92,8 @@ interface FormState {
   forma_pagamento: string
   valor_caixa_mes: string
   valor_futuro_projetado: string
+  data_projetada: string
+  valor_faturado_prox_mes: string
   regra_cobranca: string
 }
 
@@ -110,6 +114,24 @@ const ETAPAS: Array<{ key: EtapaKanban; label: string }> = [
   { key: 'suspensa', label: 'Suspensa' },
 ]
 
+/**
+ * Regra por etapa (Filipe, 04/08). A temperatura só faz sentido enquanto a
+ * oportunidade ainda pode não fechar: nessas etapas o indicador é o valor
+ * ponderado pela chance. Depois de convertida não há mais chance a ponderar —
+ * ali interessam três números concretos: o total, o que entra em caixa neste
+ * mês e o que será faturado no próximo.
+ */
+const ETAPAS_COM_TEMPERATURA: EtapaKanban[] = [
+  'prospeccao',
+  'proposta_solicitada',
+  'proposta_enviada',
+  'exito_projetado',
+]
+
+function usaTemperatura(etapa: EtapaKanban) {
+  return ETAPAS_COM_TEMPERATURA.includes(etapa)
+}
+
 const emptyForm: FormState = {
   cliente_id: '',
   servico_id: '',
@@ -124,6 +146,8 @@ const emptyForm: FormState = {
   forma_pagamento: '',
   valor_caixa_mes: '',
   valor_futuro_projetado: '',
+  data_projetada: '',
+  valor_faturado_prox_mes: '',
   regra_cobranca: '',
 }
 
@@ -508,6 +532,8 @@ export default function CrmPipeline() {
       forma_pagamento: card.forma_pagamento || '',
       valor_caixa_mes: card.valor_caixa_mes ? String(card.valor_caixa_mes) : '',
       valor_futuro_projetado: card.valor_futuro_projetado ? String(card.valor_futuro_projetado) : '',
+      data_projetada: card.data_projetada || '',
+      valor_faturado_prox_mes: card.valor_faturado_prox_mes ? String(card.valor_faturado_prox_mes) : '',
       regra_cobranca: card.regra_cobranca || '',
     })
     setExistingAnexos(card.anexos || [])
@@ -723,6 +749,8 @@ export default function CrmPipeline() {
         forma_pagamento: form.forma_pagamento || '',
         valor_caixa_mes: form.valor_caixa_mes || '0',
         valor_futuro_projetado: form.valor_futuro_projetado || '0',
+        data_projetada: form.data_projetada || '',
+        valor_faturado_prox_mes: form.valor_faturado_prox_mes || '0',
         regra_cobranca: form.regra_cobranca || '',
         anexos: anexosPayload,
         remove_anexo_ids: removeAnexoIds,
@@ -955,6 +983,12 @@ export default function CrmPipeline() {
           // existiam no card, só não eram somados em lugar nenhum.
           const totalProjetado = etapaCards.reduce((sum, c2) => sum + Number(c2.valor_futuro_projetado || 0), 0)
           const totalCaixaMes = etapaCards.reduce((sum, c2) => sum + Number(c2.valor_caixa_mes || 0), 0)
+          const totalProxMes = etapaCards.reduce((sum, c2) => sum + Number(c2.valor_faturado_prox_mes || 0), 0)
+          const totalPonderado = etapaCards.reduce(
+            (sum, c2) => sum + Number(c2.valor || 0) * (Number(c2.temperatura_pct || 0) / 100),
+            0,
+          )
+          const comTemperatura = usaTemperatura(etapa.key)
           return (
             <section key={etapa.key} className={`overflow-hidden rounded-xl border border-hairline bg-white ${railEtapa === etapa.key ? 'ring-2 ring-[#E8871E]/50' : ''}`}>
               <button
@@ -968,14 +1002,24 @@ export default function CrmPipeline() {
                   <Badge className="border-hairline bg-white text-ink-secondary">{etapaCards.length}</Badge>
                 </span>
                 <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                  {totalProjetado > 0 ? (
+                  {comTemperatura && totalPonderado > 0 ? (
+                    <span className="text-[11px] text-ink-mute">
+                      ponderado <strong className="font-tabular font-semibold text-ink-secondary">{formatMoney(totalPonderado)}</strong>
+                    </span>
+                  ) : null}
+                  {comTemperatura && totalProjetado > 0 ? (
                     <span className="text-[11px] text-ink-mute">
                       projetado <strong className="font-tabular font-semibold text-ink-secondary">{formatMoney(totalProjetado)}</strong>
                     </span>
                   ) : null}
-                  {totalCaixaMes > 0 ? (
+                  {!comTemperatura && totalCaixaMes > 0 ? (
                     <span className="text-[11px] text-ink-mute">
                       caixa no mês <strong className="font-tabular font-semibold text-emerald-700">{formatMoney(totalCaixaMes)}</strong>
+                    </span>
+                  ) : null}
+                  {!comTemperatura && totalProxMes > 0 ? (
+                    <span className="text-[11px] text-ink-mute">
+                      próximo mês <strong className="font-tabular font-semibold text-emerald-700">{formatMoney(totalProxMes)}</strong>
                     </span>
                   ) : null}
                   <span className="text-sm font-semibold font-tabular text-[#B45309]">{formatMoney(totalEtapa)}</span>
@@ -1114,6 +1158,8 @@ export default function CrmPipeline() {
                         {card.valor_global ? <p className="truncate">Global: {formatMoney(card.valor_global)} {card.forma_pagamento ? `· ${card.forma_pagamento === 'a_vista' ? 'à vista' : 'parcelado'}` : ''}</p> : null}
                         {card.valor_caixa_mes ? <p className="truncate">Caixa no mês: {formatMoney(card.valor_caixa_mes)}</p> : null}
                         {card.valor_futuro_projetado ? <p className="truncate">Futuro projetado: {formatMoney(card.valor_futuro_projetado)}</p> : null}
+                        {card.valor_faturado_prox_mes ? <p className="truncate">Faturado no próximo mês: {formatMoney(card.valor_faturado_prox_mes)}</p> : null}
+                        {card.data_projetada ? <p className="truncate">Data projetada: {new Date(`${card.data_projetada}T12:00:00`).toLocaleDateString('pt-BR')}</p> : null}
 
                         <div>
                           <div className="flex items-center justify-between">
@@ -1362,6 +1408,18 @@ export default function CrmPipeline() {
             <div className="space-y-2">
               <Label>Valor em caixa no mês</Label>
               <MoneyInput value={form.valor_caixa_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_caixa_mes: v }))} placeholder="0,00" disabled={saving} />
+            </div>
+
+            {/* Faturado no próximo mês — indicador da etapa Conversão (Filipe 04/08) */}
+            <div className="space-y-2">
+              <Label>Faturado no próximo mês</Label>
+              <MoneyInput value={form.valor_faturado_prox_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_faturado_prox_mes: v }))} placeholder="0,00" disabled={saving} />
+            </div>
+
+            {/* Data projetada de fechamento */}
+            <div className="space-y-2">
+              <Label>Data projetada</Label>
+              <Input type="date" value={form.data_projetada} onChange={(e) => setForm((prev) => ({ ...prev, data_projetada: e.target.value }))} disabled={saving} />
             </div>
 
             {/* Valor futuro projetado */}
