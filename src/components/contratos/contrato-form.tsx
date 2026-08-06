@@ -1700,7 +1700,8 @@ export default function ContratoForm({
         { value: 'pontual', label: 'Única' },
       ]
     }
-    if (regra === 'projeto') {
+    // Pró-labore usa as mesmas opções de projeto — é a mesma regra com outro nome.
+    if (regra === 'projeto' || regra === 'pro_labore') {
       return [
         { value: 'pontual', label: 'Única' },
         { value: 'parcelado', label: 'Parcelada por datas' },
@@ -4352,7 +4353,7 @@ export default function ContratoForm({
                     </div>
                   )}
 
-                  {currentCaso.regra_cobranca === 'projeto' && (
+                  {(currentCaso.regra_cobranca === 'projeto' || currentCaso.regra_cobranca === 'pro_labore') && (
                     <div className="space-y-3 md:col-span-2">
                       <div className="border-t" />
                       <p className="text-base font-semibold">Configuração de cobrança por Projeto</p>
