@@ -795,7 +795,13 @@ export default function CrmPipeline() {
   }
 
   const submitCard = async () => {
-    if (!form.cliente_id) {
+    // Card de lead não tem cliente ainda — o obrigatório ali é o nome do lead.
+    if (form.eh_lead) {
+      if (!form.lead_nome.trim()) {
+        toastError('Nome do lead é obrigatório')
+        return
+      }
+    } else if (!form.cliente_id) {
       toastError('Cliente é obrigatório')
       return
     }
@@ -1498,13 +1504,17 @@ export default function CrmPipeline() {
               </div>
             )}
 
-            {/* 2. Segmento econômico (do cliente, somente leitura) */}
-            <div className="space-y-2">
-              <Label>Segmento econômico</Label>
-              <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
-                {clientesInfo[form.cliente_id]?.segmento_nome || '— (definido no cadastro do cliente)'}
+            {/* 2. Segmento econômico do cliente, somente leitura. Some no modo
+                lead, que tem o seu próprio campo de segmento logo acima — dois
+                campos com o mesmo nome na tela só confundem. */}
+            {!form.eh_lead && (
+              <div className="space-y-2">
+                <Label>Segmento econômico</Label>
+                <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
+                  {clientesInfo[form.cliente_id]?.segmento_nome || '— (definido no cadastro do cliente)'}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 3. Centro de custo */}
             <div className="space-y-2">
@@ -1666,13 +1676,16 @@ export default function CrmPipeline() {
               />
             </div>
 
-            {/* 10. Cidade (do cliente, somente leitura) */}
-            <div className="space-y-2">
-              <Label>Cidade</Label>
-              <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
-                {[clientesInfo[form.cliente_id]?.cidade, clientesInfo[form.cliente_id]?.estado].filter(Boolean).join(' / ') || '— (definida no cadastro do cliente)'}
+            {/* 10. Cidade do cliente, somente leitura. Também some no modo lead:
+                não existe cadastro de onde puxar enquanto for lead. */}
+            {!form.eh_lead && (
+              <div className="space-y-2">
+                <Label>Cidade</Label>
+                <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
+                  {[clientesInfo[form.cliente_id]?.cidade, clientesInfo[form.cliente_id]?.estado].filter(Boolean).join(' / ') || '— (definida no cadastro do cliente)'}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* 8. Temperatura de fechamento — ajustável pela barra no card */}
