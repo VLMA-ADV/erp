@@ -252,7 +252,6 @@ export default function NfsePreviewDialog({
   const valorBruto = data?.itens.reduce((s, i) => s + Number(i.valor ?? 0), 0) ?? 0
   const acumuladoMes = data?.acumuladoMes ?? 0
   const baseCalculoMinimo = valorBruto + acumuladoMes
-  const aliquotaIss = Number(data?.grupoImposto?.aliquota_iss ?? ALIQUOTAS_VOA_LEGAL.iss.aliquota)
   const tipoTomador =
     data?.tomador?.cnpj && String(data.tomador.cnpj).replace(/\D/g, '').length === 14 ? 'PJ' : 'PF'
 
@@ -323,7 +322,10 @@ export default function NfsePreviewDialog({
     }
   }
 
-  const valorIss = Math.round(valorBruto * aliquotaIss) / 100
+  // ISS sempre zero (Filipe, 07/08): o escritório recolhe ISS por valor fixo,
+  // por ser sociedade de advogados — não há ISS proporcional ao serviço. O
+  // cálculo do serviço não muda; só esta linha sai zerada.
+  const valorIss = 0
   const retIrrf = calcRetencao('irrf')
   const retPis = calcRetencao('pis')
   const retCofins = calcRetencao('cofins')
@@ -375,7 +377,7 @@ export default function NfsePreviewDialog({
                 Este documento é uma simulação da NFS-e antes da emissão real.
                 As alíquotas de retenção (IRRF, INSS, PIS, COFINS, CSLL) estão{' '}
                 <strong>preliminares e devem ser confirmadas com o financeiro</strong>.
-                Apenas o ISS ({fmtPct(aliquotaIss)}) é a alíquota fiscal aplicada na nota oficial.
+                O ISS sai zerado: o escritório recolhe por valor fixo.
               </AlertDescription>
             </Alert>
 
@@ -496,9 +498,9 @@ export default function NfsePreviewDialog({
                 <tbody>
                   <tr className="border-t border-hairline">
                     <td className="py-1 font-medium text-ink">ISS</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(aliquotaIss)}</td>
-                    <td className="py-1 text-right text-red-600 font-tabular">- {fmtMoney(valorIss)}</td>
-                    <td className="py-1 text-right text-xs text-ink-mute">municipal · fiscal</td>
+                    <td className="py-1 text-right font-tabular">—</td>
+                    <td className="py-1 text-right font-tabular text-ink-secondary">{fmtMoney(0)}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">ISS fixo</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">IRRF</td>
