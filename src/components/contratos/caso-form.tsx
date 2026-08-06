@@ -482,6 +482,8 @@ export default function CasoForm({
   const currentBillingRule = billingRules[selectedBillingRuleIndex]
   const isCurrentRuleDraft = (currentBillingRule?.status || 'rascunho') === 'rascunho'
   const isCurrentRuleClosed = (currentBillingRule?.status || '') === 'encerrado'
+  const currentRuleStatusLabel =
+    (currentBillingRule?.status || 'rascunho') === 'ativo' ? 'Encerrar regra' : 'Ativar regra'
   const indicacaoPagamentoEnabled =
     Boolean((indicacao as any).pagamento_indicacao_ativo) ||
     (Boolean(indicacao.pagamento_indicacao) && indicacao.pagamento_indicacao !== 'nao')
@@ -687,7 +689,11 @@ export default function CasoForm({
   const toggleCurrentBillingRuleStatus = () => {
     const current = billingRules[selectedBillingRuleIndex]
     if (!current) return
-    const nextStatus: BillingRuleStatus = current.status === 'encerrado' ? 'ativo' : 'encerrado'
+    // Rascunho -> ativo. Antes caia no 'encerrado' e nao existia caminho para
+    // ativar: era preciso encerrar e depois reativar, com o botao dizendo
+    // "Encerrar regra". Foi o que deixou 145 casos sem faturar.
+    const nextStatus: BillingRuleStatus =
+      current.status === 'ativo' ? 'encerrado' : 'ativo'
     const updated = [...billingRules]
     updated[selectedBillingRuleIndex] = {
       ...composeBillingRuleFromForm(current),
@@ -2193,8 +2199,8 @@ export default function CasoForm({
                   )}
                   {!isReadOnly && (
                     <Button type="button" variant="outline" onClick={toggleCurrentBillingRuleStatus}>
-                      <Power className={`mr-1 h-3.5 w-3.5 ${isCurrentRuleClosed ? 'text-green-600' : 'text-red-600'}`} />
-                      {isCurrentRuleClosed ? 'Reativar regra' : 'Encerrar regra'}
+                      <Power className={`mr-1 h-3.5 w-3.5 ${currentRuleStatusLabel === 'Ativar regra' ? 'text-green-600' : 'text-red-600'}`} />
+                      {currentRuleStatusLabel}
                     </Button>
                   )}
                 </div>
