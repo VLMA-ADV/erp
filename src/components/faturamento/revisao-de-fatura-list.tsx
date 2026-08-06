@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, FileText, Layers, Loader2, Receipt } from 'lucide-react'
+import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, FileText, Layers, Loader2, Receipt } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,9 @@ interface RevisaoItem {
   timesheetId: string | null
   status: string
   grupoId: string | null
+  grupoTexto: string | null
+  grupoHoras: number | null
+  grupoValor: number | null
   origemTipo: string
   casoRegraCobranca: string
   revisoresModo: string
@@ -675,6 +678,9 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     timesheetId: asString(data.timesheet_id) || null,
     status: asString(data.status, 'em_revisao'),
     grupoId: (() => { const g = asString(data.grupo_id); return g || null })(),
+    grupoTexto: (() => { const t = asString(data.grupo_texto); return t || null })(),
+    grupoHoras: asOptionalNumber(data.grupo_horas) ?? null,
+    grupoValor: asOptionalNumber(data.grupo_valor) ?? null,
     origemTipo: asString(data.origem_tipo, ''),
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     revisoresModo: asString(data.revisores_modo, ''),
@@ -798,6 +804,11 @@ export default function RevisaoDeFaturaList() {
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
   const [ruleFilter, setRuleFilter] = useState<RuleFilterKey>('all')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+  // Grupos com os lancamentos originais visiveis. Fechado por padrao: o pedido
+  // do Filipe e que o grupo apareca como UMA linha e os originais so quando
+  // ele clicar no olho.
+  const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({})
+  const [grupoDraft, setGrupoDraft] = useState<Record<string, { texto: string; horas: string }>>({})
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
   const [expandedCasos, setExpandedCasos] = useState<Record<string, boolean>>({})
   // Default: tudo recolhido (revisor abre o que interessa); botão alterna geral.
@@ -1801,6 +1812,29 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
+  // O revisor escreve o texto do grupo e, se quiser, arredonda as horas.
+  const salvarGrupo = async (scopeKey: string, grupoId: string) => {
+    const draft = grupoDraft[grupoId]
+    if (!draft) return
+    try {
+      setBusyKey(scopeKey)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toastError('Sua sessão expirou. Entre novamente.'); return }
+      const { error: rpcError } = await supabase.rpc('atualizar_grupo_billing_items', {
+        p_user_id: session.user.id,
+        p_grupo_id: grupoId,
+        p_payload: { texto: draft.texto, horas: draft.horas },
+      })
+      if (rpcError) { toastError(rpcError.message || 'Não foi possível salvar o grupo.'); return }
+      success('Grupo atualizado.')
+      setGrupoDraft((prev) => { const next = { ...prev }; delete next[grupoId]; return next })
+      await loadItems()
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   const desagrupar = async (scopeKey: string, grupoId: string) => {
     try {
       setBusyKey(scopeKey)
@@ -2219,6 +2253,16 @@ export default function RevisaoDeFaturaList() {
                       const casoExpanded = expandedCasos[casoGroup.key] ?? allExpanded
                       const caseMetrics = getLiveCaseMetrics(casoGroup)
                       const reviewRows = getReviewRows(casoGroup)
+                      // Agrupamento v2 (Filipe 06/08): o grupo vira UMA linha. O
+                      // primeiro lancamento carrega o painel do grupo; os demais
+                      // ficam escondidos ate clicarem no olho.
+                      const liderDoGrupo = new Map<string, string>()
+                      const tamanhoDoGrupo = new Map<string, number>()
+                      for (const { item } of reviewRows) {
+                        if (!item.grupoId) continue
+                        if (!liderDoGrupo.has(item.grupoId)) liderDoGrupo.set(item.grupoId, item.id)
+                        tamanhoDoGrupo.set(item.grupoId, (tamanhoDoGrupo.get(item.grupoId) || 0) + 1)
+                      }
                       const caseRowIds = reviewRows.filter((row) => canAdvance(row.item.status) || row.item.status === 'aprovado').map((row) => row.item.id)
                       const allSelected = caseRowIds.length > 0 && caseRowIds.every((id) => selectedItemIds.includes(id))
                       const selectedIds = caseRowIds.filter((id) => selectedItemIds.includes(id))
@@ -2452,6 +2496,10 @@ export default function RevisaoDeFaturaList() {
                           {casoExpanded ? (
                             <div className="space-y-3 bg-canvas-soft/40 p-3">
                               {reviewRows.map(({ item, mode, key }) => {
+                                const ehLider = !!item.grupoId && liderDoGrupo.get(item.grupoId) === item.id
+                                const grupoAberto = !!item.grupoId && !!gruposAbertos[item.grupoId]
+                                // Membro que nao lidera some enquanto o grupo estiver fechado.
+                                if (item.grupoId && !ehLider && !grupoAberto) return null
                                 const draft = drafts[item.id]
                                 const busy = busyKey === key || busyKey === `advance:${item.id}` || busyKey === batchKey || busyKey === `${mode}:${item.id}`
                                 const isEditing = editorKey === key
@@ -2505,18 +2553,34 @@ export default function RevisaoDeFaturaList() {
                                       {item.grupoId ? (
                                         <span
                                           className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700"
-                                          title="Este lançamento faz parte de um grupo — sai como uma linha só na fatura"
+                                          title={ehLider
+                                            ? `Grupo de ${tamanhoDoGrupo.get(item.grupoId) || 0} lançamentos — sai como uma linha só na fatura`
+                                            : 'Lançamento original deste grupo'}
                                         >
-                                          <Layers className="h-3 w-3" /> Agrupado
-                                          <button
-                                            type="button"
-                                            className="ml-0.5 underline underline-offset-2 hover:no-underline disabled:opacity-50"
-                                            onClick={() => item.grupoId && void desagrupar(batchKey, item.grupoId)}
-                                            disabled={item.status === 'aprovado' || busyKey === batchKey}
-                                            title={item.status === 'aprovado' ? 'Devolva para revisão antes de desagrupar' : 'Desfazer o grupo'}
-                                          >
-                                            desagrupar
-                                          </button>
+                                          <Layers className="h-3 w-3" />
+                                          {ehLider ? `Agrupado (${tamanhoDoGrupo.get(item.grupoId) || 0})` : 'Original'}
+                                          {ehLider ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                className="ml-0.5 inline-flex items-center gap-1 underline underline-offset-2 hover:no-underline"
+                                                onClick={() => item.grupoId && setGruposAbertos((prev) => ({ ...prev, [item.grupoId as string]: !prev[item.grupoId as string] }))}
+                                                title={grupoAberto ? 'Esconder os lançamentos originais' : 'Exibir os lançamentos originais'}
+                                              >
+                                                {grupoAberto ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                                {grupoAberto ? 'esconder' : 'exibir'}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="ml-0.5 underline underline-offset-2 hover:no-underline disabled:opacity-50"
+                                                onClick={() => item.grupoId && void desagrupar(batchKey, item.grupoId)}
+                                                disabled={item.status === 'aprovado' || busyKey === batchKey}
+                                                title={item.status === 'aprovado' ? 'Devolva para revisão antes de desagrupar' : 'Desfazer o grupo'}
+                                              >
+                                                desagrupar
+                                              </button>
+                                            </>
+                                          ) : null}
                                         </span>
                                       ) : null}
                                       <span className="text-xs text-ink-mute">
@@ -2524,6 +2588,69 @@ export default function RevisaoDeFaturaList() {
                                         {envioData ? ` em ${formatDate(envioData)}` : ''}
                                       </span>
                                     </div>
+
+                                    {ehLider && item.grupoId ? (
+                                      <div className="border-b border-hairline bg-violet-50/50 px-3 py-3">
+                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                          <p className="text-eyebrow text-violet-700">Texto do grupo</p>
+                                          <p className="text-xs text-ink-mute">
+                                            {tamanhoDoGrupo.get(item.grupoId) || 0} lançamentos ·{' '}
+                                            <strong className="font-tabular text-ink-secondary">
+                                              {formatMoney(item.grupoValor ?? 0)}
+                                            </strong>
+                                          </p>
+                                        </div>
+                                        <Textarea
+                                          className="mt-2 bg-white"
+                                          rows={3}
+                                          value={grupoDraft[item.grupoId]?.texto ?? item.grupoTexto ?? ''}
+                                          onChange={(event) => {
+                                            const gid = item.grupoId as string
+                                            const atual = grupoDraft[gid]
+                                            setGrupoDraft((prev) => ({
+                                              ...prev,
+                                              [gid]: {
+                                                texto: event.target.value,
+                                                horas: atual?.horas ?? String(item.grupoHoras ?? 0),
+                                              },
+                                            }))
+                                          }}
+                                          disabled={item.status === 'aprovado' || busy}
+                                          placeholder="Descrição que vai para a fatura"
+                                        />
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                          <label className="text-xs text-ink-mute">
+                                            Horas cobradas
+                                            <Input
+                                              className="ml-2 inline-block h-8 w-24 bg-white"
+                                              value={grupoDraft[item.grupoId]?.horas ?? String(item.grupoHoras ?? 0)}
+                                              onChange={(event) => {
+                                                const gid = item.grupoId as string
+                                                const atual = grupoDraft[gid]
+                                                setGrupoDraft((prev) => ({
+                                                  ...prev,
+                                                  [gid]: {
+                                                    texto: atual?.texto ?? item.grupoTexto ?? '',
+                                                    horas: event.target.value,
+                                                  },
+                                                }))
+                                              }}
+                                              disabled={item.status === 'aprovado' || busy}
+                                            />
+                                          </label>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="ml-auto"
+                                            onClick={() => item.grupoId && void salvarGrupo(batchKey, item.grupoId)}
+                                            disabled={!grupoDraft[item.grupoId] || item.status === 'aprovado' || busy}
+                                          >
+                                            Salvar texto do grupo
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : null}
 
                                     <div className="flex flex-col md:flex-row">
                                     <div className="min-w-0 flex-1 overflow-x-auto">
