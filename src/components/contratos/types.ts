@@ -96,6 +96,8 @@ export interface CasoPayload {
     | 'mensalidade_carteira'
     | 'projeto'
     | 'projeto_parcelado'
+    | 'pro_labore'
+    | 'pro_labore_parcelado'
     | 'exito'
     | ''
   regra_cobranca_config: Record<string, any>
@@ -119,4 +121,24 @@ export interface ContratoPayload {
   grupo_imposto_id?: string | null
   status?: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   casos: CasoPayload[]
+}
+
+/**
+ * Tipos de anexo do contrato — lista fixa confirmada pelo cliente em 04/08.
+ * Anexo sem tipo é legítimo (os 34 que já existiam ficaram assim), por isso
+ * o valor vazio continua válido em vez de virar 'outro' num chute.
+ */
+export const TIPOS_ANEXO_CONTRATO = [
+  { value: 'proposta_assinada', label: 'Proposta assinada' },
+  { value: 'contrato_assinado', label: 'Contrato assinado' },
+  { value: 'aceite_proposta', label: 'Aceite da proposta' },
+  { value: 'cadeia_email', label: 'Cadeia de e-mail' },
+  { value: 'outro', label: 'Outro' },
+] as const
+
+export type TipoAnexoContrato = (typeof TIPOS_ANEXO_CONTRATO)[number]['value']
+
+export function labelTipoAnexo(tipo?: string | null): string {
+  if (!tipo) return 'Sem tipo'
+  return TIPOS_ANEXO_CONTRATO.find((t) => t.value === tipo)?.label || tipo
 }

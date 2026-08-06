@@ -49,12 +49,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/components/ui/toast'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { CasoPayload, ContratoFormOptions } from './types'
+import { TIPOS_ANEXO_CONTRATO, labelTipoAnexo } from './types'
 import CapEncontroSimple from './cap-encontro-simple'
 import RateioSlider from './rateio-slider'
 
 interface PendingAnexo {
   nome: string
   file: File
+  // Só o anexo de contrato usa tipo; no de caso fica sempre indefinido.
+  tipo?: string
 }
 
 interface TabelaPrecoItem {
@@ -274,6 +277,7 @@ function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
   if (!normalized) return ''
   if (normalized === 'hora_com_cap') return 'hora'
   if (normalized === 'projeto_parcelado') return 'projeto'
+  if (normalized === 'pro_labore_parcelado') return 'pro_labore'
   if (normalized === 'exito') return 'exito'
   if (normalized === 'mensalidade_de_processo') return 'mensalidade_processo'
   return normalized as CasoPayload['regra_cobranca']
@@ -465,7 +469,7 @@ export default function ContratoForm({
   const [form, setForm] = useState<ContratoFormState>(emptyState)
   const [pendingAnexos, setPendingAnexos] = useState<PendingAnexo[]>([])
   const [existingAnexos, setExistingAnexos] = useState<
-    Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }>
+    Array<{ id: string; nome: string; arquivo_nome: string; created_at: string; tipo?: string | null }>
   >([])
   const [options, setOptions] = useState<ContratoFormOptions>({
     clientes: [],
@@ -503,6 +507,7 @@ export default function ContratoForm({
   const draftContratoIdRef = useRef<string | null>(null)
   const [anexoDialogOpen, setAnexoDialogOpen] = useState(false)
   const [anexoDialogNome, setAnexoDialogNome] = useState('')
+  const [anexoDialogTipo, setAnexoDialogTipo] = useState('')
   const [anexoDialogFile, setAnexoDialogFile] = useState<File | null>(null)
   const [anexoDialogFromDrop, setAnexoDialogFromDrop] = useState(false)
   const [anexoDialogTarget, setAnexoDialogTarget] = useState<'contrato' | 'caso'>('contrato')
@@ -1917,8 +1922,8 @@ export default function ContratoForm({
     setPendingAnexos((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const appendPendingAnexo = (nome: string, file: File) => {
-    setPendingAnexos((prev) => [...prev, { nome, file }])
+  const appendPendingAnexo = (nome: string, file: File, tipo?: string) => {
+    setPendingAnexos((prev) => [...prev, { nome, file, tipo }])
   }
 
   const appendPendingCaseAnexo = (caseIndex: number, nome: string, file: File) => {
@@ -1959,6 +1964,7 @@ export default function ContratoForm({
     setAnexoDialogFromDrop(false)
     setAnexoDialogFile(null)
     setAnexoDialogNome('')
+    setAnexoDialogTipo('')
     setAnexoDialogOpen(true)
   }
 
@@ -1975,10 +1981,11 @@ export default function ContratoForm({
       const targetIndex = anexoDialogCaseIndex ?? selectedCaseIndex
       appendPendingCaseAnexo(targetIndex, anexoDialogNome.trim(), anexoDialogFile)
     } else {
-      appendPendingAnexo(anexoDialogNome.trim(), anexoDialogFile)
+      appendPendingAnexo(anexoDialogNome.trim(), anexoDialogFile, anexoDialogTipo || undefined)
     }
     setAnexoDialogOpen(false)
     setAnexoDialogNome('')
+    setAnexoDialogTipo('')
     setAnexoDialogFile(null)
     setAnexoDialogFromDrop(false)
     setAnexoDialogCaseIndex(null)
@@ -2076,7 +2083,7 @@ export default function ContratoForm({
     accessToken: string,
     anexos: PendingAnexo[] = pendingAnexos,
   ) => {
-    const uploaded: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string }> = []
+    const uploaded: Array<{ id: string; nome: string; arquivo_nome: string; created_at: string; tipo?: string | null }> = []
     for (const anexo of anexos) {
       if (!anexo.nome?.trim() || !anexo.file) continue
       const arquivo_base64 = await toBase64(anexo.file)
@@ -2094,6 +2101,7 @@ export default function ContratoForm({
             arquivo_nome: anexo.file.name,
             mime_type: anexo.file.type || null,
             arquivo_base64,
+            tipo: anexo.tipo || null,
           }),
         },
       )
@@ -2108,6 +2116,7 @@ export default function ContratoForm({
         nome: anexo.nome,
         arquivo_nome: anexo.file.name,
         created_at: new Date().toISOString(),
+        tipo: anexo.tipo || null,
       })
     }
     return uploaded
@@ -3085,6 +3094,9 @@ export default function ContratoForm({
                         <div className="mt-1 space-y-0.5">
                           <div className="truncate text-xs font-medium">{anexo.nome}</div>
                           <div className="truncate text-[11px] text-muted-foreground">{anexo.arquivo_nome}</div>
+                          <div className="truncate text-[11px] text-ink-mute" title={labelTipoAnexo(anexo.tipo)}>
+                            {labelTipoAnexo(anexo.tipo)}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -3721,6 +3733,7 @@ export default function ContratoForm({
                       <option value="mensalidade_processo">Mensalidade de processo</option>
                       <option value="mensalidade_carteira">Mensalidade de Carteira</option>
                       <option value="projeto">Projeto</option>
+                      <option value="pro_labore">Pró-labore</option>
                       <option value="exito">Êxito</option>
                     </NativeSelect>
                   </div>
@@ -5343,6 +5356,21 @@ export default function ContratoForm({
                 placeholder="Ex: Proposta comercial"
               />
             </div>
+
+            {anexoDialogTarget === 'contrato' && (
+              <div className="space-y-1">
+                <Label>Tipo do anexo</Label>
+                <NativeSelect
+                  value={anexoDialogTipo}
+                  onChange={(e) => setAnexoDialogTipo(e.target.value)}
+                >
+                  <option value="">Sem tipo</option>
+                  {TIPOS_ANEXO_CONTRATO.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setAnexoDialogOpen(false)}>

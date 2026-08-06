@@ -493,6 +493,7 @@ function getRuleTitle(item: RevisaoItem) {
   if (kind === 'mensalidade_processo') return 'Mensalidade de processo'
   if (kind === 'mensal') return 'Mensalidade'
   if (kind === 'exito') return 'Exito'
+  if (kind === 'pro_labore' || kind === 'pro_labore_parcelado') return 'Pró-labore'
   if (kind === 'projeto' || kind === 'projeto_parcelado') return 'Unico'
   if (kind === 'hora' || kind === 'hora_com_cap') return 'Horas'
   return item.regraNome || 'Regra financeira'
@@ -503,8 +504,8 @@ function getRuleTitle(item: RevisaoItem) {
 function ruleKeyFromKind(kind: string): RuleFilterKey | null {
   if (kind === 'mensalidade_processo' || kind === 'salario_minimo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
-  if (kind === 'projeto') return 'projeto'
-  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
+  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
   if (kind === 'exito') return 'exito'
   return null
 }
@@ -522,8 +523,8 @@ function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
   if (kind === 'hora' || kind === 'hora_com_cap') return 'hora'
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
   if (kind === 'mensal') return 'mensalidade'
-  if (kind === 'projeto') return 'projeto'
-  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado') return 'projeto_parcelado'
+  if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
+  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
   if (kind === 'exito') return 'exito'
   return null
 }

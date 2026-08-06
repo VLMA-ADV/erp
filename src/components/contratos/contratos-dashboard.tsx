@@ -502,6 +502,7 @@ function DashboardSkeleton() {
 
 const REGRA_LABEL: Record<string, string> = {
   projeto: 'Projeto',
+  pro_labore: 'Pró-labore',
   hora: 'Hora',
   mensal: 'Fixo mensal',
   mensalidade_processo: 'Mensalidade por processo',
@@ -509,6 +510,26 @@ const REGRA_LABEL: Record<string, string> = {
   exito: 'Êxito',
   mensalidade_carteira: 'Mensalidade de carteira',
   'Sem regra': 'Sem regra',
+}
+
+/**
+ * Cada regra mede uma coisa diferente: projeto é o total do contrato, hora é
+ * preço por hora, mensal é o ano inteiro. Antes tudo dividia a mesma barra, o
+ * que fazia R$/hora parecer irrisório ao lado de receita anual — comparação sem
+ * sentido. Agora cada regra vira um bloco com a sua própria unidade (Filipe,
+ * 04/08: "um bloco por regra, cada um com a sua métrica").
+ */
+const REGRA_UNIDADE: Record<string, string> = {
+  projeto: 'total do projeto',
+  pro_labore: 'total do pró-labore',
+  exito: 'valor de êxito',
+  // O backend soma os valores/hora dos casos. Somar preço por hora não é
+  // receita — o rótulo diz o que o número é de verdade em vez de sugerir total.
+  hora: 'soma dos valores/hora',
+  mensal: 'no ano (12x)',
+  mensalidade_processo: 'no ano (12x)',
+  mensalidade_carteira: 'no ano (12x)',
+  salario_minimo: 'no ano (12x)',
 }
 
 async function resolveTenantId(supabase: ReturnType<typeof createClient>): Promise<string | null> {
@@ -552,7 +573,7 @@ function RegraCard({ items, onSelect }: { items: DashboardListItem[]; onSelect?:
 }
 
 function ValorFechadoRegraCard({ refMonth }: { refMonth: string }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['valor-fechado-regra', refMonth],
     queryFn: async () => {
       const supabase = createClient()
@@ -565,24 +586,36 @@ function ValorFechadoRegraCard({ refMonth }: { refMonth: string }) {
       return (res as { itens: Array<{ regra: string; valor: number; qtd: number }> }) || { itens: [] }
     },
   })
-  const itens = (data?.itens || []).filter((i) => i.valor > 0)
-  const max = Math.max(1, ...itens.map((i) => i.valor))
-  const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+
+  const itens = (data?.itens || [])
+    .filter((i) => i.valor > 0)
+    .sort((a, b) => b.valor - a.valor)
+  const brl = (n: number) =>
+    n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+
   return (
-    <CardShell title="Valor fechado no mês por regra" hint="projeto=total · hora=valor/h · mensal=ano">
-      {itens.length === 0 ? (
+    <CardShell
+      title="Valor fechado no mês por regra"
+      hint="cada regra na sua própria unidade"
+    >
+      {isLoading ? (
+        <div className="h-20 animate-pulse rounded-md bg-canvas-soft" />
+      ) : itens.length === 0 ? (
         <p className="text-xs text-ink-mute">Sem valores no mês selecionado</p>
       ) : (
-        <div className="space-y-1.5">
+        <div className="grid grid-cols-2 gap-2">
           {itens.map((it) => (
-            <div key={`vregra-${it.regra}`} className="space-y-1">
-              <div className="flex items-center justify-between gap-2 text-[12px]">
-                <span className="truncate text-ink">{REGRA_LABEL[it.regra] || it.regra}</span>
-                <span className="font-tabular font-medium text-ink">{brl(it.valor)}</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-canvas-soft">
-                <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(it.valor / max) * 100}%` }} />
-              </div>
+            <div
+              key={`vregra-${it.regra}`}
+              className="rounded-md border border-hairline bg-canvas-soft/40 p-2.5"
+            >
+              <p className="truncate text-[11px] text-ink-mute" title={REGRA_LABEL[it.regra] || it.regra}>
+                {REGRA_LABEL[it.regra] || it.regra}
+              </p>
+              <p className="mt-0.5 font-tabular text-base font-medium text-ink">{brl(it.valor)}</p>
+              <p className="text-[11px] text-ink-mute">
+                {REGRA_UNIDADE[it.regra] || 'valor fechado'} · {it.qtd} caso{it.qtd !== 1 ? 's' : ''}
+              </p>
             </div>
           ))}
         </div>

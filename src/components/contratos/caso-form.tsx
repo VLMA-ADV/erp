@@ -259,6 +259,7 @@ function normalizeRegraCobranca(value: CasoPayload['regra_cobranca']) {
   if (!normalized) return ''
   if (normalized === 'hora_com_cap') return 'hora'
   if (normalized === 'projeto_parcelado') return 'projeto'
+  if (normalized === 'pro_labore_parcelado') return 'pro_labore'
   if (normalized === 'exito') return 'exito'
   if (normalized === 'mensalidade_de_processo') return 'mensalidade_processo'
   return normalized as CasoPayload['regra_cobranca']
@@ -2340,6 +2341,7 @@ export default function CasoForm({
                   <option value="mensalidade_processo">Mensalidade de processo</option>
                   <option value="mensalidade_carteira">Mensalidade de Carteira</option>
                   <option value="projeto">Projeto</option>
+                  <option value="pro_labore">Pró-labore</option>
                   <option value="exito">Êxito</option>
                 </NativeSelect>
               </div>
