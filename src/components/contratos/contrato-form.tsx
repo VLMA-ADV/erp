@@ -1839,7 +1839,9 @@ export default function ContratoForm({
   const toggleCurrentFinanceRuleStatus = () => {
     const current = currentFinanceRules[selectedFinanceRuleIndex]
     if (!current) return
-    const nextStatus: BillingRuleStatus = current.status === 'encerrado' ? 'ativo' : 'encerrado'
+    // Mesmo ajuste do caso-form: rascunho vai para ativo, nao para encerrado.
+    const nextStatus: BillingRuleStatus =
+      current.status === 'ativo' ? 'encerrado' : 'ativo'
     const nextRules = [...currentFinanceRules]
     nextRules[selectedFinanceRuleIndex] = {
       ...composeCurrentFinanceRule(current),
@@ -2438,12 +2440,32 @@ export default function ContratoForm({
         const caso = form.casos[caseIndex]
         if (isCaseEmpty(caso)) continue
 
+        // Esta tela marcava o CASO como ativo mas deixava a regra de cobrança
+        // dentro dele em rascunho — e rascunho não fatura. Foram 145 casos
+        // criados assim, sem nenhum sinal na tela. Agora, quando o caso está
+        // completo e não existe nenhuma regra ativa, a primeira em rascunho é
+        // ativada junto. Se o caso JÁ tem regra ativa, não mexemos: ativar uma
+        // segunda faria o cliente ser cobrado duas vezes.
+        const casoCompleto = isCaseComplete(caso)
+        const regras = Array.isArray((caso as any).regras_financeiras)
+          ? ((caso as any).regras_financeiras as any[])
+          : []
+        const jaTemAtiva = regras.some((r) => r?.status === 'ativo')
+        let ativouPrimeira = false
+        const regrasNormalizadas = regras.map((r) => {
+          if (!casoCompleto || jaTemAtiva || ativouPrimeira) return r
+          if (r?.status !== 'rascunho') return r
+          ativouPrimeira = true
+          return { ...r, status: 'ativo' }
+        })
+
         const payload = {
           ...caso,
+          ...(regras.length > 0 ? { regras_financeiras: regrasNormalizadas } : {}),
           nome: (caso.nome ?? '').trim(),
           regra_cobranca: normalizeRegraCobranca(caso.regra_cobranca),
           data_ultimo_reajuste: caso.data_ultimo_reajuste || caso.inicio_vigencia || '',
-          status: isCaseComplete(caso) ? 'ativo' : 'rascunho',
+          status: casoCompleto ? 'ativo' : 'rascunho',
         }
 
         const existingCaseId = getCasoId(caso)
