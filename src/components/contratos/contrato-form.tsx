@@ -2702,7 +2702,9 @@ export default function ContratoForm({
                     <div key={anexo.id} className="flex items-center justify-between rounded border px-3 py-2">
                       <div>
                         <p className="text-sm font-medium">{anexo.nome}</p>
-                        <p className="text-xs text-muted-foreground">{anexo.arquivo_nome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {anexo.arquivo_nome} · {labelTipoAnexo(anexo.tipo)}
+                        </p>
                       </div>
                       <Button
                         type="button"
