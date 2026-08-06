@@ -60,6 +60,7 @@ export function CommandSelect({
   const [query, setQuery] = useState('')
   const [panelWidth, setPanelWidth] = useState<number>(360)
   const [openUpward, setOpenUpward] = useState(false)
+  const [alignRight, setAlignRight] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -74,12 +75,37 @@ export function CommandSelect({
 
   useEffect(() => {
     if (!open) return
-    const triggerRect = containerRef.current?.getBoundingClientRect()
-    const triggerWidth = triggerRect?.width ?? 0
+    const container = containerRef.current
+    const triggerRect = container?.getBoundingClientRect()
+    if (!container || !triggerRect) return
+
+    // O painel é recortado pelo primeiro ancestral que esconde o transbordo
+    // (o corpo do diálogo, por exemplo). Antes ele era largado em panelMinWidth
+    // mesmo sem caber, e o texto das opções morria na borda — era o que o
+    // Filipe via como "quebra de linha" na lista de templates (05/08).
+    const margem = 8
+    let limiteEsq = margem
+    let limiteDir = window.innerWidth - margem
+    for (let node = container.parentElement; node; node = node.parentElement) {
+      const { overflowX, overflowY } = window.getComputedStyle(node)
+      if (!/(auto|hidden|scroll)/.test(`${overflowX} ${overflowY}`)) continue
+      const rect = node.getBoundingClientRect()
+      limiteEsq = Math.max(limiteEsq, rect.left + margem)
+      limiteDir = Math.min(limiteDir, rect.right - margem)
+      break
+    }
+
+    const disponivel = Math.max(limiteDir - limiteEsq, 0)
+    const desejada = Math.max(Math.round(triggerRect.width), panelMinWidth)
+    const largura = disponivel > 0 ? Math.min(desejada, disponivel) : desejada
+
+    // Se ancorado à esquerda o painel passaria da borda, ancora pela direita.
+    setPanelWidth(largura)
+    setAlignRight(triggerRect.left + largura > limiteDir)
+
     const panelEstimatedHeight = 320
-    const spaceBelow = window.innerHeight - (triggerRect?.bottom ?? 0)
-    const spaceAbove = triggerRect?.top ?? 0
-    setPanelWidth(Math.max(Math.round(triggerWidth), panelMinWidth))
+    const spaceBelow = window.innerHeight - triggerRect.bottom
+    const spaceAbove = triggerRect.top
     setOpenUpward(spaceBelow < panelEstimatedHeight && spaceAbove > spaceBelow)
   }, [open, panelMinWidth])
 
@@ -134,7 +160,8 @@ export function CommandSelect({
       {open && (
         <div
           className={cn(
-            'absolute left-0 z-[200] max-w-[calc(100vw-2rem)] overflow-visible rounded-md border bg-popover text-popover-foreground shadow-md',
+            'absolute z-[200] max-w-[calc(100vw-2rem)] overflow-visible rounded-md border bg-popover text-popover-foreground shadow-md',
+            alignRight ? 'right-0' : 'left-0',
             openUpward ? 'bottom-full mb-1' : 'top-full mt-1',
           )}
           style={{ width: panelWidth }}
