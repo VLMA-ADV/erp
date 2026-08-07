@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Check, ChevronDown, ChevronRight, FilePlus2, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FilePlus2, MessageSquare } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -28,6 +28,7 @@ interface MensagemAvulsaItem {
   cliente_nome: string | null
   caso_nome: string | null
   autor_nome: string | null
+  autor_foto?: string | null
   lido_at?: string | null
 }
 
@@ -97,6 +98,25 @@ async function fetchMensagensAvulsas(
   return (data ?? []) as MensagemAvulsaItem[]
 }
 
+function iniciais(nome?: string | null) {
+  const partes = String(nome || '').trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return '?'
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase()
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
+}
+
+function Avatar({ nome, foto }: { nome?: string | null; foto?: string | null }) {
+  if (foto) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={foto} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+  }
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">
+      {iniciais(nome)}
+    </span>
+  )
+}
+
 export default function MensagensInbox() {
   const queryClient = useQueryClient()
   const { hasPermission } = usePermissionsContext()
@@ -107,6 +127,9 @@ export default function MensagensInbox() {
 
   const [open, setOpen] = useState(false)
   const [markingId, setMarkingId] = useState<string | null>(null)
+  // Conversa aberta. Cada conversa é um cliente + caso: é assim que as pessoas
+  // pensam ("o assunto da Gramarcal"), não mensagem por mensagem. null = lista.
+  const [conversaAberta, setConversaAberta] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -128,6 +151,33 @@ export default function MensagensInbox() {
   })
 
   const mensagens = data ?? []
+
+  // Uma conversa = cliente + caso. É como as pessoas se referem ao assunto
+  // ("o da Gramarcal"), em vez de mensagem solta numa pilha (Filipe 07/08).
+  const conversas = useMemo(() => {
+    const mapa = new Map<string, { chave: string; titulo: string; mensagens: MensagemAvulsaItem[] }>()
+    for (const item of mensagens) {
+      const chave = `${item.cliente_id || 'sem-cliente'}::${item.caso_id || 'sem-caso'}`
+      const titulo = [item.cliente_nome || 'Cliente —', item.caso_nome].filter(Boolean).join(' · ')
+      const atual = mapa.get(chave) || { chave, titulo, mensagens: [] }
+      atual.mensagens.push(item)
+      mapa.set(chave, atual)
+    }
+    return Array.from(mapa.values())
+      .map((c) => {
+        const ordenadas = [...c.mensagens].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+        return {
+          ...c,
+          mensagens: ordenadas,
+          ultima: ordenadas[ordenadas.length - 1],
+          naoLidas: ordenadas.filter((m) => !m.lido_at).length,
+        }
+      })
+      .sort((a, b) => new Date(b.ultima.created_at).getTime() - new Date(a.ultima.created_at).getTime())
+  }, [mensagens])
+
   const total = mensagens.length
   const isEmpty = !isLoading && total === 0
   const badgeLabel = isError ? 'Erro ao carregar' : isLoading ? 'Carregando...' : totalLabel(total)
@@ -417,44 +467,77 @@ export default function MensagensInbox() {
                 Nenhuma mensagem avulsa registrada.
               </div>
             ) : (
-              <div className="space-y-2" data-testid="mensagens-inbox-lista">
-                {mensagens.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-2 rounded-xl border bg-white p-3 shadow-sm transition hover:border-sky-200"
+              conversaAberta ? (
+                <div className="space-y-2" data-testid="mensagens-inbox-conversa">
+                  <button
+                    type="button"
+                    onClick={() => setConversaAberta(null)}
+                    className="mb-1 inline-flex items-center gap-1 text-sm text-ink-secondary hover:text-ink"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="text-sm font-semibold text-ink">
-                          {item.autor_nome ?? 'Autor desconhecido'}
-                        </span>
-                        <span className="text-xs text-ink-mute">•</span>
-                        <span className="text-xs text-ink-mute">{formatRelativeDate(item.created_at)}</span>
+                    <ArrowLeft className="h-4 w-4" />
+                    Voltar para a caixa
+                  </button>
+                  <p className="text-sm font-semibold text-ink">
+                    {conversas.find((c) => c.chave === conversaAberta)?.titulo || 'Conversa'}
+                  </p>
+                  {(conversas.find((c) => c.chave === conversaAberta)?.mensagens || []).map((item) => (
+                    <div key={item.id} className="flex items-start gap-2.5 rounded-xl border bg-white p-3 shadow-sm">
+                      <Avatar nome={item.autor_nome} foto={item.autor_foto} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2">
+                          <span className="text-sm font-semibold text-ink">{item.autor_nome ?? 'Autor desconhecido'}</span>
+                          <span className="text-xs text-ink-mute">{formatRelativeDate(item.created_at)}</span>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-ink-secondary">{item.mensagem}</p>
                       </div>
-                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-ink-mute">
-                        {item.cliente_nome ?? 'Cliente —'}
-                        {item.caso_nome ? ` · ${item.caso_nome}` : ''}
-                      </p>
-                      <p className="mt-2 line-clamp-2 text-sm text-ink-secondary">{item.mensagem}</p>
+                      {canWrite && !item.lido_at ? (
+                        <Tooltip content="Marcar como lida">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0"
+                            disabled={markingId === item.id}
+                            onClick={() => void handleMarkAsRead(item.id)}
+                            aria-label="Marcar como lida"
+                          >
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
+                        </Tooltip>
+                      ) : null}
                     </div>
-                    {canWrite ? (
-                      <Tooltip content="Marcar como lida">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 shrink-0"
-                          disabled={markingId === item.id}
-                          onClick={() => void handleMarkAsRead(item.id)}
-                          aria-label="Marcar como lida"
-                        >
-                          <Check className="h-4 w-4 text-green-600" />
-                        </Button>
-                      </Tooltip>
+                  ))}
+                </div>
+              ) : (
+              <div className="space-y-2" data-testid="mensagens-inbox-lista">
+                {conversas.map((conversa) => (
+                  <button
+                    key={conversa.chave}
+                    type="button"
+                    onClick={() => setConversaAberta(conversa.chave)}
+                    className="flex w-full items-start gap-2.5 rounded-xl border bg-white p-3 text-left shadow-sm transition hover:border-sky-200"
+                  >
+                    <Avatar nome={conversa.ultima.autor_nome} foto={conversa.ultima.autor_foto} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2">
+                        <span className="truncate text-sm font-semibold text-ink">{conversa.titulo}</span>
+                        <span className="shrink-0 text-xs text-ink-mute">{formatRelativeDate(conversa.ultima.created_at)}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-ink-mute">
+                        {conversa.ultima.autor_nome ?? 'Autor desconhecido'}
+                        {conversa.mensagens.length > 1 ? ` · ${conversa.mensagens.length} mensagens` : ''}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm text-ink-secondary">{conversa.ultima.mensagem}</p>
+                    </div>
+                    {conversa.naoLidas > 0 ? (
+                      <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                        {conversa.naoLidas}
+                      </span>
                     ) : null}
-                  </div>
+                  </button>
                 ))}
               </div>
+              )
             )}
           </div>
         </CollapsibleContent>
