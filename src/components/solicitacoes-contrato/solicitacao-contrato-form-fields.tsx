@@ -29,6 +29,18 @@ interface Props {
   onSelectedClienteIdChange: (value: string) => void
   pendingAnexos: PendingSolicitacaoAnexo[]
   selectedClienteId: string
+  // Campos pedidos pelo Filipe em 07/08. Responsável é LISTA (as pessoas já
+  // estão cadastradas); os demais são texto livre porque são descrições ou
+  // pessoas do cliente, que não temos no sistema.
+  colaboradoresOptions: CommandSelectOption[]
+  responsavelVlmaId: string
+  onResponsavelVlmaChange: (value: string) => void
+  regraCobrancaTexto: string
+  onRegraCobrancaTextoChange: (value: string) => void
+  indicacaoCrossSell: string
+  onIndicacaoCrossSellChange: (value: string) => void
+  contatosFinanceiro: string
+  onContatosFinanceiroChange: (value: string) => void
 }
 
 export default function SolicitacaoContratoFormFields({
@@ -48,6 +60,15 @@ export default function SolicitacaoContratoFormFields({
   onSelectedClienteIdChange,
   pendingAnexos,
   selectedClienteId,
+  colaboradoresOptions,
+  responsavelVlmaId,
+  onResponsavelVlmaChange,
+  regraCobrancaTexto,
+  onRegraCobrancaTextoChange,
+  indicacaoCrossSell,
+  onIndicacaoCrossSellChange,
+  contatosFinanceiro,
+  onContatosFinanceiroChange,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -96,6 +117,51 @@ export default function SolicitacaoContratoFormFields({
           placeholder="Selecione o centro de custo"
           searchPlaceholder="Buscar centro de custo..."
           emptyText="Nenhum centro de custo encontrado"
+          disabled={disabled}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Responsável VLMA pelo caso</Label>
+        <CommandSelect
+          value={responsavelVlmaId}
+          onValueChange={onResponsavelVlmaChange}
+          options={colaboradoresOptions}
+          placeholder="Selecione o responsável"
+          searchPlaceholder="Buscar pessoa..."
+          emptyText="Nenhuma pessoa encontrada"
+          disabled={disabled}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Regra de cobrança e esquema de pagamento</Label>
+        <Textarea
+          value={regraCobrancaTexto}
+          onChange={(event) => onRegraCobrancaTextoChange(event.target.value)}
+          placeholder="Como e quando o trabalho será pago"
+          rows={3}
+          disabled={disabled}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Indicação ou cross sell</Label>
+        <Input
+          value={indicacaoCrossSell}
+          onChange={(event) => onIndicacaoCrossSellChange(event.target.value)}
+          placeholder="Quem indicou, ou de qual trabalho veio"
+          disabled={disabled}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Contatos do financeiro do cliente</Label>
+        <Textarea
+          value={contatosFinanceiro}
+          onChange={(event) => onContatosFinanceiroChange(event.target.value)}
+          placeholder="Nome e e-mail de quem recebe a cobrança"
+          rows={2}
           disabled={disabled}
         />
       </div>

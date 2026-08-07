@@ -101,6 +101,10 @@ export default function SolicitacoesContratoList() {
   const [nomeSolicitacao, setNomeSolicitacao] = useState('')
   const [descricaoSolicitacao, setDescricaoSolicitacao] = useState('')
   const [centroCustoId, setCentroCustoId] = useState('')
+  const [responsavelVlmaId, setResponsavelVlmaId] = useState('')
+  const [regraCobrancaTexto, setRegraCobrancaTexto] = useState('')
+  const [indicacaoCrossSell, setIndicacaoCrossSell] = useState('')
+  const [contatosFinanceiro, setContatosFinanceiro] = useState('')
   const [pendingAnexos, setPendingAnexos] = useState<PendingSolicitacaoAnexo[]>([])
   const [openingAnexoId, setOpeningAnexoId] = useState<string | null>(null)
   const [creatingCliente, setCreatingCliente] = useState(false)
@@ -110,6 +114,7 @@ export default function SolicitacoesContratoList() {
 
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [areas, setAreas] = useState<AreaOption[]>([])
+  const [colaboradores, setColaboradores] = useState<AreaOption[]>([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
   const targetSolicitacaoId = searchParams.get('solicitacao_id') || ''
 
@@ -129,6 +134,11 @@ export default function SolicitacoesContratoList() {
         label: area.nome,
       })),
     [areas],
+  )
+
+  const colaboradoresOptions = useMemo(
+    () => colaboradores.map((item) => ({ value: item.id, label: item.nome })),
+    [colaboradores],
   )
 
   const filteredItems = useMemo(() => {
@@ -240,11 +250,40 @@ export default function SolicitacoesContratoList() {
     setAreas(nextAreas)
   }
 
+  // Responsável VLMA é lista: as pessoas já estão cadastradas, e texto livre
+  // nunca casaria com o cadastro na hora de pré-preencher o contrato.
+  const fetchColaboradores = async () => {
+    const session = await getSession()
+    if (!session) return
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/list-colaboradores?page=1&limit=500&_ts=${Date.now()}`,
+      {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { ...getFunctionsHeaders(session.access_token) },
+      },
+    )
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return
+    setColaboradores(
+      (payload.data || [])
+        .filter((item: unknown) => {
+          const obj = item as Record<string, unknown>
+          return obj?.id && obj?.nome
+        })
+        .map((item: unknown) => {
+          const obj = item as Record<string, unknown>
+          return { id: obj.id as string, nome: obj.nome as string }
+        }),
+    )
+  }
+
   useEffect(() => {
     if (!canRead) return
     void fetchItems()
     void fetchClientes()
     void fetchAreas()
+    void fetchColaboradores()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -413,6 +452,10 @@ export default function SolicitacoesContratoList() {
           descricao: descricaoSolicitacao.trim(),
           cliente_id: selectedClienteId || null,
           centro_custo_id: centroCustoId || null,
+          responsavel_vlma_id: responsavelVlmaId || null,
+          regra_cobranca_texto: regraCobrancaTexto.trim() || null,
+          indicacao_cross_sell: indicacaoCrossSell.trim() || null,
+          contatos_financeiro: contatosFinanceiro.trim() || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
         },
       })
@@ -693,6 +736,15 @@ export default function SolicitacoesContratoList() {
             onSelectedClienteIdChange={setSelectedClienteId}
             pendingAnexos={pendingAnexos}
             selectedClienteId={selectedClienteId}
+            colaboradoresOptions={colaboradoresOptions}
+            responsavelVlmaId={responsavelVlmaId}
+            onResponsavelVlmaChange={setResponsavelVlmaId}
+            regraCobrancaTexto={regraCobrancaTexto}
+            onRegraCobrancaTextoChange={setRegraCobrancaTexto}
+            indicacaoCrossSell={indicacaoCrossSell}
+            onIndicacaoCrossSellChange={setIndicacaoCrossSell}
+            contatosFinanceiro={contatosFinanceiro}
+            onContatosFinanceiroChange={setContatosFinanceiro}
           />
 
           <DialogFooter>

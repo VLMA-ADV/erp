@@ -246,6 +246,10 @@ export default function CrmPipeline() {
   const [solicitacaoDescricao, setSolicitacaoDescricao] = useState('')
   const [solicitacaoClienteId, setSolicitacaoClienteId] = useState('')
   const [solicitacaoCentroCustoId, setSolicitacaoCentroCustoId] = useState('')
+  const [solicitacaoResponsavelId, setSolicitacaoResponsavelId] = useState('')
+  const [solicitacaoRegraCobranca, setSolicitacaoRegraCobranca] = useState('')
+  const [solicitacaoIndicacao, setSolicitacaoIndicacao] = useState('')
+  const [solicitacaoContatosFin, setSolicitacaoContatosFin] = useState('')
   const [solicitacaoAnexos, setSolicitacaoAnexos] = useState<PendingSolicitacaoAnexo[]>([])
   const [creatingSolicitacaoCliente, setCreatingSolicitacaoCliente] = useState(false)
 
@@ -652,6 +656,10 @@ export default function CrmPipeline() {
     setSolicitacaoDescricao('')
     setSolicitacaoClienteId('')
     setSolicitacaoCentroCustoId('')
+    setSolicitacaoResponsavelId('')
+    setSolicitacaoRegraCobranca('')
+    setSolicitacaoIndicacao('')
+    setSolicitacaoContatosFin('')
     setSolicitacaoAnexos([])
   }
 
@@ -751,6 +759,10 @@ export default function CrmPipeline() {
           descricao: solicitacaoDescricao.trim(),
           cliente_id: solicitacaoClienteId || null,
           centro_custo_id: solicitacaoCentroCustoId || null,
+          responsavel_vlma_id: solicitacaoResponsavelId || null,
+          regra_cobranca_texto: solicitacaoRegraCobranca.trim() || null,
+          indicacao_cross_sell: solicitacaoIndicacao.trim() || null,
+          contatos_financeiro: solicitacaoContatosFin.trim() || null,
           anexos: anexosPayload.length ? anexosPayload : undefined,
           // Leva os anexos da proposta (card) junto — a RPC copia server-side.
           origem_card_id: solicitacaoCardId || undefined,
@@ -1815,6 +1827,15 @@ export default function CrmPipeline() {
           </DialogHeader>
 
           <SolicitacaoContratoFormFields
+            colaboradoresOptions={colaboradoresOptions}
+            responsavelVlmaId={solicitacaoResponsavelId}
+            onResponsavelVlmaChange={setSolicitacaoResponsavelId}
+            regraCobrancaTexto={solicitacaoRegraCobranca}
+            onRegraCobrancaTextoChange={setSolicitacaoRegraCobranca}
+            indicacaoCrossSell={solicitacaoIndicacao}
+            onIndicacaoCrossSellChange={setSolicitacaoIndicacao}
+            contatosFinanceiro={solicitacaoContatosFin}
+            onContatosFinanceiroChange={setSolicitacaoContatosFin}
             areasOptions={areasOptions}
             centroCustoId={solicitacaoCentroCustoId}
             clientesOptions={clientesOptions}
