@@ -1113,7 +1113,12 @@ export default function ContratoForm({
           return {
             ...prev,
             cliente_id: String(s.cliente_id || '') || prev.cliente_id,
+            // O responsável só existe no contrato como "quem trouxe o cliente",
+            // e esse campo só aparece (e só é salvo) quando a forma de entrada é
+            // prospecção. Sem marcar isso junto, o responsável seria descartado
+            // no salvamento. Quem monta pode trocar se o caso foi orgânico.
             responsavel_prospeccao_id: String(s.responsavel_vlma_id || '') || prev.responsavel_prospeccao_id,
+            forma_entrada: s.responsavel_vlma_id ? 'prospeccao' : prev.forma_entrada,
             casos: [
               {
                 ...primeiroCaso,
