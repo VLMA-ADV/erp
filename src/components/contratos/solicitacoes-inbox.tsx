@@ -20,6 +20,11 @@ interface SolicitacaoContratoItem {
   id: string
   descricao: string
   nome?: string | null
+  centro_custo_nome?: string | null
+  responsavel_vlma_nome?: string | null
+  regra_cobranca_texto?: string | null
+  indicacao_cross_sell?: string | null
+  contatos_financeiro?: string | null
   status: 'aberta' | 'concluida' | 'cancelada'
   cliente_nome: string | null
   contrato_numero: number | null
@@ -126,6 +131,28 @@ export default function SolicitacoesInbox() {
     }
   }
 
+  // "Providenciado": o pedido foi resolvido sem virar contrato. Sai da fila sem
+  // criar um contrato vazio só para poder concluir.
+  const handleProvidenciado = async (solicitacaoId: string) => {
+    try {
+      setMarkingId(solicitacaoId)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { error: rpcError } = await supabase.rpc('marcar_solicitacao_providenciada', {
+        p_user_id: user.id,
+        p_solicitacao_id: solicitacaoId,
+      })
+      if (rpcError) {
+        toastError(rpcError.message || 'Erro ao marcar como providenciada')
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: ['solicitacoes-contrato-inbox'] })
+    } finally {
+      setMarkingId(null)
+    }
+  }
+
   if (!canRead) return null
 
   const abertas = data ?? []
@@ -217,25 +244,56 @@ export default function SolicitacoesInbox() {
                         {item.solicitante_nome ? ` → ${item.solicitante_nome}` : ''}
                       </p>
                       <p className="mt-2 line-clamp-2 text-sm text-ink-secondary">{item.descricao}</p>
+                      {/* Campos que quem monta o contrato precisa ler sem abrir
+                          a solicitação (Filipe 07/08). */}
+                      {(item.centro_custo_nome || item.responsavel_vlma_nome || item.regra_cobranca_texto
+                        || item.indicacao_cross_sell || item.contatos_financeiro) ? (
+                        <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                          {item.centro_custo_nome ? (
+                            <div><dt className="inline text-ink-mute">Centro de custo: </dt><dd className="inline text-ink-secondary">{item.centro_custo_nome}</dd></div>
+                          ) : null}
+                          {item.responsavel_vlma_nome ? (
+                            <div><dt className="inline text-ink-mute">Responsável: </dt><dd className="inline text-ink-secondary">{item.responsavel_vlma_nome}</dd></div>
+                          ) : null}
+                          {item.regra_cobranca_texto ? (
+                            <div className="sm:col-span-2"><dt className="inline text-ink-mute">Cobrança: </dt><dd className="inline text-ink-secondary">{item.regra_cobranca_texto}</dd></div>
+                          ) : null}
+                          {item.indicacao_cross_sell ? (
+                            <div className="sm:col-span-2"><dt className="inline text-ink-mute">Indicação: </dt><dd className="inline text-ink-secondary">{item.indicacao_cross_sell}</dd></div>
+                          ) : null}
+                          {item.contatos_financeiro ? (
+                            <div className="sm:col-span-2"><dt className="inline text-ink-mute">Financeiro: </dt><dd className="inline text-ink-secondary">{item.contatos_financeiro}</dd></div>
+                          ) : null}
+                        </dl>
+                      ) : null}
                     </div>
                   </button>
                   {canWrite ? (
-                    <Tooltip content="Marcar como lida">
+                    <div className="flex shrink-0 flex-col gap-1.5">
                       <Button
                         type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/contratos/novo?solicitacao=${encodeURIComponent(item.id)}`)
+                        }}
+                      >
+                        Abrir contrato
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
                         disabled={markingId === item.id}
                         onClick={(e) => {
                           e.stopPropagation()
-                          void handleMarkAsRead(item.id)
+                          void handleProvidenciado(item.id)
                         }}
-                        aria-label="Marcar como lida"
                       >
-                        <Check className="h-4 w-4 text-green-600" />
+                        <Check className="mr-1 h-3.5 w-3.5 text-green-600" />
+                        Providenciado
                       </Button>
-                    </Tooltip>
+                    </div>
                   ) : null}
                 </div>
               ))}

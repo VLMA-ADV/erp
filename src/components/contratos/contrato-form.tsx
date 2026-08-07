@@ -1086,6 +1086,53 @@ export default function ContratoForm({
     }
   }, [searchParams])
 
+  // "Abrir contrato" na caixa de entrada (Filipe 07/08): o contrato nasce com o
+  // que a solicitação já trouxe, em vez de o financeiro digitar tudo de novo.
+  // Cliente e responsável vão para a aba contrato; nome do caso e centro de
+  // custo, para a aba caso — foi o mapeamento que ele definiu.
+  const solicitacaoPrefillId = searchParams.get('solicitacao')
+  const prefillAplicado = useRef(false)
+  useEffect(() => {
+    if (!solicitacaoPrefillId || isEdit || prefillAplicado.current) return
+    prefillAplicado.current = true
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+        const { data, error: rpcError } = await supabase.rpc('get_solicitacoes_contrato', {
+          p_user_id: session.user.id,
+          p_only_unread: false,
+        })
+        if (rpcError || !Array.isArray(data)) return
+        const s = (data as Array<Record<string, unknown>>).find((item) => String(item.id) === solicitacaoPrefillId)
+        if (!s) return
+
+        setForm((prev) => {
+          const primeiroCaso = prev.casos[0] || { ...emptyCaso }
+          return {
+            ...prev,
+            cliente_id: String(s.cliente_id || '') || prev.cliente_id,
+            responsavel_prospeccao_id: String(s.responsavel_vlma_id || '') || prev.responsavel_prospeccao_id,
+            casos: [
+              {
+                ...primeiroCaso,
+                nome: String(s.nome || '') || primeiroCaso.nome,
+                centro_custo_rateio: s.centro_custo_id
+                  ? [{ centro_custo_id: String(s.centro_custo_id), percentual: 100 }]
+                  : primeiroCaso.centro_custo_rateio,
+              },
+              ...prev.casos.slice(1),
+            ],
+          }
+        })
+        setOrigemSolicitacaoDescricao(String(s.descricao || ''))
+      } catch {
+        // prefill é conveniência: se falhar, o formulário abre vazio
+      }
+    })()
+  }, [solicitacaoPrefillId, isEdit])
+
   useEffect(() => {
     const found = new Map<string, TabelaPrecoCatalog>()
     for (const caso of form.casos) {
