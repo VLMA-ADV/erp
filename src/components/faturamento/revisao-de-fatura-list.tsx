@@ -1647,32 +1647,6 @@ export default function RevisaoDeFaturaList() {
     }
   }
 
-  // Enviar aprovados para o faturamento: só aqui o aprovado sai da revisão.
-  const enviarParaFaturamento = async (ids: string[]) => {
-    const aprovados = ids.filter((id) => items.find((entry) => entry.id === id)?.status === 'aprovado')
-    if (aprovados.length === 0) {
-      toastError('Selecione itens aprovados para enviar ao faturamento.')
-      return
-    }
-    if (!window.confirm(`Enviar ${aprovados.length} item(ns) aprovado(s) para o faturamento (etapa 3)?`)) return
-    try {
-      setBusyKey('enviar-faturamento')
-      const supabase = createClient()
-      const { data, error } = await supabase.rpc('marcar_enviado_faturamento', { p_ids: aprovados })
-      if (error) {
-        toastError(error.message || 'Erro ao enviar para faturamento')
-        return
-      }
-      const count = Number((data as { enviados?: number })?.enviados ?? 0)
-      success(`${count} item(ns) enviado(s) para o faturamento.`)
-      setItems((prev) => prev.filter((entry) => !aprovados.includes(entry.id)))
-      setSelectedItemIds((prev) => prev.filter((id) => !aprovados.includes(id)))
-      void loadItems({ silent: true })
-    } finally {
-      setBusyKey(null)
-    }
-  }
-
   // Emite a NFS-e via edge emit-nfse. A emissão é por CONTRATO e já trata o rateio
   // (1 nota por pagador). Só é chamada a partir da prévia, para a pessoa ver antes o
   // que exatamente vai no documento fiscal.
@@ -2384,14 +2358,38 @@ export default function RevisaoDeFaturaList() {
                                 >
                                   Ignorar
                                 </Button>
+                                {/* "Enviar p/ faturamento" saiu: a etapa que ele acionava nao
+                                    existe mais (Filipe, 07/08). No lugar, a previa do relatorio
+                                    de timesheet do proprio caso — que e o que ele confere antes
+                                    de faturar. Sem selecao, sai o caso inteiro. */}
                                 <Button
                                   size="sm"
-                                  className="bg-primary text-primary-foreground text-xs hover:bg-primary-deep"
-                                  onClick={() => void enviarParaFaturamento(selectedIds)}
-                                  disabled={selectedIds.length === 0 || busyKey === 'enviar-faturamento'}
-                                  title="Envia os itens aprovados para a etapa de faturamento"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => {
+                                    const base = selectedIds.length > 0
+                                      ? reviewRows.filter((row) => selectedIds.includes(row.item.id)).map((row) => row.item)
+                                      : reviewRows.map((row) => row.item)
+                                    openTimesheetReport({
+                                      titulo: 'Prévia do relatório de timesheet',
+                                      subtitulo: `${casoGroup.numero || ''} - ${casoGroup.nome || ''} · ${base.length} lançamento(s)`,
+                                      mostrarValor: true,
+                                      rows: base.map((it) => ({
+                                        data: it.timesheetDataLancamento ? formatDate(it.timesheetDataLancamento) : formatDate(it.dataReferencia || ''),
+                                        cliente: it.clienteNome || '',
+                                        caso: `${it.casoNumero || ''} - ${it.casoNome || ''}`,
+                                        profissional: it.enviadoPorNome || it.timesheetProfissional || '',
+                                        // Com grupo, o que vai no relatorio e o texto do grupo.
+                                        descricao: it.grupoTexto || it.timesheetDescricaoOriginal || it.timesheetDescricao || it.regraNome || '',
+                                        horas: formatHistoryHours(it.grupoHoras ?? getEffectiveItemHours(it)),
+                                        valor: it.grupoValor ?? getEffectiveItemValue(it),
+                                      })),
+                                    })
+                                  }}
+                                  disabled={reviewRows.length === 0}
+                                  title="Abre a prévia do relatório de timesheet deste caso"
                                 >
-                                  Enviar p/ faturamento
+                                  Prévia do relatório
                                 </Button>
                                 {/* NFS-e na faixa do caso. A nota é emitida por CONTRATO (com
                                     rateio), então "Faturar" abre a prévia — é ela que mostra o
@@ -2497,6 +2495,14 @@ export default function RevisaoDeFaturaList() {
                             <div className="space-y-3 bg-canvas-soft/40 p-3">
                               {reviewRows.map(({ item, mode, key }) => {
                                 const ehLider = !!item.grupoId && liderDoGrupo.get(item.grupoId) === item.id
+                                // Quando ha grupo, o que vale nas etapas e o que o revisor
+                                // escreveu no grupo — era o que o Filipe estranhou em 07/08:
+                                // editava "texto do grupo" e a revisao seguia mostrando o
+                                // texto original de cada lancamento. Envio nao muda: ele
+                                // registra o que foi lancado, e isso e historico.
+                                const textoGrupo = ehLider ? (item.grupoTexto || null) : null
+                                const horasGrupo = ehLider ? item.grupoHoras : null
+                                const valorGrupo = ehLider ? item.grupoValor : null
                                 const grupoAberto = !!item.grupoId && !!gruposAbertos[item.grupoId]
                                 // Membro que nao lidera some enquanto o grupo estiver fechado.
                                 if (item.grupoId && !ehLider && !grupoAberto) return null
@@ -2692,7 +2698,7 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {revisado ? (
                                               <div className="max-w-[560px] space-y-1 whitespace-normal break-words text-[11px] leading-snug">
-                                                <div>{revChanges?.texto || envioTexto}</div>
+                                                <div>{textoGrupo || revChanges?.texto || envioTexto}</div>
                                                 <StageTag alterado={Boolean(revChanges?.alterado)} changes={revChanges?.changes || []} />
                                               </div>
                                             ) : (
@@ -2700,10 +2706,10 @@ export default function RevisaoDeFaturaList() {
                                             )}
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
-                                            {revisado && mode === 'timesheet' ? formatHistoryHours(item.horasRevisadas ?? getOriginalItemHours(item)) : revisado ? '—' : ''}
+                                            {revisado && mode === 'timesheet' ? formatHistoryHours(horasGrupo ?? item.horasRevisadas ?? getOriginalItemHours(item)) : revisado ? '—' : ''}
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">
-                                            {revisado ? formatMoney(item.valorRevisado ?? getOriginalItemValue(item)) : ''}
+                                            {revisado ? formatMoney(valorGrupo ?? item.valorRevisado ?? getOriginalItemValue(item)) : ''}
                                           </td>
                                         </tr>
 
@@ -2884,7 +2890,7 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {item.status === 'aprovado' ? (
                                               <div className="max-w-[560px] space-y-1 whitespace-normal break-words text-[11px] leading-snug">
-                                                <div>{aprChanges?.texto || revChanges?.texto || envioTexto}</div>
+                                                <div>{textoGrupo || aprChanges?.texto || revChanges?.texto || envioTexto}</div>
                                                 <StageTag alterado={Boolean(aprChanges?.alterado)} changes={aprChanges?.changes || []} />
                                               </div>
                                             ) : aprovacaoTravada ? (
@@ -2900,11 +2906,11 @@ export default function RevisaoDeFaturaList() {
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
                                             {item.status === 'aprovado' && mode === 'timesheet'
-                                              ? formatHistoryHours(item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item))
+                                              ? formatHistoryHours(horasGrupo ?? item.horasAprovadas ?? item.horasRevisadas ?? getOriginalItemHours(item))
                                               : ''}
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">
-                                            {item.status === 'aprovado' ? formatMoney(item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item)) : ''}
+                                            {item.status === 'aprovado' ? formatMoney(valorGrupo ?? item.valorAprovado ?? item.valorRevisado ?? getOriginalItemValue(item)) : ''}
                                           </td>
                                         </tr>
 
