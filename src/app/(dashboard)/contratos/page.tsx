@@ -2,9 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ContratosList from '@/components/contratos/contratos-list'
 import ContratosDashboard from '@/components/contratos/contratos-dashboard'
-import ContratosInbox from '@/components/contratos/contratos-inbox'
-import MensagensInbox from '@/components/contratos/mensagens-inbox'
-import SolicitacoesInbox from '@/components/contratos/solicitacoes-inbox'
+import InboxFlutuante from '@/components/contratos/inbox-flutuante'
 import { SectionTabs } from '@/components/ui/section-tabs'
 
 export const dynamic = 'force-dynamic'
@@ -26,19 +24,13 @@ export default async function ContratosPage() {
         tabs={[
           { value: 'contratos', label: 'Contratos', content: <ContratosList /> },
           { value: 'visao', label: 'Visão geral', content: <ContratosDashboard /> },
-          {
-            value: 'inbox',
-            label: 'Caixa de entrada',
-            content: (
-              <div className="space-y-6">
-                <SolicitacoesInbox />
-                <MensagensInbox />
-                <ContratosInbox />
-              </div>
-            ),
-          },
         ]}
       />
+
+      {/* A caixa de entrada saiu da aba e virou ícone (Filipe 07/08): ele quer
+          ver de longe que chegou coisa. Ficam só as duas categorias que ele
+          pediu — solicitações e mensagens. */}
+      <InboxFlutuante />
     </div>
   )
 }
