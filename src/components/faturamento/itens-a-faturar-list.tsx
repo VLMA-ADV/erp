@@ -801,28 +801,22 @@ export default function ItensAFaturarList() {
     try {
       setPostergarSubmitting(true)
       const supabase = createClient()
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) return
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
       let okCount = 0
       let failCount = 0
       for (const timesheetId of timesheetIds) {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-timesheet`,
-          {
-            method: 'POST',
-            headers: {
-              ...getFunctionsHeaders(session.access_token),
-            },
-            body: JSON.stringify({
-              id: timesheetId,
-              periodo_faturamento: postergarDate,
-            }),
-          },
-        )
-        if (response.ok) okCount += 1
+        // postergar_timesheet faz as duas coisas juntas: grava o novo periodo
+        // e, se o item ja tiver virado billing_item (postergando da revisao),
+        // cancela ele — senao ficaria contando na fatura atual e de novo no
+        // mes de destino.
+        const { error } = await supabase.rpc('postergar_timesheet', {
+          p_user_id: user.id,
+          p_timesheet_id: timesheetId,
+          p_periodo: postergarDate,
+        })
+        if (!error) okCount += 1
         else failCount += 1
       }
 

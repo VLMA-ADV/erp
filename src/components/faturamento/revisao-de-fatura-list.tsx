@@ -1977,27 +1977,23 @@ export default function RevisaoDeFaturaList() {
   const postergarItem = async (item: RevisaoItem, targetDateIso?: string) => {
     try {
       setBusyKey(`postergar:${item.id}`)
-      const accessToken = await getSessionToken()
-      if (!accessToken) return false
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return false
 
       const proximoMes = targetDateIso ? new Date(`${targetDateIso}T12:00:00`) : getNextBillingPeriodDate(item)
       const periodoFaturamento = proximoMes.toISOString().slice(0, 10)
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-timesheet`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: item.timesheetId,
-          periodo_faturamento: periodoFaturamento,
-        }),
+      // postergar_timesheet cancela o billing_item atual (este item, ja em
+      // em_revisao) e grava o novo periodo — o item sai daqui e reaparece na
+      // fila de "A liberar" do mes escolhido.
+      const { error } = await supabase.rpc('postergar_timesheet', {
+        p_user_id: user.id,
+        p_timesheet_id: item.timesheetId,
+        p_periodo: periodoFaturamento,
       })
-
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao postergar item')
+      if (error) {
+        toastError(error.message || 'Erro ao postergar item')
         return false
       }
 
