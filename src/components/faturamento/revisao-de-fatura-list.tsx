@@ -64,6 +64,7 @@ interface RevisaoItem {
   responsavelAprovacaoNome: string | null
   enviadoPorId: string | null
   enviadoPorNome: string | null
+  centroCustoNome: string | null
   enviadoPorFoto: string | null
   revisorFoto: string | null
   aprovadorFoto: string | null
@@ -709,6 +710,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     revisorFoto: asString(data.revisor_foto) || null,
     aprovadorFoto: asString(data.aprovador_foto) || null,
     enviadoPorNome: asString(pickFirstDefined(data.enviado_por_nome, snapshot.enviado_por_nome)) || null,
+    centroCustoNome: asString(data.centro_custo_nome) || null,
     dataRevisao: normalizeDateInput(asString(pickFirstDefined(data.data_revisao, snapshot.data_revisao))),
     dataAprovacao: normalizeDateInput(asString(pickFirstDefined(data.data_aprovacao, snapshot.data_aprovacao))),
     timesheetDataLancamento: normalizeDateInput(asString(data.timesheet_data_lancamento)),
@@ -798,7 +800,11 @@ export default function RevisaoDeFaturaList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cliente, setCliente] = useState('')
-  const [contrato, setContrato] = useState('')
+  // Filtros da barra superior (Filipe 07/08): cliente, centro de custo e
+  // usuário. O de contrato saiu — na prática ninguém filtra por contrato aqui,
+  // e ele ocupava o espaço dos dois que faltavam.
+  const [centroCusto, setCentroCusto] = useState('')
+  const [usuario, setUsuario] = useState('')
   const [caso, setCaso] = useState('')
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
@@ -917,7 +923,6 @@ export default function RevisaoDeFaturaList() {
 
       const params = new URLSearchParams()
       if (cliente.trim()) params.set('cliente', cliente.trim())
-      if (contrato.trim()) params.set('contrato', contrato.trim())
       if (caso.trim()) params.set('caso', caso.trim())
 
       const response = await fetch(
@@ -1136,10 +1141,16 @@ export default function RevisaoDeFaturaList() {
     }
   }, [canRead])
 
-  const visibleItems = useMemo(
-    () => (ruleFilter === 'all' ? items : items.filter((item) => getRuleFilterKey(item) === ruleFilter)),
-    [items, ruleFilter],
-  )
+  const visibleItems = useMemo(() => {
+    let base = ruleFilter === 'all' ? items : items.filter((item) => getRuleFilterKey(item) === ruleFilter)
+    // Centro de custo e usuário filtram aqui, sem ida ao servidor: os dados já
+    // estão na tela e a resposta é imediata.
+    if (centroCusto) base = base.filter((item) => item.centroCustoNome === centroCusto)
+    if (usuario) {
+      base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
+    }
+    return base
+  }, [items, ruleFilter, centroCusto, usuario])
 
   const statusSummary = useMemo(() => {
     const counts = { revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
@@ -1160,27 +1171,22 @@ export default function RevisaoDeFaturaList() {
     return [{ value: '', label: 'Todos os clientes' }, ...names.map((name) => ({ value: name, label: name }))]
   }, [items])
 
-  const contratoFilterOptions = useMemo<CommandSelectOption[]>(() => {
-    const filtered = cliente ? items.filter((item) => item.clienteNome === cliente) : items
-    const seen = new Set<string>()
-    const options: CommandSelectOption[] = [{ value: '', label: 'Todos os contratos' }]
-    for (const item of filtered) {
-      const key = `${item.contratoNumero || ''}-${item.contratoNome}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      options.push({
-        value: item.contratoNome,
-        label: item.contratoNumero ? `${item.contratoNumero} - ${item.contratoNome}` : item.contratoNome,
-        group: item.clienteNome,
-      })
-    }
-    return options
-  }, [items, cliente])
+  const centroCustoFilterOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = Array.from(new Set(items.map((item) => item.centroCustoNome).filter(Boolean) as string[]))
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return [{ value: '', label: 'Todos os centros de custo' }, ...nomes.map((n) => ({ value: n, label: n }))]
+  }, [items])
+
+  const usuarioFilterOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = Array.from(new Set(
+      items.map((item) => item.enviadoPorNome || item.timesheetProfissional).filter(Boolean) as string[],
+    )).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return [{ value: '', label: 'Todos os usuários' }, ...nomes.map((n) => ({ value: n, label: n }))]
+  }, [items])
 
   const casoFilterOptions = useMemo<CommandSelectOption[]>(() => {
     let filtered = items
     if (cliente) filtered = filtered.filter((item) => item.clienteNome === cliente)
-    if (contrato) filtered = filtered.filter((item) => item.contratoNome === contrato)
     const seen = new Set<string>()
     const options: CommandSelectOption[] = [{ value: '', label: 'Todos os casos' }]
     for (const item of filtered) {
@@ -1194,7 +1200,7 @@ export default function RevisaoDeFaturaList() {
       })
     }
     return options
-  }, [items, cliente, contrato])
+  }, [items, cliente])
 
   const caseOptions = useMemo<CommandSelectOption[]>(() => {
     const seen = new Set<string>()
@@ -1986,7 +1992,6 @@ export default function RevisaoDeFaturaList() {
             value={cliente}
             onValueChange={(value) => {
               setCliente(value)
-              setContrato('')
               setCaso('')
             }}
             options={clienteFilterOptions}
@@ -1996,17 +2001,25 @@ export default function RevisaoDeFaturaList() {
           />
         </div>
         <div className="space-y-1">
-          <label className="text-sm font-medium">Contrato</label>
+          <label className="text-sm font-medium">Centro de custo</label>
           <CommandSelect
-            value={contrato}
-            onValueChange={(value) => {
-              setContrato(value)
-              setCaso('')
-            }}
-            options={contratoFilterOptions}
-            placeholder="Selecione o contrato"
-            searchPlaceholder="Buscar contrato..."
-            emptyText="Nenhum contrato encontrado."
+            value={centroCusto}
+            onValueChange={setCentroCusto}
+            options={centroCustoFilterOptions}
+            placeholder="Selecione o centro de custo"
+            searchPlaceholder="Buscar centro de custo..."
+            emptyText="Nenhum centro de custo encontrado."
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Usuário</label>
+          <CommandSelect
+            value={usuario}
+            onValueChange={setUsuario}
+            options={usuarioFilterOptions}
+            placeholder="Selecione o usuário"
+            searchPlaceholder="Buscar usuário..."
+            emptyText="Nenhum usuário encontrado."
           />
         </div>
         <div className="space-y-1">
