@@ -9,6 +9,7 @@ import { CommandSelect, type CommandSelectOption } from '@/components/ui/command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -1989,39 +1990,33 @@ export default function RevisaoDeFaturaList() {
         </Alert>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-3">
-        {ruleButtons.map((button) => (
+      {/* Mesma barra da fase "aguardando liberação" (pedido Filipe 07/08): as
+          duas telas usavam estilos diferentes para a mesma coisa. Os contadores
+          ficam, porque tirar informação para igualar visual seria piorar. */}
+      <Tabs value={ruleFilter} defaultValue="all" onValueChange={(value) => setRuleFilter(value as RuleFilterKey)}>
+        <TabsList className="h-auto flex-wrap justify-start">
+          {ruleButtons.map((button) => (
+            <TabsTrigger key={button.key} value={button.key}>
+              {button.label}
+              <span className="ml-1.5 rounded-full bg-canvas-soft px-1.5 py-0.5 text-[11px] text-ink-mute">
+                {button.count}
+              </span>
+            </TabsTrigger>
+          ))}
           <button
-            key={button.key}
             type="button"
-            onClick={() => setRuleFilter(button.key)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors ${
-              ruleFilter === button.key
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-hairline bg-canvas-soft text-ink-secondary hover:border-hairline'
+            onClick={() => {
+              setShowIndicadores((prev) => !prev)
+              if (!indicadores) void loadIndicadores()
+            }}
+            className={`ml-2 inline-flex items-center rounded-md px-3 py-1.5 text-sm transition-colors ${
+              showIndicadores ? 'bg-ink text-white' : 'text-ink-mute hover:text-ink-secondary'
             }`}
           >
-            <span>{button.label}</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${ruleFilter === button.key ? 'bg-white/20 text-white' : 'bg-white text-ink-mute'}`}>
-              {button.count}
-            </span>
+            Indicadores
           </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            setShowIndicadores((prev) => !prev)
-            if (!indicadores) void loadIndicadores()
-          }}
-          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs transition-colors ${
-            showIndicadores
-              ? 'border-ink bg-ink text-white'
-              : 'border-hairline bg-canvas-soft text-ink-secondary hover:border-hairline'
-          }`}
-        >
-          Indicadores
-        </button>
-      </div>
+        </TabsList>
+      </Tabs>
 
       <div className="grid gap-3 md:grid-cols-4">
         <div className="space-y-1">

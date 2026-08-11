@@ -54,27 +54,30 @@ export default async function FaturamentoUnificadoPage() {
         nada foi desligado. Use esta aqui para dizer se o formato serve.
       </div>
 
+      {/* As duas faixas eram um pill pequeno com texto ao lado — o Filipe disse
+          que ficavam "tímidas" (07/08) e ele perdia de vista em qual fase
+          estava ao rolar a tela. Agora são faixas de largura inteira, com a
+          cor da fase numa barra lateral e o título em tamanho de seção. */}
       <section className="mb-12">
-        {/* Pill na mesma linguagem dos selos da tela: âmbar = a liberar. */}
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h2 className="rounded-full bg-amber-100 px-3.5 py-1.5 text-sm font-semibold text-amber-800">
-            Aguardando liberação
-          </h2>
-          <span className="text-xs text-ink-mute">
-            lançamentos e regras que ainda não foram para a revisão
-          </span>
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/70 px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-amber-900">Aguardando liberação</h2>
+            <p className="mt-0.5 text-sm text-amber-800/80">
+              lançamentos e regras que ainda não foram para a revisão
+            </p>
+          </div>
         </div>
         <ItensAFaturarList />
       </section>
 
       <section>
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h2 className="rounded-full bg-emerald-100 px-3.5 py-1.5 text-sm font-semibold text-emerald-700">
-            Em revisão e aprovação
-          </h2>
-          <span className="text-xs text-ink-mute">
-            já liberados — revisar, aprovar e faturar
-          </span>
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-emerald-200 border-l-4 border-l-emerald-600 bg-emerald-50/70 px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-emerald-900">Em revisão e aprovação</h2>
+            <p className="mt-0.5 text-sm text-emerald-800/80">
+              já liberados — revisar, aprovar e faturar
+            </p>
+          </div>
         </div>
         <RevisaoDeFaturaList />
       </section>
