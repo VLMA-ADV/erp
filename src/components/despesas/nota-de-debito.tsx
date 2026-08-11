@@ -222,8 +222,9 @@ export default function NotaDeDebito() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-ink-secondary">
           <span className="font-medium text-ink">{formatMoney(totalGeral)}</span> em{' '}
-          {selecionadas.length} lançamento{selecionadas.length === 1 ? '' : 's'} reembolsável
-          {selecionadas.length === 1 ? '' : 'eis'}, em {porCliente.length} cliente
+          {selecionadas.length}{' '}
+          {selecionadas.length === 1 ? 'lançamento reembolsável' : 'lançamentos reembolsáveis'}, em{' '}
+          {porCliente.length} cliente
           {porCliente.length === 1 ? '' : 's'}
         </p>
         <Button variant="outline" onClick={exportar} disabled={selecionadas.length === 0}>
