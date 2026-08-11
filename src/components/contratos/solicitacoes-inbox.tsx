@@ -92,14 +92,20 @@ async function fetchSolicitacoesAbertas({ signal }: { signal?: AbortSignal } = {
   return list.filter((item) => item.status === 'aberta' && !item.lido_at)
 }
 
-export default function SolicitacoesInbox() {
+/**
+ * `embutido` = dentro do painel da caixa de entrada. Ali o cabeçalho e o botão
+ * "Abrir" são um clique a mais para chegar no que a pessoa já veio ver — foi o
+ * que o Filipe apontou em 07/08. O painel já é a abertura; a lista aparece
+ * direto, e sobra só o botão de criar.
+ */
+export default function SolicitacoesInbox({ embutido = false }: { embutido?: boolean } = {}) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { hasPermission } = usePermissionsContext()
   const { error: toastError } = useToast()
   const canRead = hasPermission('contracts.solicitacoes.read')
   const canWrite = hasPermission('contracts.solicitacoes.write')
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(embutido)
   const [markingId, setMarkingId] = useState<string | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
@@ -162,7 +168,17 @@ export default function SolicitacoesInbox() {
   const badgeLabel = isError ? 'Erro ao carregar' : isLoading ? 'Carregando...' : pendingLabel(total)
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+    <Collapsible open={embutido ? true : open} onOpenChange={setOpen} className={embutido ? '' : 'overflow-hidden rounded-2xl border bg-white shadow-sm'}>
+      {embutido ? (
+        canWrite ? (
+          <div className="mb-3 flex justify-end">
+            <Button size="sm" onClick={() => router.push('/solicitacoes-contrato?action=new')}>
+              <FilePlus2 className="mr-1 h-4 w-4" />
+              Nova solicitação
+            </Button>
+          </div>
+        ) : null
+      ) : (
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -205,9 +221,10 @@ export default function SolicitacoesInbox() {
           </CollapsibleTrigger>
         </div>
       </div>
+      )}
 
       <CollapsibleContent>
-        <div className="border-t bg-canvas-soft/70 p-3">
+        <div className={embutido ? '' : 'border-t bg-canvas-soft/70 p-3'}>
           {isError ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error instanceof Error ? error.message : 'Erro ao carregar solicitações'}

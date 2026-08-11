@@ -117,7 +117,8 @@ function Avatar({ nome, foto }: { nome?: string | null; foto?: string | null }) 
   )
 }
 
-export default function MensagensInbox() {
+/** Ver o comentário em SolicitacoesInbox: `embutido` tira o clique extra. */
+export default function MensagensInbox({ embutido = false }: { embutido?: boolean } = {}) {
   const queryClient = useQueryClient()
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
@@ -125,7 +126,7 @@ export default function MensagensInbox() {
   const canWrite = hasPermission('contracts.solicitacoes.write')
   const canCreateCliente = hasPermission('crm.clientes.write')
 
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(embutido)
   const [markingId, setMarkingId] = useState<string | null>(null)
   // Conversa aberta. Cada conversa é um cliente + caso: é assim que as pessoas
   // pensam ("o assunto da Gramarcal"), não mensagem por mensagem. null = lista.
@@ -406,10 +407,26 @@ export default function MensagensInbox() {
   return (
     <>
       <Collapsible
-        open={open}
+        open={embutido ? true : open}
         onOpenChange={setOpen}
-        className="overflow-hidden rounded-2xl border bg-white shadow-sm"
+        className={embutido ? '' : 'overflow-hidden rounded-2xl border bg-white shadow-sm'}
       >
+        {embutido ? (
+          canWrite ? (
+            <div className="mb-3 flex justify-end">
+              <Button
+                size="sm"
+                onClick={() => {
+                  resetForm()
+                  setCreateOpen(true)
+                }}
+              >
+                <FilePlus2 className="mr-1 h-4 w-4" />
+                Nova mensagem
+              </Button>
+            </div>
+          ) : null
+        ) : (
         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -455,9 +472,10 @@ export default function MensagensInbox() {
             </CollapsibleTrigger>
           </div>
         </div>
+        )}
 
         <CollapsibleContent>
-          <div className="border-t bg-canvas-soft/70 p-3">
+          <div className={embutido ? '' : 'border-t bg-canvas-soft/70 p-3'}>
             {isError ? (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {error instanceof Error ? error.message : 'Erro ao carregar mensagens'}
