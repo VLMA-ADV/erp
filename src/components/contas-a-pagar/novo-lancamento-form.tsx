@@ -62,6 +62,43 @@ export default function NovoLancamentoForm() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Edicao (pedido Filipe 11/08): o mesmo form serve para criar e para editar,
+  // igual despesas ja faz. So le o ?id= sem useSearchParams, para nao precisar
+  // de Suspense por causa de um link opcional.
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editStatus, setEditStatus] = useState<string | null>(null)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('id')
+    if (!id) return
+    setEditId(id)
+    void (async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: e } = await supabase.rpc('cp_get_lancamento', { p_user_id: user.id, p_id: id })
+      if (e) { setError(e.message); return }
+      const d = data as Record<string, unknown>
+      setEditStatus(String(d.status || ''))
+      setForm((f) => ({
+        ...f,
+        natureza: (d.natureza as 'pagar' | 'receber') || 'pagar',
+        tipo: String(d.tipo || 'fixo'),
+        fornecedor_nome: String(d.fornecedor_nome || ''),
+        empresa_id: String(d.empresa_id || ''),
+        descricao: String(d.descricao || ''),
+        conta_contabil_id: String(d.conta_contabil_id || ''),
+        plano_conta_id: String(d.plano_conta_id || ''),
+        centro_custo_id: String(d.centro_custo_id || ''),
+        valor: d.valor != null ? String(d.valor) : '',
+        vencimento: String(d.vencimento || ''),
+        reembolsavel: Boolean(d.reembolsavel),
+        numero_nota: String(d.numero_nota || ''),
+        forma_pagamento: String(d.forma_pagamento || ''),
+        conta_bancaria_id: String(d.conta_bancaria_id || ''),
+        observacoes: String(d.observacoes || ''),
+      }))
+    })()
+  }, [])
   const [showMais, setShowMais] = useState(false)
   // Cascata do Plano de Contas: Grupo (DRE) -> Conta sintética -> Conta analítica.
   const [planoGrupo, setPlanoGrupo] = useState('')
@@ -131,30 +168,38 @@ export default function NovoLancamentoForm() {
     if (!form.descricao.trim()) { setError('Descrição é obrigatória.'); return }
     if (!form.valor || Number(form.valor) <= 0) { setError('Valor é obrigatório.'); return }
     if (!form.vencimento) { setError('Vencimento é obrigatório.'); return }
-    if (!form.plano_conta_id && !form.conta_contabil_id) { setError('Escolha a conta analítica do Plano de Contas.'); return }
-    if (!form.centro_custo_id) { setError('Centro de custo é obrigatório.'); return }
-    if (!form.empresa_id) { setError('Empresa pagadora é obrigatória.'); return }
+    if (!editId) {
+      if (!form.plano_conta_id && !form.conta_contabil_id) { setError('Escolha a conta analítica do Plano de Contas.'); return }
+      if (!form.centro_custo_id) { setError('Centro de custo é obrigatório.'); return }
+      if (!form.empresa_id) { setError('Empresa pagadora é obrigatória.'); return }
+    }
 
     setSaving(true)
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setError('Sessão expirada.'); return }
-      const { error: e } = await supabase.rpc('cp_criar_lancamento', {
-        p_user_id: user.id,
-        p_payload: {
-          ...form,
-          valor: Number(form.valor),
-          num_parcelas: form.recorrente ? Number(form.num_parcelas || 0) : null,
-          reajuste_percentual_estim: form.reajuste_percentual_estim ? Number(form.reajuste_percentual_estim) : null,
-        },
-      })
+      const { error: e } = editId
+        ? await supabase.rpc('cp_editar_lancamento', {
+            p_user_id: user.id,
+            p_id: editId,
+            p_payload: { ...form, valor: Number(form.valor) },
+          })
+        : await supabase.rpc('cp_criar_lancamento', {
+            p_user_id: user.id,
+            p_payload: {
+              ...form,
+              valor: Number(form.valor),
+              num_parcelas: form.recorrente ? Number(form.num_parcelas || 0) : null,
+              reajuste_percentual_estim: form.reajuste_percentual_estim ? Number(form.reajuste_percentual_estim) : null,
+            },
+          })
       if (e) { setError(e.message); return }
       router.push('/financeiro/contas-a-pagar')
       router.refresh()
     } catch (err) {
       console.error(err)
-      setError('Erro ao salvar lançamento.')
+      setError(editId ? 'Erro ao salvar edição.' : 'Erro ao salvar lançamento.')
     } finally {
       setSaving(false)
     }
@@ -183,6 +228,15 @@ export default function NovoLancamentoForm() {
 
   if (!canWrite) {
     return <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Você não tem permissão para criar lançamentos.</div>
+  }
+
+  if (editId && editStatus && ['pago', 'recebido'].includes(editStatus)) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+        Este lançamento já foi baixado ({editStatus}) e não pode mais ser editado. Se foi um erro,
+        peça para reverter a baixa antes de corrigir.
+      </div>
+    )
   }
 
   const inputCls = 'w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary'
@@ -470,7 +524,7 @@ export default function NovoLancamentoForm() {
         <div className="flex justify-end gap-2">
           <button onClick={() => router.push('/financeiro/contas-a-pagar')} className="rounded-md border border-hairline px-4 py-2 text-sm hover:bg-canvas-soft">Cancelar</button>
           <button onClick={submit} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {saving ? 'Salvando…' : 'Salvar lançamento'}
+            {saving ? 'Salvando…' : editId ? 'Salvar edição' : 'Salvar lançamento'}
           </button>
         </div>
         </>

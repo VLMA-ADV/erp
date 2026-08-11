@@ -18,8 +18,8 @@ export default async function NovoLancamentoPage() {
       <Link href="/financeiro/contas-a-pagar" className="text-sm text-ink-mute hover:underline">← Voltar</Link>
       <header className="mb-8 mt-4">
         <span className="text-eyebrow">FINANCEIRO</span>
-        <h1 className="mt-2 display-lg text-ink">Novo lançamento</h1>
-        <p className="mt-2 text-sm text-ink-mute">Cadastre uma conta a pagar ou a receber.</p>
+        <h1 className="mt-2 display-lg text-ink">Lançamento</h1>
+        <p className="mt-2 text-sm text-ink-mute">Cadastre, edite ou lance um lote de despesas.</p>
       </header>
       <NovoLancamentoForm />
     </div>
