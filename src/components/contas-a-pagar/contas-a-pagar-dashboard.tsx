@@ -75,7 +75,13 @@ export default function ContasAPagarDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<(typeof FILTERS)[number]['key']>('todas')
   const [ready, setReady] = useState(false)
-  const [conta, setConta] = useState<{ id: string; banco: string; descricao: string | null; saldo_abertura: number } | null>(null)
+  // Enquanto existia so o Itau, pegar a primeira conta bastava. Com a Cora
+  // cadastrada isso passou a editar a conta errada sem avisar — agora a conta e
+  // escolhida, e o saldo mostrado e sempre o da conta escolhida.
+  type ContaBancaria = { id: string; banco: string; descricao: string | null; saldo_abertura: number }
+  const [contas, setContas] = useState<ContaBancaria[]>([])
+  const [contaId, setContaId] = useState('')
+  const [saldoSujo, setSaldoSujo] = useState(false)
   const [saldoInput, setSaldoInput] = useState('')
 
   const load = useCallback(async (d: string) => {
@@ -107,8 +113,9 @@ export default function ContasAPagarDashboard() {
         if (user) {
           await supabase.rpc('cp_sync_faturamento', { p_user_id: user.id })
           const { data: listas } = await supabase.rpc('cp_listas', { p_user_id: user.id })
-          const cb = (listas as any)?.contas_bancarias?.[0]
-          if (cb) { setConta(cb); setSaldoInput(String(cb.saldo_abertura ?? '')) }
+          const lista = ((listas as any)?.contas_bancarias || []) as ContaBancaria[]
+          setContas(lista)
+          if (lista[0]) { setContaId(lista[0].id); setSaldoInput(String(lista[0].saldo_abertura ?? '')) }
         }
       } catch { /* best-effort */ }
       setReady(true)
@@ -120,6 +127,15 @@ export default function ContasAPagarDashboard() {
     void load(dia)
   }, [canRead, ready, dia, load])
 
+  const conta = contas.find((c) => c.id === contaId) || null
+
+  const trocarConta = (id: string) => {
+    const alvo = contas.find((c) => c.id === id)
+    setContaId(id)
+    setSaldoInput(String(alvo?.saldo_abertura ?? ''))
+    setSaldoSujo(false)
+  }
+
   const salvarSaldo = async () => {
     if (!conta) return
     const supabase = createClient()
@@ -129,6 +145,8 @@ export default function ContasAPagarDashboard() {
       p_user_id: user.id, p_conta_id: conta.id, p_saldo: Number(saldoInput || 0), p_data: todayIso(),
     })
     if (e) { alert(e.message); return }
+    setContas((prev) => prev.map((c) => (c.id === conta.id ? { ...c, saldo_abertura: Number(saldoInput || 0) } : c)))
+    setSaldoSujo(false)
     void load(dia)
   }
 
@@ -210,11 +228,24 @@ export default function ContasAPagarDashboard() {
       {canWrite && conta && (
         <div className="flex flex-wrap items-end gap-3 rounded-lg border border-hairline bg-white p-4">
           <div>
-            <label className="mb-1 block text-xs uppercase tracking-wide text-ink-mute">Saldo inicial — {conta.banco}{conta.descricao ? ` (${conta.descricao})` : ''}</label>
-            <input type="number" step="0.01" value={saldoInput} onChange={(e) => setSaldoInput(e.target.value)}
+            <label className="mb-1 block text-xs uppercase tracking-wide text-ink-mute">Conta</label>
+            <select
+              value={contaId}
+              onChange={(e) => trocarConta(e.target.value)}
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
+            >
+              {contas.map((c) => (
+                <option key={c.id} value={c.id}>{c.banco}{c.descricao ? ` — ${c.descricao}` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wide text-ink-mute">Saldo inicial</label>
+            <input type="number" step="0.01" value={saldoInput}
+              onChange={(e) => { setSaldoInput(e.target.value); setSaldoSujo(true) }}
               className="rounded-md border border-hairline px-3 py-2 text-sm" placeholder="0,00" />
           </div>
-          <button onClick={salvarSaldo} className="rounded-md border border-hairline px-3 py-2 text-sm hover:bg-canvas-soft">Salvar saldo</button>
+          <button onClick={salvarSaldo} disabled={!saldoSujo} className="rounded-md border border-hairline px-3 py-2 text-sm hover:bg-canvas-soft disabled:opacity-50">Salvar saldo</button>
           <span className="text-xs text-ink-mute">Base do saldo corrente. Lançado manualmente (sem conciliação bancária).</span>
         </div>
       )}
