@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, FileText, Layers, Loader2, Receipt } from 'lucide-react'
+import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, FileText, Layers, Loader2, Receipt, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -1622,6 +1622,44 @@ export default function RevisaoDeFaturaList() {
   }
 
   // Ignorar a fatura: zera a cobrança; o lançamento continua existindo e sai
+  /**
+   * Excluir: tira o item do faturamento como se não existisse. Diferente de
+   * ignorar, que mantém o lançamento contado e só não cobra — são indicadores
+   * diferentes (Filipe, 11/08).
+   *
+   * Não toca na origem: o timesheet da pessoa e a regra de cobrança ficam
+   * intactos. As horas seguem contando para ela e para os relatórios.
+   */
+  const excluirItens = async (ids: string[]) => {
+    if (ids.length === 0) return
+    if (!window.confirm(
+      `Excluir ${ids.length} lançamento(s) do faturamento?\n\n` +
+      'O timesheet da pessoa e a regra de cobrança NÃO são apagados — sai só o item de cobrança.',
+    )) return
+    try {
+      setBusyKey('excluir')
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toastError('Sua sessão expirou. Entre novamente.'); return }
+      const { data, error } = await supabase.rpc('excluir_billing_items', {
+        p_user_id: session.user.id,
+        p_ids: ids,
+        p_motivo: null,
+      })
+      if (error) {
+        toastError(error.message || 'Erro ao excluir lançamentos')
+        return
+      }
+      const count = Number((data as { excluidos?: number })?.excluidos ?? 0)
+      success(`${count} lançamento(s) excluído(s) do faturamento.`)
+      setItems((prev) => prev.filter((entry) => !ids.includes(entry.id)))
+      setSelectedItemIds((prev) => prev.filter((id) => !ids.includes(id)))
+      void loadItems({ silent: true })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   // da relação de cobrança. Justificativa obrigatória (auditoria da gestão).
   const ignorarItens = async () => {
     const motivo = ignorarMotivo === 'outro' ? ignorarOutro.trim() : ignorarMotivo
@@ -2377,6 +2415,20 @@ export default function RevisaoDeFaturaList() {
                                   title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer tirar da cobrança' : undefined}
                                 >
                                   Ignorar
+                                </Button>
+                                {/* Excluir fica ao lado de Ignorar porque a duvida do usuario
+                                    e sempre "qual dos dois?" — o title explica a diferenca. */}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs text-destructive"
+                                  onClick={() => void excluirItens(selectedIds)}
+                                  disabled={selectedIds.length === 0 || busyKey === 'excluir'}
+                                  title={selectedIds.length === 0
+                                    ? 'Selecione os lançamentos que quer apagar do faturamento'
+                                    : 'Apaga o lançamento do faturamento. O timesheet da pessoa continua intacto.'}
+                                >
+                                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Excluir
                                 </Button>
                                 {/* "Enviar p/ faturamento" saiu: a etapa que ele acionava nao
                                     existe mais (Filipe, 07/08). No lugar, a previa do relatorio
