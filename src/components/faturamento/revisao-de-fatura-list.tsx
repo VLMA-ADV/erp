@@ -784,11 +784,30 @@ function getCaseBaseMetrics(casoGroup: CasoGroup): CaseMetrics {
   const timesheetItems = casoGroup.itens.filter((item) => item.origemTipo === 'timesheet')
   const nonTimesheetItems = casoGroup.itens.filter((item) => item.origemTipo !== 'timesheet')
 
+  // Item agrupado conta UMA vez, pelo que o revisor definiu no grupo — não pela
+  // soma dos originais. O Filipe apontou isso em 07/08: ele alterou as horas do
+  // grupo e o título do caso continuou somando as horas antigas.
+  const gruposContados = new Set<string>()
+  const somaHoras = (acc: number, item: RevisaoItem) => {
+    if (item.grupoId) {
+      if (gruposContados.has(`h:${item.grupoId}`)) return acc
+      gruposContados.add(`h:${item.grupoId}`)
+      if (item.grupoHoras !== null && item.grupoHoras !== undefined) return acc + item.grupoHoras
+    }
+    return acc + getEffectiveItemHours(item)
+  }
+  const somaValor = (acc: number, item: RevisaoItem) => {
+    if (item.grupoId) {
+      if (gruposContados.has(`v:${item.grupoId}`)) return acc
+      gruposContados.add(`v:${item.grupoId}`)
+      if (item.grupoValor !== null && item.grupoValor !== undefined) return acc + item.grupoValor
+    }
+    return acc + getEffectiveItemValue(item)
+  }
+
   return {
-    totalHoras: nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0) +
-      timesheetItems.reduce((acc, item) => acc + getEffectiveItemHours(item), 0),
-    totalValor: nonTimesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0) +
-      timesheetItems.reduce((acc, item) => acc + getEffectiveItemValue(item), 0),
+    totalHoras: nonTimesheetItems.reduce(somaHoras, 0) + timesheetItems.reduce(somaHoras, 0),
+    totalValor: nonTimesheetItems.reduce(somaValor, 0) + timesheetItems.reduce(somaValor, 0),
     itemCount: nonTimesheetItems.length + timesheetItems.length,
     timesheetItems,
     nonTimesheetItems,
