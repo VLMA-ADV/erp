@@ -24,6 +24,7 @@ interface DespesaResumo {
   cliente_nome: string | null
   caso_nome: string | null
   caso_numero: number | null
+  status: string | null
 }
 
 interface Fatia {
@@ -112,7 +113,8 @@ export default function MeuResumoDespesas() {
         if (!resposta.ok) return
 
         const lista = (Array.isArray(payload.data) ? payload.data : []) as DespesaResumo[]
-        setItens(lista.filter((item) => item.created_by === session.user.id))
+        // Cancelado nao e gasto: fica de fora da conta, como no Resumo.
+        setItens(lista.filter((item) => item.created_by === session.user.id && item.status !== 'cancelado'))
       } catch (err) {
         console.error(err)
       } finally {
