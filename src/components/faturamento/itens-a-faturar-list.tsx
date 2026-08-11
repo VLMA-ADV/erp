@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
 import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -27,6 +28,7 @@ interface CasoAgrupado {
   caso_id: string
   caso_numero: number | null
   caso_nome: string
+  centro_custo_nome?: string | null
   total_horas: string
   total_valor: string
   total_itens: number
@@ -158,18 +160,29 @@ function matchRuleTab(tab: RegraTabKey, linha: { tipo: string; caso_regra?: stri
   return effectiveRuleType(linha) === tab
 }
 
-function filterTreeByRule(items: ClienteAgrupado[], regraTab: RegraTabKey): ClienteAgrupado[] {
+function filterTreeByRule(
+  items: ClienteAgrupado[],
+  regraTab: RegraTabKey,
+  filtros: { cliente?: string; centroCusto?: string; usuario?: string } = {},
+): ClienteAgrupado[] {
   const filteredClientes: ClienteAgrupado[] = []
+  const centroCustoFiltro = filtros.centroCusto || ''
+  const usuarioFiltro = filtros.usuario || ''
 
   for (const cliente of items) {
+    if (filtros.cliente && cliente.cliente_nome !== filtros.cliente) continue
     const filteredContratos: ContratoAgrupado[] = []
 
     for (const contrato of cliente.contratos || []) {
       const filteredCasos: CasoAgrupado[] = []
 
       for (const caso of contrato.casos || []) {
+        if (centroCustoFiltro && caso.centro_custo_nome !== centroCustoFiltro) continue
         const filteredExtrato = (Array.isArray(caso.extrato) ? caso.extrato : []).filter((linha) =>
-          matchRuleTab(regraTab, linha),
+          matchRuleTab(regraTab, linha)
+          // Usuário filtra a LINHA, não o caso: um caso pode ter lançamento de
+          // várias pessoas, e quem filtra quer ver só o que é seu.
+          && (!usuarioFiltro || (linha.lancado_por || '') === usuarioFiltro),
         )
         if (filteredExtrato.length === 0) continue
 
@@ -370,6 +383,11 @@ export default function ItensAFaturarList() {
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<ClienteAgrupado[]>([])
   const [search, setSearch] = useState('')
+  // Filtros da barra superior (Filipe 07/08): cliente, centro de custo e
+  // usuário. Rodam na própria tela, sobre o que já foi carregado.
+  const [clienteFiltro, setClienteFiltro] = useState('')
+  const [centroCustoFiltro, setCentroCustoFiltro] = useState('')
+  const [usuarioFiltro, setUsuarioFiltro] = useState('')
   const [dateStart, setDateStart] = useState(toDateInput(startOfMonth(today)))
   const [dateEnd, setDateEnd] = useState(toDateInput(endOfMonth(today)))
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({})
@@ -540,7 +558,75 @@ export default function ItensAFaturarList() {
     return () => document.removeEventListener('visibilitychange', handler)
   }, [])
 
-  const filteredTree = useMemo(() => filterTreeByRule(items, regraTab), [items, regraTab])
+  const filteredTree = useMemo(
+    () => filterTreeByRule(items, regraTab, {
+      cliente: clienteFiltro,
+      centroCusto: centroCustoFiltro,
+      usuario: usuarioFiltro,
+    }),
+    [items, regraTab, clienteFiltro, centroCustoFiltro, usuarioFiltro],
+  )
+
+  // Existia só o "Fechar tudo"; faltava o contrário (Filipe 07/08). Abre os
+  // três níveis do que está VISÍVEL, não de tudo que veio do servidor — abrir
+  // o que o filtro escondeu confundiria mais do que ajuda.
+  const expandAll = useCallback(() => {
+    const cli: Record<string, boolean> = {}
+    const ct: Record<string, boolean> = {}
+    const cs: Record<string, boolean> = {}
+    for (const cliente of filteredTree) {
+      cli[cliente.cliente_id] = true
+      for (const contrato of cliente.contratos || []) {
+        ct[contrato.contrato_id] = true
+        for (const caso of contrato.casos || []) {
+          cs[caso.caso_id] = true
+        }
+      }
+    }
+    setExpandedClientes(cli)
+    setExpandedContratos(ct)
+    setExpandedCasos(cs)
+  }, [filteredTree])
+
+  // Opções dos filtros: saem do que está carregado, então nunca oferecem algo
+  // que não existe na tela.
+  const clienteOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = Array.from(new Set(items.map((c) => c.cliente_nome).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return [{ value: '', label: 'Todos os clientes' }, ...nomes.map((n) => ({ value: n, label: n }))]
+  }, [items])
+
+  const centroCustoOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = new Set<string>()
+    for (const cli of items) {
+      for (const ct of cli.contratos || []) {
+        for (const cs of ct.casos || []) {
+          if (cs.centro_custo_nome) nomes.add(cs.centro_custo_nome)
+        }
+      }
+    }
+    return [
+      { value: '', label: 'Todos os centros de custo' },
+      ...Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR')).map((n) => ({ value: n, label: n })),
+    ]
+  }, [items])
+
+  const usuarioOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = new Set<string>()
+    for (const cli of items) {
+      for (const ct of cli.contratos || []) {
+        for (const cs of ct.casos || []) {
+          for (const linha of cs.extrato || []) {
+            if (linha.lancado_por) nomes.add(linha.lancado_por)
+          }
+        }
+      }
+    }
+    return [
+      { value: '', label: 'Todos os usuários' },
+      ...Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR')).map((n) => ({ value: n, label: n })),
+    ]
+  }, [items])
 
   const totals = useMemo(
     () =>
@@ -771,6 +857,39 @@ export default function ItensAFaturarList() {
             placeholder="Cliente, contrato, caso ou código"
           />
         </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Cliente</label>
+          <CommandSelect
+            value={clienteFiltro}
+            onValueChange={setClienteFiltro}
+            options={clienteOptions}
+            placeholder="Selecione o cliente"
+            searchPlaceholder="Buscar cliente..."
+            emptyText="Nenhum cliente encontrado."
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Centro de custo</label>
+          <CommandSelect
+            value={centroCustoFiltro}
+            onValueChange={setCentroCustoFiltro}
+            options={centroCustoOptions}
+            placeholder="Selecione o centro de custo"
+            searchPlaceholder="Buscar centro de custo..."
+            emptyText="Nenhum centro de custo encontrado."
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Usuário</label>
+          <CommandSelect
+            value={usuarioFiltro}
+            onValueChange={setUsuarioFiltro}
+            options={usuarioOptions}
+            placeholder="Selecione o usuário"
+            searchPlaceholder="Buscar usuário..."
+            emptyText="Nenhum usuário encontrado."
+          />
+        </div>
       </div>
 
       <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
@@ -817,12 +936,17 @@ export default function ItensAFaturarList() {
           Selecionar todos
         </label>
         <div className="flex items-center gap-2">
-          {anyExpanded ? (
-            <Button variant="ghost" size="sm" onClick={collapseAll} aria-label="Fechar tudo" title="Fechar tudo (ESC)">
-              <X className="mr-2 h-4 w-4" />
-              Fechar tudo
-            </Button>
-          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={anyExpanded ? collapseAll : expandAll}
+            aria-label={anyExpanded ? 'Fechar tudo' : 'Expandir tudo'}
+            title={anyExpanded ? 'Fechar tudo (ESC)' : 'Abrir todos os clientes, contratos e casos da tela'}
+            disabled={filteredTree.length === 0}
+          >
+            {anyExpanded ? <X className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+            {anyExpanded ? 'Fechar tudo' : 'Expandir tudo'}
+          </Button>
           <Button
             className="rounded-full bg-[#E8871E] text-white hover:opacity-90"
             onClick={() => void startFlowForSelectedCases()}
