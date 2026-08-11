@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import ContasAPagarDashboard from '@/components/contas-a-pagar/contas-a-pagar-dashboard'
+import LotesDeDespesa from '@/components/contas-a-pagar/lotes-de-despesa'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,10 @@ export default async function ContasAPagarPage() {
         </Link>
       </header>
       <ContasAPagarDashboard />
+
+      <div className="mt-12 border-t border-hairline pt-8">
+        <LotesDeDespesa />
+      </div>
     </div>
   )
 }

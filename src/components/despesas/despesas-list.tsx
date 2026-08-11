@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import MeuResumoDespesas from './meu-resumo-despesas'
+import LotesDoUsuario, { carregarLotes, type LoteDespesa } from './lotes-do-usuario'
 
 type DespesaStatus = 'em_lancamento' | 'revisao' | 'aprovado' | 'cancelado'
 
@@ -50,6 +51,8 @@ interface DespesaItem {
   mime_type: string | null
   tamanho_bytes: number | null
   anexos?: DespesaAnexo[]
+  lote_id?: string | null
+  lote_descricao?: string | null
   created_by: string | null
   created_by_nome: string | null
   created_at: string
@@ -82,6 +85,7 @@ interface FormState {
   valor: string
   descricao: string
   reembolsavel: boolean
+  lote_id: string
   arquivo: File | null
   arquivo_nome: string
   anexosNovos: File[]
@@ -98,6 +102,7 @@ const emptyForm: FormState = {
   valor: '',
   descricao: '',
   reembolsavel: true,
+  lote_id: '',
   arquivo: null,
   arquivo_nome: '',
   anexosNovos: [],
@@ -168,6 +173,10 @@ export default function DespesasList() {
   const [filterCategoria, setFilterCategoria] = useState('')
   const [filterDataInicio, setFilterDataInicio] = useState('')
   const [filterDataFim, setFilterDataFim] = useState('')
+
+  // Lotes abertos da propria pessoa: e a lista que o formulario oferece.
+  const [lotesAbertos, setLotesAbertos] = useState<LoteDespesa[]>([])
+  const [recarregarLotes, setRecarregarLotes] = useState(0)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -392,6 +401,15 @@ export default function DespesasList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
+  // O saldo do lote muda a cada despesa salva ou apagada.
+  useEffect(() => {
+    if (!canRead) return
+    void carregarLotes({ status: 'aberto' })
+      .then((lista) => setLotesAbertos(lista))
+      .catch((err) => console.error(err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRead, recarregarLotes])
+
   useEffect(() => {
     if (!canRead) return
     void fetchDespesas()
@@ -428,6 +446,7 @@ export default function DespesasList() {
       caso_id: item.caso_id,
       data_lancamento: item.data_lancamento,
       categoria: item.categoria || '',
+      lote_id: item.lote_id || '',
       valor: String(item.valor ?? ''),
       descricao: item.descricao || '',
       reembolsavel: item.reembolsavel ?? true,
@@ -504,6 +523,7 @@ export default function DespesasList() {
 
       success('Despesa excluída')
       await fetchDespesas()
+      setRecarregarLotes((n) => n + 1)
     } catch (err) {
       console.error(err)
       toastError('Erro ao excluir despesa')
@@ -545,6 +565,8 @@ export default function DespesasList() {
         valor: valorNumeric,
         descricao: form.descricao.trim(),
         reembolsavel: form.reembolsavel,
+        // Sempre enviado: mandar vazio e como a pessoa tira a despesa do lote.
+        lote_id: form.lote_id || null,
       }
 
       if (form.arquivo) {
@@ -588,6 +610,7 @@ export default function DespesasList() {
       setDialogOpen(false)
       setForm(emptyForm)
       await fetchDespesas()
+      setRecarregarLotes((n) => n + 1)
     } catch (err) {
       console.error(err)
       toastError('Erro ao salvar despesa')
@@ -613,6 +636,8 @@ export default function DespesasList() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      <LotesDoUsuario key={recarregarLotes} onMudou={() => setRecarregarLotes((n) => n + 1)} />
 
       <MeuResumoDespesas />
 
@@ -887,6 +912,31 @@ export default function DespesasList() {
                 disabled={submitting}
               />
             </div>
+
+            {lotesAbertos.length > 0 || form.lote_id ? (
+              <div className="space-y-1 md:col-span-2">
+                <Label>Lote de adiantamento (opcional)</Label>
+                <CommandSelect
+                  value={form.lote_id}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, lote_id: value }))}
+                  options={[
+                    { value: '', label: 'Nenhum — despesa avulsa' },
+                    ...lotesAbertos.map((lote) => ({
+                      value: lote.id,
+                      label: `${lote.descricao} — saldo ${formatMoney(lote.saldo)}`,
+                    })),
+                  ]}
+                  placeholder="Nenhum — despesa avulsa"
+                  searchPlaceholder="Buscar lote..."
+                  emptyText="Nenhum lote aberto."
+                  disabled={submitting}
+                />
+                <p className="text-xs text-ink-mute">
+                  Dentro de um lote o dinheiro já foi adiantado: o acerto sai uma vez só, no
+                  fechamento, pelo saldo.
+                </p>
+              </div>
+            ) : null}
 
             <div className="md:col-span-2">
               <label className="flex items-start gap-2 rounded-md border border-hairline bg-canvas-soft p-3">
