@@ -29,11 +29,13 @@ export default async function ContasAPagarPage() {
           + Nova conta
         </Link>
       </header>
-      <ContasAPagarDashboard />
-
-      <div className="mt-12 border-t border-hairline pt-8">
+      {/* Os lotes ficam acima da rotina diaria de proposito: sao uma acao, e no
+          fim da pagina — depois de toda a lista do dia — ninguem achava. */}
+      <div className="mb-10 border-b border-hairline pb-8">
         <LotesDeDespesa />
       </div>
+
+      <ContasAPagarDashboard />
     </div>
   )
 }
