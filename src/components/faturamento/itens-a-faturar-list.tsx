@@ -894,7 +894,10 @@ export default function ItensAFaturarList() {
 
       <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
         <div className="text-sm text-muted-foreground">
-          <span className="mr-4">Clientes: <strong className="text-foreground">{items.length}</strong></span>
+          {/* Contava a lista crua enquanto Itens e Horas já contavam a filtrada:
+              com filtro aplicado dizia "129 clientes / 120 itens", o que não
+              fecha. Agora os três falam da mesma lista. */}
+          <span className="mr-4">Clientes: <strong className="text-foreground">{filteredTree.length}</strong></span>
           <span className="mr-4">Itens: <strong className="text-foreground">{totals.itens}</strong></span>
           <span>Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong></span>
         </div>
