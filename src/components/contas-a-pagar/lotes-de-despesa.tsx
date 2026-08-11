@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Button } from '@/components/ui/button'
@@ -229,11 +230,19 @@ export default function LotesDeDespesa() {
         <div>
           <h2 className="text-lg font-medium text-ink">Lotes de despesa</h2>
           <p className="text-sm text-ink-mute">
-            Adiantamentos por pessoa. A transferência entre as contas do escritório fica registrada
-            aqui para conferência; só a sobra ou a falta do fechamento vira lançamento.
+            Adiantamentos por pessoa. O valor adiantado sai do caixa na hora — o dinheiro saiu de
+            fato — e o fechamento lança só a diferença: a sobra que a pessoa devolve ou a falta que
+            o escritório reembolsa.
           </p>
         </div>
-        {podeGerir ? <Button onClick={() => setDialogAberto(true)}>+ Novo lote</Button> : null}
+        {podeGerir ? (
+          <Link
+            href="/financeiro/contas-a-pagar/novo?tipo=lote"
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            + Novo lote
+          </Link>
+        ) : null}
       </div>
 
       {lotes.length === 0 ? (
