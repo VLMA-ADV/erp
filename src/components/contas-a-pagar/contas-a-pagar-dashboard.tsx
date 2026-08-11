@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 
@@ -159,6 +160,16 @@ export default function ContasAPagarDashboard() {
     }
   }
 
+  const excluir = async (id: string, descricao: string) => {
+    if (!window.confirm(`Excluir "${descricao}"?\n\nSe ele gerou um reembolso automático, o reembolso é cancelado junto.`)) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { error: e } = await supabase.rpc('cp_excluir_lancamento', { p_user_id: user.id, p_id: id })
+    if (e) { alert(e.message); return }
+    void load(dia)
+  }
+
   const reagendar = async (id: string) => {
     const nova = window.prompt('Reagendar para qual data? (AAAA-MM-DD)', shiftIso(dia, 3))
     if (!nova) return
@@ -266,19 +277,20 @@ export default function ContasAPagarDashboard() {
       {/* Listas */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
-          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} />
+          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir} />
         <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
-          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} />
+          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir} />
       </div>
     </div>
   )
 }
 
 function ListaColuna({
-  titulo, cor, rows, loading, canWrite, onReagendar, onBaixar,
+  titulo, cor, rows, loading, canWrite, onReagendar, onBaixar, onExcluir,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onReagendar: (id: string) => void; onBaixar: (id: string) => void
+  onExcluir: (id: string, descricao: string) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -322,6 +334,8 @@ function ListaColuna({
                   <div className="flex flex-col gap-1">
                     <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
                     <button onClick={() => onReagendar(r.id)} title="Reagendar" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">reagendar</button>
+                    <Link href={`/financeiro/contas-a-pagar/novo?id=${r.id}`} title="Editar" className="rounded border border-hairline px-2 py-0.5 text-center text-xs hover:bg-canvas-soft">editar</Link>
+                    <button onClick={() => onExcluir(r.id, r.descricao)} title="Excluir" className="rounded border border-hairline px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10">excluir</button>
                   </div>
                 )}
               </div>
