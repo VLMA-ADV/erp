@@ -1295,10 +1295,31 @@ export default function RevisaoDeFaturaList() {
 
   const getLiveCaseMetrics = useCallback((casoGroup: CasoGroup): CaseMetrics => {
     const baseMetrics = getCaseBaseMetrics(casoGroup)
-    const timesheetHours = baseMetrics.timesheetItems.reduce((acc, item) => acc + getLiveItemHours(item, 'timesheet'), 0)
-    const timesheetValue = baseMetrics.timesheetItems.reduce((acc, item) => acc + getLiveItemValue(item, 'timesheet'), 0)
-    const nonTimesheetHours = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + getLiveItemHours(item, 'default'), 0)
-    const nonTimesheetValue = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + getLiveItemValue(item, 'default'), 0)
+    // Item agrupado conta UMA vez, pelo que o revisor definiu no grupo. O
+    // Filipe apontou em 07/08: alterou as horas do grupo e o título do caso
+    // continuou somando as horas antigas de cada lançamento.
+    const grupoJaContado = new Set<string>()
+    const horasDoItem = (item: RevisaoItem, modo: 'timesheet' | 'default') => {
+      if (item.grupoId && item.grupoHoras !== null && item.grupoHoras !== undefined) {
+        if (grupoJaContado.has(`h:${item.grupoId}`)) return 0
+        grupoJaContado.add(`h:${item.grupoId}`)
+        return item.grupoHoras
+      }
+      return getLiveItemHours(item, modo)
+    }
+    const valorDoItem = (item: RevisaoItem, modo: 'timesheet' | 'default') => {
+      if (item.grupoId && item.grupoValor !== null && item.grupoValor !== undefined) {
+        if (grupoJaContado.has(`v:${item.grupoId}`)) return 0
+        grupoJaContado.add(`v:${item.grupoId}`)
+        return item.grupoValor
+      }
+      return getLiveItemValue(item, modo)
+    }
+
+    const timesheetHours = baseMetrics.timesheetItems.reduce((acc, item) => acc + horasDoItem(item, 'timesheet'), 0)
+    const timesheetValue = baseMetrics.timesheetItems.reduce((acc, item) => acc + valorDoItem(item, 'timesheet'), 0)
+    const nonTimesheetHours = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + horasDoItem(item, 'default'), 0)
+    const nonTimesheetValue = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + valorDoItem(item, 'default'), 0)
 
     return {
       totalHoras: nonTimesheetHours + timesheetHours,
