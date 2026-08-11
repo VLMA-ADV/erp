@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     const { data: targetCaso, error: casoError } = await supabase
       .schema("contracts")
       .from("casos")
-      .select("id, contrato_id")
+      .select("id, contrato_id, contratos:contrato_id(cliente_id)")
       .eq("id", casoId)
       .eq("tenant_id", tenantUser.tenant_id)
       .single();
@@ -100,12 +100,32 @@ Deno.serve(async (req) => {
       });
     }
 
+    // targetCaso.contratos vem como array ou objeto dependendo da versão do
+    // client — cobre os dois formatos.
+    const contratoRel = targetCaso.contratos as { cliente_id?: string } | { cliente_id?: string }[] | null;
+    const targetClienteId = Array.isArray(contratoRel) ? contratoRel[0]?.cliente_id : contratoRel?.cliente_id;
+
+    if (!targetClienteId) {
+      return new Response(JSON.stringify({ error: "Não foi possível determinar o cliente do caso de destino" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // cliente_id é denormalizado em billing_items e não segue automaticamente
+    // o contrato/caso: sem essa linha, o item passava a apontar para o
+    // contrato e caso corretos mas continuava listado sob o cliente antigo,
+    // porque get_revisao_fatura junta o cliente por bi.cliente_id, não pelo
+    // contrato. Foi exatamente o bug relatado (11/08): transferir um lançamento
+    // da Campo Rico para a 7 Holding fazia o caso da 7 Holding aparecer dentro
+    // do card da Campo Rico.
     const { data: updatedRows, error: updateError } = await supabase
       .schema("finance")
       .from("billing_items")
       .update({
         caso_id: casoId,
         contrato_id: targetCaso.contrato_id,
+        cliente_id: targetClienteId,
         updated_by: user.id,
       })
       .eq("id", itemId)
