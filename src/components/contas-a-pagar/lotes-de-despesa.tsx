@@ -93,6 +93,9 @@ export default function LotesDeDespesa() {
   const podeGerir = hasPermission('finance.contas_pagar.write')
 
   const [lotes, setLotes] = useState<Lote[]>([])
+  // Cancelados nao aparecem aqui — sao lotes que nunca chegaram a valer, ficar
+  // mostrando so atrapalha o dia a dia. O registro continua no banco.
+  const lotesVisiveis = useMemo(() => lotes.filter((lote) => lote.status !== 'cancelado'), [lotes])
   const [pessoas, setPessoas] = useState<Pessoa[]>([])
   const [contas, setContas] = useState<ContaBancaria[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -187,6 +190,25 @@ export default function LotesDeDespesa() {
     }
   }
 
+  const cancelar = async (lote: Lote) => {
+    if (!window.confirm(`Cancelar o lote "${lote.descricao}" de ${lote.colaborador_nome || 'sem nome'}?\n\nSó é possível porque nenhuma despesa foi lançada nele ainda. Se ele tiver gerado uma saída de caixa, ela é revertida junto.`)) return
+    try {
+      setEnviando(true)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { error } = await supabase.rpc('cancelar_lote_despesa', { p_user_id: user.id, p_lote_id: lote.id })
+      if (error) throw error
+      success('Lote cancelado')
+      await carregarLotes()
+    } catch (err) {
+      console.error(err)
+      toastError(err instanceof Error ? err.message : 'Erro ao cancelar o lote')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   const validar = async (lote: Lote, acao: 'aprovar' | 'reabrir') => {
     const resumo =
       lote.saldo > 0
@@ -245,13 +267,13 @@ export default function LotesDeDespesa() {
         ) : null}
       </div>
 
-      {lotes.length === 0 ? (
+      {lotesVisiveis.length === 0 ? (
         <p className="rounded-lg border border-hairline bg-canvas-soft/40 p-4 text-sm text-ink-mute">
           Nenhum lote criado ainda.
         </p>
       ) : (
         <ul className="space-y-2">
-          {lotes.map((lote) => (
+          {lotesVisiveis.map((lote) => (
             <li key={lote.id} className="rounded-lg border border-hairline bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -281,6 +303,11 @@ export default function LotesDeDespesa() {
                       {formatMoney(Math.abs(lote.saldo))}
                     </p>
                   </div>
+                  {podeGerir && lote.status === 'aberto' && lote.qtd_despesas === 0 ? (
+                    <Button variant="outline" className="text-destructive hover:bg-destructive/5" onClick={() => void cancelar(lote)} disabled={enviando}>
+                      Cancelar
+                    </Button>
+                  ) : null}
                   {podeGerir && lote.status === 'em_validacao' ? (
                     <div className="flex flex-col gap-1.5">
                       <Button onClick={() => void validar(lote, 'aprovar')} disabled={enviando}>
