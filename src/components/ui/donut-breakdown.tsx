@@ -1,8 +1,8 @@
 'use client'
 
 // Paleta de marca VLMA para gráficos (laranja + roxo + tons quentes; sem azul frio).
-const DONUT_PALETTE = ['#FF9900', '#7A5CE0', '#FF3333', '#1E1423', '#FFC266', '#B45309', '#A8A29E']
-const OUTROS_COLOR = '#cbd5e1'
+export const DONUT_PALETTE = ['#FF9900', '#7A5CE0', '#FF3333', '#1E1423', '#FFC266', '#B45309', '#A8A29E']
+export const OUTROS_COLOR = '#cbd5e1'
 
 export interface DonutGroup {
   label: string
@@ -14,11 +14,15 @@ export function DonutBreakdown({
   grupos,
   labelMap,
   maxSlices = 6,
+  // Nem toda rosca conta ocorrencias: em Despesas o que importa e o valor. O
+  // padrao continua sendo o numero cru, entao quem ja usava nao muda.
+  formatValor = (valor: number) => String(valor),
 }: {
   titulo: string
   grupos: DonutGroup[]
   labelMap?: Record<string, string>
   maxSlices?: number
+  formatValor?: (valor: number) => string
 }) {
   const sorted = [...(grupos || [])].sort((a, b) => b.count - a.count)
   let slices = sorted
@@ -59,7 +63,7 @@ export function DonutBreakdown({
                   strokeDasharray={`${dash} ${circ - dash}`}
                   strokeDashoffset={-offset}
                 >
-                  <title>{`${labelMap?.[g.label] || g.label}: ${g.count} (${pct}%)`}</title>
+                  <title>{`${labelMap?.[g.label] || g.label}: ${formatValor(g.count)} (${pct}%)`}</title>
                 </circle>
               )
               offset += dash
@@ -71,7 +75,7 @@ export function DonutBreakdown({
               <li key={g.label} className="flex items-center gap-2 text-xs">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: color(g, i) }} />
                 <span className="truncate text-ink-secondary">{labelMap?.[g.label] || g.label}</span>
-                <span className="ml-auto font-tabular font-medium text-ink">{g.count}</span>
+                <span className="ml-auto shrink-0 font-tabular font-medium text-ink">{formatValor(g.count)}</span>
               </li>
             ))}
           </ul>
