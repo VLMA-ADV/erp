@@ -42,6 +42,17 @@ const emptyForm = {
   observacoes: '',
 }
 
+type Pessoa = { user_id: string; nome: string }
+
+const loteVazio = {
+  colaborador_user_id: '',
+  valor: '',
+  descricao: '',
+  conta_bancaria_origem_id: '',
+  conta_bancaria_destino_id: '',
+  data_transferencia: '',
+}
+
 export default function NovoLancamentoForm() {
   const router = useRouter()
   const { hasPermission } = usePermissionsContext()
@@ -56,6 +67,21 @@ export default function NovoLancamentoForm() {
   const [planoGrupo, setPlanoGrupo] = useState('')
   const [planoSintetica, setPlanoSintetica] = useState('')
 
+  // Lote de despesas (pedido Filipe 11/08): mora aqui dentro porque o
+  // adiantamento e uma saida de caixa como qualquer outra — o dinheiro sai da
+  // conta na hora, mesmo que volte reembolsado la na frente.
+  // Le da URL sem useSearchParams para nao precisar de Suspense so por causa
+  // do atalho "+ Novo lote".
+  const [modo, setModo] = useState<'conta' | 'lote'>('conta')
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tipo') === 'lote') setModo('lote')
+  }, [])
+  const [lote, setLote] = useState(loteVazio)
+  const [pessoas, setPessoas] = useState<Pessoa[]>([])
+
+  const setLoteCampo = <K extends keyof typeof lote>(k: K, v: (typeof lote)[K]) =>
+    setLote((l) => ({ ...l, [k]: v }))
+
   useEffect(() => {
     void (async () => {
       const supabase = createClient()
@@ -64,10 +90,40 @@ export default function NovoLancamentoForm() {
       const { data, error: e } = await supabase.rpc('cp_listas', { p_user_id: user.id })
       if (e) { setError(e.message); return }
       setListas(data as Listas)
+      const { data: lista } = await supabase.rpc('get_pessoas_para_lote', { p_user_id: user.id })
+      setPessoas((lista || []) as Pessoa[])
     })()
   }, [])
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  const submitLote = async () => {
+    setError(null)
+    if (!canWrite) { setError('Você não tem permissão para lançar.'); return }
+    if (!lote.colaborador_user_id) { setError('Escolha a pessoa do lote.'); return }
+    if (!lote.valor || Number(lote.valor) <= 0) { setError('Valor adiantado é obrigatório.'); return }
+    if (!lote.descricao.trim()) { setError('Descrição é obrigatória.'); return }
+    if (!lote.conta_bancaria_origem_id) { setError('Informe de qual conta o dinheiro saiu.'); return }
+
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setError('Sessão expirada.'); return }
+      const { error: e } = await supabase.rpc('criar_lote_despesa', {
+        p_user_id: user.id,
+        p_payload: { ...lote, valor: Number(lote.valor) },
+      })
+      if (e) { setError(e.message); return }
+      router.push('/financeiro/contas-a-pagar')
+      router.refresh()
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao criar o lote.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const submit = async () => {
     setError(null)
@@ -138,15 +194,91 @@ export default function NovoLancamentoForm() {
       <div className="space-y-4 lg:col-span-2 rounded-lg border border-hairline bg-white p-6">
         {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
-        {/* Natureza */}
-        <div className="inline-flex rounded-md border border-hairline p-1">
+        {/* Natureza — e o lote, que e um terceiro tipo de saida */}
+        <div className="inline-flex flex-wrap rounded-md border border-hairline p-1">
           {(['pagar', 'receber'] as const).map((n) => (
-            <button key={n} onClick={() => set('natureza', n)}
-              className={`rounded px-4 py-1.5 text-sm font-medium ${form.natureza === n ? (n === 'pagar' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700') : 'text-ink-mute'}`}>
+            <button key={n} onClick={() => { setModo('conta'); set('natureza', n) }}
+              className={`rounded px-4 py-1.5 text-sm font-medium ${modo === 'conta' && form.natureza === n ? (n === 'pagar' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700') : 'text-ink-mute'}`}>
               Conta a {n}
             </button>
           ))}
+          <button onClick={() => setModo('lote')}
+            className={`rounded px-4 py-1.5 text-sm font-medium ${modo === 'lote' ? 'bg-amber-50 text-amber-700' : 'text-ink-mute'}`}>
+            Lote de despesas
+          </button>
         </div>
+
+        {modo === 'lote' && (
+          <>
+            <p className="rounded-md border border-dashed border-amber-300 bg-amber-50/50 p-3 text-sm text-ink-secondary">
+              Adiantamento para uma pessoa gastar nos casos. Sai do caixa agora, na conta que você
+              informar. Depois ela lança as despesas contra esse saldo e, no fechamento, o sistema
+              lança só a diferença — a sobra que ela devolve ou a falta que o escritório reembolsa.
+            </p>
+
+            <div>
+              <label className={labelCls}>Pessoa</label>
+              <select className={inputCls} value={lote.colaborador_user_id}
+                onChange={(e) => setLoteCampo('colaborador_user_id', e.target.value)}>
+                <option value="">Selecione a pessoa…</option>
+                {pessoas.map((p) => <option key={p.user_id} value={p.user_id}>{p.nome}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelCls}>Descrição</label>
+              <input className={inputCls} value={lote.descricao}
+                onChange={(e) => setLoteCampo('descricao', e.target.value)}
+                placeholder="Ex.: Adiantamento diligências agosto" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Valor adiantado</label>
+                <input type="number" step="0.01" className={inputCls} value={lote.valor}
+                  onChange={(e) => setLoteCampo('valor', e.target.value)} placeholder="0,00" />
+              </div>
+              <div>
+                <label className={labelCls}>Data da transferência</label>
+                <input type="date" className={inputCls} value={lote.data_transferencia}
+                  onChange={(e) => setLoteCampo('data_transferencia', e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Saiu da conta</label>
+                <select className={inputCls} value={lote.conta_bancaria_origem_id}
+                  onChange={(e) => setLoteCampo('conta_bancaria_origem_id', e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {(listas?.contas_bancarias || []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.banco}{c.descricao ? ` — ${c.descricao}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Entrou na conta</label>
+                <select className={inputCls} value={lote.conta_bancaria_destino_id}
+                  onChange={(e) => setLoteCampo('conta_bancaria_destino_id', e.target.value)}>
+                  <option value="">Não informar</option>
+                  {(listas?.contas_bancarias || []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.banco}{c.descricao ? ` — ${c.descricao}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => router.push('/financeiro/contas-a-pagar')} className="rounded-md border border-hairline px-4 py-2 text-sm hover:bg-canvas-soft">Cancelar</button>
+              <button onClick={submitLote} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {saving ? 'Criando…' : 'Criar lote'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {modo === 'conta' && (
+        <>
 
         <div>
           <label className={labelCls}>Descrição</label>
@@ -341,17 +473,27 @@ export default function NovoLancamentoForm() {
             {saving ? 'Salvando…' : 'Salvar lançamento'}
           </button>
         </div>
+        </>
+        )}
       </div>
 
       {/* Pré-visualização */}
       <div>
         <p className="mb-2 text-xs uppercase tracking-wide text-ink-mute">Pré-visualização</p>
         <div className="rounded-lg border border-hairline bg-white p-5">
-          <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${form.natureza === 'pagar' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-            {form.natureza === 'pagar' ? 'A PAGAR' : 'A RECEBER'}
+          <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${modo === 'lote' ? 'bg-amber-50 text-amber-700' : form.natureza === 'pagar' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {modo === 'lote' ? 'LOTE — SAÍDA DE CAIXA' : form.natureza === 'pagar' ? 'A PAGAR' : 'A RECEBER'}
           </span>
-          <p className="mt-3 text-3xl font-semibold text-ink">{fmtMoney(form.valor)}</p>
-          <p className="text-sm text-ink-mute">{form.descricao || '—'}</p>
+          <p className="mt-3 text-3xl font-semibold text-ink">{fmtMoney(modo === 'lote' ? lote.valor : form.valor)}</p>
+          <p className="text-sm text-ink-mute">{(modo === 'lote' ? lote.descricao : form.descricao) || '—'}</p>
+          {modo === 'lote' ? (
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between"><dt className="text-ink-mute">Pessoa</dt><dd className="truncate pl-2 text-right">{pessoas.find((p) => p.user_id === lote.colaborador_user_id)?.nome || '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-mute">Saiu da conta</dt><dd className="truncate pl-2 text-right">{listas?.contas_bancarias.find((c) => c.id === lote.conta_bancaria_origem_id)?.banco || '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-mute">Entrou na conta</dt><dd className="truncate pl-2 text-right">{listas?.contas_bancarias.find((c) => c.id === lote.conta_bancaria_destino_id)?.banco || '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-mute">Data</dt><dd>{lote.data_transferencia ? lote.data_transferencia.split('-').reverse().join('/') : 'hoje'}</dd></div>
+            </dl>
+          ) : (
           <dl className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-ink-mute">Vencimento</dt><dd>{form.vencimento ? form.vencimento.split('-').reverse().join('/') : '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-ink-mute">Centro de custo</dt><dd>{listas?.centros_custo.find((c) => c.id === form.centro_custo_id)?.nome || '—'}</dd></div>
@@ -360,6 +502,7 @@ export default function NovoLancamentoForm() {
             {form.recorrente && <div className="flex justify-between"><dt className="text-ink-mute">Recorrência</dt><dd>{Number(form.num_parcelas) === 0 ? 'sem prazo' : `${form.num_parcelas}x`}</dd></div>}
             {form.reembolsavel && <div className="flex justify-between"><dt className="text-ink-mute">Reembolsável</dt><dd>sim → gera entrada</dd></div>}
           </dl>
+          )}
         </div>
       </div>
     </div>

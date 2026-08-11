@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DespesasList from '@/components/despesas/despesas-list'
 import DespesasResumo from '@/components/despesas/despesas-resumo'
-import NotaDeDebito from '@/components/despesas/nota-de-debito'
 import { SectionTabs } from '@/components/ui/section-tabs'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +25,6 @@ export default async function DespesasPage() {
         tabs={[
           { value: 'lancamentos', label: 'Lançamentos', content: <DespesasList /> },
           { value: 'resumo', label: 'Resumo', content: <DespesasResumo /> },
-          { value: 'nota-de-debito', label: 'Nota de débito', content: <NotaDeDebito /> },
         ]}
       />
     </div>
