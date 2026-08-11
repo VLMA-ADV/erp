@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Clock, Loader2, Send, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Loader2, Send, Trash2, X } from 'lucide-react'
 import {
   clearAllExpansions,
   hasAnyExpansion,
@@ -404,6 +404,17 @@ export default function ItensAFaturarList() {
   const [postergarDate, setPostergarDate] = useState<string>('')
   const [postergarSubmitting, setPostergarSubmitting] = useState(false)
 
+  // Excluir da fila (pedido Filipe 11/08): mesmo padrao do Postergar, so troca
+  // a acao final. So mexe nos lancamentos de timesheet do caso — regra
+  // financeira (mensalidade, projeto, exito) e calculada ao vivo, sem linha
+  // para marcar; e a mesma limitacao que o Postergar ja tem.
+  const [excluirTarget, setExcluirTarget] = useState<{
+    casoId: string
+    casoNome: string
+    extrato: CasoAgrupado['extrato']
+  } | null>(null)
+  const [excluirSubmitting, setExcluirSubmitting] = useState(false)
+
   const anyExpanded = hasAnyExpansion({ expandedClientes, expandedContratos, expandedCasos })
 
   const collapseAll = useCallback(() => {
@@ -713,6 +724,60 @@ export default function ItensAFaturarList() {
     if (postergarSubmitting) return
     setPostergarTarget(null)
     setPostergarDate('')
+  }
+
+  const openExcluir = (caso: CasoAgrupado) => {
+    setExcluirTarget({
+      casoId: caso.caso_id,
+      casoNome: caso.caso_nome,
+      extrato: Array.isArray(caso.extrato) ? caso.extrato : [],
+    })
+  }
+
+  const closeExcluir = () => {
+    if (excluirSubmitting) return
+    setExcluirTarget(null)
+  }
+
+  const confirmExcluir = async () => {
+    if (!excluirTarget) return
+    const timesheetIds = (excluirTarget.extrato || [])
+      .filter((linha) => {
+        const tipo = (linha.tipo || '').trim().toLowerCase()
+        return Boolean(linha.origem_id) && (tipo === 'timesheet' || tipo === 'hora')
+      })
+      .map((linha) => linha.origem_id as string)
+
+    if (timesheetIds.length === 0) {
+      toastError('Este caso não tem lançamentos de timesheet excluíveis.')
+      return
+    }
+
+    try {
+      setExcluirSubmitting(true)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error } = await supabase.rpc('excluir_timesheets_do_faturamento', {
+        p_user_id: user.id,
+        p_ids: timesheetIds,
+        p_excluir: true,
+        p_motivo: null,
+      })
+      if (error) throw error
+      const afetados = Number((data as { afetados?: number })?.afetados || 0)
+      if (afetados > 0) success(`${afetados} lançamento(s) excluído(s) da fila de faturamento.`)
+      if (afetados < timesheetIds.length) {
+        toastError(`${timesheetIds.length - afetados} lançamento(s) não foram excluídos (já podem ter sido liberados).`)
+      }
+      setExcluirTarget(null)
+      await loadItems()
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao excluir da fila de faturamento')
+    } finally {
+      setExcluirSubmitting(false)
+    }
   }
 
   const confirmPostergar = async () => {
@@ -1099,6 +1164,15 @@ export default function ItensAFaturarList() {
                             </Button>
                             <Button
                               size="sm"
+                              variant="outline"
+                              className="rounded-full text-xs text-destructive hover:bg-destructive/5"
+                              disabled={!!sendingTarget || excluirSubmitting}
+                              onClick={() => openExcluir(caso)}
+                            >
+                              <Trash2 className="mr-1 h-3.5 w-3.5" /> Excluir
+                            </Button>
+                            <Button
+                              size="sm"
                               className="rounded-full bg-[#E8871E] text-xs text-white hover:opacity-90"
                               disabled={!!sendingTarget}
                               onClick={() =>
@@ -1243,6 +1317,43 @@ export default function ItensAFaturarList() {
                 <Clock className="mr-2 h-4 w-4" />
               )}
               Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={excluirTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeExcluir()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir da fila de faturamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-ink-mute">
+              Os lançamentos de timesheet do caso{' '}
+              <strong className="text-ink">{excluirTarget?.casoNome}</strong> deixam de aparecer
+              aqui e não entram em nenhuma fatura.
+            </p>
+            <p className="text-xs text-ink-mute">
+              O timesheet continua existindo — as horas seguem contando para a pessoa e para os
+              relatórios. Só some da fila de faturamento; pode ser revertido depois se precisar.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeExcluir} disabled={excluirSubmitting}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmExcluir()}
+              disabled={excluirSubmitting}
+            >
+              {excluirSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Excluir
             </Button>
           </DialogFooter>
         </DialogContent>
