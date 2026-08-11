@@ -33,6 +33,13 @@ interface RevisaoItem {
   valor_aprovado?: number | null
   valor_revisado: number | null
   valor_informado: number | null
+  // Presentes quando origem_tipo === 'despesa' — a Nota de Despesas usa estes,
+  // nao a tabela operations.despesas: o que importa e o que esta sendo
+  // faturado NESTA fatura, nao um status manual que nunca e setado.
+  origem_id?: string | null
+  data_referencia?: string | null
+  caso_numero?: number | null
+  caso_nome?: string | null
 }
 
 interface NotaGerada {
@@ -43,17 +50,6 @@ interface NotaGerada {
   arquivo_nome: string | null
   arquivo_url: string | null
   contrato_id: string | null
-}
-
-interface DespesaRow {
-  contrato_id: string
-  caso_numero: number | null
-  caso_nome: string
-  data_lancamento: string
-  categoria: string
-  descricao: string
-  valor: number
-  status: string
 }
 
 interface ContratoKit {
@@ -185,7 +181,6 @@ export default function ComposicaoDaFaturaList() {
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [notes, setNotes] = useState<NotaGerada[]>([])
-  const [despesas, setDespesas] = useState<DespesaRow[]>([])
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
   const [emailData, setEmailData] = useState<FaturaEmailData | null>(null)
 
@@ -205,10 +200,9 @@ export default function ComposicaoDaFaturaList() {
       }
       const base = process.env.NEXT_PUBLIC_SUPABASE_URL
 
-      const [revisaoResp, notasResp, despesasResp] = await Promise.all([
+      const [revisaoResp, notasResp] = await Promise.all([
         fetch(`${base}/functions/v1/get-revisao-fatura`, { method: 'GET', headers }),
         fetch(`${base}/functions/v1/get-notas-geradas?status=gerado&limit=200`, { method: 'GET', headers }),
-        fetch(`${base}/functions/v1/get-despesas`, { method: 'GET', headers }),
       ])
 
       const revisaoPayload = await revisaoResp.json().catch(() => ({}))
@@ -217,15 +211,11 @@ export default function ComposicaoDaFaturaList() {
         return
       }
       const notasPayload = await notasResp.json().catch(() => ({}))
-      const despesasPayload = await despesasResp.json().catch(() => ({}))
 
       const allItems = (revisaoPayload.data || []) as RevisaoItem[]
       // O kit só faz sentido para o que o financeiro já aprovou/faturou.
       setItems(allItems.filter((it) => it.status === 'aprovado' || it.status === 'faturado'))
       setNotes(notasResp.ok ? ((notasPayload.data || []) as NotaGerada[]) : [])
-      // Despesas reembolsáveis aprovadas alimentam a Nota de Despesas.
-      const allDespesas = (despesasResp.ok ? despesasPayload.data || [] : []) as DespesaRow[]
-      setDespesas(allDespesas.filter((d) => d.status === 'aprovado'))
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar composição da fatura')
@@ -252,17 +242,21 @@ export default function ComposicaoDaFaturaList() {
     return map
   }, [notes])
 
-  // Despesas reembolsáveis agrupadas por contrato (detalhe da Nota de Despesas).
+  // Despesas reembolsáveis, agrupadas por contrato, para o detalhe da Nota de
+  // Despesas. Vem dos MESMOS billing_items que compõem o kit (origem_tipo ===
+  // 'despesa'), nunca da tabela operations.despesas: o que entra na nota é
+  // exatamente o que está sendo faturado nesta fatura, e nao um status manual
+  // que nenhuma tela chega a setar.
   const despesaPorContrato = useMemo(() => {
-    const map = new Map<string, DespesaRow[]>()
-    for (const d of despesas) {
-      if (!d.contrato_id) continue
-      const list = map.get(d.contrato_id) || []
-      list.push(d)
-      map.set(d.contrato_id, list)
+    const map = new Map<string, RevisaoItem[]>()
+    for (const item of items) {
+      if (item.origem_tipo !== 'despesa' || !item.contrato_id) continue
+      const list = map.get(item.contrato_id) || []
+      list.push(item)
+      map.set(item.contrato_id, list)
     }
     return map
-  }, [despesas])
+  }, [items])
 
   const totalGeral = useMemo(() => clientes.reduce((acc, c) => acc + c.total, 0), [clientes])
 
@@ -278,11 +272,11 @@ export default function ComposicaoDaFaturaList() {
       documentoNumero: null,
       emissao: isoHoje(),
       vencimento: isoHoje(),
-      itens: linhas.map((d) => ({
-        data_lancamento: d.data_lancamento,
-        categoria: d.categoria,
-        descricao: d.descricao,
-        valor: Number(d.valor || 0),
+      itens: linhas.map((item) => ({
+        data_lancamento: item.data_referencia || '',
+        categoria: String(item.snapshot?.categoria || ''),
+        descricao: String(item.snapshot?.descricao || ''),
+        valor: getEffectiveValue(item),
       })),
     })
   }
