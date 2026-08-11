@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Download, Edit, Plus, Trash2, X } from 'lucide-react'
+import { Download, Edit, Plus, Trash2, User, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -17,6 +17,7 @@ import { Table } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import MeuResumoDespesas from './meu-resumo-despesas'
 
 type DespesaStatus = 'em_lancamento' | 'revisao' | 'aprovado' | 'cancelado'
 
@@ -49,6 +50,7 @@ interface DespesaItem {
   mime_type: string | null
   tamanho_bytes: number | null
   anexos?: DespesaAnexo[]
+  created_by: string | null
   created_by_nome: string | null
   created_at: string
   updated_at: string
@@ -154,6 +156,12 @@ export default function DespesasList() {
   const [contratos, setContratos] = useState<ContratoItem[]>([])
   const [clientes, setClientes] = useState<ClienteItem[]>([])
 
+  // Pedido Filipe 11/08: por padrao cada um ve so as proprias despesas. Quem tem
+  // alcance maior (gestor, coordenador) desliga o filtro quando quiser — o que o
+  // backend ja devolve nao muda, so o que a tela mostra por padrao.
+  const [userId, setUserId] = useState('')
+  const [somenteMinhas, setSomenteMinhas] = useState(true)
+
   const [filterClienteId, setFilterClienteId] = useState('')
   const [filterCasoId, setFilterCasoId] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -234,12 +242,20 @@ export default function DespesasList() {
       )
   }, [contratos, filterClienteId])
 
+  // So oferece o botao a quem enxerga despesa de outra pessoa; para quem so ve as
+  // proprias ele nao faria nada.
+  const veDeOutros = useMemo(
+    () => Boolean(userId) && items.some((item) => item.created_by !== userId),
+    [items, userId],
+  )
+
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
+      if (somenteMinhas && userId && item.created_by !== userId) return false
       if (filterClienteId && item.cliente_id !== filterClienteId) return false
       return true
     })
-  }, [items, filterClienteId])
+  }, [items, filterClienteId, somenteMinhas, userId])
 
   // Agrupa por dia (a lista já vem ordenada por data desc do backend) para o separador visual.
   const groupedByDay = useMemo(() => {
@@ -372,6 +388,7 @@ export default function DespesasList() {
     if (!canRead) return
     void fetchClientes()
     void fetchContratos()
+    void getSession().then((session) => setUserId(session?.user?.id || ''))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -597,6 +614,8 @@ export default function DespesasList() {
         </Alert>
       ) : null}
 
+      <MeuResumoDespesas />
+
       <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-6">
         <div className="space-y-1">
           <Label>Cliente</Label>
@@ -651,16 +670,28 @@ export default function DespesasList() {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canWrite ? (
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nova despesa
+            </Button>
+          ) : null}
+          {veDeOutros ? (
+            <Button
+              variant={somenteMinhas ? 'default' : 'outline'}
+              onClick={() => setSomenteMinhas((prev) => !prev)}
+              title={somenteMinhas ? 'Mostrando apenas as suas despesas' : 'Mostrando as despesas de todos que você pode ver'}
+            >
+              <User className="mr-2 h-4 w-4" />
+              {somenteMinhas ? 'Minhas despesas' : 'Todas as despesas'}
+            </Button>
+          ) : null}
+        </div>
         <Button variant="outline" onClick={() => void fetchDespesas()} disabled={loading}>
           Atualizar
         </Button>
-        {canWrite ? (
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nova despesa
-          </Button>
-        ) : null}
       </div>
 
       <div className="overflow-x-auto rounded-md border border-hairline bg-card">
