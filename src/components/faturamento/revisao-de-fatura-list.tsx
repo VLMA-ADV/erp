@@ -2295,6 +2295,7 @@ export default function RevisaoDeFaturaList() {
                                   variant="outline"
                                   onClick={() => void reviewSelectedOk(batchKey, selectedIds)}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                  title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer marcar como revisados' : undefined}
                                 >
                                   {busyKey === batchKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                   Revisar selecionados · OK
@@ -2305,6 +2306,7 @@ export default function RevisaoDeFaturaList() {
                                   className="text-xs"
                                   onClick={() => void approveSelected(batchKey, selectedIds)}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                  title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer aprovar' : undefined}
                                 >
                                   Aprovar selecionados
                                 </Button>
@@ -2312,7 +2314,9 @@ export default function RevisaoDeFaturaList() {
                                   size="sm"
                                   variant="outline"
                                   className="text-xs"
-                                  title="Junta os lançamentos selecionados (mesmo caso) numa linha só na fatura"
+                                  title={selectedIds.length < 2
+                                    ? 'Selecione ao menos dois lançamentos deste caso para agrupar'
+                                    : 'Junta os lançamentos selecionados (mesmo caso) numa linha só na fatura'}
                                   onClick={() => void agruparSelecionados(batchKey, selectedIds)}
                                   disabled={selectedIds.length < 2 || busyKey === batchKey}
                                 >
@@ -2330,6 +2334,7 @@ export default function RevisaoDeFaturaList() {
                                     setPostergarIds(selectedIds)
                                   }}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                  title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer adiar' : undefined}
                                 >
                                   <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
                                 </Button>
@@ -2342,6 +2347,7 @@ export default function RevisaoDeFaturaList() {
                                     setTransferIds(selectedIds)
                                   }}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                  title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer mover de caso' : undefined}
                                 >
                                   <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir
                                 </Button>
@@ -2355,6 +2361,7 @@ export default function RevisaoDeFaturaList() {
                                     setIgnorarIds(selectedIds)
                                   }}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
+                                  title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer tirar da cobrança' : undefined}
                                 >
                                   Ignorar
                                 </Button>

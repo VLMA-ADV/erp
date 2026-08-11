@@ -81,8 +81,24 @@ Deno.serve(async (req) => {
 
     if (pagadores.length === 0) return json({ error: "Nenhum pagador resolvido para o contrato." }, 422)
 
-    if (!grupo || !grupo.codigo_tributacao_nacional_iss || !grupo.codigo_nbs || !grupo.aliquota_iss) {
-      return json({ error: "Contrato sem grupo de impostos configurado para NFS-e. Selecione um grupo válido no contrato." }, 422)
+    // Aliquota ZERO e valida: o escritorio recolhe ISS por valor fixo, por ser
+    // sociedade de advogados (Filipe, 07/08). O teste antigo era `!aliquota_iss`,
+    // que trata 0 como ausente — o grupo estava certo e a emissao era recusada,
+    // com uma mensagem mandando conferir justamente o que ja estava configurado.
+    const faltando: string[] = []
+    if (!grupo) {
+      faltando.push("grupo de impostos")
+    } else {
+      if (!grupo.codigo_tributacao_nacional_iss) faltando.push("código de tributação nacional do ISS")
+      if (!grupo.codigo_nbs) faltando.push("código NBS")
+      if (grupo.aliquota_iss === null || grupo.aliquota_iss === undefined || grupo.aliquota_iss === "") {
+        faltando.push("alíquota de ISS")
+      }
+    }
+    if (faltando.length > 0) {
+      return json({
+        error: `Grupo de impostos do contrato incompleto para NFS-e. Falta: ${faltando.join(", ")}. Ajuste em Configuração > Grupos de impostos.`,
+      }, 422)
     }
 
     // ── Pré-validação: dados fiscais de TODOS os pagadores ANTES de emitir
