@@ -26,8 +26,32 @@ const DESCRICAO_FIXA = [
   "Pagamento conforme boleto bancário em anexo",
   "Dados bancários: Banco Itaú (341) - Ag. 3835 - C/C 31141-0",
   "Pix/CNPJ: 14.491.612/0001-39",
-  "Conforme Lei 12.741/2012 o valor aproximado dos tributos é 14,53%. Em atendimento à Reforma Tributária (LC 214/2025), nesta operação são informados 0,1% a título de IBS e 0,9% a título de CBS para fins de obrigação acessória no ano-teste de 2026.",
+  "Conforme Lei 12.741/2012 o valor aproximado dos tributos é 14,53%. Em atendimento à Reforma Tributária (LC 214/2025), nesta operação são informados 0,07% a título de IBS e 0,63% a título de CBS para fins de obrigação acessória no ano-teste de 2026.",
 ].join("\n")
+
+// IBS/CBS — Reforma Tributária (LC 214/2025), pedido Filipe 12/08.
+//
+// 2026 é ano-teste: sem custo nem recolhimento, mas o preenchimento é
+// obrigatório para a nota nao travar na emissao. As aliquotas BASE do
+// ano-teste para servicos sao fixas pelo governo (0,10% IBS-UF, 0,00% IBS-Mun
+// em Curitiba, 0,90% CBS) — nao e algo que a VLMA escolhe. Manda-se a aliquota
+// base + o percentual de reducao; quem calcula a aliquota efetiva (a que
+// aparece na DANFSe) e o proprio processamento nacional, nao nos.
+//
+// A reducao de 30% e porque advocacia e profissao intelectual regulamentada
+// (CST 200 / cClassTrib 200052) — mesma nota de exemplo (NFSe 1820) confere:
+// base 0,10/0,90 * (100-30)/100 = efetiva 0,07/0,63.
+const IBS_CBS_REFORMA = {
+  situacao_tributaria: "200", // CST — tributacao regular
+  classificacao_tributaria: "200052", // cClassTrib — profissoes intelectuais regulamentadas
+  indicador_operacao: "030101", // operacao regular dentro do municipio de incidencia
+  ibs_uf_aliquota: "0.10",
+  ibs_mun_aliquota: "0.00",
+  cbs_aliquota: "0.90",
+  ibs_uf_percentual_reducao: "30.00",
+  ibs_mun_percentual_reducao: "30.00",
+  cbs_percentual_reducao: "30.00",
+}
 
 type Pagador = {
   cliente_id: string
@@ -201,6 +225,14 @@ Deno.serve(async (req) => {
       const nfsePayload: Record<string, unknown> = {
         data_emissao: dataEmissao,
         data_competencia: dataCompetencia,
+        // finNFSe: exigido no XSD antes do grupo de reforma (IBS/CBS) — sem
+        // ele o schema esperava finNFSe onde recebeu cIndOp e recusava.
+        // 0 = NFS-e regular.
+        finalidade_emissao: 0,
+        // indDest: schema pede um entre indZFMALC/tpOper/gRefNFSe/tpEnteGov/
+        // indDest logo apos finNFSe. 0 = operacao comum (nao ZFM/ALC, nao
+        // orgao publico, nao substituindo nota anterior).
+        indicador_destinatario: 0,
         serie_dps: cfg.serie_dps,
         numero_dps: String(numeroDps ?? 1),
         cnpj_prestador: digits(cfg.cnpj),
@@ -233,6 +265,15 @@ Deno.serve(async (req) => {
         percentual_total_tributos_federais: String(grupo.pct_trib_federais ?? 0),
         percentual_total_tributos_estaduais: String(grupo.pct_trib_estaduais ?? 0),
         percentual_total_tributos_municipais: String(grupo.pct_trib_municipais ?? 0),
+        ibs_cbs_situacao_tributaria: IBS_CBS_REFORMA.situacao_tributaria,
+        ibs_cbs_classificacao_tributaria: IBS_CBS_REFORMA.classificacao_tributaria,
+        codigo_indicador_operacao: IBS_CBS_REFORMA.indicador_operacao,
+        ibs_uf_aliquota: IBS_CBS_REFORMA.ibs_uf_aliquota,
+        ibs_mun_aliquota: IBS_CBS_REFORMA.ibs_mun_aliquota,
+        cbs_aliquota: IBS_CBS_REFORMA.cbs_aliquota,
+        ibs_uf_percentual_reducao: IBS_CBS_REFORMA.ibs_uf_percentual_reducao,
+        ibs_mun_percentual_reducao: IBS_CBS_REFORMA.ibs_mun_percentual_reducao,
+        cbs_percentual_reducao: IBS_CBS_REFORMA.cbs_percentual_reducao,
       }
 
       const focusResp = await fetch(`${focusBase}/v2/nfsen?ref=${ref}`, {
