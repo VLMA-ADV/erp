@@ -41,6 +41,7 @@ type Row = {
   status: string
   reembolsavel?: boolean
   reembolso_de_id?: string | null
+  vencimento_original?: string | null
 }
 type Rotina = {
   data: string
@@ -92,6 +93,13 @@ export default function ContasAPagarDashboard() {
   const [contaId, setContaId] = useState('')
   const [saldoSujo, setSaldoSujo] = useState(false)
   const [saldoInput, setSaldoInput] = useState('')
+  // Simulacao de fluxo (pedido Filipe 13/08): arrasta a conta para outro dia,
+  // ve o caixa mudar, e so entao confirma. Enquanto nao confirma, nada foi
+  // gravado — quem recalcula e o servidor, com a mesma regra do grafico.
+  const [simulacao, setSimulacao] = useState<Record<string, string>>({})
+  const [arrastando, setArrastando] = useState<string | null>(null)
+  const [aplicando, setAplicando] = useState(false)
+
   const [editandoValor, setEditandoValor] = useState<string | null>(null)
   const [valorDraft, setValorDraft] = useState('')
   const [salvandoValor, setSalvandoValor] = useState(false)
@@ -114,7 +122,7 @@ export default function ContasAPagarDashboard() {
     }
   }, [])
 
-  const loadMes = useCallback(async (mes: string) => {
+  const loadMes = useCallback(async (mes: string, sim: Record<string, string> = {}) => {
     try {
       setLoading(true)
       setError(null)
@@ -124,6 +132,7 @@ export default function ContasAPagarDashboard() {
       const { data: r, error: e } = await supabase.rpc('cp_fluxo_mensal', {
         p_user_id: user.id,
         p_mes: `${mes}-01`,
+        p_simulacao: Object.entries(sim).map(([id, vencimento]) => ({ id, vencimento })),
       })
       if (e) { setError(e.message); return }
       setFluxo(r as FluxoMensal)
@@ -157,15 +166,15 @@ export default function ContasAPagarDashboard() {
 
   useEffect(() => {
     if (!canRead || !ready) return
-    if (modo === 'mes') void loadMes(mesRef)
+    if (modo === 'mes') void loadMes(mesRef, simulacao)
     else void load(dia)
-  }, [canRead, ready, modo, mesRef, dia, load, loadMes])
+  }, [canRead, ready, modo, mesRef, dia, simulacao, load, loadMes])
 
   // Recarrega o que estiver na tela — usado depois de baixar/editar/excluir.
   const recarregar = useCallback(() => {
-    if (modo === 'mes') void loadMes(mesRef)
+    if (modo === 'mes') void loadMes(mesRef, simulacao)
     else void load(dia)
-  }, [modo, mesRef, dia, load, loadMes])
+  }, [modo, mesRef, dia, simulacao, load, loadMes])
 
   const mesOptions = useMemo(() => {
     const opts: Array<{ value: string; label: string }> = []
@@ -237,6 +246,45 @@ export default function ContasAPagarDashboard() {
       recarregar()
     } finally {
       setSalvandoValor(false)
+    }
+  }
+
+  const moverPara = (id: string, novaData: string) => {
+    setSimulacao((prev) => {
+      const row = [...(pagar as Row[]), ...(receber as Row[])].find((r) => r.id === id)
+      const original = row?.vencimento_original || row?.vencimento
+      const proximo = { ...prev }
+      // Voltar para a data original tira do rascunho em vez de guardar um
+      // "movimento" que nao move nada.
+      if (original === novaData) delete proximo[id]
+      else proximo[id] = novaData
+      return proximo
+    })
+  }
+
+  const descartarSimulacao = () => setSimulacao({})
+
+  const aplicarSimulacao = async () => {
+    const mudancas = Object.entries(simulacao)
+    if (mudancas.length === 0) return
+    if (!window.confirm(`Aplicar ${mudancas.length} mudança(s) de data? As contas passam a vencer nas novas datas.`)) return
+
+    setAplicando(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      let falhas = 0
+      for (const [id, novaData] of mudancas) {
+        // cp_reagendar ja existe, valida e guarda o de-para em reagendado_de.
+        const { error: e } = await supabase.rpc('cp_reagendar', { p_user_id: user.id, p_id: id, p_nova_data: novaData })
+        if (e) falhas += 1
+      }
+      if (falhas > 0) alert(`${falhas} conta(s) não puderam ser reagendadas.`)
+      setSimulacao({})
+      void loadMes(mesRef, {})
+    } finally {
+      setAplicando(false)
     }
   }
 
@@ -405,18 +453,67 @@ export default function ContasAPagarDashboard() {
         ))}
       </div>
 
+      {/* Rascunho da simulação: aparece só quando há mudança pendente. Nada foi
+          gravado até apertar Confirmar — foi o que o Filipe pediu ("vejo um
+          rascunho e aplico mediante confirmação"). */}
+      {modo === 'mes' && Object.keys(simulacao).length > 0 ? (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-sm">
+          <p className="text-sm text-amber-900">
+            <strong>Rascunho:</strong> {Object.keys(simulacao).length} conta(s) movida(s) de data.
+            O gráfico acima já mostra como o caixa fica. Nada foi salvo ainda.
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={descartarSimulacao} disabled={aplicando}
+              className="rounded-md border border-hairline bg-white px-4 py-2 text-sm hover:bg-canvas-soft disabled:opacity-50">
+              Cancelar
+            </button>
+            <button onClick={() => void aplicarSimulacao()} disabled={aplicando}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              {aplicando ? 'Aplicando…' : 'Confirmar'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Faixa de dias: alvo do arraste. Só aparece enquanto arrasta, para não
+          ocupar espaço o tempo todo. */}
+      {modo === 'mes' && arrastando ? (
+        <div className="sticky top-2 z-20 rounded-lg border border-primary bg-white p-3 shadow-lg">
+          <p className="mb-2 text-xs font-medium text-ink">Solte no dia em que quer que essa conta caia</p>
+          <div className="flex flex-wrap gap-1">
+            {(fluxo?.dias || []).map((d) => (
+              <button
+                key={d.data}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const id = e.dataTransfer.getData('text/plain') || arrastando
+                  if (id) moverPara(id, d.data)
+                  setArrastando(null)
+                }}
+                className="h-9 w-9 rounded-md border border-hairline text-xs text-ink-secondary hover:border-primary hover:bg-primary/10"
+              >
+                {Number(d.data.slice(8, 10))}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {/* Listas */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
           onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
           editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
           onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
-          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)} />
+          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
+          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando} />
         <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
           onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
           editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
           onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
-          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)} />
+          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
+          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando} />
       </div>
     </div>
   )
@@ -425,6 +522,7 @@ export default function ContasAPagarDashboard() {
 function ListaColuna({
   titulo, cor, rows, loading, canWrite, onReagendar, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
+  arrastavel, simulacao, onArrastar,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onReagendar: (id: string) => void; onBaixar: (id: string) => void
@@ -432,6 +530,7 @@ function ListaColuna({
   editandoValor: string | null; valorDraft: string; salvandoValor: boolean
   onAbrirValor: (row: Row) => void; onMudarValor: (v: string) => void
   onSalvarValor: (row: Row) => void; onCancelarValor: () => void
+  arrastavel: boolean; simulacao: Record<string, string>; onArrastar: (id: string | null) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -450,9 +549,24 @@ function ListaColuna({
       ) : (
         <ul className="divide-y divide-hairline">
           {rows.map((r) => (
-            <li key={r.id} className="flex items-center justify-between gap-3 p-4">
+            <li
+              key={r.id}
+              draggable={arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)}
+              onDragStart={(e) => { e.dataTransfer.setData('text/plain', r.id); onArrastar(r.id) }}
+              onDragEnd={() => onArrastar(null)}
+              className={`flex items-center justify-between gap-3 p-4 ${
+                simulacao[r.id] ? 'border-l-4 border-amber-400 bg-amber-50/50' : ''
+              } ${arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+            >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink">{r.descricao}</p>
+                <p className="truncate text-sm font-medium text-ink">
+                  {r.descricao}
+                  {simulacao[r.id] ? (
+                    <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+                      movida de {fmtDate(r.vencimento_original)}
+                    </span>
+                  ) : null}
+                </p>
                 <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-mute">
                   {r.empresa_nome && <span className="rounded bg-secondary px-1.5 py-0.5">{r.empresa_nome}</span>}
                   {r.centro_nome && <span className="rounded bg-secondary px-1.5 py-0.5">{r.centro_nome}</span>}
