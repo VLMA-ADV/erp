@@ -164,18 +164,16 @@ export default function FluxoMensalChart({ fluxo }: { fluxo: FluxoMensal }) {
             )
           })}
 
-          {/* Numero do dia: de 2 em 2 quando o mes e longo, para nao virar borrao */}
-          {dias.map((d, i) => {
-            const numero = Number(d.data.slice(8, 10))
-            const mostra = dias.length <= 16 || numero % 2 === 1 || i === dias.length - 1
-            if (!mostra) return null
-            return (
-              <text key={`lbl-${d.data}`} x={x(i)} y={ALTURA - 10} textAnchor="middle"
-                className="fill-ink-mute" style={{ fontSize: 11 }}>
-                {numero}
-              </text>
-            )
-          })}
+          {/* Todos os dias no eixo, sem pular (pedido Filipe 14/08: "ser de 1 a
+              31, com todos os numeros, nao apenas os impares"). Cabe: 31 rotulos
+              em 1000 unidades do viewBox dao ~32 de folga cada, e o SVG tem
+              largura minima de 720px com rolagem horizontal se a tela apertar. */}
+          {dias.map((d, i) => (
+            <text key={`lbl-${d.data}`} x={x(i)} y={ALTURA - 10} textAnchor="middle"
+              className="fill-ink-mute" style={{ fontSize: 10 }}>
+              {Number(d.data.slice(8, 10))}
+            </text>
+          ))}
         </svg>
       </div>
 

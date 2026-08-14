@@ -84,6 +84,8 @@ const JANELAS = [
 ] as const
 type JanelaKey = (typeof JANELAS)[number]['key']
 
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] as const
+
 export default function ContasAPagarDashboard() {
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('finance.contas_pagar.read')
@@ -204,20 +206,16 @@ export default function ContasAPagarDashboard() {
     else void load(dia)
   }, [modo, mesRef, dia, simulacao, load, loadMes])
 
-  const mesOptions = useMemo(() => {
-    const opts: Array<{ value: string; label: string }> = []
-    const hoje = new Date()
-    // 12 meses para tras e 6 para frente: o financeiro confere o passado e
-    // projeta o que ja esta agendado adiante.
-    for (let i = -12; i <= 6; i++) {
-      const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1)
-      opts.push({
-        value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-        label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', ''),
-      })
-    }
-    return opts
+  // Ano em cima, meses embaixo (pedido Filipe 14/08: "criar ano e deixar so o
+  // nome dos meses tipo ago, set, out porque essa linha ta muito grande").
+  // Antes eram 19 pilulas do tipo "Ago De 25" numa fila so, que estourava a
+  // largura da tela e quebrava em tres linhas.
+  const anosOptions = useMemo(() => {
+    const atual = new Date().getFullYear()
+    return [atual - 1, atual, atual + 1]
   }, [])
+  const anoRef = Number(mesRef.slice(0, 4))
+  const setAno = (ano: number) => setMesRef(`${ano}-${mesRef.slice(5, 7)}`)
 
   // Trocou de mês: a âncora da janela some, para não ficar apontando um dia que
   // não existe mais no mês novo.
@@ -445,17 +443,32 @@ export default function ContasAPagarDashboard() {
         </div>
 
         {modo === 'mes' ? (
-          <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
-            {mesOptions.map((m) => (
-              <button key={m.value} onClick={() => setMesRef(m.value)}
-                className={`shrink-0 rounded-full px-3 py-1 text-sm capitalize ${
-                  mesRef === m.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border border-hairline text-ink-mute hover:bg-canvas-soft'
-                }`}>
-                {m.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-md border border-hairline p-1">
+              {anosOptions.map((a) => (
+                <button key={a} onClick={() => setAno(a)}
+                  className={`rounded px-3 py-1 text-sm font-medium ${
+                    anoRef === a ? 'bg-secondary text-ink' : 'text-ink-mute hover:bg-canvas-soft'
+                  }`}>
+                  {a}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {MESES_CURTOS.map((label, i) => {
+                const value = `${anoRef}-${String(i + 1).padStart(2, '0')}`
+                return (
+                  <button key={value} onClick={() => setMesRef(value)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-sm capitalize ${
+                      mesRef === value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-hairline text-ink-mute hover:bg-canvas-soft'
+                    }`}>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         ) : (
           <>
