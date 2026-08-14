@@ -53,6 +53,10 @@ export default function FluxoMensalChart({ fluxo }: { fluxo: FluxoMensal }) {
   const dias = fluxo.dias || []
   if (dias.length === 0) return null
 
+  // A tela pode recortar o mes numa janela menor (dia / 3 dias / semana). O
+  // titulo acompanha, senao diria "do mes" mostrando tres dias.
+  const mesInteiro = dias[0].data === fluxo.mes_inicio && dias[dias.length - 1].data === fluxo.mes_fim
+
   const valores = dias.flatMap((d) => [Number(d.pagar), Number(d.receber)])
   const saldos = dias.map((d) => Number(d.saldo_projetado))
 
@@ -82,10 +86,10 @@ export default function FluxoMensalChart({ fluxo }: { fluxo: FluxoMensal }) {
     <div className="rounded-lg border border-hairline bg-white p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-eyebrow">Fluxo de caixa do mês</p>
+          <p className="text-eyebrow">Fluxo de caixa {mesInteiro ? 'do mês' : 'do período'}</p>
           <p className="mt-1 text-sm text-ink-mute">
             Saldo inicial <span className="font-tabular text-ink">{formatMoney(fluxo.saldo_inicial)}</span>
-            {' · '}projetado no fim do mês{' '}
+            {' · '}projetado no fim {mesInteiro ? 'do mês' : 'do período'}{' '}
             <span className={`font-tabular font-medium ${fluxo.saldo_final < 0 ? 'text-red-600' : 'text-ink'}`}>
               {formatMoney(fluxo.saldo_final)}
             </span>
@@ -137,6 +141,14 @@ export default function FluxoMensalChart({ fluxo }: { fluxo: FluxoMensal }) {
             stroke="#16A34A" strokeWidth={2} strokeLinejoin="round" />
           <path d={linha((d) => Number(d.pagar), yMov)} fill="none"
             stroke="#EF4444" strokeWidth={2} strokeLinejoin="round" />
+
+          {/* Numa janela curta a linha do saldo quase nao anda (e com um dia so
+              nem existe linha). O ponto garante que o saldo continue legivel. */}
+          {dias.length <= 7
+            ? dias.map((d, i) => (
+                <circle key={`s-${d.data}`} cx={x(i)} cy={ySaldo(Number(d.saldo_projetado))} r={3} fill="#F59E0B" />
+              ))
+            : null}
 
           {dias.map((d, i) => {
             const temMov = Number(d.pagar) > 0 || Number(d.receber) > 0

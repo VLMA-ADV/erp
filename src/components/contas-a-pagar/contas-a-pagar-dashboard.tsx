@@ -67,6 +67,23 @@ const FILTERS = [
   { key: 'pagos', label: 'Pagos/Baixados' },
 ] as const
 
+// Janela de leitura do mes (pedido Filipe 13/08): "ali eu vejo geral, mas eu
+// quero poder apertar um botao tipo on off pra ver o diario ou semanal, ou ate
+// mesmo uma barra de intervalo de dias — tipo 3 dias".
+//
+// A janela e um RECORTE do mes ja carregado, nao uma consulta nova: o mes
+// inteiro vem numa chamada so e o saldo projetado e acumulado desde o dia 1.
+// Recortar aqui mantem o saldo certo (ele continua sendo o acumulado do mes) e
+// nao gasta ida ao servidor a cada clique. Buscar so a janela no banco daria um
+// saldo que comeca do zero no meio do mes — numero errado.
+const JANELAS = [
+  { key: 'mes', label: 'Mês', dias: 0 },
+  { key: 'semana', label: 'Semana', dias: 7 },
+  { key: 'tres', label: '3 dias', dias: 3 },
+  { key: 'dia', label: 'Dia', dias: 1 },
+] as const
+type JanelaKey = (typeof JANELAS)[number]['key']
+
 export default function ContasAPagarDashboard() {
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('finance.contas_pagar.read')
@@ -78,6 +95,10 @@ export default function ContasAPagarDashboard() {
   const [modo, setModo] = useState<'mes' | 'dia'>('mes')
   const [mesRef, setMesRef] = useState(() => todayIso().slice(0, 7))
   const [fluxo, setFluxo] = useState<FluxoMensal | null>(null)
+  const [janela, setJanela] = useState<JanelaKey>('mes')
+  // Primeiro dia da janela. Null = ainda nao ancorada; ancora sozinha em hoje
+  // (ou no dia 1, se o mes escolhido nao for o corrente).
+  const [janelaInicio, setJanelaInicio] = useState<string | null>(null)
 
   const [dia, setDia] = useState(todayIso())
   const [data, setData] = useState<Rotina | null>(null)
@@ -190,6 +211,71 @@ export default function ContasAPagarDashboard() {
     }
     return opts
   }, [])
+
+  // Trocou de mês: a âncora da janela some, para não ficar apontando um dia que
+  // não existe mais no mês novo.
+  useEffect(() => { setJanelaInicio(null) }, [mesRef])
+
+  const janelaTam = JANELAS.find((j) => j.key === janela)?.dias ?? 0
+
+  // Onde a janela começa. Sem âncora escolhida, ela cai em hoje quando o mês
+  // exibido é o corrente — é o dia que o financeiro quer ver ao apertar "Dia" —
+  // e no dia 1 nos outros meses.
+  const janelaDe = useMemo(() => {
+    if (janelaTam === 0 || !fluxo) return null
+    if (janelaInicio) return janelaInicio
+    const hoje = todayIso()
+    return hoje >= fluxo.mes_inicio && hoje <= fluxo.mes_fim ? hoje : fluxo.mes_inicio
+  }, [janelaTam, janelaInicio, fluxo])
+
+  const janelaAte = janelaDe ? shiftIso(janelaDe, janelaTam - 1) : null
+
+  // O dia em que a linha de fato pesa no caixa. Igual ao GREATEST do servidor:
+  // atrasado de mês anterior é cobrado no dia 1, então é no dia 1 que ele tem de
+  // aparecer — senão a coluna não bate com a linha do gráfico logo acima.
+  const diaEfetivo = useCallback(
+    (r: Row) => (fluxo && r.vencimento < fluxo.mes_inicio ? fluxo.mes_inicio : r.vencimento),
+    [fluxo],
+  )
+
+  const naJanela = useCallback(
+    (r: Row) => !janelaDe || !janelaAte || (diaEfetivo(r) >= janelaDe && diaEfetivo(r) <= janelaAte),
+    [janelaDe, janelaAte, diaEfetivo],
+  )
+
+  // Gráfico e KPIs recortados para a janela. O saldo projetado de cada dia já
+  // vem acumulado desde o dia 1, então recortar não o distorce: o saldo inicial
+  // da janela é simplesmente o saldo com que o dia anterior terminou.
+  const fluxoJanela = useMemo<FluxoMensal | null>(() => {
+    if (!fluxo) return null
+    if (!janelaDe || !janelaAte) return fluxo
+    const dias = fluxo.dias.filter((d) => d.data >= janelaDe && d.data <= janelaAte)
+    if (dias.length === 0) return fluxo
+    const anterior = [...fluxo.dias].reverse().find((d) => d.data < janelaDe)
+    return {
+      ...fluxo,
+      dias,
+      saldo_inicial: anterior ? Number(anterior.saldo_projetado) : Number(fluxo.saldo_inicial),
+      saldo_final: Number(dias[dias.length - 1].saldo_projetado),
+      total_pagar: dias.reduce((s, d) => s + Number(d.pagar), 0),
+      total_receber: dias.reduce((s, d) => s + Number(d.receber), 0),
+      // O aviso de atrasado pertence ao dia 1; fora dele seria um alerta sobre
+      // dinheiro que não está na tela.
+      atrasado_anterior: dias.some((d) => d.data === fluxo.mes_inicio)
+        ? fluxo.atrasado_anterior
+        : { pagar: 0, receber: 0 },
+    }
+  }, [fluxo, janelaDe, janelaAte])
+
+  const moverJanela = (passos: number) => {
+    if (!janelaDe || !fluxo) return
+    const alvo = shiftIso(janelaDe, passos * janelaTam)
+    // Não deixa a janela sair do mês carregado — fora dele não há dado nem saldo
+    // acumulado, e o gráfico ficaria vazio sem explicar por quê.
+    if (alvo < fluxo.mes_inicio) { setJanelaInicio(fluxo.mes_inicio); return }
+    if (alvo > fluxo.mes_fim) return
+    setJanelaInicio(alvo)
+  }
 
   const conta = contas.find((c) => c.id === contaId) || null
 
@@ -323,8 +409,9 @@ export default function ContasAPagarDashboard() {
 
   // No modo mes as listas vem do fluxo mensal; no modo dia, da rotina diaria.
   const fonte = modo === 'mes' ? fluxo : data
-  const pagar = useMemo(() => (fonte ? applyFilter(fonte.pagar as Row[]) : []), [fonte, filtro, dia])
-  const receber = useMemo(() => (fonte ? applyFilter(fonte.receber as Row[]) : []), [fonte, filtro, dia])
+  const recorta = (rows: Row[]) => (modo === 'mes' ? applyFilter(rows).filter(naJanela) : applyFilter(rows))
+  const pagar = useMemo(() => (fonte ? recorta(fonte.pagar as Row[]) : []), [fonte, filtro, dia, modo, naJanela])
+  const receber = useMemo(() => (fonte ? recorta(fonte.receber as Row[]) : []), [fonte, filtro, dia, modo, naJanela])
 
   if (!canRead) {
     return (
@@ -373,25 +460,59 @@ export default function ContasAPagarDashboard() {
         )}
       </div>
 
+      {/* Janela de leitura dentro do mês (pedido Filipe 13/08). O mês continua
+          carregado por baixo — isto só decide quanto dele aparece de uma vez. */}
+      {modo === 'mes' ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex rounded-md border border-hairline p-1">
+            {JANELAS.map((j) => (
+              <button key={j.key} onClick={() => setJanela(j.key)}
+                className={`rounded px-3 py-1 text-sm ${janela === j.key ? 'bg-secondary font-medium text-ink' : 'text-ink-mute hover:bg-canvas-soft'}`}>
+                {j.label}
+              </button>
+            ))}
+          </div>
+
+          {janelaDe && janelaAte ? (
+            <div className="flex items-center gap-2">
+              <button onClick={() => moverJanela(-1)} disabled={janelaDe <= (fluxo?.mes_inicio || '')}
+                className="rounded-md border border-hairline px-2.5 py-1 text-sm hover:bg-canvas-soft disabled:opacity-40">‹</button>
+              <span className="font-tabular text-sm text-ink-secondary">
+                {janelaTam === 1 ? fmtDate(janelaDe) : `${fmtDate(janelaDe)} a ${fmtDate(janelaAte)}`}
+              </span>
+              <button onClick={() => moverJanela(1)} disabled={janelaAte >= (fluxo?.mes_fim || '')}
+                className="rounded-md border border-hairline px-2.5 py-1 text-sm hover:bg-canvas-soft disabled:opacity-40">›</button>
+              <button onClick={() => setJanelaInicio(null)} className="text-sm text-primary hover:underline">hoje</button>
+            </div>
+          ) : (
+            <span className="text-sm text-ink-mute">Mês inteiro</span>
+          )}
+        </div>
+      ) : null}
+
       {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
 
       {/* KPIs */}
       {modo === 'mes' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-lg border border-hairline bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-ink-mute">A pagar no mês</p>
-            <p className="mt-1 text-2xl font-semibold text-red-600">{fmtMoney(fluxo?.total_pagar)}</p>
+            <p className="text-xs uppercase tracking-wide text-ink-mute">A pagar {janelaTam === 0 ? 'no mês' : 'no período'}</p>
+            <p className="mt-1 text-2xl font-semibold text-red-600">{fmtMoney(fluxoJanela?.total_pagar)}</p>
           </div>
           <div className="rounded-lg border border-hairline bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-ink-mute">A receber no mês</p>
-            <p className="mt-1 text-2xl font-semibold text-green-600">{fmtMoney(fluxo?.total_receber)}</p>
+            <p className="text-xs uppercase tracking-wide text-ink-mute">A receber {janelaTam === 0 ? 'no mês' : 'no período'}</p>
+            <p className="mt-1 text-2xl font-semibold text-green-600">{fmtMoney(fluxoJanela?.total_receber)}</p>
           </div>
           <div className="rounded-lg border border-hairline bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-ink-mute">Saldo projetado no fim do mês</p>
-            <p className={`mt-1 text-2xl font-semibold ${Number(fluxo?.saldo_final ?? 0) < 0 ? 'text-red-600' : 'text-ink'}`}>
-              {fmtMoney(fluxo?.saldo_final)}
+            <p className="text-xs uppercase tracking-wide text-ink-mute">
+              Saldo projetado {janelaTam === 0 ? 'no fim do mês' : 'no fim do período'}
             </p>
-            <p className="mt-1 text-xs text-ink-mute">Começou o mês com {fmtMoney(fluxo?.saldo_inicial)}</p>
+            <p className={`mt-1 text-2xl font-semibold ${Number(fluxoJanela?.saldo_final ?? 0) < 0 ? 'text-red-600' : 'text-ink'}`}>
+              {fmtMoney(fluxoJanela?.saldo_final)}
+            </p>
+            <p className="mt-1 text-xs text-ink-mute">
+              {janelaTam === 0 ? 'Começou o mês' : 'Começou o período'} com {fmtMoney(fluxoJanela?.saldo_inicial)}
+            </p>
           </div>
         </div>
       ) : (
@@ -412,7 +533,7 @@ export default function ContasAPagarDashboard() {
         </div>
       )}
 
-      {modo === 'mes' && fluxo ? <FluxoMensalChart fluxo={fluxo} /> : null}
+      {modo === 'mes' && fluxoJanela ? <FluxoMensalChart fluxo={fluxoJanela} /> : null}
 
       {/* Saldo inicial manual (sem conciliação) */}
       {canWrite && conta && (
