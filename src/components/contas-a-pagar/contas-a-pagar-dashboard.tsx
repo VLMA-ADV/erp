@@ -353,6 +353,21 @@ export default function ContasAPagarDashboard() {
     })
   }
 
+  // Empurra a conta um dia para tras ou para frente (setinhas da linha, pedido
+  // Filipe 14/08 com desenho: "mudar a ordem da fila"). Parte SEMPRE da data em
+  // que a linha esta hoje no rascunho, nao do vencimento original — senao
+  // apertar a seta duas vezes andaria so um dia.
+  //
+  // Preso ao mes carregado: o grafico so conhece este mes, e deixar a conta
+  // escapar para fora dele a faria sumir da tela sem explicacao.
+  const moverDias = (r: Row, delta: number) => {
+    if (!fluxo) return
+    const atual = simulacao[r.id] || r.vencimento
+    const alvo = shiftIso(atual, delta)
+    if (alvo < fluxo.mes_inicio || alvo > fluxo.mes_fim) return
+    moverPara(r.id, alvo)
+  }
+
   const descartarSimulacao = () => setSimulacao({})
 
   const aplicarSimulacao = async () => {
@@ -616,63 +631,65 @@ export default function ContasAPagarDashboard() {
         </div>
       ) : null}
 
-      {/* Faixa de dias: alvo do arraste E do clique. Aparece quando há uma
-          conta em movimento — arrastada ou escolhida no botão "mover" — para
-          não ocupar espaço o tempo todo. */}
-      {modo === 'mes' && (arrastando || selecionado) ? (
-        <div className="sticky top-2 z-20 rounded-lg border border-primary bg-white p-3 shadow-lg">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-medium text-ink">
-              {selecionado ? 'Clique no dia em que essa conta deve cair' : 'Solte no dia em que quer que essa conta caia'}
-            </p>
-            {selecionado ? (
-              <button onClick={() => setSelecionado(null)}
-                className="text-xs text-ink-mute underline hover:text-ink">
-                cancelar
-              </button>
-            ) : null}
+      {/* Barra vertical dos dias + listas.
+          "O que eu sugeri é que exista uma barra vertical dos dias do mês para
+          que eu possa simular como fica o caixa com essas mudanças" (Filipe,
+          14/08). Ela fica SEMPRE visível no modo mês, não só durante o arraste:
+          antes ela nascia no meio do gesto, o que empurrava a página inteira
+          para baixo bem na hora em que a pessoa estava mirando o alvo. */}
+      <div className="flex items-start gap-4">
+        {modo === 'mes' ? (
+          <div className="sticky top-2 shrink-0 rounded-lg border border-hairline bg-white p-2">
+            <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wide text-ink-mute">Dias</p>
+            <div className="flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto">
+              {(fluxo?.dias || []).map((d) => {
+                const alvoAtivo = Boolean(arrastando || selecionado)
+                return (
+                  <button
+                    key={d.data}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const id = e.dataTransfer.getData('text/plain') || arrastando
+                      if (id) moverPara(id, d.data)
+                      setArrastando(null)
+                    }}
+                    onClick={() => {
+                      if (!selecionado) return
+                      moverPara(selecionado, d.data)
+                      setSelecionado(null)
+                    }}
+                    title={alvoAtivo ? `Soltar no dia ${Number(d.data.slice(8, 10))}` : undefined}
+                    className={`h-7 w-9 rounded text-xs ${
+                      d.data === todayIso()
+                        ? 'bg-secondary font-semibold text-ink'
+                        : 'text-ink-secondary'
+                    } ${alvoAtivo ? 'border border-dashed border-primary hover:bg-primary/10' : 'hover:bg-canvas-soft'}`}
+                  >
+                    {Number(d.data.slice(8, 10))}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {(fluxo?.dias || []).map((d) => (
-              <button
-                key={d.data}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const id = e.dataTransfer.getData('text/plain') || arrastando
-                  if (id) moverPara(id, d.data)
-                  setArrastando(null)
-                }}
-                onClick={() => {
-                  if (!selecionado) return
-                  moverPara(selecionado, d.data)
-                  setSelecionado(null)
-                }}
-                className="h-9 w-9 rounded-md border border-hairline text-xs text-ink-secondary hover:border-primary hover:bg-primary/10"
-              >
-                {Number(d.data.slice(8, 10))}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {/* Listas */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
-          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
-          editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
-          onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
-          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
-          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
-          selecionado={selecionado} onSelecionar={setSelecionado} />
-        <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
-          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
-          editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
-          onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
-          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
-          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
-          selecionado={selecionado} onSelecionar={setSelecionado} />
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+          <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
+            onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
+            editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
+            onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
+            onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
+            arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
+            selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias} />
+          <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
+            onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
+            editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
+            onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
+            onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
+            arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
+            selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias} />
+        </div>
       </div>
     </div>
   )
@@ -681,7 +698,7 @@ export default function ContasAPagarDashboard() {
 function ListaColuna({
   titulo, cor, rows, loading, canWrite, onReagendar, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
-  arrastavel, simulacao, onArrastar, selecionado, onSelecionar,
+  arrastavel, simulacao, onArrastar, selecionado, onSelecionar, onMoverDias,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onReagendar: (id: string) => void; onBaixar: (id: string) => void
@@ -691,6 +708,7 @@ function ListaColuna({
   onSalvarValor: (row: Row) => void; onCancelarValor: () => void
   arrastavel: boolean; simulacao: Record<string, string>; onArrastar: (id: string | null) => void
   selecionado: string | null; onSelecionar: (id: string | null) => void
+  onMoverDias: (row: Row, delta: number) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -708,32 +726,55 @@ function ListaColuna({
         <p className="p-6 text-sm text-ink-mute">Nada para este dia/filtro.</p>
       ) : (
         <ul className="divide-y divide-hairline">
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const movivel = arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)
+            return (
             <li
               key={r.id}
-              draggable={arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)}
+              draggable={movivel}
               onDragStart={(e) => { e.dataTransfer.setData('text/plain', r.id); onArrastar(r.id) }}
               onDragEnd={() => onArrastar(null)}
               className={`flex items-center justify-between gap-3 p-4 ${
                 simulacao[r.id] ? 'border-l-4 border-amber-400 bg-amber-50/50' : ''
               } ${selecionado === r.id ? 'bg-primary/5 ring-1 ring-inset ring-primary' : ''} ${
-                arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? 'cursor-grab active:cursor-grabbing' : ''
+                movivel ? 'cursor-grab active:cursor-grabbing' : ''
               }`}
             >
-              <div className="flex min-w-0 items-start gap-2">
-                {arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
-                  <button
-                    onClick={() => onSelecionar(selecionado === r.id ? null : r.id)}
-                    title="Mover esta conta para outro dia"
-                    aria-label="Mover para outro dia"
-                    className={`mt-0.5 shrink-0 rounded border px-1.5 py-1 text-xs leading-none ${
-                      selecionado === r.id
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-hairline text-ink-mute hover:border-primary hover:text-primary'
-                    }`}
-                  >
-                    ⠿
-                  </button>
+              <div className="flex min-w-0 items-start gap-3">
+                {/* Coluna de data: setinha para cima, o dia, setinha para
+                    baixo — o desenho que o Filipe mandou em 14/08. As setas
+                    andam um dia; clicar no dia abre a barra vertical para
+                    escolher qualquer data do mês de uma vez. */}
+                {movivel ? (
+                  <div className="flex shrink-0 flex-col items-center">
+                    {/* Alvo largo de proposito: com 16x24px eu mesmo errei o
+                        clique duas vezes ao testar. Ocupa a largura inteira da
+                        pilha, do tamanho do dia que fica no meio. */}
+                    <button onClick={() => onMoverDias(r, -1)} aria-label="Um dia antes"
+                      className="h-5 w-11 rounded text-[10px] leading-none text-ink-mute hover:bg-canvas-soft hover:text-ink">
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => onSelecionar(selecionado === r.id ? null : r.id)}
+                      title="Escolher outra data para esta conta"
+                      className={`w-11 rounded-md border px-1 py-0.5 text-center leading-tight ${
+                        selecionado === r.id
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : cor === 'red'
+                            ? 'border-red-200 bg-red-50 text-red-700 hover:border-red-400'
+                            : 'border-green-200 bg-green-50 text-green-700 hover:border-green-400'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold">{Number(r.vencimento.slice(8, 10))}</span>
+                      <span className="block text-[9px] font-medium uppercase">
+                        {MESES_CURTOS[Number(r.vencimento.slice(5, 7)) - 1]}
+                      </span>
+                    </button>
+                    <button onClick={() => onMoverDias(r, 1)} aria-label="Um dia depois"
+                      className="h-5 w-11 rounded text-[10px] leading-none text-ink-mute hover:bg-canvas-soft hover:text-ink">
+                      ▼
+                    </button>
+                  </div>
                 ) : null}
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-ink">
@@ -808,7 +849,8 @@ function ListaColuna({
                 )}
               </div>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
     </div>
