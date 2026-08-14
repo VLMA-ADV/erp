@@ -119,6 +119,13 @@ export default function ContasAPagarDashboard() {
   // gravado — quem recalcula e o servidor, com a mesma regra do grafico.
   const [simulacao, setSimulacao] = useState<Record<string, string>>({})
   const [arrastando, setArrastando] = useState<string | null>(null)
+  // Caminho sem arrastar (Filipe, 14/08: "nao consegui mover pra cima e baixo").
+  // Arrastar em HTML depende de pegar a linha num ponto que nao seja botao, e a
+  // linha tem quatro botoes do lado direito — quem pega ali nao arrasta nada, e
+  // nao ha nenhum aviso de que da para arrastar. Entao a linha ganhou um botao
+  // "mover": clica nele, clica no dia. O arrastar continua funcionando para
+  // quem preferir.
+  const [selecionado, setSelecionado] = useState<string | null>(null)
   const [aplicando, setAplicando] = useState(false)
 
   const [editandoValor, setEditandoValor] = useState<string | null>(null)
@@ -596,11 +603,22 @@ export default function ContasAPagarDashboard() {
         </div>
       ) : null}
 
-      {/* Faixa de dias: alvo do arraste. Só aparece enquanto arrasta, para não
-          ocupar espaço o tempo todo. */}
-      {modo === 'mes' && arrastando ? (
+      {/* Faixa de dias: alvo do arraste E do clique. Aparece quando há uma
+          conta em movimento — arrastada ou escolhida no botão "mover" — para
+          não ocupar espaço o tempo todo. */}
+      {modo === 'mes' && (arrastando || selecionado) ? (
         <div className="sticky top-2 z-20 rounded-lg border border-primary bg-white p-3 shadow-lg">
-          <p className="mb-2 text-xs font-medium text-ink">Solte no dia em que quer que essa conta caia</p>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-ink">
+              {selecionado ? 'Clique no dia em que essa conta deve cair' : 'Solte no dia em que quer que essa conta caia'}
+            </p>
+            {selecionado ? (
+              <button onClick={() => setSelecionado(null)}
+                className="text-xs text-ink-mute underline hover:text-ink">
+                cancelar
+              </button>
+            ) : null}
+          </div>
           <div className="flex flex-wrap gap-1">
             {(fluxo?.dias || []).map((d) => (
               <button
@@ -611,6 +629,11 @@ export default function ContasAPagarDashboard() {
                   const id = e.dataTransfer.getData('text/plain') || arrastando
                   if (id) moverPara(id, d.data)
                   setArrastando(null)
+                }}
+                onClick={() => {
+                  if (!selecionado) return
+                  moverPara(selecionado, d.data)
+                  setSelecionado(null)
                 }}
                 className="h-9 w-9 rounded-md border border-hairline text-xs text-ink-secondary hover:border-primary hover:bg-primary/10"
               >
@@ -628,13 +651,15 @@ export default function ContasAPagarDashboard() {
           editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
           onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
           onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
-          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando} />
+          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
+          selecionado={selecionado} onSelecionar={setSelecionado} />
         <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
           onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
           editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
           onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
           onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
-          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando} />
+          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
+          selecionado={selecionado} onSelecionar={setSelecionado} />
       </div>
     </div>
   )
@@ -643,7 +668,7 @@ export default function ContasAPagarDashboard() {
 function ListaColuna({
   titulo, cor, rows, loading, canWrite, onReagendar, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
-  arrastavel, simulacao, onArrastar,
+  arrastavel, simulacao, onArrastar, selecionado, onSelecionar,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onReagendar: (id: string) => void; onBaixar: (id: string) => void
@@ -652,6 +677,7 @@ function ListaColuna({
   onAbrirValor: (row: Row) => void; onMudarValor: (v: string) => void
   onSalvarValor: (row: Row) => void; onCancelarValor: () => void
   arrastavel: boolean; simulacao: Record<string, string>; onArrastar: (id: string | null) => void
+  selecionado: string | null; onSelecionar: (id: string | null) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -677,8 +703,25 @@ function ListaColuna({
               onDragEnd={() => onArrastar(null)}
               className={`flex items-center justify-between gap-3 p-4 ${
                 simulacao[r.id] ? 'border-l-4 border-amber-400 bg-amber-50/50' : ''
-              } ${arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              } ${selecionado === r.id ? 'bg-primary/5 ring-1 ring-inset ring-primary' : ''} ${
+                arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? 'cursor-grab active:cursor-grabbing' : ''
+              }`}
             >
+              <div className="flex min-w-0 items-start gap-2">
+                {arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
+                  <button
+                    onClick={() => onSelecionar(selecionado === r.id ? null : r.id)}
+                    title="Mover esta conta para outro dia"
+                    aria-label="Mover para outro dia"
+                    className={`mt-0.5 shrink-0 rounded border px-1.5 py-1 text-xs leading-none ${
+                      selecionado === r.id
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-hairline text-ink-mute hover:border-primary hover:text-primary'
+                    }`}
+                  >
+                    ⠿
+                  </button>
+                ) : null}
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-ink">
                   {r.descricao}
@@ -700,6 +743,7 @@ function ListaColuna({
                   <span>· {fmtDate(r.vencimento)}</span>
                   {r.reembolsavel && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">reembolsável</span>}
                 </p>
+              </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <div className="text-right">
