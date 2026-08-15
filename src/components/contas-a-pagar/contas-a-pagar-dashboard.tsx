@@ -750,43 +750,46 @@ export default function ContasAPagarDashboard() {
       {/* Barra vertical dos dias + listas.
           "O que eu sugeri é que exista uma barra vertical dos dias do mês para
           que eu possa simular como fica o caixa com essas mudanças" (Filipe,
-          14/08). Ela fica SEMPRE visível no modo mês, não só durante o arraste:
-          antes ela nascia no meio do gesto, o que empurrava a página inteira
-          para baixo bem na hora em que a pessoa estava mirando o alvo. */}
+          14/08).
+
+          A COLUNA existe sempre; os DIAS só aparecem quando há uma conta em
+          movimento. São duas coisas diferentes e cada uma resolve um problema:
+          a largura reservada impede a página de pular quando a faixa surge no
+          meio do arraste, e esconder os números impede uma régua de 31 botões
+          sem função ocupando a tela o tempo todo. */}
       <div className="flex items-start gap-4">
         {modo === 'mes' ? (
-          <div className="sticky top-2 shrink-0 rounded-lg border border-hairline bg-white p-2">
-            <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wide text-ink-mute">Dias</p>
-            <div className="flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto">
-              {(fluxo?.dias || []).map((d) => {
-                const alvoAtivo = Boolean(arrastando || selecionado)
-                return (
-                  <button
-                    key={d.data}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      const id = e.dataTransfer.getData('text/plain') || arrastando
-                      if (id) moverPara(id, d.data)
-                      setArrastando(null)
-                    }}
-                    onClick={() => {
-                      if (!selecionado) return
-                      moverPara(selecionado, d.data)
-                      setSelecionado(null)
-                    }}
-                    title={alvoAtivo ? `Soltar no dia ${Number(d.data.slice(8, 10))}` : undefined}
-                    className={`h-7 w-9 rounded text-xs ${
-                      d.data === todayIso()
-                        ? 'bg-secondary font-semibold text-ink'
-                        : 'text-ink-secondary'
-                    } ${alvoAtivo ? 'border border-dashed border-primary hover:bg-primary/10' : 'hover:bg-canvas-soft'}`}
-                  >
-                    {Number(d.data.slice(8, 10))}
-                  </button>
-                )
-              })}
-            </div>
+          <div className="sticky top-2 w-14 shrink-0">
+            {arrastando || selecionado ? (
+              <div className="rounded-lg border border-primary bg-white p-2 shadow-lg">
+                <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wide text-primary">Dia</p>
+                <div className="flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto">
+                  {(fluxo?.dias || []).map((d) => (
+                    <button
+                      key={d.data}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const id = e.dataTransfer.getData('text/plain') || arrastando
+                        if (id) moverPara(id, d.data)
+                        setArrastando(null)
+                      }}
+                      onClick={() => {
+                        if (!selecionado) return
+                        moverPara(selecionado, d.data)
+                        setSelecionado(null)
+                      }}
+                      title={`Soltar no dia ${Number(d.data.slice(8, 10))}`}
+                      className={`h-7 w-9 rounded border border-dashed border-primary text-xs hover:bg-primary/10 ${
+                        d.data === todayIso() ? 'bg-secondary font-semibold text-ink' : 'text-ink-secondary'
+                      }`}
+                    >
+                      {Number(d.data.slice(8, 10))}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
