@@ -43,6 +43,26 @@ type Row = {
   reembolso_de_id?: string | null
   vencimento_original?: string | null
 }
+type ItemPrevisto = Row & {
+  cliente_nome?: string | null
+  origem: 'horas' | 'fixo' | 'parcela'
+  horas?: number | null
+  percentual?: number
+  caso_numero?: number | null
+}
+type Previsto = {
+  mes_inicio: string
+  mes_fim: string
+  competencia: string
+  data_prevista: string
+  total: number
+  total_horas: number
+  total_fixo: number
+  total_parcela: number
+  itens: ItemPrevisto[]
+  por_dia: Record<string, number>
+}
+
 type Rotina = {
   data: string
   kpis: { despesas_dia: number; receitas_dia: number; saldo_dia: number; saldo_corrente: number }
@@ -58,6 +78,7 @@ const STATUS_STYLE: Record<string, string> = {
   atrasado: 'bg-red-100 text-red-700',
   remanejado: 'bg-amber-100 text-amber-700',
   cancelado: 'bg-secondary text-ink-mute line-through',
+  previsto: 'border border-dashed border-green-400 bg-green-50 text-green-700',
 }
 
 const FILTERS = [
@@ -83,6 +104,8 @@ const JANELAS = [
   { key: 'dia', label: 'Dia', dias: 1 },
 ] as const
 type JanelaKey = (typeof JANELAS)[number]['key']
+
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] as const
 
 export default function ContasAPagarDashboard() {
   const { hasPermission } = usePermissionsContext()
@@ -128,6 +151,19 @@ export default function ContasAPagarDashboard() {
   const [selecionado, setSelecionado] = useState<string | null>(null)
   const [aplicando, setAplicando] = useState(false)
 
+  // Receita prevista: o que ainda não virou nota fiscal (horas do mês anterior,
+  // mensalidades, parcelas de projeto). Filipe, 13/08: "podemos colocar um
+  // botão para adicionar as receitas não liberadas mas que podem ser
+  // consideradas como previstas... um fluxo de caixa com as NF e outro com os
+  // previstos no mês".
+  //
+  // Nasce LIGADO porque é o motivo de o módulo existir ("gestão de fluxo de
+  // caixa antecipada"), e porque hoje não há nenhuma nota emitida — desligado,
+  // a coluna de receber abre vazia e a tela não diz nada a ninguém. Tudo que é
+  // previsto vem marcado como tal, na lista e no gráfico.
+  const [previsto, setPrevisto] = useState<Previsto | null>(null)
+  const [incluirPrevisto, setIncluirPrevisto] = useState(true)
+
   const [editandoValor, setEditandoValor] = useState<string | null>(null)
   const [valorDraft, setValorDraft] = useState('')
   const [salvandoValor, setSalvandoValor] = useState(false)
@@ -164,6 +200,16 @@ export default function ContasAPagarDashboard() {
       })
       if (e) { setError(e.message); return }
       setFluxo(r as FluxoMensal)
+
+      // Previsto é uma consulta à parte, e de propósito: ele não depende da
+      // simulação de datas (arrastar uma despesa não muda quando a receita
+      // entra) e uma falha aqui não pode derrubar o fluxo real. Por isso o
+      // erro dele só apaga o previsto, não a tela.
+      const { data: p, error: ep } = await supabase.rpc('cp_receita_prevista', {
+        p_user_id: user.id,
+        p_mes: `${mes}-01`,
+      })
+      setPrevisto(ep ? null : (p as Previsto))
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar o fluxo do mês.')
@@ -204,20 +250,16 @@ export default function ContasAPagarDashboard() {
     else void load(dia)
   }, [modo, mesRef, dia, simulacao, load, loadMes])
 
-  const mesOptions = useMemo(() => {
-    const opts: Array<{ value: string; label: string }> = []
-    const hoje = new Date()
-    // 12 meses para tras e 6 para frente: o financeiro confere o passado e
-    // projeta o que ja esta agendado adiante.
-    for (let i = -12; i <= 6; i++) {
-      const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1)
-      opts.push({
-        value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-        label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', ''),
-      })
-    }
-    return opts
+  // Ano em cima, meses embaixo (pedido Filipe 14/08: "criar ano e deixar so o
+  // nome dos meses tipo ago, set, out porque essa linha ta muito grande").
+  // Antes eram 19 pilulas do tipo "Ago De 25" numa fila so, que estourava a
+  // largura da tela e quebrava em tres linhas.
+  const anosOptions = useMemo(() => {
+    const atual = new Date().getFullYear()
+    return [atual - 1, atual, atual + 1]
   }, [])
+  const anoRef = Number(mesRef.slice(0, 4))
+  const setAno = (ano: number) => setMesRef(`${ano}-${mesRef.slice(5, 7)}`)
 
   // Trocou de mês: a âncora da janela some, para não ficar apontando um dia que
   // não existe mais no mês novo.
@@ -253,7 +295,35 @@ export default function ContasAPagarDashboard() {
   // Gráfico e KPIs recortados para a janela. O saldo projetado de cada dia já
   // vem acumulado desde o dia 1, então recortar não o distorce: o saldo inicial
   // da janela é simplesmente o saldo com que o dia anterior terminou.
+  // Soma o previsto ao fluxo real, dia a dia.
+  //
+  // Não basta somar na coluna "receber" do dia: o saldo projetado é acumulado
+  // desde o dia 1, então uma receita prevista no dia 15 levanta o saldo do dia
+  // 15 EM DIANTE. Por isso o acumulador — somar só no dia daria uma linha de
+  // saldo que sobe e volta a cair, descrevendo um caixa que não existe.
+  const fluxoComPrevisto = useMemo<FluxoMensal | null>(() => {
+    if (!fluxo) return null
+    if (!incluirPrevisto || !previsto) return fluxo
+    const porDia = previsto.por_dia || {}
+    let acumulado = 0
+    const dias = fluxo.dias.map((d) => {
+      acumulado += Number(porDia[d.data] || 0)
+      return {
+        ...d,
+        receber: Number(d.receber) + Number(porDia[d.data] || 0),
+        saldo_projetado: Number(d.saldo_projetado) + acumulado,
+      }
+    })
+    return {
+      ...fluxo,
+      dias,
+      total_receber: Number(fluxo.total_receber) + acumulado,
+      saldo_final: Number(fluxo.saldo_final) + acumulado,
+    }
+  }, [fluxo, previsto, incluirPrevisto])
+
   const fluxoJanela = useMemo<FluxoMensal | null>(() => {
+    const fluxo = fluxoComPrevisto
     if (!fluxo) return null
     if (!janelaDe || !janelaAte) return fluxo
     const dias = fluxo.dias.filter((d) => d.data >= janelaDe && d.data <= janelaAte)
@@ -272,7 +342,7 @@ export default function ContasAPagarDashboard() {
         ? fluxo.atrasado_anterior
         : { pagar: 0, receber: 0 },
     }
-  }, [fluxo, janelaDe, janelaAte])
+  }, [fluxoComPrevisto, janelaDe, janelaAte])
 
   const moverJanela = (passos: number) => {
     if (!janelaDe || !fluxo) return
@@ -355,6 +425,21 @@ export default function ContasAPagarDashboard() {
     })
   }
 
+  // Empurra a conta um dia para tras ou para frente (setinhas da linha, pedido
+  // Filipe 14/08 com desenho: "mudar a ordem da fila"). Parte SEMPRE da data em
+  // que a linha esta hoje no rascunho, nao do vencimento original — senao
+  // apertar a seta duas vezes andaria so um dia.
+  //
+  // Preso ao mes carregado: o grafico so conhece este mes, e deixar a conta
+  // escapar para fora dele a faria sumir da tela sem explicacao.
+  const moverDias = (r: Row, delta: number) => {
+    if (!fluxo) return
+    const atual = simulacao[r.id] || r.vencimento
+    const alvo = shiftIso(atual, delta)
+    if (alvo < fluxo.mes_inicio || alvo > fluxo.mes_fim) return
+    moverPara(r.id, alvo)
+  }
+
   const descartarSimulacao = () => setSimulacao({})
 
   const aplicarSimulacao = async () => {
@@ -418,7 +503,16 @@ export default function ContasAPagarDashboard() {
   const fonte = modo === 'mes' ? fluxo : data
   const recorta = (rows: Row[]) => (modo === 'mes' ? applyFilter(rows).filter(naJanela) : applyFilter(rows))
   const pagar = useMemo(() => (fonte ? recorta(fonte.pagar as Row[]) : []), [fonte, filtro, dia, modo, naJanela])
-  const receber = useMemo(() => (fonte ? recorta(fonte.receber as Row[]) : []), [fonte, filtro, dia, modo, naJanela])
+  const receber = useMemo(() => {
+    const reais = fonte ? recorta(fonte.receber as Row[]) : []
+    if (modo !== 'mes' || !incluirPrevisto || !previsto) return reais
+    // Previsto entra na MESMA lista, e não numa segunda coluna: o Filipe quer
+    // olhar um mês e ver o caixa inteiro. O que separa os dois é a marca na
+    // linha, não o lugar. Sem passar por applyFilter — "vencidas" e
+    // "pagos/baixados" não querem dizer nada para algo que ainda não existe.
+    const prev = (previsto.itens || []).filter(naJanela)
+    return [...reais, ...prev].sort((a, b) => a.vencimento.localeCompare(b.vencimento))
+  }, [fonte, filtro, dia, modo, naJanela, previsto, incluirPrevisto])
 
   if (!canRead) {
     return (
@@ -445,17 +539,32 @@ export default function ContasAPagarDashboard() {
         </div>
 
         {modo === 'mes' ? (
-          <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
-            {mesOptions.map((m) => (
-              <button key={m.value} onClick={() => setMesRef(m.value)}
-                className={`shrink-0 rounded-full px-3 py-1 text-sm capitalize ${
-                  mesRef === m.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border border-hairline text-ink-mute hover:bg-canvas-soft'
-                }`}>
-                {m.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-md border border-hairline p-1">
+              {anosOptions.map((a) => (
+                <button key={a} onClick={() => setAno(a)}
+                  className={`rounded px-3 py-1 text-sm font-medium ${
+                    anoRef === a ? 'bg-secondary text-ink' : 'text-ink-mute hover:bg-canvas-soft'
+                  }`}>
+                  {a}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {MESES_CURTOS.map((label, i) => {
+                const value = `${anoRef}-${String(i + 1).padStart(2, '0')}`
+                return (
+                  <button key={value} onClick={() => setMesRef(value)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-sm capitalize ${
+                      mesRef === value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-hairline text-ink-mute hover:bg-canvas-soft'
+                    }`}>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         ) : (
           <>
@@ -494,7 +603,42 @@ export default function ContasAPagarDashboard() {
           ) : (
             <span className="text-sm text-ink-mute">Mês inteiro</span>
           )}
+
+          {/* Liga/desliga o previsto. É o "botão para adicionar as receitas não
+              liberadas" — e serve para o Filipe comparar os dois cenários que
+              ele descreveu: "um fluxo de caixa com as NF e outro com os
+              previstos no mês". */}
+          {previsto ? (
+            <button
+              onClick={() => setIncluirPrevisto((v) => !v)}
+              title={
+                incluirPrevisto
+                  ? 'Mostrar só o que já virou nota fiscal'
+                  : 'Somar as receitas previstas ainda sem nota'
+              }
+              className={`ml-auto rounded-full border px-3 py-1 text-sm ${
+                incluirPrevisto
+                  ? 'border-green-400 bg-green-50 text-green-800'
+                  : 'border-hairline text-ink-mute hover:bg-canvas-soft'
+              }`}
+            >
+              {incluirPrevisto ? '✓ ' : '+ '}
+              previsto {fmtMoney(previsto.total)}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {/* De onde vem o previsto. Sem esta linha o número aparece do nada e o
+          Filipe não tem como conferir se bate com o que ele espera receber. */}
+      {modo === 'mes' && incluirPrevisto && previsto && Number(previsto.total) > 0 ? (
+        <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+          <strong>Previsto neste mês {fmtMoney(previsto.total)}</strong> — ainda sem nota fiscal.
+          Horas de {fmtDate(previsto.competencia).slice(3)} {fmtMoney(previsto.total_horas)}
+          {' · '}mensalidades e pró-labore {fmtMoney(previsto.total_fixo)}
+          {' · '}parcelas de projeto {fmtMoney(previsto.total_parcela)}.
+          {' '}Horas e mensalidades caem em {fmtDate(previsto.data_prevista)}; parcelas de projeto, na data do contrato.
+        </p>
       ) : null}
 
       {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
@@ -603,63 +747,68 @@ export default function ContasAPagarDashboard() {
         </div>
       ) : null}
 
-      {/* Faixa de dias: alvo do arraste E do clique. Aparece quando há uma
-          conta em movimento — arrastada ou escolhida no botão "mover" — para
-          não ocupar espaço o tempo todo. */}
-      {modo === 'mes' && (arrastando || selecionado) ? (
-        <div className="sticky top-2 z-20 rounded-lg border border-primary bg-white p-3 shadow-lg">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-medium text-ink">
-              {selecionado ? 'Clique no dia em que essa conta deve cair' : 'Solte no dia em que quer que essa conta caia'}
-            </p>
-            {selecionado ? (
-              <button onClick={() => setSelecionado(null)}
-                className="text-xs text-ink-mute underline hover:text-ink">
-                cancelar
-              </button>
+      {/* Barra vertical dos dias + listas.
+          "O que eu sugeri é que exista uma barra vertical dos dias do mês para
+          que eu possa simular como fica o caixa com essas mudanças" (Filipe,
+          14/08).
+
+          A COLUNA existe sempre; os DIAS só aparecem quando há uma conta em
+          movimento. São duas coisas diferentes e cada uma resolve um problema:
+          a largura reservada impede a página de pular quando a faixa surge no
+          meio do arraste, e esconder os números impede uma régua de 31 botões
+          sem função ocupando a tela o tempo todo. */}
+      <div className="flex items-start gap-4">
+        {modo === 'mes' ? (
+          <div className="sticky top-2 w-14 shrink-0">
+            {arrastando || selecionado ? (
+              <div className="rounded-lg border border-primary bg-white p-2 shadow-lg">
+                <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wide text-primary">Dia</p>
+                <div className="flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto">
+                  {(fluxo?.dias || []).map((d) => (
+                    <button
+                      key={d.data}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const id = e.dataTransfer.getData('text/plain') || arrastando
+                        if (id) moverPara(id, d.data)
+                        setArrastando(null)
+                      }}
+                      onClick={() => {
+                        if (!selecionado) return
+                        moverPara(selecionado, d.data)
+                        setSelecionado(null)
+                      }}
+                      title={`Soltar no dia ${Number(d.data.slice(8, 10))}`}
+                      className={`h-7 w-9 rounded border border-dashed border-primary text-xs hover:bg-primary/10 ${
+                        d.data === todayIso() ? 'bg-secondary font-semibold text-ink' : 'text-ink-secondary'
+                      }`}
+                    >
+                      {Number(d.data.slice(8, 10))}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {(fluxo?.dias || []).map((d) => (
-              <button
-                key={d.data}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const id = e.dataTransfer.getData('text/plain') || arrastando
-                  if (id) moverPara(id, d.data)
-                  setArrastando(null)
-                }}
-                onClick={() => {
-                  if (!selecionado) return
-                  moverPara(selecionado, d.data)
-                  setSelecionado(null)
-                }}
-                className="h-9 w-9 rounded-md border border-hairline text-xs text-ink-secondary hover:border-primary hover:bg-primary/10"
-              >
-                {Number(d.data.slice(8, 10))}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {/* Listas */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
-          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
-          editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
-          onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
-          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
-          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
-          selecionado={selecionado} onSelecionar={setSelecionado} />
-        <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
-          onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
-          editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
-          onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
-          onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
-          arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
-          selecionado={selecionado} onSelecionar={setSelecionado} />
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+          <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
+            onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
+            editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
+            onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
+            onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
+            arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
+            selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias} />
+          <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
+            onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
+            editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
+            onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
+            onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
+            arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
+            selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias} />
+        </div>
       </div>
     </div>
   )
@@ -668,7 +817,7 @@ export default function ContasAPagarDashboard() {
 function ListaColuna({
   titulo, cor, rows, loading, canWrite, onReagendar, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
-  arrastavel, simulacao, onArrastar, selecionado, onSelecionar,
+  arrastavel, simulacao, onArrastar, selecionado, onSelecionar, onMoverDias,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onReagendar: (id: string) => void; onBaixar: (id: string) => void
@@ -678,6 +827,7 @@ function ListaColuna({
   onSalvarValor: (row: Row) => void; onCancelarValor: () => void
   arrastavel: boolean; simulacao: Record<string, string>; onArrastar: (id: string | null) => void
   selecionado: string | null; onSelecionar: (id: string | null) => void
+  onMoverDias: (row: Row, delta: number) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -695,32 +845,68 @@ function ListaColuna({
         <p className="p-6 text-sm text-ink-mute">Nada para este dia/filtro.</p>
       ) : (
         <ul className="divide-y divide-hairline">
-          {rows.map((r) => (
+          {rows.map((r) => {
+            // Previsto não é lançamento: não pode ser baixado, reagendado,
+            // editado, excluído nem arrastado. Ele nem existe em
+            // finance.lancamentos — qualquer botão aqui chamaria uma RPC com um
+            // id sintético e voltaria erro.
+            const ehPrevisto = r.status === 'previsto'
+            const movivel = arrastavel && canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status)
+            return (
             <li
               key={r.id}
-              draggable={arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)}
+              draggable={movivel}
               onDragStart={(e) => { e.dataTransfer.setData('text/plain', r.id); onArrastar(r.id) }}
               onDragEnd={() => onArrastar(null)}
               className={`flex items-center justify-between gap-3 p-4 ${
                 simulacao[r.id] ? 'border-l-4 border-amber-400 bg-amber-50/50' : ''
-              } ${selecionado === r.id ? 'bg-primary/5 ring-1 ring-inset ring-primary' : ''} ${
-                arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? 'cursor-grab active:cursor-grabbing' : ''
+              } ${ehPrevisto ? 'border-l-4 border-dashed border-l-green-400 bg-green-50/30' : ''} ${
+                selecionado === r.id ? 'bg-primary/5 ring-1 ring-inset ring-primary' : ''} ${
+                movivel ? 'cursor-grab active:cursor-grabbing' : ''
               }`}
             >
-              <div className="flex min-w-0 items-start gap-2">
-                {arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
-                  <button
-                    onClick={() => onSelecionar(selecionado === r.id ? null : r.id)}
-                    title="Mover esta conta para outro dia"
-                    aria-label="Mover para outro dia"
-                    className={`mt-0.5 shrink-0 rounded border px-1.5 py-1 text-xs leading-none ${
-                      selecionado === r.id
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-hairline text-ink-mute hover:border-primary hover:text-primary'
-                    }`}
-                  >
-                    ⠿
-                  </button>
+              <div className="flex min-w-0 items-start gap-3">
+                {/* Coluna de data: setinha para cima, o dia, setinha para
+                    baixo — o desenho que o Filipe mandou em 14/08. As setas
+                    andam um dia; clicar no dia abre a barra vertical para
+                    escolher qualquer data do mês de uma vez. */}
+                {movivel ? (
+                  <div className="flex shrink-0 flex-col items-center">
+                    {/* Alvo largo de proposito: com 16x24px eu mesmo errei o
+                        clique duas vezes ao testar. Ocupa a largura inteira da
+                        pilha, do tamanho do dia que fica no meio. */}
+                    <button onClick={() => onMoverDias(r, -1)} aria-label="Um dia antes"
+                      className="h-5 w-11 rounded text-[10px] leading-none text-ink-mute hover:bg-canvas-soft hover:text-ink">
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => onSelecionar(selecionado === r.id ? null : r.id)}
+                      title="Escolher outra data para esta conta"
+                      className={`w-11 rounded-md border px-1 py-0.5 text-center leading-tight ${
+                        selecionado === r.id
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : cor === 'red'
+                            ? 'border-red-200 bg-red-50 text-red-700 hover:border-red-400'
+                            : 'border-green-200 bg-green-50 text-green-700 hover:border-green-400'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold">{Number(r.vencimento.slice(8, 10))}</span>
+                      <span className="block text-[9px] font-medium uppercase">
+                        {MESES_CURTOS[Number(r.vencimento.slice(5, 7)) - 1]}
+                      </span>
+                    </button>
+                    <button onClick={() => onMoverDias(r, 1)} aria-label="Um dia depois"
+                      className="h-5 w-11 rounded text-[10px] leading-none text-ink-mute hover:bg-canvas-soft hover:text-ink">
+                      ▼
+                    </button>
+                  </div>
+                ) : ehPrevisto ? (
+                  <div className="w-11 shrink-0 rounded-md border border-dashed border-green-300 bg-green-50 px-1 py-0.5 text-center leading-tight text-green-700">
+                    <span className="block text-sm font-bold">{Number(r.vencimento.slice(8, 10))}</span>
+                    <span className="block text-[9px] font-medium uppercase">
+                      {MESES_CURTOS[Number(r.vencimento.slice(5, 7)) - 1]}
+                    </span>
+                  </div>
                 ) : null}
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-ink">
@@ -741,6 +927,15 @@ function ListaColuna({
                     </span>
                   )}
                   <span>· {fmtDate(r.vencimento)}</span>
+                  {ehPrevisto && (r as ItemPrevisto).cliente_nome ? (
+                    <span className="rounded bg-secondary px-1.5 py-0.5">{(r as ItemPrevisto).cliente_nome}</span>
+                  ) : null}
+                  {ehPrevisto && (r as ItemPrevisto).horas ? (
+                    <span className="rounded bg-secondary px-1.5 py-0.5">{(r as ItemPrevisto).horas}h</span>
+                  ) : null}
+                  {ehPrevisto && Number((r as ItemPrevisto).percentual ?? 100) < 100 ? (
+                    <span className="rounded bg-secondary px-1.5 py-0.5">rateio {(r as ItemPrevisto).percentual}%</span>
+                  ) : null}
                   {r.reembolsavel && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">reembolsável</span>}
                 </p>
               </div>
@@ -772,7 +967,7 @@ function ListaColuna({
                   ) : (
                     <p className="text-sm font-semibold text-ink">
                       {fmtMoney(r.valor)}
-                      {canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
+                      {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
                         <button
                           onClick={() => onAbrirValor(r)}
                           title="Editar valor (só este lançamento)"
@@ -785,7 +980,7 @@ function ListaColuna({
                   )}
                   <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[r.status] || 'bg-secondary text-ink-secondary'}`}>{r.status}</span>
                 </div>
-                {canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
+                {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
                   <div className="flex flex-col gap-1">
                     <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
                     <button onClick={() => onReagendar(r.id)} title="Reagendar" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">reagendar</button>
@@ -795,7 +990,8 @@ function ListaColuna({
                 )}
               </div>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
     </div>
