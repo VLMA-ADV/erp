@@ -43,6 +43,26 @@ type Row = {
   reembolso_de_id?: string | null
   vencimento_original?: string | null
 }
+type ItemPrevisto = Row & {
+  cliente_nome?: string | null
+  origem: 'horas' | 'fixo' | 'parcela'
+  horas?: number | null
+  percentual?: number
+  caso_numero?: number | null
+}
+type Previsto = {
+  mes_inicio: string
+  mes_fim: string
+  competencia: string
+  data_prevista: string
+  total: number
+  total_horas: number
+  total_fixo: number
+  total_parcela: number
+  itens: ItemPrevisto[]
+  por_dia: Record<string, number>
+}
+
 type Rotina = {
   data: string
   kpis: { despesas_dia: number; receitas_dia: number; saldo_dia: number; saldo_corrente: number }
@@ -58,6 +78,7 @@ const STATUS_STYLE: Record<string, string> = {
   atrasado: 'bg-red-100 text-red-700',
   remanejado: 'bg-amber-100 text-amber-700',
   cancelado: 'bg-secondary text-ink-mute line-through',
+  previsto: 'border border-dashed border-green-400 bg-green-50 text-green-700',
 }
 
 const FILTERS = [
@@ -130,6 +151,19 @@ export default function ContasAPagarDashboard() {
   const [selecionado, setSelecionado] = useState<string | null>(null)
   const [aplicando, setAplicando] = useState(false)
 
+  // Receita prevista: o que ainda não virou nota fiscal (horas do mês anterior,
+  // mensalidades, parcelas de projeto). Filipe, 13/08: "podemos colocar um
+  // botão para adicionar as receitas não liberadas mas que podem ser
+  // consideradas como previstas... um fluxo de caixa com as NF e outro com os
+  // previstos no mês".
+  //
+  // Nasce LIGADO porque é o motivo de o módulo existir ("gestão de fluxo de
+  // caixa antecipada"), e porque hoje não há nenhuma nota emitida — desligado,
+  // a coluna de receber abre vazia e a tela não diz nada a ninguém. Tudo que é
+  // previsto vem marcado como tal, na lista e no gráfico.
+  const [previsto, setPrevisto] = useState<Previsto | null>(null)
+  const [incluirPrevisto, setIncluirPrevisto] = useState(true)
+
   const [editandoValor, setEditandoValor] = useState<string | null>(null)
   const [valorDraft, setValorDraft] = useState('')
   const [salvandoValor, setSalvandoValor] = useState(false)
@@ -166,6 +200,16 @@ export default function ContasAPagarDashboard() {
       })
       if (e) { setError(e.message); return }
       setFluxo(r as FluxoMensal)
+
+      // Previsto é uma consulta à parte, e de propósito: ele não depende da
+      // simulação de datas (arrastar uma despesa não muda quando a receita
+      // entra) e uma falha aqui não pode derrubar o fluxo real. Por isso o
+      // erro dele só apaga o previsto, não a tela.
+      const { data: p, error: ep } = await supabase.rpc('cp_receita_prevista', {
+        p_user_id: user.id,
+        p_mes: `${mes}-01`,
+      })
+      setPrevisto(ep ? null : (p as Previsto))
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar o fluxo do mês.')
@@ -251,7 +295,35 @@ export default function ContasAPagarDashboard() {
   // Gráfico e KPIs recortados para a janela. O saldo projetado de cada dia já
   // vem acumulado desde o dia 1, então recortar não o distorce: o saldo inicial
   // da janela é simplesmente o saldo com que o dia anterior terminou.
+  // Soma o previsto ao fluxo real, dia a dia.
+  //
+  // Não basta somar na coluna "receber" do dia: o saldo projetado é acumulado
+  // desde o dia 1, então uma receita prevista no dia 15 levanta o saldo do dia
+  // 15 EM DIANTE. Por isso o acumulador — somar só no dia daria uma linha de
+  // saldo que sobe e volta a cair, descrevendo um caixa que não existe.
+  const fluxoComPrevisto = useMemo<FluxoMensal | null>(() => {
+    if (!fluxo) return null
+    if (!incluirPrevisto || !previsto) return fluxo
+    const porDia = previsto.por_dia || {}
+    let acumulado = 0
+    const dias = fluxo.dias.map((d) => {
+      acumulado += Number(porDia[d.data] || 0)
+      return {
+        ...d,
+        receber: Number(d.receber) + Number(porDia[d.data] || 0),
+        saldo_projetado: Number(d.saldo_projetado) + acumulado,
+      }
+    })
+    return {
+      ...fluxo,
+      dias,
+      total_receber: Number(fluxo.total_receber) + acumulado,
+      saldo_final: Number(fluxo.saldo_final) + acumulado,
+    }
+  }, [fluxo, previsto, incluirPrevisto])
+
   const fluxoJanela = useMemo<FluxoMensal | null>(() => {
+    const fluxo = fluxoComPrevisto
     if (!fluxo) return null
     if (!janelaDe || !janelaAte) return fluxo
     const dias = fluxo.dias.filter((d) => d.data >= janelaDe && d.data <= janelaAte)
@@ -270,7 +342,7 @@ export default function ContasAPagarDashboard() {
         ? fluxo.atrasado_anterior
         : { pagar: 0, receber: 0 },
     }
-  }, [fluxo, janelaDe, janelaAte])
+  }, [fluxoComPrevisto, janelaDe, janelaAte])
 
   const moverJanela = (passos: number) => {
     if (!janelaDe || !fluxo) return
@@ -431,7 +503,16 @@ export default function ContasAPagarDashboard() {
   const fonte = modo === 'mes' ? fluxo : data
   const recorta = (rows: Row[]) => (modo === 'mes' ? applyFilter(rows).filter(naJanela) : applyFilter(rows))
   const pagar = useMemo(() => (fonte ? recorta(fonte.pagar as Row[]) : []), [fonte, filtro, dia, modo, naJanela])
-  const receber = useMemo(() => (fonte ? recorta(fonte.receber as Row[]) : []), [fonte, filtro, dia, modo, naJanela])
+  const receber = useMemo(() => {
+    const reais = fonte ? recorta(fonte.receber as Row[]) : []
+    if (modo !== 'mes' || !incluirPrevisto || !previsto) return reais
+    // Previsto entra na MESMA lista, e não numa segunda coluna: o Filipe quer
+    // olhar um mês e ver o caixa inteiro. O que separa os dois é a marca na
+    // linha, não o lugar. Sem passar por applyFilter — "vencidas" e
+    // "pagos/baixados" não querem dizer nada para algo que ainda não existe.
+    const prev = (previsto.itens || []).filter(naJanela)
+    return [...reais, ...prev].sort((a, b) => a.vencimento.localeCompare(b.vencimento))
+  }, [fonte, filtro, dia, modo, naJanela, previsto, incluirPrevisto])
 
   if (!canRead) {
     return (
@@ -522,7 +603,42 @@ export default function ContasAPagarDashboard() {
           ) : (
             <span className="text-sm text-ink-mute">Mês inteiro</span>
           )}
+
+          {/* Liga/desliga o previsto. É o "botão para adicionar as receitas não
+              liberadas" — e serve para o Filipe comparar os dois cenários que
+              ele descreveu: "um fluxo de caixa com as NF e outro com os
+              previstos no mês". */}
+          {previsto ? (
+            <button
+              onClick={() => setIncluirPrevisto((v) => !v)}
+              title={
+                incluirPrevisto
+                  ? 'Mostrar só o que já virou nota fiscal'
+                  : 'Somar as receitas previstas ainda sem nota'
+              }
+              className={`ml-auto rounded-full border px-3 py-1 text-sm ${
+                incluirPrevisto
+                  ? 'border-green-400 bg-green-50 text-green-800'
+                  : 'border-hairline text-ink-mute hover:bg-canvas-soft'
+              }`}
+            >
+              {incluirPrevisto ? '✓ ' : '+ '}
+              previsto {fmtMoney(previsto.total)}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {/* De onde vem o previsto. Sem esta linha o número aparece do nada e o
+          Filipe não tem como conferir se bate com o que ele espera receber. */}
+      {modo === 'mes' && incluirPrevisto && previsto && Number(previsto.total) > 0 ? (
+        <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+          <strong>Previsto neste mês {fmtMoney(previsto.total)}</strong> — ainda sem nota fiscal.
+          Horas de {fmtDate(previsto.competencia).slice(3)} {fmtMoney(previsto.total_horas)}
+          {' · '}mensalidades e pró-labore {fmtMoney(previsto.total_fixo)}
+          {' · '}parcelas de projeto {fmtMoney(previsto.total_parcela)}.
+          {' '}Horas e mensalidades caem em {fmtDate(previsto.data_prevista)}; parcelas de projeto, na data do contrato.
+        </p>
       ) : null}
 
       {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
@@ -727,7 +843,12 @@ function ListaColuna({
       ) : (
         <ul className="divide-y divide-hairline">
           {rows.map((r) => {
-            const movivel = arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)
+            // Previsto não é lançamento: não pode ser baixado, reagendado,
+            // editado, excluído nem arrastado. Ele nem existe em
+            // finance.lancamentos — qualquer botão aqui chamaria uma RPC com um
+            // id sintético e voltaria erro.
+            const ehPrevisto = r.status === 'previsto'
+            const movivel = arrastavel && canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status)
             return (
             <li
               key={r.id}
@@ -736,7 +857,8 @@ function ListaColuna({
               onDragEnd={() => onArrastar(null)}
               className={`flex items-center justify-between gap-3 p-4 ${
                 simulacao[r.id] ? 'border-l-4 border-amber-400 bg-amber-50/50' : ''
-              } ${selecionado === r.id ? 'bg-primary/5 ring-1 ring-inset ring-primary' : ''} ${
+              } ${ehPrevisto ? 'border-l-4 border-dashed border-l-green-400 bg-green-50/30' : ''} ${
+                selecionado === r.id ? 'bg-primary/5 ring-1 ring-inset ring-primary' : ''} ${
                 movivel ? 'cursor-grab active:cursor-grabbing' : ''
               }`}
             >
@@ -775,6 +897,13 @@ function ListaColuna({
                       ▼
                     </button>
                   </div>
+                ) : ehPrevisto ? (
+                  <div className="w-11 shrink-0 rounded-md border border-dashed border-green-300 bg-green-50 px-1 py-0.5 text-center leading-tight text-green-700">
+                    <span className="block text-sm font-bold">{Number(r.vencimento.slice(8, 10))}</span>
+                    <span className="block text-[9px] font-medium uppercase">
+                      {MESES_CURTOS[Number(r.vencimento.slice(5, 7)) - 1]}
+                    </span>
+                  </div>
                 ) : null}
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-ink">
@@ -795,6 +924,15 @@ function ListaColuna({
                     </span>
                   )}
                   <span>· {fmtDate(r.vencimento)}</span>
+                  {ehPrevisto && (r as ItemPrevisto).cliente_nome ? (
+                    <span className="rounded bg-secondary px-1.5 py-0.5">{(r as ItemPrevisto).cliente_nome}</span>
+                  ) : null}
+                  {ehPrevisto && (r as ItemPrevisto).horas ? (
+                    <span className="rounded bg-secondary px-1.5 py-0.5">{(r as ItemPrevisto).horas}h</span>
+                  ) : null}
+                  {ehPrevisto && Number((r as ItemPrevisto).percentual ?? 100) < 100 ? (
+                    <span className="rounded bg-secondary px-1.5 py-0.5">rateio {(r as ItemPrevisto).percentual}%</span>
+                  ) : null}
                   {r.reembolsavel && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">reembolsável</span>}
                 </p>
               </div>
@@ -826,7 +964,7 @@ function ListaColuna({
                   ) : (
                     <p className="text-sm font-semibold text-ink">
                       {fmtMoney(r.valor)}
-                      {canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
+                      {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
                         <button
                           onClick={() => onAbrirValor(r)}
                           title="Editar valor (só este lançamento)"
@@ -839,7 +977,7 @@ function ListaColuna({
                   )}
                   <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[r.status] || 'bg-secondary text-ink-secondary'}`}>{r.status}</span>
                 </div>
-                {canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
+                {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
                   <div className="flex flex-col gap-1">
                     <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
                     <button onClick={() => onReagendar(r.id)} title="Reagendar" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">reagendar</button>
