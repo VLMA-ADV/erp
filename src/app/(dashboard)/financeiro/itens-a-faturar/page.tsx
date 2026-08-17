@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
 import ItensAFaturarList from '@/components/faturamento/itens-a-faturar-list'
+import PostergadosList from '@/components/faturamento/postergados-list'
+import { SectionTabs } from '@/components/ui/section-tabs'
 import GerarFaturamentoMesButton from '@/components/faturamento/gerar-faturamento-mes-button'
 import ResetFaturamentoButton from '@/components/faturamento/reset-faturamento-button'
 import { createClient } from '@/lib/supabase/server'
@@ -27,7 +29,12 @@ export default async function ItensAFaturarPage() {
           <GerarFaturamentoMesButton />
         </div>
       </header>
-      <ItensAFaturarList />
+      <SectionTabs
+        tabs={[
+          { value: 'fila', label: 'Fila do mês', content: <ItensAFaturarList /> },
+          { value: 'postergados', label: 'Postergados', content: <PostergadosList /> },
+        ]}
+      />
     </div>
   )
 }
