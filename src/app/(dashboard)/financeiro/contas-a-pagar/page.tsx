@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import ContasAPagarDashboard from '@/components/contas-a-pagar/contas-a-pagar-dashboard'
-import LotesDeDespesa from '@/components/contas-a-pagar/lotes-de-despesa'
+import ContasAPagarAbas from '@/components/contas-a-pagar/contas-a-pagar-abas'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -29,13 +28,7 @@ export default async function ContasAPagarPage() {
           + Nova conta
         </Link>
       </header>
-      {/* Os lotes ficam acima da rotina diaria de proposito: sao uma acao, e no
-          fim da pagina — depois de toda a lista do dia — ninguem achava. */}
-      <div className="mb-10 border-b border-hairline pb-8">
-        <LotesDeDespesa />
-      </div>
-
-      <ContasAPagarDashboard />
+      <ContasAPagarAbas />
     </div>
   )
 }
