@@ -31,6 +31,10 @@ const PERIODOS = [
   { value: '6', label: 'Últimos 6 meses' },
   { value: '12', label: 'Últimos 12 meses' },
   { value: '24', label: 'Últimos 24 meses' },
+  // "Quero ver a lista em resumo de todos os lançamentos históricos"
+  // (Filipe, 17/08). Antes o mais longo era 24 meses, e o que fosse mais
+  // antigo simplesmente não entrava na conta.
+  { value: 'tudo', label: 'Todo o período' },
 ]
 
 interface Despesa {
@@ -216,14 +220,24 @@ export default function DespesasResumo() {
   }, [itens])
 
   const chavesDoPeriodo = useMemo(() => {
-    const total = Number(meses)
     const hoje = new Date()
+    // "Todo o período" vai do mês da despesa mais antiga até hoje, e não uma
+    // janela fixa: a série do gráfico precisa de todos os meses no meio, senão
+    // um mês sem lançamento vira um buraco na linha em vez de um zero.
+    let total = Number(meses)
+    if (meses === 'tudo') {
+      const datas = itens.map((i) => i.data_lancamento).filter((d): d is string => Boolean(d)).sort()
+      const maisAntiga = datas[0]
+      if (!maisAntiga) return [chaveDoMes(hoje)]
+      const [ano, mes] = maisAntiga.split('-').map(Number)
+      total = (hoje.getFullYear() - ano) * 12 + (hoje.getMonth() + 1 - mes) + 1
+    }
     const chaves: string[] = []
     for (let i = total - 1; i >= 0; i--) {
       chaves.push(chaveDoMes(new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)))
     }
     return chaves
-  }, [meses])
+  }, [meses, itens])
 
   // Cancelado nao e gasto: some das contas, como ja some da lista.
   const doPeriodo = useMemo(() => {

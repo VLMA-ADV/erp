@@ -158,6 +158,58 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
     [contas],
   )
 
+  // Editar lote (Filipe, 17/08: "me permita visualizar e editar os lotes dos
+  // usuarios"). Reaproveita o mesmo dialogo de criar: os campos sao os mesmos,
+  // muda so quem recebe o payload no fim. A pessoa do lote nao se edita — ver
+  // o comentario em editar_lote_despesa.
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+
+  const abrirEdicao = (lote: Lote) => {
+    setEditandoId(lote.id)
+    setForm({
+      colaborador_user_id: lote.colaborador_user_id,
+      valor: String(lote.valor ?? ''),
+      descricao: lote.descricao ?? '',
+      conta_bancaria_origem_id: '',
+      conta_bancaria_destino_id: '',
+      data_transferencia: lote.data_transferencia ?? '',
+    })
+    setDialogAberto(true)
+  }
+
+  const salvarEdicao = async () => {
+    if (!editandoId) return
+    if (!Number(form.valor)) { toastError('Informe o valor adiantado'); return }
+    try {
+      setEnviando(true)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { error } = await supabase.rpc('editar_lote_despesa', {
+        p_user_id: user.id,
+        p_lote_id: editandoId,
+        p_payload: {
+          valor: Number(form.valor),
+          descricao: form.descricao.trim(),
+          conta_bancaria_origem_id: form.conta_bancaria_origem_id || null,
+          conta_bancaria_destino_id: form.conta_bancaria_destino_id || null,
+          data_transferencia: form.data_transferencia || null,
+        },
+      })
+      if (error) throw error
+      success('Lote atualizado')
+      setDialogAberto(false)
+      setEditandoId(null)
+      setForm(formVazio)
+      await carregarLotes()
+    } catch (err) {
+      console.error(err)
+      toastError(err instanceof Error ? err.message : 'Erro ao editar o lote')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   const criar = async () => {
     if (!form.colaborador_user_id) { toastError('Escolha a pessoa do lote'); return }
     if (!Number(form.valor)) { toastError('Informe o valor adiantado'); return }
@@ -305,6 +357,11 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
                       {formatMoney(Math.abs(lote.saldo))}
                     </p>
                   </div>
+                  {podeGerir && !['fechado', 'cancelado'].includes(lote.status) ? (
+                    <Button variant="outline" onClick={() => abrirEdicao(lote)} disabled={enviando}>
+                      Editar
+                    </Button>
+                  ) : null}
                   {podeGerir && lote.status === 'aberto' && lote.qtd_despesas === 0 ? (
                     <Button variant="outline" className="text-destructive hover:bg-destructive/5" onClick={() => void cancelar(lote)} disabled={enviando}>
                       Excluir lote
@@ -333,7 +390,7 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
       <Dialog open={dialogAberto} onOpenChange={(aberto) => { setDialogAberto(aberto); if (!aberto) setForm(formVazio) }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Novo lote de despesas</DialogTitle>
+            <DialogTitle>{editandoId ? 'Editar lote de despesas' : 'Novo lote de despesas'}</DialogTitle>
           </DialogHeader>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -343,10 +400,10 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
                 value={form.colaborador_user_id}
                 onValueChange={(valor) => setForm((prev) => ({ ...prev, colaborador_user_id: valor }))}
                 options={pessoaOptions}
+                disabled={enviando || Boolean(editandoId)}
                 placeholder="Selecione a pessoa"
                 searchPlaceholder="Buscar pessoa..."
                 emptyText="Nenhuma pessoa encontrada."
-                disabled={enviando}
               />
             </div>
 
@@ -406,11 +463,11 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogAberto(false)} disabled={enviando}>
+            <Button variant="outline" onClick={() => { setDialogAberto(false); setEditandoId(null) }} disabled={enviando}>
               Cancelar
             </Button>
-            <Button onClick={() => void criar()} disabled={enviando}>
-              {enviando ? 'Criando...' : 'Criar lote'}
+            <Button onClick={() => void (editandoId ? salvarEdicao() : criar())} disabled={enviando}>
+              {enviando ? 'Salvando...' : editandoId ? 'Salvar lote' : 'Criar lote'}
             </Button>
           </DialogFooter>
         </DialogContent>
