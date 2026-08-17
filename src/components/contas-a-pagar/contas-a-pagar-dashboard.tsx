@@ -295,6 +295,25 @@ export default function ContasAPagarDashboard() {
   // Gráfico e KPIs recortados para a janela. O saldo projetado de cada dia já
   // vem acumulado desde o dia 1, então recortar não o distorce: o saldo inicial
   // da janela é simplesmente o saldo com que o dia anterior terminou.
+  // Itens de previsto com a data do rascunho aplicada. O servidor recalcula o
+  // previsto do zero a cada chamada e nao conhece a simulacao (ela vale para
+  // lancamentos), entao quem move uma previsao e a tela. Uma fonte so para a
+  // lista e para o grafico, senao a linha mostraria um dia e a curva outro.
+  const previstoItens = useMemo<ItemPrevisto[]>(() => {
+    if (!previsto) return []
+    return (previsto.itens || []).map((i) =>
+      simulacao[i.id]
+        ? { ...i, vencimento: simulacao[i.id], vencimento_original: i.vencimento }
+        : i,
+    )
+  }, [previsto, simulacao])
+
+  const previstoPorDia = useMemo<Record<string, number>>(() => {
+    const acc: Record<string, number> = {}
+    for (const i of previstoItens) acc[i.vencimento] = (acc[i.vencimento] || 0) + Number(i.valor || 0)
+    return acc
+  }, [previstoItens])
+
   // Soma o previsto ao fluxo real, dia a dia.
   //
   // Não basta somar na coluna "receber" do dia: o saldo projetado é acumulado
@@ -304,7 +323,7 @@ export default function ContasAPagarDashboard() {
   const fluxoComPrevisto = useMemo<FluxoMensal | null>(() => {
     if (!fluxo) return null
     if (!incluirPrevisto || !previsto) return fluxo
-    const porDia = previsto.por_dia || {}
+    const porDia = previstoPorDia
     let acumulado = 0
     const dias = fluxo.dias.map((d) => {
       acumulado += Number(porDia[d.data] || 0)
@@ -320,7 +339,7 @@ export default function ContasAPagarDashboard() {
       total_receber: Number(fluxo.total_receber) + acumulado,
       saldo_final: Number(fluxo.saldo_final) + acumulado,
     }
-  }, [fluxo, previsto, incluirPrevisto])
+  }, [fluxo, previsto, previstoPorDia, incluirPrevisto])
 
   const fluxoJanela = useMemo<FluxoMensal | null>(() => {
     const fluxo = fluxoComPrevisto
@@ -442,8 +461,15 @@ export default function ContasAPagarDashboard() {
 
   const descartarSimulacao = () => setSimulacao({})
 
+  // Linhas de previsto tem id sintetico ("previsto:...") e nao existem em
+  // finance.lancamentos. Mover uma delas e uma simulacao pura — util para
+  // responder "e se esse cliente atrasar?" — mas nao ha o que gravar.
+  const ehIdPrevisto = (id: string) => id.startsWith('previsto:')
+  const movidasReais = Object.keys(simulacao).filter((id) => !ehIdPrevisto(id)).length
+  const movidasPrevistas = Object.keys(simulacao).length - movidasReais
+
   const aplicarSimulacao = async () => {
-    const mudancas = Object.entries(simulacao)
+    const mudancas = Object.entries(simulacao).filter(([id]) => !ehIdPrevisto(id))
     if (mudancas.length === 0) return
     if (!window.confirm(`Aplicar ${mudancas.length} mudança(s) de data? As contas passam a vencer nas novas datas.`)) return
 
@@ -459,8 +485,12 @@ export default function ContasAPagarDashboard() {
         if (e) falhas += 1
       }
       if (falhas > 0) alert(`${falhas} conta(s) não puderam ser reagendadas.`)
-      setSimulacao({})
-      void loadMes(mesRef, {})
+      // As previstas continuam no rascunho: elas nao foram gravadas porque nao
+      // ha o que gravar, e limpa-las aqui apagaria a simulacao que o usuario
+      // montou sem ele ter pedido.
+      const restante = Object.fromEntries(Object.entries(simulacao).filter(([id]) => ehIdPrevisto(id)))
+      setSimulacao(restante)
+      void loadMes(mesRef, restante)
     } finally {
       setAplicando(false)
     }
@@ -476,16 +506,7 @@ export default function ContasAPagarDashboard() {
     recarregar()
   }
 
-  const reagendar = async (id: string) => {
-    const nova = window.prompt('Reagendar para qual data? (AAAA-MM-DD)', shiftIso(dia, 3))
-    if (!nova) return
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { error: e } = await supabase.rpc('cp_reagendar', { p_user_id: user.id, p_id: id, p_nova_data: nova })
-    if (e) { alert(e.message); return }
-    recarregar()
-  }
+
 
   const baixar = async (id: string, natureza: 'pagar' | 'receber') => {
     const supabase = createClient()
@@ -510,9 +531,9 @@ export default function ContasAPagarDashboard() {
     // olhar um mês e ver o caixa inteiro. O que separa os dois é a marca na
     // linha, não o lugar. Sem passar por applyFilter — "vencidas" e
     // "pagos/baixados" não querem dizer nada para algo que ainda não existe.
-    const prev = (previsto.itens || []).filter(naJanela)
+    const prev = previstoItens.filter(naJanela)
     return [...reais, ...prev].sort((a, b) => a.vencimento.localeCompare(b.vencimento))
-  }, [fonte, filtro, dia, modo, naJanela, previsto, incluirPrevisto])
+  }, [fonte, filtro, dia, modo, naJanela, previsto, previstoItens, incluirPrevisto])
 
   if (!canRead) {
     return (
@@ -733,13 +754,18 @@ export default function ContasAPagarDashboard() {
           <p className="text-sm text-amber-900">
             <strong>Rascunho:</strong> {Object.keys(simulacao).length} conta(s) movida(s) de data.
             O gráfico acima já mostra como o caixa fica. Nada foi salvo ainda.
+            {movidasPrevistas > 0 ? (
+              <> {movidasPrevistas} {movidasPrevistas === 1 ? 'é uma previsão e volta' : 'são previsões e voltam'} ao
+              lugar ao recarregar — previsão não tem lançamento para reagendar.</>
+            ) : null}
           </p>
           <div className="flex items-center gap-2">
             <button onClick={descartarSimulacao} disabled={aplicando}
               className="rounded-md border border-hairline bg-white px-4 py-2 text-sm hover:bg-canvas-soft disabled:opacity-50">
               Cancelar
             </button>
-            <button onClick={() => void aplicarSimulacao()} disabled={aplicando}
+            <button onClick={() => void aplicarSimulacao()} disabled={aplicando || movidasReais === 0}
+              title={movidasReais === 0 ? 'Só há previsões movidas, e previsão não é gravada' : undefined}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
               {aplicando ? 'Aplicando…' : 'Confirmar'}
             </button>
@@ -795,14 +821,14 @@ export default function ContasAPagarDashboard() {
 
         <div className="grid min-w-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
           <ListaColuna titulo="Contas a Pagar" cor="red" rows={pagar} loading={loading} canWrite={canWrite}
-            onReagendar={reagendar} onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
+            onBaixar={(id) => baixar(id, 'pagar')} onExcluir={excluir}
             editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
             onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
             onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
             arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
             selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias} />
           <ListaColuna titulo="Contas a Receber" cor="green" rows={receber} loading={loading} canWrite={canWrite}
-            onReagendar={reagendar} onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
+            onBaixar={(id) => baixar(id, 'receber')} onExcluir={excluir}
             editandoValor={editandoValor} valorDraft={valorDraft} salvandoValor={salvandoValor}
             onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
             onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
@@ -815,12 +841,12 @@ export default function ContasAPagarDashboard() {
 }
 
 function ListaColuna({
-  titulo, cor, rows, loading, canWrite, onReagendar, onBaixar, onExcluir,
+  titulo, cor, rows, loading, canWrite, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
   arrastavel, simulacao, onArrastar, selecionado, onSelecionar, onMoverDias,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
-  onReagendar: (id: string) => void; onBaixar: (id: string) => void
+  onBaixar: (id: string) => void
   onExcluir: (id: string, descricao: string) => void
   editandoValor: string | null; valorDraft: string; salvandoValor: boolean
   onAbrirValor: (row: Row) => void; onMudarValor: (v: string) => void
@@ -851,7 +877,11 @@ function ListaColuna({
             // finance.lancamentos — qualquer botão aqui chamaria uma RPC com um
             // id sintético e voltaria erro.
             const ehPrevisto = r.status === 'previsto'
-            const movivel = arrastavel && canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status)
+            // Previsto TAMBEM se move (Filipe, 17/08: "atrasos nos recebimentos
+            // tambem acontecem"). A diferenca e que nele o movimento e so
+            // simulacao: nao ha lancamento para reagendar, entao o Confirmar
+            // ignora essas linhas e elas voltam ao lugar ao recarregar a tela.
+            const movivel = arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)
             return (
             <li
               key={r.id}
@@ -899,13 +929,6 @@ function ListaColuna({
                       className="h-5 w-11 rounded text-[10px] leading-none text-ink-mute hover:bg-canvas-soft hover:text-ink">
                       ▼
                     </button>
-                  </div>
-                ) : ehPrevisto ? (
-                  <div className="w-11 shrink-0 rounded-md border border-dashed border-green-300 bg-green-50 px-1 py-0.5 text-center leading-tight text-green-700">
-                    <span className="block text-sm font-bold">{Number(r.vencimento.slice(8, 10))}</span>
-                    <span className="block text-[9px] font-medium uppercase">
-                      {MESES_CURTOS[Number(r.vencimento.slice(5, 7)) - 1]}
-                    </span>
                   </div>
                 ) : null}
               <div className="min-w-0">
@@ -983,7 +1006,6 @@ function ListaColuna({
                 {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
                   <div className="flex flex-col gap-1">
                     <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
-                    <button onClick={() => onReagendar(r.id)} title="Reagendar" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">reagendar</button>
                     <Link href={`/financeiro/contas-a-pagar/novo?id=${r.id}`} title="Editar" className="rounded border border-hairline px-2 py-0.5 text-center text-xs hover:bg-canvas-soft">editar</Link>
                     <button onClick={() => onExcluir(r.id, r.descricao)} title="Excluir" className="rounded border border-hairline px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10">excluir</button>
                   </div>

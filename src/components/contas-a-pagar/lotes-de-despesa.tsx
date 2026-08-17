@@ -86,7 +86,7 @@ const formVazio = {
   data_transferencia: '',
 }
 
-export default function LotesDeDespesa() {
+export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {}) {
   const { hasPermission } = usePermissionsContext()
   const { success, error: toastError } = useToast()
 
@@ -114,12 +114,14 @@ export default function LotesDeDespesa() {
       })
       if (error) throw error
       setLotes((data || []) as Lote[])
+      // Avisa a aba para refazer a contagem de "aguardando validação".
+      onMudou?.()
     } catch (err) {
       console.error(err)
     } finally {
       setCarregando(false)
     }
-  }, [])
+  }, [onMudou])
 
   useEffect(() => {
     void carregarLotes()
@@ -305,13 +307,16 @@ export default function LotesDeDespesa() {
                   </div>
                   {podeGerir && lote.status === 'aberto' && lote.qtd_despesas === 0 ? (
                     <Button variant="outline" className="text-destructive hover:bg-destructive/5" onClick={() => void cancelar(lote)} disabled={enviando}>
-                      Cancelar
+                      Excluir lote
                     </Button>
                   ) : null}
                   {podeGerir && lote.status === 'em_validacao' ? (
                     <div className="flex flex-col gap-1.5">
+                      {/* "Baixar o lote" e como o Filipe chama: e a acao que
+                          gera o acerto (sobra vira conta a receber, falta vira
+                          conta a pagar). A RPC continua sendo validar_lote_despesa. */}
                       <Button onClick={() => void validar(lote, 'aprovar')} disabled={enviando}>
-                        Aprovar
+                        Baixar lote
                       </Button>
                       <Button variant="outline" onClick={() => void validar(lote, 'reabrir')} disabled={enviando}>
                         Devolver
