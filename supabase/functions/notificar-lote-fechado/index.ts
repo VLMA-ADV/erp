@@ -46,37 +46,33 @@ Deno.serve(async (req) => {
     const { lote_id } = (await req.json().catch(() => ({}))) as { lote_id?: string }
     if (!lote_id) return json({ error: "lote_id é obrigatório" }, 400)
 
-    const { data: lote } = await supabase
-      .schema("operations")
-      .from("despesa_lotes")
-      .select("id, valor, descricao, status, colaborador_user_id, tenant_id, fechamento_solicitado_em")
-      .eq("id", lote_id)
-      .single()
+    // Tudo numa RPC só. A versão anterior lia operations.despesa_lotes e
+    // people.colaboradores via PostgREST e levava 406 — este projeto não expõe
+    // esses schemas no gateway, e o erro chegava aqui disfarçado de "lote não
+    // encontrado". Achado testando ponta a ponta, não lendo o código.
+    const { data: aviso, error: avisoErr } = await supabase.rpc("get_aviso_lote_fechado", { p_lote_id: lote_id })
+    if (avisoErr) {
+      console.error("get_aviso_lote_fechado falhou:", avisoErr.message)
+      return json({ enviado: false, motivo: "falha ao ler o lote" }, 200)
+    }
+    if (!aviso) return json({ error: "Lote não encontrado" }, 404)
 
-    if (!lote) return json({ error: "Lote não encontrado" }, 404)
+    const lote = aviso as {
+      status: string; valor: number; descricao: string | null
+      dono_nome: string; destinatarios: string[]
+    }
+
     // Só avisa o que de fato está esperando validação — senão dá para disparar
     // e-mail para o financeiro chamando esta função em qualquer lote.
     if (lote.status !== "em_validacao") return json({ enviado: false, motivo: "lote não está em validação" }, 200)
 
-    const { data: dono } = await supabase
-      .schema("people")
-      .from("colaboradores")
-      .select("nome")
-      .eq("user_id", lote.colaborador_user_id)
-      .eq("tenant_id", lote.tenant_id)
-      .maybeSingle()
-
-    // Destinatários: quem pode dar baixa em conta a pagar. É a mesma permissão
-    // que a tela de lotes exige para validar — usar outra lista aqui faria o
-    // aviso chegar a quem não pode agir nele.
-    const { data: destinos } = await supabase.rpc("get_emails_financeiro", { p_tenant_id: lote.tenant_id })
-    const emails = (destinos ?? []) as string[]
+    const emails = lote.destinatarios ?? []
     if (emails.length === 0) return json({ enviado: false, motivo: "nenhum destinatário" }, 200)
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY")
     if (!resendApiKey) return json({ enviado: false, motivo: "RESEND_API_KEY não configurada" }, 200)
 
-    const nome = dono?.nome ?? "Um colaborador"
+    const nome = lote.dono_nome
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
