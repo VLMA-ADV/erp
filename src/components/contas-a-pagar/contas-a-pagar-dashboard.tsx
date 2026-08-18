@@ -42,6 +42,7 @@ type Row = {
   reembolsavel?: boolean
   reembolso_de_id?: string | null
   vencimento_original?: string | null
+  baixa_data?: string | null
 }
 type ItemPrevisto = Row & {
   cliente_nome?: string | null
@@ -882,6 +883,13 @@ function ListaColuna({
             // simulacao: nao ha lancamento para reagendar, entao o Confirmar
             // ignora essas linhas e elas voltam ao lugar ao recarregar a tela.
             const movivel = arrastavel && canWrite && !['pago', 'recebido', 'cancelado'].includes(r.status)
+            // Conta já baixada continua editável e excluível (Filipe, 17/08:
+            // "como estamos em fase de testes quero ter essa flexibilidade").
+            // Só a data e que nao anda: para quem ja pagou, o dia que conta no
+            // caixa e o da baixa, e mover o vencimento nao mudaria o grafico —
+            // seria um botao que finge trabalhar.
+            const jaBaixada = ['pago', 'recebido'].includes(r.status)
+            const podeMexer = canWrite && !ehPrevisto && r.status !== 'cancelado'
             return (
             <li
               key={r.id}
@@ -929,6 +937,19 @@ function ListaColuna({
                       className="h-5 w-11 rounded text-[10px] leading-none text-ink-mute hover:bg-canvas-soft hover:text-ink">
                       ▼
                     </button>
+                  </div>
+                ) : arrastavel ? (
+                  /* Sem setas, mas a coluna continua: some-la fazia a linha da
+                     conta paga ficar torta em relacao as outras — foi o que o
+                     Filipe viu como "sumiu a barra de cima e baixo". */
+                  <div
+                    title={jaBaixada ? `Baixada em ${fmtDate(r.baixa_data || r.vencimento)}` : undefined}
+                    className="mt-5 w-11 shrink-0 rounded-md border border-hairline bg-canvas-soft px-1 py-0.5 text-center leading-tight text-ink-mute"
+                  >
+                    <span className="block text-sm font-bold">{Number(r.vencimento.slice(8, 10))}</span>
+                    <span className="block text-[9px] font-medium uppercase">
+                      {MESES_CURTOS[Number(r.vencimento.slice(5, 7)) - 1]}
+                    </span>
                   </div>
                 ) : null}
               <div className="min-w-0">
@@ -990,7 +1011,7 @@ function ListaColuna({
                   ) : (
                     <p className="text-sm font-semibold text-ink">
                       {fmtMoney(r.valor)}
-                      {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) ? (
+                      {podeMexer ? (
                         <button
                           onClick={() => onAbrirValor(r)}
                           title="Editar valor (só este lançamento)"
@@ -1003,9 +1024,11 @@ function ListaColuna({
                   )}
                   <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[r.status] || 'bg-secondary text-ink-secondary'}`}>{r.status}</span>
                 </div>
-                {canWrite && !ehPrevisto && !['pago', 'recebido', 'cancelado'].includes(r.status) && (
+                {podeMexer && (
                   <div className="flex flex-col gap-1">
-                    <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
+                    {!jaBaixada ? (
+                      <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
+                    ) : null}
                     <Link href={`/financeiro/contas-a-pagar/novo?id=${r.id}`} title="Editar" className="rounded border border-hairline px-2 py-0.5 text-center text-xs hover:bg-canvas-soft">editar</Link>
                     <button onClick={() => onExcluir(r.id, r.descricao)} title="Excluir" className="rounded border border-hairline px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10">excluir</button>
                   </div>

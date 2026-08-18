@@ -786,15 +786,21 @@ export default function ItensAFaturarList() {
       toastError('Selecione a nova data de faturamento.')
       return
     }
-    const timesheetIds = (postergarTarget.extrato || [])
-      .filter((linha) => {
-        const tipo = (linha.tipo || '').trim().toLowerCase()
-        return Boolean(linha.origem_id) && (tipo === 'timesheet' || tipo === 'hora')
-      })
-      .map((linha) => linha.origem_id as string)
+    // Antes daqui so hora era adiada, e o resto do extrato ficava para tras em
+    // silencio (Filipe, 17/08: "parece que nao funcionou totalmente, nao
+    // reagendou"). Mensalidade, projeto e parcela nao sao linha de tabela
+    // nenhuma — sao calculadas da regra do contrato — entao vao por outro
+    // caminho, o de finance.faturamento_adiamentos.
+    const linhas = (postergarTarget.extrato || []).filter((l) => Boolean(l.origem_id))
+    const ehHora = (l: { tipo?: string | null }) => {
+      const t = (l.tipo || '').trim().toLowerCase()
+      return t === 'timesheet' || t === 'hora'
+    }
+    const horas = linhas.filter(ehHora)
+    const regras = linhas.filter((l) => !ehHora(l))
 
-    if (timesheetIds.length === 0) {
-      toastError('Este caso não tem lançamentos de timesheet postergáveis.')
+    if (linhas.length === 0) {
+      toastError('Este caso não tem lançamentos postergáveis.')
       return
     }
 
@@ -806,7 +812,24 @@ export default function ItensAFaturarList() {
 
       let okCount = 0
       let failCount = 0
-      for (const timesheetId of timesheetIds) {
+      for (const linha of regras) {
+        const { error } = await supabase.rpc('postergar_item_regra', {
+          p_user_id: user.id,
+          p_caso_id: postergarTarget.casoId,
+          p_origem_id: linha.origem_id,
+          p_item_tipo: (linha.tipo || '').trim().toLowerCase(),
+          // Competência é o mês da fila que está na tela, não a data da linha:
+          // é de lá que ela está saindo.
+          p_competencia: `${dateStart.slice(0, 7)}-01`,
+          p_periodo: postergarDate,
+          p_valor: Number(linha.valor || 0),
+          p_descricao: linha.descricao || 'Item de faturamento',
+          p_data_referencia: linha.data_referencia || null,
+        })
+        if (!error) okCount += 1
+        else failCount += 1
+      }
+      for (const timesheetId of horas.map((l) => l.origem_id as string)) {
         // postergar_timesheet faz as duas coisas juntas: grava o novo periodo
         // e, se o item ja tiver virado billing_item (postergando da revisao),
         // cancela ele — senao ficaria contando na fatura atual e de novo no
