@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ContratosList from '@/components/contratos/contratos-list'
 import ContratosDashboard from '@/components/contratos/contratos-dashboard'
-import InboxFlutuante from '@/components/contratos/inbox-flutuante'
 import { SectionTabs } from '@/components/ui/section-tabs'
 
 export const dynamic = 'force-dynamic'
@@ -30,7 +29,6 @@ export default async function ContratosPage() {
       {/* A caixa de entrada saiu da aba e virou ícone (Filipe 07/08): ele quer
           ver de longe que chegou coisa. Ficam só as duas categorias que ele
           pediu — solicitações e mensagens. */}
-      <InboxFlutuante />
     </div>
   )
 }
