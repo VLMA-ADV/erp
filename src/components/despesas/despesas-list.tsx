@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, useRef } from 'react'
 import { Download, Edit, Plus, Trash2, User, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
@@ -257,6 +257,25 @@ export default function DespesasList() {
     () => Boolean(userId) && items.some((item) => item.created_by !== userId),
     [items, userId],
   )
+
+  // Quem enxerga as despesas dos outros abre a tela JÁ vendo todas.
+  //
+  // O padrão "só as minhas" foi pedido pelo Filipe em 11/08 e continua certo
+  // para a maioria — advogado abre a tela e vê o que lançou. Só que para quem
+  // tem alcance amplo ele escondia justamente o que a pessoa foi ali fazer, e
+  // o botão que troca a visão fica no fim da barra de ações: em 18/08 o
+  // Filipe, a Jessika, a Aline e a Thais reportaram que "não estamos vendo
+  // todas as despesas" — o backend já mandava tudo, a tela é que filtrava.
+  //
+  // O ref é para isto valer UMA vez, na primeira carga. Sem ele, quem clicasse
+  // em "Minhas despesas" seria jogado de volta para "todas" no recarregamento
+  // seguinte, e o botão pareceria quebrado.
+  const jaAbriuEmTodas = useRef(false)
+  useEffect(() => {
+    if (jaAbriuEmTodas.current || !veDeOutros) return
+    jaAbriuEmTodas.current = true
+    setSomenteMinhas(false)
+  }, [veDeOutros])
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
