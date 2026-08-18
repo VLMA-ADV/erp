@@ -1425,10 +1425,26 @@ export default function CrmPipeline() {
             <DialogTitle>{form.id ? 'Editar card CRM' : 'Novo card CRM'}</DialogTitle>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* 0. Lead ou cliente. Um lead ainda não existe no cadastro — por
-                isso a oportunidade guarda os dados do contato até virar cliente. */}
-            <div className="space-y-2 md:col-span-2">
+          {/* Formulário em três blocos — cliente, oportunidade, financeiro
+              (desenho aprovado pelo escritório em 18/08).
+
+              Antes era uma grade única de duas colunas com dezoito campos
+              seguidos: dava para preencher "valor global" sem ter escolhido o
+              serviço. O ganho aqui não é a cor, é a ordem — quem é o cliente,
+              o que é a oportunidade, quanto ela vale.
+
+              Nenhum campo saiu. O desenho original não trazia forma de
+              pagamento nem data projetada; as duas ficaram, a segunda dentro
+              do bloco financeiro, ao lado do valor futuro — sem ela o campo
+              "valor futuro projetado" fica sem responder "para quando". */}
+
+          {/* 1 — DADOS DO CLIENTE */}
+          <section className="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-amber-800">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">1</span>
+                Dados do cliente
+              </h3>
               <label className="flex items-center gap-2 text-sm text-ink-secondary">
                 <input
                   type="checkbox"
@@ -1440,265 +1456,271 @@ export default function CrmPipeline() {
                 É um lead (ainda não é cliente cadastrado)
               </label>
               {!!form.id && !form.eh_lead ? (
-                <p className="text-xs text-ink-mute">
+                <p className="w-full text-xs text-ink-mute">
                   Esta oportunidade já está ligada a um cliente e não volta a ser lead.
                 </p>
               ) : null}
             </div>
-
-            {/* 1. Cliente (ou os dados do lead) */}
-            {form.eh_lead ? (
-              <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {/* 1. Cliente (ou os dados do lead) */}
+              {form.eh_lead ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Nome do lead *</Label>
+                    <Input
+                      value={form.lead_nome}
+                      onChange={(e) => setForm((prev) => ({ ...prev, lead_nome: e.target.value }))}
+                      placeholder="Ex: Padaria do Centro"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>E-mail</Label>
+                    <Input
+                      type="email"
+                      value={form.lead_email}
+                      onChange={(e) => setForm((prev) => ({ ...prev, lead_email: e.target.value }))}
+                      placeholder="contato@empresa.com"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contato</Label>
+                    <Input
+                      value={form.lead_contato}
+                      onChange={(e) => setForm((prev) => ({ ...prev, lead_contato: e.target.value }))}
+                      placeholder="Pessoa de contato no lead"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Segmento econômico</Label>
+                    <CommandSelect
+                      value={form.lead_segmento_id}
+                      onValueChange={(value) => setForm((prev) => ({ ...prev, lead_segmento_id: value }))}
+                      options={segmentosOptions}
+                      placeholder="Selecione o segmento"
+                      searchPlaceholder="Buscar segmento..."
+                      emptyText="Nenhum segmento encontrado."
+                      disabled={saving}
+                      maxVisibleOptions={7}
+                    />
+                  </div>
+                </>
+              ) : (
                 <div className="space-y-2">
-                  <Label>Nome do lead *</Label>
-                  <Input
-                    value={form.lead_nome}
-                    onChange={(e) => setForm((prev) => ({ ...prev, lead_nome: e.target.value }))}
-                    placeholder="Ex: Padaria do Centro"
-                    disabled={saving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>E-mail</Label>
-                  <Input
-                    type="email"
-                    value={form.lead_email}
-                    onChange={(e) => setForm((prev) => ({ ...prev, lead_email: e.target.value }))}
-                    placeholder="contato@empresa.com"
-                    disabled={saving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contato</Label>
-                  <Input
-                    value={form.lead_contato}
-                    onChange={(e) => setForm((prev) => ({ ...prev, lead_contato: e.target.value }))}
-                    placeholder="Pessoa de contato no lead"
-                    disabled={saving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Segmento econômico</Label>
+                  <Label>Cliente *</Label>
                   <CommandSelect
-                    value={form.lead_segmento_id}
-                    onValueChange={(value) => setForm((prev) => ({ ...prev, lead_segmento_id: value }))}
-                    options={segmentosOptions}
-                    placeholder="Selecione o segmento"
-                    searchPlaceholder="Buscar segmento..."
-                    emptyText="Nenhum segmento encontrado."
+                    value={form.cliente_id}
+                    onValueChange={(value) => setForm((prev) => ({ ...prev, cliente_id: value }))}
+                    options={clientesOptions}
+                    placeholder="Selecione o cliente"
+                    searchPlaceholder="Buscar cliente..."
+                    emptyText="Nenhum cliente encontrado."
+                    onCreateOption={
+                      canWrite
+                        ? (value) =>
+                            void createClienteOnDemand(value, (clienteId) => {
+                              setForm((prev) => ({ ...prev, cliente_id: clienteId }))
+                            })
+                        : undefined
+                    }
+                    createOptionLabel="Criar cliente"
                     disabled={saving}
                     maxVisibleOptions={7}
                   />
                 </div>
-              </>
-            ) : (
+              )}
+              {/* 2. Segmento econômico do cliente, somente leitura. Some no modo
+                  lead, que tem o seu próprio campo de segmento logo acima — dois
+                  campos com o mesmo nome na tela só confundem. */}
+              {!form.eh_lead && (
+                <div className="space-y-2">
+                  <Label>Segmento econômico</Label>
+                  <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
+                    {clientesInfo[form.cliente_id]?.segmento_nome || '— (definido no cadastro do cliente)'}
+                  </div>
+                </div>
+              )}
+              {/* 10. Cidade do cliente, somente leitura. Também some no modo lead:
+                  não existe cadastro de onde puxar enquanto for lead. */}
+              {!form.eh_lead && (
+                <div className="space-y-2">
+                  <Label>Cidade</Label>
+                  <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
+                    {[clientesInfo[form.cliente_id]?.cidade, clientesInfo[form.cliente_id]?.estado].filter(Boolean).join(' / ') || '— (definida no cadastro do cliente)'}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* 2 — DADOS DA OPORTUNIDADE */}
+          <section className="rounded-lg border border-hairline bg-white p-4">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-ink">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-ink text-xs font-bold text-white">2</span>
+              Dados da oportunidade
+            </h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {/* Data do card */}
               <div className="space-y-2">
-                <Label>Cliente *</Label>
+                <Label>Data</Label>
+                <Input
+                  type="date"
+                  value={form.data_card}
+                  onChange={(e) => setForm((prev) => ({ ...prev, data_card: e.target.value }))}
+                  disabled={saving}
+                />
+              </div>
+              {/* 4. Serviço */}
+              <div className="space-y-2">
+                <Label>Serviço</Label>
                 <CommandSelect
-                  value={form.cliente_id}
-                  onValueChange={(value) => setForm((prev) => ({ ...prev, cliente_id: value }))}
-                  options={clientesOptions}
-                  placeholder="Selecione o cliente"
-                  searchPlaceholder="Buscar cliente..."
-                  emptyText="Nenhum cliente encontrado."
-                  onCreateOption={
-                    canWrite
-                      ? (value) =>
-                          void createClienteOnDemand(value, (clienteId) => {
-                            setForm((prev) => ({ ...prev, cliente_id: clienteId }))
-                          })
-                      : undefined
-                  }
-                  createOptionLabel="Criar cliente"
+                  value={form.servico_id}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, servico_id: value }))}
+                  options={servicosOptions}
+                  placeholder="Selecione o serviço"
+                  searchPlaceholder="Buscar serviço..."
+                  emptyText="Nenhum serviço encontrado."
                   disabled={saving}
                   maxVisibleOptions={7}
                 />
               </div>
-            )}
-
-            {/* 2. Segmento econômico do cliente, somente leitura. Some no modo
-                lead, que tem o seu próprio campo de segmento logo acima — dois
-                campos com o mesmo nome na tela só confundem. */}
-            {!form.eh_lead && (
+              {/* 5. Produto */}
               <div className="space-y-2">
-                <Label>Segmento econômico</Label>
-                <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
-                  {clientesInfo[form.cliente_id]?.segmento_nome || '— (definido no cadastro do cliente)'}
-                </div>
+                <Label>Produto</Label>
+                <CommandSelect
+                  value={form.produto_id}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, produto_id: value }))}
+                  options={produtosOptions}
+                  placeholder="Selecione o produto"
+                  searchPlaceholder="Buscar produto..."
+                  emptyText="Nenhum produto encontrado."
+                  disabled={saving}
+                  maxVisibleOptions={7}
+                />
               </div>
-            )}
-
-            {/* 3. Centro de custo */}
-            <div className="space-y-2">
-              <Label>Centro de custo</Label>
-              <CommandSelect
-                value={form.area_id}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, area_id: value }))}
-                options={areasOptions}
-                placeholder="Selecione o centro de custo"
-                searchPlaceholder="Buscar área..."
-                emptyText="Nenhuma área encontrada."
-                disabled={saving}
-                maxVisibleOptions={7}
-              />
-            </div>
-
-            {/* 4. Serviço */}
-            <div className="space-y-2">
-              <Label>Serviço</Label>
-              <CommandSelect
-                value={form.servico_id}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, servico_id: value }))}
-                options={servicosOptions}
-                placeholder="Selecione o serviço"
-                searchPlaceholder="Buscar serviço..."
-                emptyText="Nenhum serviço encontrado."
-                disabled={saving}
-                maxVisibleOptions={7}
-              />
-            </div>
-
-            {/* 5. Produto */}
-            <div className="space-y-2">
-              <Label>Produto</Label>
-              <CommandSelect
-                value={form.produto_id}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, produto_id: value }))}
-                options={produtosOptions}
-                placeholder="Selecione o produto"
-                searchPlaceholder="Buscar produto..."
-                emptyText="Nenhum produto encontrado."
-                disabled={saving}
-                maxVisibleOptions={7}
-              />
-            </div>
-
-            {/* 6. Valor */}
-            <div className="space-y-2">
-              <Label>Valor</Label>
-              <MoneyInput
-                value={form.valor}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, valor: value }))}
-                placeholder="0,00"
-                disabled={saving}
-              />
-            </div>
-
-            {/* Data do card */}
-            <div className="space-y-2">
-              <Label>Data</Label>
-              <Input
-                type="date"
-                value={form.data_card}
-                onChange={(e) => setForm((prev) => ({ ...prev, data_card: e.target.value }))}
-                disabled={saving}
-              />
-            </div>
-
-            {/* Valor global */}
-            <div className="space-y-2">
-              <Label>Valor global</Label>
-              <MoneyInput value={form.valor_global} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_global: v }))} placeholder="0,00" disabled={saving} />
-            </div>
-
-            {/* Forma de pagamento */}
-            <div className="space-y-2">
-              <Label>Forma de pagamento</Label>
-              <NativeSelect value={form.forma_pagamento} onChange={(e) => setForm((prev) => ({ ...prev, forma_pagamento: e.target.value }))} className="h-10 rounded-md border px-3" disabled={saving}>
-                <option value="">—</option>
-                <option value="a_vista">À vista</option>
-                <option value="parcelado">Parcelado</option>
-              </NativeSelect>
-            </div>
-
-            {/* Valor em caixa no mês */}
-            <div className="space-y-2">
-              <Label>Valor em caixa no mês</Label>
-              <MoneyInput value={form.valor_caixa_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_caixa_mes: v }))} placeholder="0,00" disabled={saving} />
-            </div>
-
-            {/* Faturado no próximo mês — indicador da etapa Conversão (Filipe 04/08) */}
-            <div className="space-y-2">
-              <Label>Faturado no próximo mês</Label>
-              <MoneyInput value={form.valor_faturado_prox_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_faturado_prox_mes: v }))} placeholder="0,00" disabled={saving} />
-            </div>
-
-            {/* Data projetada de fechamento */}
-            <div className="space-y-2">
-              <Label>Data projetada</Label>
-              <Input type="date" value={form.data_projetada} onChange={(e) => setForm((prev) => ({ ...prev, data_projetada: e.target.value }))} disabled={saving} />
-            </div>
-
-            {/* Valor futuro projetado */}
-            <div className="space-y-2">
-              <Label>Valor futuro projetado</Label>
-              <MoneyInput value={form.valor_futuro_projetado} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_futuro_projetado: v }))} placeholder="0,00" disabled={saving} />
-            </div>
-
-            {/* Regra de cobrança pretendida (pedido Filipe 04/08) — mesma
-                lista do caso, para a oportunidade já nascer com a intenção. */}
-            <div className="space-y-2">
-              <Label>Regra de cobrança</Label>
-              <NativeSelect
-                value={form.regra_cobranca}
-                onChange={(event) => setForm((prev) => ({ ...prev, regra_cobranca: event.target.value }))}
-                className="h-10 rounded-md border px-3"
-                disabled={!canWrite || saving}
-              >
-                <option value="">Selecione...</option>
-                <option value="hora">Hora</option>
-                <option value="mensal">Mensal</option>
-                <option value="mensalidade_processo">Mensalidade de processo</option>
-                <option value="mensalidade_carteira">Mensalidade de Carteira</option>
-                <option value="projeto">Projeto</option>
-                <option value="pro_labore">Pró-labore</option>
-                <option value="exito">Êxito</option>
-              </NativeSelect>
-            </div>
-
-            {/* 7. Fase */}
-            <div className="space-y-2">
-              <Label>Fase</Label>
-              <NativeSelect
-                value={form.etapa}
-                onChange={(event) => setForm((prev) => ({ ...prev, etapa: event.target.value as EtapaKanban }))}
-                className="h-10 rounded-md border px-3"
-                disabled={!canWrite || saving}
-              >
-                {ETAPAS.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {item.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-
-            {/* 9. Responsável */}
-            <div className="space-y-2">
-              <Label>Responsável interno</Label>
-              <CommandSelect
-                value={form.responsavel_interno_id}
-                onValueChange={(value) => setForm((prev) => ({ ...prev, responsavel_interno_id: value }))}
-                options={colaboradoresOptions}
-                placeholder="Selecione o responsável"
-                searchPlaceholder="Buscar colaborador..."
-                emptyText="Nenhum colaborador encontrado."
-                disabled={saving}
-                maxVisibleOptions={7}
-              />
-            </div>
-
-            {/* 10. Cidade do cliente, somente leitura. Também some no modo lead:
-                não existe cadastro de onde puxar enquanto for lead. */}
-            {!form.eh_lead && (
+              {/* 3. Centro de custo */}
               <div className="space-y-2">
-                <Label>Cidade</Label>
-                <div className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary">
-                  {[clientesInfo[form.cliente_id]?.cidade, clientesInfo[form.cliente_id]?.estado].filter(Boolean).join(' / ') || '— (definida no cadastro do cliente)'}
-                </div>
+                <Label>Centro de custo</Label>
+                <CommandSelect
+                  value={form.area_id}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, area_id: value }))}
+                  options={areasOptions}
+                  placeholder="Selecione o centro de custo"
+                  searchPlaceholder="Buscar área..."
+                  emptyText="Nenhuma área encontrada."
+                  disabled={saving}
+                  maxVisibleOptions={7}
+                />
               </div>
-            )}
-          </div>
+              {/* 9. Responsável */}
+              <div className="space-y-2">
+                <Label>Responsável interno</Label>
+                <CommandSelect
+                  value={form.responsavel_interno_id}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, responsavel_interno_id: value }))}
+                  options={colaboradoresOptions}
+                  placeholder="Selecione o responsável"
+                  searchPlaceholder="Buscar colaborador..."
+                  emptyText="Nenhum colaborador encontrado."
+                  disabled={saving}
+                  maxVisibleOptions={7}
+                />
+              </div>
+              {/* Regra de cobrança pretendida (pedido Filipe 04/08) — mesma
+                  lista do caso, para a oportunidade já nascer com a intenção. */}
+              <div className="space-y-2">
+                <Label>Regra de cobrança</Label>
+                <NativeSelect
+                  value={form.regra_cobranca}
+                  onChange={(event) => setForm((prev) => ({ ...prev, regra_cobranca: event.target.value }))}
+                  className="h-10 rounded-md border px-3"
+                  disabled={!canWrite || saving}
+                >
+                  <option value="">Selecione...</option>
+                  <option value="hora">Hora</option>
+                  <option value="mensal">Mensal</option>
+                  <option value="mensalidade_processo">Mensalidade de processo</option>
+                  <option value="mensalidade_carteira">Mensalidade de Carteira</option>
+                  <option value="projeto">Projeto</option>
+                  <option value="pro_labore">Pró-labore</option>
+                  <option value="exito">Êxito</option>
+                </NativeSelect>
+              </div>
+              {/* 7. Fase */}
+              <div className="space-y-2">
+                <Label>Fase</Label>
+                <NativeSelect
+                  value={form.etapa}
+                  onChange={(event) => setForm((prev) => ({ ...prev, etapa: event.target.value as EtapaKanban }))}
+                  className="h-10 rounded-md border px-3"
+                  disabled={!canWrite || saving}
+                >
+                  {ETAPAS.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              {/* 6. Valor */}
+              <div className="space-y-2">
+                <Label>Valor</Label>
+                <MoneyInput
+                  value={form.valor}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, valor: value }))}
+                  placeholder="0,00"
+                  disabled={saving}
+                />
+              </div>
+              {/* Valor global */}
+              <div className="space-y-2">
+                <Label>Valor global</Label>
+                <MoneyInput value={form.valor_global} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_global: v }))} placeholder="0,00" disabled={saving} />
+              </div>
+            </div>
+          </section>
+
+          {/* 3 — FINANCEIRO */}
+          <section className="rounded-lg border border-green-200 bg-green-50/40 p-4">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-green-800">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-green-700 text-xs font-bold text-white">3</span>
+              Financeiro
+            </h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {/* Valor em caixa no mês */}
+              <div className="space-y-2">
+                <Label>Valor em caixa no mês</Label>
+                <MoneyInput value={form.valor_caixa_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_caixa_mes: v }))} placeholder="0,00" disabled={saving} />
+              </div>
+              {/* Faturado no próximo mês — indicador da etapa Conversão (Filipe 04/08) */}
+              <div className="space-y-2">
+                <Label>Faturado no próximo mês</Label>
+                <MoneyInput value={form.valor_faturado_prox_mes} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_faturado_prox_mes: v }))} placeholder="0,00" disabled={saving} />
+              </div>
+              {/* Valor futuro projetado */}
+              <div className="space-y-2">
+                <Label>Valor futuro projetado</Label>
+                <MoneyInput value={form.valor_futuro_projetado} onValueChange={(v) => setForm((prev) => ({ ...prev, valor_futuro_projetado: v }))} placeholder="0,00" disabled={saving} />
+              </div>
+              {/* Data projetada de fechamento */}
+              <div className="space-y-2">
+                <Label>Data projetada</Label>
+                <Input type="date" value={form.data_projetada} onChange={(e) => setForm((prev) => ({ ...prev, data_projetada: e.target.value }))} disabled={saving} />
+              </div>
+              {/* Forma de pagamento */}
+              <div className="space-y-2">
+                <Label>Forma de pagamento</Label>
+                <NativeSelect value={form.forma_pagamento} onChange={(e) => setForm((prev) => ({ ...prev, forma_pagamento: e.target.value }))} className="h-10 rounded-md border px-3" disabled={saving}>
+                  <option value="">—</option>
+                  <option value="a_vista">À vista</option>
+                  <option value="parcelado">Parcelado</option>
+                </NativeSelect>
+              </div>
+            </div>
+          </section>
+
 
           {/* 8. Temperatura de fechamento — ajustável pela barra no card */}
           <p className="text-xs text-ink-mute">
