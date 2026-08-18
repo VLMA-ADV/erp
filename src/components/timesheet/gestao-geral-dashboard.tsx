@@ -172,13 +172,19 @@ function TabelaGeral({ titulo, colPrimeira, linhas }: {
         <p className="text-sm text-ink-mute">Sem dados no período</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          {/* table-fixed e o que faz o truncate valer (Filipe, 18/08: "as
+              linhas estao estourando na lista de clientes e casos"). Com o
+              layout automatico da tabela, max-w-0 na celula e ignorado: a
+              coluna cresce ate caber o nome inteiro do cliente e empurra os
+              numeros para fora do card. Com largura fixa nas colunas de
+              numero, o que sobra e da primeira coluna, e o truncate corta. */}
+          <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="text-left text-xs text-ink-mute">
                 <th className="pb-1 font-medium">{colPrimeira}</th>
-                <th className="pb-1 text-right font-medium">Lançadas</th>
-                <th className="pb-1 text-right font-medium">Proj. (R$)</th>
-                <th className="pb-1 text-right font-medium">Aprov. (R$)</th>
+                <th className="w-20 pb-1 text-right font-medium">Lançadas</th>
+                <th className="w-24 pb-1 text-right font-medium">Proj. (R$)</th>
+                <th className="w-24 pb-1 text-right font-medium">Aprov. (R$)</th>
               </tr>
             </thead>
             <tbody>
@@ -208,13 +214,15 @@ function TabelaSimples({ titulo, linhas }: { titulo: string; linhas: LinhaSimple
       {linhas.length === 0 ? (
         <p className="text-sm text-ink-mute">Sem horas no período</p>
       ) : (
-        <table className="w-full text-sm">
+        <table className="w-full table-fixed text-sm">
           <tbody>
             {linhas.map((l, i) => (
               <tr key={`${l.label}-${i}`} className="border-t border-hairline first:border-t-0">
-                <td className="max-w-0 truncate py-1.5 pr-2 text-ink-secondary" title={l.label}>{l.label}</td>
-                <td className="whitespace-nowrap py-1.5 text-right font-tabular">{horas(l.horas)}</td>
-                <td className="whitespace-nowrap py-1.5 pl-2 text-right font-tabular text-ink">{money(l.valor_projetado)}</td>
+                <td className="py-1.5 pr-2 text-ink-secondary">
+                  <div className="truncate" title={l.label}>{l.label}</div>
+                </td>
+                <td className="w-20 whitespace-nowrap py-1.5 text-right font-tabular">{horas(l.horas)}</td>
+                <td className="w-24 whitespace-nowrap py-1.5 pl-2 text-right font-tabular text-ink">{money(l.valor_projetado)}</td>
               </tr>
             ))}
           </tbody>
