@@ -6,6 +6,7 @@ import { PermissionsProvider } from '@/lib/contexts/permissions-context'
 import PageBreadcrumb from '@/components/layout/page-breadcrumb'
 import { SonnerProvider } from '@/components/ui/sonner'
 import { ReactQueryProvider } from '@/components/providers/react-query-provider'
+import InboxFlutuante from '@/components/contratos/inbox-flutuante'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,20 @@ export default async function DashboardLayout({
               </div>
               {children}
             </main>
+            {/* Caixa de entrada em TODOS os módulos (pedido Filipe 18/08:
+                "trazer o chat para todos os módulos").
+
+                Ela nasceu só em Contratos, em 07/08, porque era lá que se
+                resolvia solicitação. Só que a conversa acontece enquanto a
+                pessoa está lançando hora ou olhando o caixa — e obrigar a
+                trocar de módulo para responder é o que fazia a mensagem
+                esperar. Aqui no layout ela acompanha a pessoa.
+
+                Continua se escondendo sozinha para quem não tem
+                contracts.solicitacoes.read: o próprio componente devolve null,
+                então quem não participa dessa conversa não ganha um botão
+                flutuante que não leva a lugar nenhum. */}
+            <InboxFlutuante />
           </div>
         </SonnerProvider>
       </PermissionsProvider>
