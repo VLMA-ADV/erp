@@ -90,6 +90,16 @@ export default function LotesDoUsuario({ onMudou }: { onMudou?: () => void }) {
         p_lote_id: lote.id,
       })
       if (error) throw error
+
+      // Avisa o financeiro por e-mail (Filipe, 17/08: "o fechar o lote deve
+      // mandar aviso para o financeiro para poder baixar"). Best effort de
+      // propósito: o lote já está fechado: se o e-mail falhar, o financeiro
+      // ainda vê o contador na aba de Lotes. Derrubar o fluxo por causa do
+      // aviso seria trocar o problema maior pelo menor.
+      void supabase.functions
+        .invoke('notificar-lote-fechado', { body: { lote_id: lote.id } })
+        .catch((e) => console.error('Falha ao avisar o financeiro:', e))
+
       success('Lote enviado para validação')
       await recarregar()
       onMudou?.()
