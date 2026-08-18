@@ -42,6 +42,17 @@ interface Lote {
   validado_em: string | null
 }
 
+interface DespesaDoLote {
+  id: string
+  data_lancamento: string | null
+  categoria: string | null
+  descricao: string | null
+  valor: number
+  cliente_nome?: string | null
+  caso_nome?: string | null
+  created_by_nome?: string | null
+}
+
 interface Pessoa {
   user_id: string
   nome: string
@@ -163,6 +174,37 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
   // muda so quem recebe o payload no fim. A pessoa do lote nao se edita — ver
   // o comentario em editar_lote_despesa.
   const [editandoId, setEditandoId] = useState<string | null>(null)
+
+  // Despesas do lote, dentro desta tela (Filipe, 17/08: "de modo que o
+  // financeiro não precise sair do módulo"). get_despesas ganhou filtro por
+  // lote_id justamente para isto.
+  const [aberto, setAberto] = useState<string | null>(null)
+  const [despesas, setDespesas] = useState<Record<string, DespesaDoLote[]>>({})
+  const [carregandoDespesas, setCarregandoDespesas] = useState(false)
+
+  const alternarDespesas = async (loteId: string) => {
+    if (aberto === loteId) { setAberto(null); return }
+    setAberto(loteId)
+    if (despesas[loteId]) return
+    try {
+      setCarregandoDespesas(true)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error } = await supabase.rpc('get_despesas', {
+        p_user_id: user.id,
+        p_filters: { lote_id: loteId },
+      })
+      if (error) throw error
+      setDespesas((prev) => ({ ...prev, [loteId]: (data || []) as DespesaDoLote[] }))
+    } catch (err) {
+      console.error(err)
+      toastError('Erro ao carregar as despesas do lote')
+    } finally {
+      setCarregandoDespesas(false)
+    }
+  }
+
 
   const abrirEdicao = (lote: Lote) => {
     setEditandoId(lote.id)
@@ -357,6 +399,9 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
                       {formatMoney(Math.abs(lote.saldo))}
                     </p>
                   </div>
+                  <Button variant="outline" onClick={() => void alternarDespesas(lote.id)} disabled={enviando}>
+                    {aberto === lote.id ? 'Ocultar despesas' : `Ver despesas (${lote.qtd_despesas})`}
+                  </Button>
                   {podeGerir && !['fechado', 'cancelado'].includes(lote.status) ? (
                     <Button variant="outline" onClick={() => abrirEdicao(lote)} disabled={enviando}>
                       Editar
@@ -382,6 +427,44 @@ export default function LotesDeDespesa({ onMudou }: { onMudou?: () => void } = {
                   ) : null}
                 </div>
               </div>
+
+              {aberto === lote.id ? (
+                <div className="mt-4 border-t border-hairline pt-3">
+                  {carregandoDespesas && !despesas[lote.id] ? (
+                    <p className="text-sm text-ink-mute">Carregando despesas…</p>
+                  ) : (despesas[lote.id] || []).length === 0 ? (
+                    <p className="text-sm text-ink-mute">Nenhuma despesa lançada neste lote ainda.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full table-fixed text-sm">
+                        <thead>
+                          <tr className="text-left text-xs uppercase tracking-wide text-ink-mute">
+                            <th className="w-24 pb-1 font-medium">Data</th>
+                            <th className="pb-1 font-medium">Descrição</th>
+                            <th className="w-40 pb-1 font-medium">Cliente</th>
+                            <th className="w-28 pb-1 text-right font-medium">Valor</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(despesas[lote.id] || []).map((d) => (
+                            <tr key={d.id} className="border-t border-hairline">
+                              <td className="py-1.5 font-tabular text-ink-mute">{formatDate(d.data_lancamento)}</td>
+                              <td className="py-1.5 pr-2">
+                                <div className="truncate" title={d.descricao || ''}>{d.descricao || '—'}</div>
+                                <div className="truncate text-xs text-ink-mute">{d.categoria || ''}</div>
+                              </td>
+                              <td className="py-1.5 pr-2">
+                                <div className="truncate text-ink-secondary" title={d.cliente_nome || ''}>{d.cliente_nome || '—'}</div>
+                              </td>
+                              <td className="py-1.5 text-right font-tabular">{formatMoney(d.valor)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
