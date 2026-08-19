@@ -183,6 +183,8 @@ export default function ComposicaoDaFaturaList() {
   const [notes, setNotes] = useState<NotaGerada[]>([])
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
   const [emailData, setEmailData] = useState<FaturaEmailData | null>(null)
+  const [emailContratoId, setEmailContratoId] = useState<string | null>(null)
+  const [enviandoEmail, setEnviandoEmail] = useState(false)
 
   const load = async () => {
     try {
@@ -281,7 +283,24 @@ export default function ComposicaoDaFaturaList() {
     })
   }
 
-  const abrirEmail = (kit: ContratoKit) => {
+  const abrirEmail = async (kit: ContratoKit) => {
+    setEmailContratoId(kit.contratoId)
+    // Destinatário e nota vêm do banco, não da tela — mesma fonte que o envio
+    // usa, para a prévia não mostrar um endereço e a mensagem sair para outro.
+    let destinatario: string | null = null
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase.rpc('get_dados_envio_fatura', {
+          p_user_id: user.id,
+          p_contrato_id: kit.contratoId,
+        })
+        destinatario = (data as { destinatario?: string | null } | null)?.destinatario ?? null
+      }
+    } catch (err) {
+      console.error(err)
+    }
     const notasKit = notaPorContrato.get(kit.contratoId) || {}
     const nfse = notasKit['nota_fiscal_servico']
     const anexos: string[] = []
@@ -294,13 +313,45 @@ export default function ComposicaoDaFaturaList() {
     setEmailData({
       clienteNome: kit.clienteNome,
       contratoLabel: formatContratoDisplay(kit.numero, kit.nome).full,
-      destinatarioEmail: null,
+      destinatarioEmail: destinatario,
       nfseNumero: nfse?.numero != null ? String(nfse.numero) : null,
       mesReferencia: mesReferenciaAtual(),
       vencimento: new Date().toLocaleDateString('pt-BR'),
       anexos,
       completo: kit.temDespesa || kit.temTimesheet,
     })
+  }
+
+  /**
+   * Envia de verdade (pedido Filipe 19/08). O destinatário NÃO vai daqui: a
+   * edge function resolve pelo cadastro do cliente do contrato, senão a tela
+   * poderia mandar a cobrança para qualquer endereço.
+   */
+  const enviarFatura = async (assunto: string, corpo: string) => {
+    if (!emailContratoId) return
+    try {
+      setEnviandoEmail(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const { data, error: e } = await supabase.functions.invoke('enviar-fatura', {
+        body: { contrato_id: emailContratoId, assunto, corpo },
+      })
+      const resposta = data as { enviado?: boolean; destinatario?: string; error?: string } | null
+      if (e || resposta?.error || !resposta?.enviado) {
+        setError(resposta?.error || 'Não foi possível enviar a fatura.')
+        return
+      }
+      setError(null)
+      setEmailData(null)
+      setEmailContratoId(null)
+      window.alert(`Fatura enviada para ${resposta.destinatario}.`)
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao enviar a fatura.')
+    } finally {
+      setEnviandoEmail(false)
+    }
   }
 
   return (
@@ -349,7 +400,7 @@ export default function ComposicaoDaFaturaList() {
                   notas={notaPorContrato.get(kit.contratoId) || {}}
                   onStub={emBreve}
                   onAbrirNota={() => abrirNota(kit)}
-                  onAbrirEmail={() => abrirEmail(kit)}
+                  onAbrirEmail={() => void abrirEmail(kit)}
                 />
               ))}
             </div>
@@ -362,10 +413,8 @@ export default function ComposicaoDaFaturaList() {
         open={!!emailData}
         onClose={() => setEmailData(null)}
         data={emailData}
-        onEnviar={() => {
-          setEmailData(null)
-          emBreve('Envio via Resend')
-        }}
+        enviando={enviandoEmail}
+        onEnviar={(assunto, corpo) => void enviarFatura(assunto, corpo)}
       />
     </div>
   )
