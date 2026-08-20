@@ -22,27 +22,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// Sai no nome da Jessika (Filipe, 20/08: "Jessika.lira@vlma.com.br ... que
-// inicie o processo de envio da fatura no ERP, mas que a conversa continue no
-// email dela").
+// Sai no NOME da Jessika, pelo domínio que já está verificado (Filipe, 20/08:
+// "que inicie o processo de envio da fatura no ERP, mas que a conversa continue
+// no email dela").
 //
-// O DOMÍNIO vlma.com.br AINDA NÃO ESTÁ VERIFICADO no Resend — os registros de
-// DNS foram entregues mas ninguém adicionou ainda. Enquanto não estiver, o
-// Resend RECUSA qualquer envio partindo de @vlma.com.br.
+// O cliente vê "Jessika Lira (VLMA)" como remetente e, ao responder, cai na
+// caixa dela — que é o que importa para a conversa continuar lá. O endereço
+// técnico é financeiro@erp.vlma.com.br porque é esse o domínio verificado no
+// Resend hoje.
 //
-// Então tenta o endereço dela e, se o Resend recusar por domínio não
-// verificado, cai para o subdomínio que já funciona, mantendo o nome e o
-// reply-to dela. O cliente recebe "Jessika Lira (VLMA)" dos dois jeitos e
-// responde para ela dos dois jeitos; muda só o endereço técnico. No dia em que
-// o DNS entrar, o primeiro passa a funcionar sozinho — ninguém precisa mexer.
-const REMETENTE_PREFERIDO = "Jessika Lira (VLMA) <jessika.lira@vlma.com.br>"
-const REMETENTE_FALLBACK = "Jessika Lira (VLMA) <financeiro@erp.vlma.com.br>"
+// PARA SAIR COMO jessika.lira@vlma.com.br: basta trocar a linha abaixo, DEPOIS
+// que o domínio raiz vlma.com.br estiver verificado no Resend (ele já está
+// cadastrado lá; faltam três registros de DNS, em docs/dns-resend-vlma.md).
+// Antes disso o Resend recusa o envio — não é spam, é erro.
+const REMETENTE = "Jessika Lira (VLMA) <financeiro@erp.vlma.com.br>"
 const REPLY_TO_JESSIKA = "jessika.lira@vlma.com.br"
-
-function dominioNaoVerificado(corpo: unknown): boolean {
-  const t = JSON.stringify(corpo ?? {}).toLowerCase()
-  return t.includes("domain is not verified") || t.includes("not verified") || t.includes("domain_not_verified")
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -151,30 +145,21 @@ Deno.serve(async (req) => {
     // financeiro ficam em cópia do reply-to para ninguém perder o fio.
     const replyTo = Array.from(new Set([REPLY_TO_JESSIKA, ...(d.reply_to ?? [])]))
 
-    const enviar = (from: string) =>
-      fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from,
-          to: escolhidos,
-          reply_to: replyTo,
-          subject: assuntoFinal,
-          html,
-          ...(anexos.length ? { attachments: anexos } : {}),
-        }),
-      })
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: REMETENTE,
+        to: escolhidos,
+        reply_to: replyTo,
+        subject: assuntoFinal,
+        html,
+        ...(anexos.length ? { attachments: anexos } : {}),
+      }),
+    })
 
-    let remetenteUsado = REMETENTE_PREFERIDO
-    let resp = await enviar(REMETENTE_PREFERIDO)
-    let respBody = await resp.json().catch(() => null)
-
-    if (!resp.ok && dominioNaoVerificado(respBody)) {
-      console.warn("vlma.com.br ainda nao verificado no Resend; usando o subdominio")
-      remetenteUsado = REMETENTE_FALLBACK
-      resp = await enviar(REMETENTE_FALLBACK)
-      respBody = await resp.json().catch(() => null)
-    }
+    const respBody = await resp.json().catch(() => null)
+    const remetenteUsado = REMETENTE
 
     await supabase.rpc("registrar_envio_fatura", {
       p_user_id: user.id,
