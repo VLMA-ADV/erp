@@ -285,8 +285,9 @@ export default function ComposicaoDaFaturaList() {
 
   const abrirEmail = async (kit: ContratoKit) => {
     setEmailContratoId(kit.contratoId)
-    // Destinatário e nota vêm do banco, não da tela — mesma fonte que o envio
-    // usa, para a prévia não mostrar um endereço e a mensagem sair para outro.
+    // Os destinatários vêm dos responsáveis financeiros do cliente — pode haver
+    // mais de um, e a 7 Holding tem três. Chegam preenchidos e a pessoa edita
+    // se precisar.
     let destinatario: string | null = null
     try {
       const supabase = createClient()
@@ -296,7 +297,8 @@ export default function ComposicaoDaFaturaList() {
           p_user_id: user.id,
           p_contrato_id: kit.contratoId,
         })
-        destinatario = (data as { destinatario?: string | null } | null)?.destinatario ?? null
+        const lista = (data as { destinatarios?: string[] } | null)?.destinatarios ?? []
+        destinatario = lista.length ? lista.join(', ') : null
       }
     } catch (err) {
       console.error(err)
@@ -323,21 +325,24 @@ export default function ComposicaoDaFaturaList() {
   }
 
   /**
-   * Envia de verdade (pedido Filipe 19/08). O destinatário NÃO vai daqui: a
-   * edge function resolve pelo cadastro do cliente do contrato, senão a tela
-   * poderia mandar a cobrança para qualquer endereço.
+   * Envia de verdade (pedido Filipe 19/08). Destinatários separados por vírgula
+   * — vêm preenchidos do cadastro e a pessoa pode editar antes de mandar.
    */
-  const enviarFatura = async (assunto: string, corpo: string) => {
+  const enviarFatura = async (assunto: string, corpo: string, para: string) => {
     if (!emailContratoId) return
     try {
       setEnviandoEmail(true)
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
+      const destinatarios = para
+        .split(/[,;]/)
+        .map((e) => e.trim())
+        .filter(Boolean)
       const { data, error: e } = await supabase.functions.invoke('enviar-fatura', {
-        body: { contrato_id: emailContratoId, assunto, corpo },
+        body: { contrato_id: emailContratoId, assunto, corpo, destinatarios },
       })
-      const resposta = data as { enviado?: boolean; destinatario?: string; error?: string } | null
+      const resposta = data as { enviado?: boolean; destinatarios?: string[]; error?: string } | null
       if (e || resposta?.error || !resposta?.enviado) {
         setError(resposta?.error || 'Não foi possível enviar a fatura.')
         return
@@ -345,7 +350,7 @@ export default function ComposicaoDaFaturaList() {
       setError(null)
       setEmailData(null)
       setEmailContratoId(null)
-      window.alert(`Fatura enviada para ${resposta.destinatario}.`)
+      window.alert(`Fatura enviada para ${(resposta.destinatarios || []).join(', ')}.`)
     } catch (err) {
       console.error(err)
       setError('Erro ao enviar a fatura.')
@@ -414,7 +419,7 @@ export default function ComposicaoDaFaturaList() {
         onClose={() => setEmailData(null)}
         data={emailData}
         enviando={enviandoEmail}
-        onEnviar={(assunto, corpo) => void enviarFatura(assunto, corpo)}
+        onEnviar={(assunto, corpo, para) => void enviarFatura(assunto, corpo, para)}
       />
     </div>
   )

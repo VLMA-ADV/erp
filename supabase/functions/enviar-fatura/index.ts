@@ -5,13 +5,13 @@ import { createClient } from "jsr:@supabase/supabase-js@2"
  * Envia a fatura por e-mail (pedido Filipe, 19/08: "montar a fatura e o email
  * e enviar o send").
  *
- * O QUE VEM DO NAVEGADOR: assunto e corpo — é o texto que a pessoa leu e
- * aprovou na prévia, e mandar outra coisa quebraria essa confiança.
+ * O QUE VEM DO NAVEGADOR: assunto, corpo e destinatários — é o que a pessoa leu
+ * e aprovou na prévia, e mandar outra coisa quebraria essa confiança.
  *
- * O QUE NÃO VEM DO NAVEGADOR: o destinatário. Ele é resolvido no banco, a
- * partir do cadastro do cliente do contrato. Aceitar o endereço que a tela
- * mandasse transformaria o ERP num relay — qualquer pessoa logada poderia
- * disparar mensagem para um endereço qualquer usando o domínio do escritório.
+ * Os destinatários chegam preenchidos com os responsáveis financeiros do
+ * cliente e podem ser editados. Quem chega aqui já passou por
+ * finance.nfse.manage (sócios e Jessika), e todo envio fica gravado em
+ * finance.fatura_envios com para quem foi, o texto e os anexos.
  *
  * REMETENTE: financeiro@erp.vlma.com.br. Na conta do Resend o único domínio
  * verificado é erp.vlma.com.br; financeiro@vlma.com.br faria o envio ser
@@ -44,7 +44,9 @@ Deno.serve(async (req) => {
     if (userError || !user) return json({ error: "Invalid token" }, 401)
 
     const body = await req.json().catch(() => ({}))
-    const { contrato_id, assunto, corpo } = body as { contrato_id?: string; assunto?: string; corpo?: string }
+    const { contrato_id, assunto, corpo, destinatarios } = body as {
+      contrato_id?: string; assunto?: string; corpo?: string; destinatarios?: string[]
+    }
     if (!contrato_id) return json({ error: "contrato_id é obrigatório" }, 400)
     if (!corpo?.trim()) return json({ error: "corpo do e-mail é obrigatório" }, 400)
 
@@ -57,15 +59,39 @@ Deno.serve(async (req) => {
 
     const d = dados as {
       cliente_nome: string
-      destinatario: string | null
+      destinatarios: string[]
       nota: { id: string; numero: string | null; arquivo_nome: string | null; arquivo_url: string | null } | null
       reply_to: string[]
     }
 
-    if (!d.destinatario) {
+    // Quem recebe: o que veio da tela, quando veio; senão o cadastro.
+    //
+    // Na primeira versão isto era fechado, resolvido só pelo cadastro, com medo
+    // de o ERP virar relay. Revi por dois motivos. Quem chega aqui já passou por
+    // finance.nfse.manage — sócios e Jessika, um punhado de pessoas, não
+    // "qualquer um logado" — e todo envio fica gravado com destinatário, corpo e
+    // anexos. E o Filipe pediu exatamente essa folga para o primeiro mês: "que
+    // eu também possa editar manualmente quem eu quero enviar".
+    //
+    // O que continua valendo: formato de e-mail e um teto de destinatários.
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+    const escolhidos = (Array.isArray(destinatarios) && destinatarios.length
+      ? destinatarios
+      : (d.destinatarios ?? []))
+      .map((e) => String(e).trim().toLowerCase())
+      .filter(Boolean)
+
+    const invalidos = escolhidos.filter((e) => !EMAIL_RE.test(e))
+    if (invalidos.length) {
+      return json({ error: `E-mail inválido: ${invalidos.join(", ")}` }, 422)
+    }
+    if (escolhidos.length === 0) {
       return json({
-        error: `O cliente ${d.cliente_nome} está sem e-mail cadastrado. Preencha o e-mail do financeiro no cadastro do cliente antes de enviar.`,
+        error: `O cliente ${d.cliente_nome} está sem e-mail cadastrado e nenhum destinatário foi informado. Preencha o responsável financeiro no cadastro do cliente ou digite o endereço aqui.`,
       }, 422)
+    }
+    if (escolhidos.length > 10) {
+      return json({ error: "Máximo de 10 destinatários por envio." }, 422)
     }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY")
@@ -105,7 +131,7 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: REMETENTE,
-        to: [d.destinatario],
+        to: escolhidos,
         reply_to: d.reply_to?.length ? d.reply_to : undefined,
         subject: assuntoFinal,
         html,
@@ -119,7 +145,7 @@ Deno.serve(async (req) => {
       p_user_id: user.id,
       p_contrato_id: contrato_id,
       p_billing_note_id: d.nota?.id ?? null,
-      p_destinatario: d.destinatario,
+      p_destinatario: escolhidos.join(", "),
       p_assunto: assuntoFinal,
       p_corpo: corpo,
       p_anexos: anexosResumo,
@@ -133,7 +159,7 @@ Deno.serve(async (req) => {
 
     return json({
       enviado: true,
-      destinatario: d.destinatario,
+      destinatarios: escolhidos,
       anexos: anexosResumo.map((a) => a.nome),
       id: respBody?.id ?? null,
     }, 200)

@@ -61,7 +61,7 @@ export default function FaturaEmailPreview({
   open: boolean
   onClose: () => void
   data: FaturaEmailData | null
-  onEnviar: (assunto: string, corpo: string) => void
+  onEnviar: (assunto: string, corpo: string, para: string) => void
   enviando?: boolean
 }) {
   const [para, setPara] = useState('')
@@ -91,25 +91,23 @@ export default function FaturaEmailPreview({
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* Somente leitura de propósito: o destinatário sai do cadastro do
-              cliente, resolvido no servidor. Deixar o campo editável aqui daria
-              a impressão de que dá para redirecionar a cobrança — e o envio
-              ignoraria o que foi digitado, que é pior do que não deixar. */}
+          {/* Vem preenchido com os responsáveis financeiros do cliente e é
+              editável (Filipe, 20/08: "que carregue os emails cadastrados mas
+              que eu também possa editar manualmente quem eu quero enviar...
+              nesse primeiro mês que com certeza teremos errinhos naturais"). */}
           <div className="space-y-1">
             <Label htmlFor="email-para">Para</Label>
-            {para ? (
-              <div
-                id="email-para"
-                className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary"
-              >
-                {para}
-              </div>
-            ) : (
-              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Este cliente está sem e-mail cadastrado. Preencha o e-mail do financeiro no cadastro
-                do cliente para poder enviar.
-              </div>
-            )}
+            <Input
+              id="email-para"
+              value={para}
+              onChange={(event) => setPara(event.target.value)}
+              placeholder="ninguem@cliente.com.br, outro@cliente.com.br"
+            />
+            <p className="text-xs text-ink-mute">
+              {data?.destinatarioEmail
+                ? 'Carregado do cadastro do cliente. Separe por vírgula para enviar a mais de um.'
+                : 'Este cliente não tem responsável financeiro cadastrado — digite o endereço para enviar mesmo assim.'}
+            </p>
           </div>
           <div className="space-y-1">
             <Label htmlFor="email-assunto">Assunto</Label>
@@ -144,7 +142,7 @@ export default function FaturaEmailPreview({
           <Button variant="outline" onClick={onClose}>
             Fechar
           </Button>
-          <Button onClick={() => onEnviar(assunto, corpo)} disabled={enviando || !para}>
+          <Button onClick={() => onEnviar(assunto, corpo, para)} disabled={enviando || !para.trim()}>
             <Send className="mr-2 h-4 w-4" />
             {enviando ? 'Enviando…' : 'Aprovar e enviar'}
           </Button>
