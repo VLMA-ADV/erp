@@ -2301,6 +2301,81 @@ export default function RevisaoDeFaturaList() {
                     </div>
                     <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(clienteTotals.valor)}</p>
                   </button>
+
+                  {/* Relatório consolidado POR CONTRATO (Filipe, 20/08: "agrupar
+                      o relatório de casos de um mesmo contrato num único boleto,
+                      NF e relatório de horas").
+
+                      A nota já era por contrato — vários casos do mesmo contrato
+                      já saem numa nota só. O relatório é que continuava por caso:
+                      a prévia mora na faixa do caso e sai um documento para cada
+                      um. O cliente recebia uma nota e três relatórios.
+
+                      Um botão por contrato, e não um só por cliente: cliente com
+                      dois contratos recebe duas notas, então juntar tudo num
+                      relatório só descasaria do documento fiscal. */}
+                  <div className="flex flex-wrap gap-2 px-4 pb-3">
+                    {Array.from(
+                      clienteGroup.casos.reduce((mapa, casoGroup) => {
+                        for (const item of casoGroup.itens) {
+                          if (!item.contratoId) continue
+                          if (!mapa.has(item.contratoId)) {
+                            mapa.set(item.contratoId, {
+                              label: formatContratoDisplay(item.contratoNumero, item.contratoNome).full,
+                              casos: new Set<string>(),
+                            })
+                          }
+                          mapa.get(item.contratoId)!.casos.add(casoGroup.key)
+                        }
+                        return mapa
+                      }, new Map<string, { label: string; casos: Set<string> }>()),
+                    ).map(([contratoId, info]) => {
+                      const linhas = clienteGroup.casos
+                        .filter((casoGroup) => info.casos.has(casoGroup.key))
+                        .flatMap((casoGroup) =>
+                          getReviewRows(casoGroup)
+                            .map((row) => row.item)
+                            .filter((it) => it.contratoId === contratoId)
+                            // Uma linha por grupo: quando os lançamentos foram
+                            // agrupados, é o texto do grupo que vai ao cliente.
+                            .filter((it, _i, todos) =>
+                              !it.grupoId || todos.find((o) => o.grupoId === it.grupoId)?.id === it.id,
+                            ),
+                        )
+                      return (
+                        <Button
+                          key={contratoId}
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          disabled={linhas.length === 0}
+                          title={`Relatório de horas com os ${info.casos.size} caso(s) deste contrato num documento só`}
+                          onClick={() =>
+                            openTimesheetReport({
+                              titulo: 'Relatório de horas do contrato',
+                              subtitulo: `${clienteGroup.nome} · ${info.label} · ${info.casos.size} caso(s) · ${linhas.length} lançamento(s)`,
+                              mostrarValor: true,
+                              rows: linhas.map((it) => ({
+                                data: it.timesheetDataLancamento
+                                  ? formatDate(it.timesheetDataLancamento)
+                                  : formatDate(it.dataReferencia || ''),
+                                cliente: it.clienteNome || '',
+                                caso: `${it.casoNumero || ''} - ${it.casoNome || ''}`,
+                                profissional: it.enviadoPorNome || it.timesheetProfissional || '',
+                                descricao:
+                                  it.grupoTexto || it.timesheetDescricaoOriginal || it.timesheetDescricao || it.regraNome || '',
+                                horas: formatHistoryHours(it.grupoHoras ?? getEffectiveItemHours(it)),
+                                valor: it.grupoValor ?? getEffectiveItemValue(it),
+                              })),
+                            })
+                          }
+                        >
+                          <Layers className="mr-1 h-3.5 w-3.5" />
+                          Relatório do {info.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {clienteExpanded ? (
