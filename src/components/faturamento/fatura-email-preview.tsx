@@ -56,11 +56,13 @@ export default function FaturaEmailPreview({
   onClose,
   data,
   onEnviar,
+  enviando = false,
 }: {
   open: boolean
   onClose: () => void
   data: FaturaEmailData | null
-  onEnviar: () => void
+  onEnviar: (assunto: string, corpo: string) => void
+  enviando?: boolean
 }) {
   const [para, setPara] = useState('')
   const [assunto, setAssunto] = useState('')
@@ -89,14 +91,25 @@ export default function FaturaEmailPreview({
         </DialogHeader>
 
         <div className="space-y-3">
+          {/* Somente leitura de propósito: o destinatário sai do cadastro do
+              cliente, resolvido no servidor. Deixar o campo editável aqui daria
+              a impressão de que dá para redirecionar a cobrança — e o envio
+              ignoraria o que foi digitado, que é pior do que não deixar. */}
           <div className="space-y-1">
             <Label htmlFor="email-para">Para</Label>
-            <Input
-              id="email-para"
-              value={para}
-              onChange={(event) => setPara(event.target.value)}
-              placeholder="e-mail cadastrado do cliente"
-            />
+            {para ? (
+              <div
+                id="email-para"
+                className="flex h-10 items-center rounded-md border bg-canvas-soft px-3 text-sm text-ink-secondary"
+              >
+                {para}
+              </div>
+            ) : (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Este cliente está sem e-mail cadastrado. Preencha o e-mail do financeiro no cadastro
+                do cliente para poder enviar.
+              </div>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="email-assunto">Assunto</Label>
@@ -131,9 +144,9 @@ export default function FaturaEmailPreview({
           <Button variant="outline" onClick={onClose}>
             Fechar
           </Button>
-          <Button onClick={onEnviar}>
+          <Button onClick={() => onEnviar(assunto, corpo)} disabled={enviando || !para}>
             <Send className="mr-2 h-4 w-4" />
-            Aprovar e enviar
+            {enviando ? 'Enviando…' : 'Aprovar e enviar'}
           </Button>
         </DialogFooter>
       </DialogContent>
