@@ -143,6 +143,7 @@ interface PreviewData {
     tomador_diferente_do_contrato?: boolean
   } | null
   pagadores: Array<{ cliente_id: string; cliente: any; valor_total: number }>
+  pendentes: { itens: number; casos: number; valor: number; casos_nomes: string[] } | null
 }
 
 export default function NfsePreviewDialog({
@@ -239,6 +240,7 @@ export default function NfsePreviewDialog({
         },
         acumuladoMes,
         pagadorInfo: dataset.pagador_info || null,
+        pendentes: (dataset.pendentes as PreviewData['pendentes']) || null,
         pagadores: (dataset.pagadores || []) as PreviewData['pagadores'],
       })
     } catch (e) {
@@ -380,6 +382,29 @@ export default function NfsePreviewDialog({
                 O ISS sai zerado: o escritório recolhe por valor fixo.
               </AlertDescription>
             </Alert>
+
+            {/* O que do contrato NÃO entra nesta nota.
+                A nota sempre somou os casos do contrato inteiro — mas só a
+                parte aprovada. Quem tinha dois casos e aprovou um via o total
+                "não somar" e parecia bug de agrupamento (Filipe, 20/08, caso
+                Pattac). O comportamento está certo: não se fatura o que não foi
+                aprovado. Faltava a tela dizer. */}
+            {data.pendentes && data.pendentes.itens > 0 ? (
+              <Alert className="border-orange-400 bg-orange-50 text-orange-900">
+                <AlertTitle>
+                  Este contrato tem {data.pendentes.itens} lançamento(s) que não entram nesta nota
+                </AlertTitle>
+                <AlertDescription>
+                  Eles estão em {data.pendentes.casos === 1 ? 'um caso' : `${data.pendentes.casos} casos`} que ainda
+                  não foram aprovados
+                  {data.pendentes.casos_nomes?.length
+                    ? ` (${data.pendentes.casos_nomes.join(', ')})`
+                    : ''}
+                  , somando <strong>{fmtMoney(data.pendentes.valor)}</strong>. A nota junta todos os casos do
+                  contrato, mas só depois de aprovados. Aprove-os na revisão para que entrem aqui.
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             {/* Cabeçalho NFS-e */}
             <div className="rounded-lg border border-hairline bg-white p-4">
