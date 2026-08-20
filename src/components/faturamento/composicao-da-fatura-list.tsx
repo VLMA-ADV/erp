@@ -52,6 +52,15 @@ interface NotaGerada {
   contrato_id: string | null
 }
 
+interface EnvioFatura {
+  enviado_em: string
+  destinatario: string
+  remetente: string | null
+  por: string | null
+  erro: string | null
+  total: number
+}
+
 interface ContratoKit {
   contratoId: string
   numero: number | null
@@ -184,6 +193,10 @@ export default function ComposicaoDaFaturaList() {
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
   const [emailData, setEmailData] = useState<FaturaEmailData | null>(null)
   const [emailContratoId, setEmailContratoId] = useState<string | null>(null)
+  // Controle visual do que ja foi enviado (Filipe, 20/08: "um controle visual
+  // ali no modulo da fatura para controlar o que foi enviado, talvez com uma
+  // sinalizacao em verde"). Uma consulta so, chaveada por contrato.
+  const [envios, setEnvios] = useState<Record<string, EnvioFatura>>({})
   const [enviandoEmail, setEnviandoEmail] = useState(false)
 
   const load = async () => {
@@ -218,6 +231,17 @@ export default function ComposicaoDaFaturaList() {
       // O kit só faz sentido para o que o financeiro já aprovou/faturou.
       setItems(allItems.filter((it) => it.status === 'aprovado' || it.status === 'faturado'))
       setNotes(notasResp.ok ? ((notasPayload.data || []) as NotaGerada[]) : [])
+
+      // Quais contratos já tiveram a fatura enviada. Uma consulta só para a
+      // tela inteira — não uma por linha.
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: envs } = await supabase.rpc('get_envios_fatura', {
+          p_user_id: user.id,
+          p_contrato_id: null,
+        })
+        setEnvios((envs as Record<string, EnvioFatura>) || {})
+      }
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar composição da fatura')
@@ -351,6 +375,8 @@ export default function ComposicaoDaFaturaList() {
       setEmailData(null)
       setEmailContratoId(null)
       window.alert(`Fatura enviada para ${(resposta.destinatarios || []).join(', ')}.`)
+      // Recarrega para o sinal verde aparecer sem a pessoa precisar atualizar.
+      void load()
     } catch (err) {
       console.error(err)
       setError('Erro ao enviar a fatura.')
@@ -403,6 +429,7 @@ export default function ComposicaoDaFaturaList() {
                   key={kit.contratoId}
                   kit={kit}
                   notas={notaPorContrato.get(kit.contratoId) || {}}
+                  envio={envios[kit.contratoId]}
                   onStub={emBreve}
                   onAbrirNota={() => abrirNota(kit)}
                   onAbrirEmail={() => void abrirEmail(kit)}
@@ -486,31 +513,46 @@ function ComposicaoLinha({
 function ContratoKitCard({
   kit,
   notas,
+  envio,
   onStub,
   onAbrirNota,
   onAbrirEmail,
 }: {
   kit: ContratoKit
   notas: Partial<Record<string, NotaGerada>>
+  envio?: EnvioFatura
   onStub: (label: string) => void
   onAbrirNota: () => void
   onAbrirEmail: () => void
 }) {
   const contratoLabel = formatContratoDisplay(kit.numero, kit.nome).full
   const totalKit = kit.valorServico + kit.valorDespesa
+  const enviadoOk = Boolean(envio && !envio.erro)
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-white">
-      <div className="flex items-center justify-between border-b bg-canvas-soft px-4 py-3">
+    <div className={`overflow-hidden rounded-lg border bg-white ${enviadoOk ? 'border-green-300' : ''}`}>
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 ${enviadoOk ? 'bg-green-50' : 'bg-canvas-soft'}`}>
         <div>
           <span className="text-eyebrow text-xs">KIT DA FATURA</span>
           <p className="text-sm font-medium text-ink">{contratoLabel}</p>
+          {/* Sinal do que já foi enviado (Filipe, 20/08). Mostra a data, para
+              quem, por quem e quantas vezes — reenvio acontece, e saber que
+              foram três é o que evita o quarto. */}
+          {envio ? (
+            <p className={`mt-1 text-xs ${envio.erro ? 'text-destructive' : 'text-green-700'}`}>
+              {envio.erro ? '✕ Falhou o envio' : '✓ Enviada'} em{' '}
+              {new Date(envio.enviado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+              {' para '}{envio.destinatario}
+              {envio.por ? ` · por ${envio.por}` : ''}
+              {envio.total > 1 ? ` · ${envio.total} envios` : ''}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold font-tabular text-ink">{formatMoney(totalKit)}</span>
-          <Button variant="outline" size="sm" onClick={onAbrirEmail}>
+          <Button variant={enviadoOk ? 'outline' : 'default'} size="sm" onClick={onAbrirEmail}>
             <Mail className="mr-2 h-4 w-4" />
-            Pré-visualizar e-mail
+            {enviadoOk ? 'Reenviar e-mail' : 'Pré-visualizar e-mail'}
           </Button>
         </div>
       </div>

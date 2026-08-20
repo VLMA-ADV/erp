@@ -22,7 +22,27 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-const REMETENTE = "VLMA Financeiro <financeiro@erp.vlma.com.br>"
+// Sai no nome da Jessika (Filipe, 20/08: "Jessika.lira@vlma.com.br ... que
+// inicie o processo de envio da fatura no ERP, mas que a conversa continue no
+// email dela").
+//
+// O DOMÍNIO vlma.com.br AINDA NÃO ESTÁ VERIFICADO no Resend — os registros de
+// DNS foram entregues mas ninguém adicionou ainda. Enquanto não estiver, o
+// Resend RECUSA qualquer envio partindo de @vlma.com.br.
+//
+// Então tenta o endereço dela e, se o Resend recusar por domínio não
+// verificado, cai para o subdomínio que já funciona, mantendo o nome e o
+// reply-to dela. O cliente recebe "Jessika Lira (VLMA)" dos dois jeitos e
+// responde para ela dos dois jeitos; muda só o endereço técnico. No dia em que
+// o DNS entrar, o primeiro passa a funcionar sozinho — ninguém precisa mexer.
+const REMETENTE_PREFERIDO = "Jessika Lira (VLMA) <jessika.lira@vlma.com.br>"
+const REMETENTE_FALLBACK = "Jessika Lira (VLMA) <financeiro@erp.vlma.com.br>"
+const REPLY_TO_JESSIKA = "jessika.lira@vlma.com.br"
+
+function dominioNaoVerificado(corpo: unknown): boolean {
+  const t = JSON.stringify(corpo ?? {}).toLowerCase()
+  return t.includes("domain is not verified") || t.includes("not verified") || t.includes("domain_not_verified")
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -126,20 +146,35 @@ Deno.serve(async (req) => {
       corpo.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     }</div>`
 
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: REMETENTE,
-        to: escolhidos,
-        reply_to: d.reply_to?.length ? d.reply_to : undefined,
-        subject: assuntoFinal,
-        html,
-        ...(anexos.length ? { attachments: anexos } : {}),
-      }),
-    })
+    // A resposta do cliente tem de cair na caixa DELA — é onde a conversa
+    // continua depois que o ERP dá a largada (Filipe, 20/08). Os demais do
+    // financeiro ficam em cópia do reply-to para ninguém perder o fio.
+    const replyTo = Array.from(new Set([REPLY_TO_JESSIKA, ...(d.reply_to ?? [])]))
 
-    const respBody = await resp.json().catch(() => null)
+    const enviar = (from: string) =>
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from,
+          to: escolhidos,
+          reply_to: replyTo,
+          subject: assuntoFinal,
+          html,
+          ...(anexos.length ? { attachments: anexos } : {}),
+        }),
+      })
+
+    let remetenteUsado = REMETENTE_PREFERIDO
+    let resp = await enviar(REMETENTE_PREFERIDO)
+    let respBody = await resp.json().catch(() => null)
+
+    if (!resp.ok && dominioNaoVerificado(respBody)) {
+      console.warn("vlma.com.br ainda nao verificado no Resend; usando o subdominio")
+      remetenteUsado = REMETENTE_FALLBACK
+      resp = await enviar(REMETENTE_FALLBACK)
+      respBody = await resp.json().catch(() => null)
+    }
 
     await supabase.rpc("registrar_envio_fatura", {
       p_user_id: user.id,
@@ -149,6 +184,7 @@ Deno.serve(async (req) => {
       p_assunto: assuntoFinal,
       p_corpo: corpo,
       p_anexos: anexosResumo,
+      p_remetente: remetenteUsado,
       p_provider_id: resp.ok ? (respBody?.id ?? null) : null,
       p_erro: resp.ok ? null : JSON.stringify(respBody ?? {}).slice(0, 500),
     })
@@ -161,6 +197,7 @@ Deno.serve(async (req) => {
       enviado: true,
       destinatarios: escolhidos,
       anexos: anexosResumo.map((a) => a.nome),
+      remetente: remetenteUsado,
       id: respBody?.id ?? null,
     }, 200)
   } catch (err) {
