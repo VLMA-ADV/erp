@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { NativeSelect } from '@/components/ui/native-select'
+import { ClientesNovosCard } from '@/components/clientes/clientes-dashboard'
 
 interface DashboardListItem {
   nome: string
@@ -743,6 +744,11 @@ export default function ContratosDashboard() {
         <KpiCard label="Casos novos no mês" value={data.kpis.casos_novos_mes} />
         <KpiCard label="Contratos novos no mês" value={data.kpis.contratos_novos_mes} />
       </div>
+
+      {/* Clientes do ano na Visão geral de Contratos (pedido Lucas, 20/08).
+          É o mesmo cartão do módulo de Clientes, reaproveitado em vez de
+          duplicado — se a regra do "ano de captação" mudar, muda num lugar só. */}
+      <ClientesNovosCard />
 
       <StackedAreaChart serie={data.serie_temporal} onSelectMes={(mes, rotulo) => setDrill({ dim: 'por_mes', valor: mes, rotulo })} />
 

@@ -15,7 +15,7 @@ interface DashboardData {
 
 // "Cliente novo no ano" (resposta 3 do Filipe): ano do 1º contrato do cliente,
 // com override manual (ano_captacao_override no cadastro).
-function ClientesNovosCard() {
+export function ClientesNovosCard() {
   const [ano, setAno] = useState(() => new Date().getFullYear())
   const [res, setRes] = useState<{
     total: number
@@ -48,6 +48,17 @@ function ClientesNovosCard() {
           <p className="text-eyebrow">Clientes novos no ano</p>
           <p className="mt-1 font-tabular text-3xl font-light text-ink">{res?.total ?? '—'}</p>
           <p className="mt-1 text-xs text-ink-mute">pelo 1º contrato (ajuste manual no cadastro do cliente)</p>
+          {/* Sem o ajuste manual, o "ano do 1º contrato" e o ano em que o
+              contrato foi IMPORTADO para o ERP — nao o ano em que o cliente
+              chegou. Por isso quase todo mundo aparece no ano da migracao, e
+              dizer isso na tela evita apresentar "368 clientes novos" numa
+              reuniao. */}
+          {res && res.total > 0 && res.clientes.filter((c) => c.ajustado).length < res.total ? (
+            <p className="mt-1 max-w-md text-xs text-amber-700">
+              {res.clientes.filter((c) => c.ajustado).length} de {res.total} têm o ano conferido à mão. Nos demais,
+              vale o ano em que o contrato entrou no sistema, que pode ser o da migração e não o da captação.
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <select
