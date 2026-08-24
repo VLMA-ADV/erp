@@ -197,6 +197,12 @@ export default function ComposicaoDaFaturaList() {
   // ali no modulo da fatura para controlar o que foi enviado, talvez com uma
   // sinalizacao em verde"). Uma consulta so, chaveada por contrato.
   const [envios, setEnvios] = useState<Record<string, EnvioFatura>>({})
+  // Vencimento do certificado do Itaú. Fica nesta tela porque é daqui que o
+  // boleto sai — avisar em Configuração seria avisar onde ninguém entra.
+  const [cert, setCert] = useState<{
+    configurado: boolean; dias_restantes: number | null; vence_em: string | null
+    pode_renovar: boolean; erro: string | null
+  } | null>(null)
   const [enviandoEmail, setEnviandoEmail] = useState(false)
 
   const load = async () => {
@@ -241,6 +247,14 @@ export default function ComposicaoDaFaturaList() {
           p_contrato_id: null,
         })
         setEnvios((envs as Record<string, EnvioFatura>) || {})
+      }
+
+      // Certificado do Itaú: só interessa quando está perto de vencer.
+      try {
+        const rc = await fetch('/api/boletos/certificado')
+        if (rc.ok) setCert(await rc.json())
+      } catch {
+        // Sem certificado configurado ainda é o normal hoje; não é erro de tela.
       }
     } catch (err) {
       console.error(err)
@@ -391,6 +405,38 @@ export default function ComposicaoDaFaturaList() {
         <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {/* Certificado do Itaú perto de vencer. O banco só aceita renovação nos
+          últimos 30 dias, uma vez por ano — se essa janela passar, é refazer o
+          processo inteiro. Silêncio aqui vira boleto parado lá na frente. */}
+      {cert?.configurado && (cert.erro || (cert.dias_restantes !== null && cert.dias_restantes <= 60)) ? (
+        <Alert
+          className={
+            cert.erro || (cert.dias_restantes ?? 0) < 0
+              ? 'border-destructive/40 bg-destructive/10 text-destructive'
+              : (cert.dias_restantes ?? 0) <= 30
+                ? 'border-orange-400 bg-orange-50 text-orange-900'
+                : 'border-amber-300 bg-amber-50 text-amber-900'
+          }
+        >
+          <AlertTitle>
+            {cert.erro
+              ? 'Certificado do Itaú com problema'
+              : (cert.dias_restantes ?? 0) < 0
+                ? `Certificado do Itaú venceu em ${cert.vence_em}`
+                : `Certificado do Itaú vence em ${cert.dias_restantes} dia(s)`}
+          </AlertTitle>
+          <AlertDescription>
+            {cert.erro
+              ? `Não foi possível ler o certificado (${cert.erro}). Enquanto isso, nenhum boleto é emitido.`
+              : (cert.dias_restantes ?? 0) < 0
+                ? 'A emissão de boletos está parada. Passada a data não há renovação: é refazer o processo com o banco.'
+                : cert.pode_renovar
+                  ? 'A janela de renovação já está aberta — o Itaú só aceita nos últimos 30 dias. É a hora de renovar.'
+                  : `Vence em ${cert.vence_em}. A renovação só é aceita nos últimos 30 dias; este é um aviso antecipado.`}
+          </AlertDescription>
         </Alert>
       ) : null}
 
