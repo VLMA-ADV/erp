@@ -2248,6 +2248,24 @@ export default function CasoForm({
                 <Label>Início da vigência</Label>
                 <DatePicker value={form.inicio_vigencia} onChange={(value) => setField('inicio_vigencia', value)} disabled={isInicioVigenciaReadOnly} />
               </div>
+              {/*
+                Este campo era gravado e NAO tinha input em tela nenhuma. Quando
+                um caso ficou com o ano digitado errado (20206 em vez de 2026), a
+                mensalidade sumiu da fila de faturar para sempre e nao havia onde
+                corrigir: o Filipe abriu a tela, viu "dia 1" e "vigencia 2021" e
+                nao achou o erro, porque o campo errado nao estava ali.
+              */}
+              <div className="space-y-2">
+                <Label>Data de início de faturamento</Label>
+                <DatePicker
+                  value={form.data_inicio_faturamento}
+                  onChange={(value) => setField('data_inicio_faturamento', value)}
+                  disabled={isReadOnly}
+                />
+                <p className="text-xs text-muted-foreground">
+                  A partir de quando este caso entra na fila de faturar. Em branco, vale o início da vigência.
+                </p>
+              </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Possui reajuste?</Label>
                 <ChoiceCards
