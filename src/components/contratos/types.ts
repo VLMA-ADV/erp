@@ -35,6 +35,13 @@ export interface CasoListItem {
   parte_de_carteira_id?: string | null
   processos_carteira_count?: number
   regra_cobranca?: string | null
+  // A lista ja trazia isto do banco, mas o tipo nao declarava. E o que permite
+  // filtrar por regra de cobranca e por rascunho sem mexer em RPC: cada regra
+  // carrega o proprio status, e o do CASO nao diz nada sobre ela.
+  regras_financeiras?: Array<{
+    status?: string | null
+    regra_cobranca?: string | null
+  }>
 }
 
 export interface ContratoFormOptions {
