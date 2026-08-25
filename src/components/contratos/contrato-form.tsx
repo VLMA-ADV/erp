@@ -3706,6 +3706,18 @@ export default function ContratoForm({
                     />
                   </div>
 
+                  {/* Ver o comentario em caso-form.tsx: campo gravado sem input. */}
+                  <div className="space-y-2">
+                    <Label>Data de início de faturamento</Label>
+                    <DatePicker
+                      value={currentCaso.data_inicio_faturamento || ''}
+                      onChange={(value) => updateCurrentCaso({ data_inicio_faturamento: value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      A partir de quando este caso entra na fila de faturar. Em branco, vale o início da vigência.
+                    </p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Início da vigência</Label>
                     <DatePicker
