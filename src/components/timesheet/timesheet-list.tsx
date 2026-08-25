@@ -160,6 +160,7 @@ export default function TimesheetList() {
   const [filterClienteId, setFilterClienteId] = useState('')
   const [filterCasoId, setFilterCasoId] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterColaborador, setFilterColaborador] = useState('')
   // Período: ano + mês em chips (mock do cliente); mês null = ano inteiro.
   const [filterAno, setFilterAno] = useState(() => new Date().getFullYear())
   const [filterMes, setFilterMes] = useState<number | null>(() => new Date().getMonth())
@@ -257,11 +258,28 @@ export default function TimesheetList() {
       .map((item) => ({ value: item.id, label: item.texto, group: item.categoria }))
   }, [templateCategoria])
 
-  // Filtro por cliente é client-side (a edge filtra por caso/status/período).
+  // Opções de colaborador saem do próprio resultado — que o servidor já
+  // escopou a quem a pessoa pode ver. Quem só enxerga as próprias horas terá
+  // uma opção só, e o filtro nem aparece (ver a barra abaixo).
+  const colaboradorOptions = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const it of items) {
+      if (it.created_by && it.created_by_nome) m.set(it.created_by, it.created_by_nome)
+    }
+    return Array.from(m, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label, 'pt-BR'),
+    )
+  }, [items])
+
+  // Filtro por cliente e colaborador são client-side (a edge filtra por
+  // caso/status/período).
   const visibleItems = useMemo(() => {
-    if (!filterClienteId) return items
-    return items.filter((it) => contratoInfo.get(it.contrato_id)?.cliente_id === filterClienteId)
-  }, [items, filterClienteId, contratoInfo])
+    return items.filter((it) => {
+      if (filterClienteId && contratoInfo.get(it.contrato_id)?.cliente_id !== filterClienteId) return false
+      if (filterColaborador && it.created_by !== filterColaborador) return false
+      return true
+    })
+  }, [items, filterClienteId, filterColaborador, contratoInfo])
 
   // Agrupamento cronológico por dia (mais recente no topo), estilo Despesas.
   const groupedByDay = useMemo(() => {
@@ -587,7 +605,7 @@ export default function TimesheetList() {
         </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className={`grid gap-3 ${colaboradorOptions.length > 1 ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
         <CommandSelect
           value={filterClienteId}
           onValueChange={(value) => {
@@ -614,6 +632,18 @@ export default function TimesheetList() {
           options={statusOptions}
           placeholder="Todos os status"
         />
+
+        {/* Só aparece para quem vê mais de uma pessoa — o servidor já escopou. */}
+        {colaboradorOptions.length > 1 ? (
+          <CommandSelect
+            value={filterColaborador}
+            onValueChange={setFilterColaborador}
+            options={colaboradorOptions}
+            placeholder="Todos os colaboradores"
+            searchPlaceholder="Buscar colaborador..."
+            emptyText="Nenhum colaborador"
+          />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
