@@ -91,6 +91,7 @@ interface FormState {
   anexosNovos: File[]
   anexosExistentes: DespesaAnexo[]
   anexosRemover: string[]
+  arquivoRemover: boolean
 }
 
 const emptyForm: FormState = {
@@ -108,6 +109,7 @@ const emptyForm: FormState = {
   anexosNovos: [],
   anexosExistentes: [],
   anexosRemover: [],
+  arquivoRemover: false,
 }
 
 function formatDate(value: string) {
@@ -474,6 +476,7 @@ export default function DespesasList() {
       anexosNovos: [],
       anexosExistentes: (item.anexos || []).filter((a) => a.kind === 'extra'),
       anexosRemover: [],
+      arquivoRemover: false,
     })
     setDialogOpen(true)
   }
@@ -608,6 +611,8 @@ export default function DespesasList() {
       if (form.id) {
         if (anexosNovos.length > 0) payload.anexos_extra_add = anexosNovos
         if (form.anexosRemover.length > 0) payload.anexos_remove = form.anexosRemover
+        // Remover o comprovante principal — só quando não há substituição nesta operação.
+        if (form.arquivoRemover && !form.arquivo) payload.arquivo_remove = true
       } else if (anexosNovos.length > 0) {
         payload.anexos_extra = anexosNovos
       }
@@ -997,15 +1002,30 @@ export default function DespesasList() {
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
                   Atual: {form.arquivo_nome}
                   {form.id ? (
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                      onClick={() => void downloadAnexo('primario', form.id as string, form.arquivo_nome)}
-                    >
-                      <Download className="h-3 w-3" /> baixar
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                        onClick={() => void downloadAnexo('primario', form.id as string, form.arquivo_nome)}
+                      >
+                        <Download className="h-3 w-3" /> baixar
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-red-600 hover:underline"
+                        onClick={() => {
+                          if (!window.confirm(`Remover o comprovante "${form.arquivo_nome}"? Não é possível desfazer.`)) return
+                          setForm((prev) => ({ ...prev, arquivo: null, arquivo_nome: '', arquivoRemover: true }))
+                        }}
+                        disabled={submitting}
+                      >
+                        <X className="h-3 w-3" /> remover
+                      </button>
+                    </>
                   ) : null}
                 </p>
+              ) : form.arquivoRemover ? (
+                <p className="text-xs text-red-600">Comprovante será removido ao salvar.</p>
               ) : null}
             </div>
 
