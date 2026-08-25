@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { CircleDollarSign, ListTree } from 'lucide-react'
+import { Barcode, CircleDollarSign, ListTree } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 interface SidebarMenuConfiguracaoProps {
@@ -42,6 +42,12 @@ const configuracaoMenuItems = [
     href: '/configuracao/plano-de-contas',
     permission: 'finance.contas_pagar.read',
     icon: ListTree,
+  },
+  {
+    label: 'Cobrança (boleto)',
+    href: '/configuracao/cobranca',
+    permission: 'finance.contas_pagar.read',
+    icon: Barcode,
   },
   {
     label: 'Categorias Prest/Parc',

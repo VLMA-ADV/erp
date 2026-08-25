@@ -56,12 +56,24 @@ export async function GET() {
       certificado: { vence_em: cert.vence_em, dias_restantes: cert.dias_restantes },
     })
   } catch (e) {
+    // Quando o banco recusa a credencial, a pergunta seguinte é sempre "mas o
+    // valor certo chegou aqui?". Como variável de ambiente não se lê depois de
+    // salva, o tamanho responde isso sem expor nada: o client_secret do Itaú
+    // tem 36 caracteres. Se chegar 43, veio com o rótulo "Secret:" colado —
+    // foi o que aconteceu na primeira tentativa.
+    const tamanhos = {
+      client_id: (process.env.ITAU_CLIENT_ID ?? '').trim().length,
+      client_secret: (process.env.ITAU_CLIENT_SECRET ?? '').trim().length,
+      client_secret_esperado: 36,
+      client_secret_com_rotulo: (process.env.ITAU_CLIENT_SECRET ?? '').trim().toLowerCase().startsWith('secret:'),
+    }
     return NextResponse.json(
       {
         ok: false,
         etapa: 'access_token',
         detalhe: e instanceof Error ? e.message : 'falha desconhecida',
         ms: Date.now() - inicio,
+        tamanhos,
       },
       { status: 502 },
     )
