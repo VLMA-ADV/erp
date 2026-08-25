@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/certificado-itau",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/manter-recorrencias",
+      "schedule": "0 6 * * *"
     }
   ]
 }
