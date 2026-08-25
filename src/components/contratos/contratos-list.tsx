@@ -11,6 +11,7 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/native-select'
 import ContratosActions from './contratos-actions'
 import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
@@ -36,6 +37,22 @@ function getVisibleCasos<T extends CasoLike>(casos: T[] | null | undefined): T[]
   return matrizIds.size > 0 ? casos.filter((c) => !matrizIds.has(c.id)) : casos
 }
 
+// Mesmos rotulos que o formulario do caso usa, para nao virar um segundo
+// vocabulario: quem le "Salário Mínimo" no cadastro procura isso aqui.
+const REGRAS_FILTRO = [
+  { valor: 'hora', label: 'Hora' },
+  { valor: 'hora_com_cap', label: 'Hora com cap' },
+  { valor: 'mensal', label: 'Mensal' },
+  { valor: 'mensalidade_processo', label: 'Mensalidade de processo' },
+  { valor: 'salario_minimo', label: 'Salário mínimo' },
+  { valor: 'mensalidade_carteira', label: 'Carteira' },
+  { valor: 'projeto', label: 'Projeto' },
+  { valor: 'projeto_parcelado', label: 'Projeto parcelado' },
+  { valor: 'pro_labore', label: 'Pró-labore' },
+  { valor: 'pro_labore_parcelado', label: 'Pró-labore parcelado' },
+  { valor: 'exito', label: 'Êxito' },
+]
+
 // Data curta para caber na coluna (pedido Filipe 04/08).
 function fmtData(value?: string | null) {
   if (!value) return '-'
@@ -56,6 +73,8 @@ export default function ContratosList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [filtroRegra, setFiltroRegra] = useState('')
+  const [filtroSituacao, setFiltroSituacao] = useState('')
   const [focusedContratoId, setFocusedContratoId] = useState('')
 
   useEffect(() => {
@@ -106,7 +125,57 @@ export default function ContratosList() {
           c.cliente_nome.toLowerCase().includes(s) ||
           c.casos?.some((caso) => String(caso.numero || '').includes(s) || caso.nome.toLowerCase().includes(s)),
         )
+
+        // Buscar "57" ja funcionava — o problema era enxergar. A tela devolve 28
+        // linhas (todo contrato ou caso com "57" em qualquer posicao do numero),
+        // agrupadas por cliente e com os dois niveis FECHADOS. O caso 57 estava
+        // ali dentro o tempo todo, invisivel. Para quem busca, "nao encontra".
+        //
+        // Duas correcoes: o que bate EXATO vem primeiro, e o caminho ate ele
+        // abre sozinho.
+        const exato = (c: ContratoListItem) =>
+          String(c.numero || '') === s ||
+          String(c.numero_sequencial || '') === s ||
+          !!c.casos?.some((caso) => String(caso.numero || '') === s)
+
+        list = [...list].sort((a, b) => Number(exato(b)) - Number(exato(a)))
+
+        const abrirContratos: Record<string, boolean> = {}
+        const abrirClientes: Record<string, boolean> = {}
+        for (const c of list) {
+          if (!exato(c)) continue
+          abrirContratos[c.id] = true
+          // Mesma chave que o agrupamento da tela usa, logo abaixo.
+          abrirClientes[c.cliente_nome || 'Sem cliente'] = true
+        }
+        if (Object.keys(abrirContratos).length > 0) {
+          setExpanded((prev) => ({ ...prev, ...abrirContratos }))
+          setExpandedClients((prev) => ({ ...prev, ...abrirClientes }))
+        }
       }
+
+      // Filtros de regra: um contrato fica se ALGUM caso dele casar. Filtrar o
+      // contrato inteiro e o certo aqui porque a tela e uma arvore — some o
+      // contrato, some o caso junto.
+      //
+      // A situacao vem da REGRA, nao do caso: um caso ativo pode ter regra em
+      // rascunho, e e exatamente esse o par que nao fatura e nao aparece em
+      // lugar nenhum. Sao 6 casos, R$ 2.600/mes, achados no batimento de agosto.
+      if (filtroRegra || filtroSituacao) {
+        list = list.filter((c) =>
+          (c.casos || []).some((caso) => {
+            const regras = caso.regras_financeiras?.length
+              ? caso.regras_financeiras
+              : [{ regra_cobranca: caso.regra_cobranca, status: caso.status }]
+            return regras.some((r) => {
+              if (filtroRegra && (r.regra_cobranca || '') !== filtroRegra) return false
+              if (filtroSituacao && (r.status || 'ativo') !== filtroSituacao) return false
+              return true
+            })
+          }),
+        )
+      }
+
       setItems(list)
     } catch (e) {
       // Caller cancelou (unmount/dependency change): silenciar — não setar erro
@@ -132,7 +201,7 @@ export default function ContratosList() {
     fetchItems(ac.signal)
     return () => ac.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, focusedContratoId])
+  }, [search, focusedContratoId, filtroRegra, filtroSituacao])
 
   if (!canRead) {
     return (
@@ -168,12 +237,46 @@ export default function ContratosList() {
       {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
 
       <div className="flex items-center justify-between gap-3">
-        <Input
-          className="max-w-md"
-          placeholder="Buscar contrato, cliente ou caso..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Input
+            className="max-w-md"
+            placeholder="Buscar contrato, cliente ou nº do caso..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <NativeSelect
+            className="h-10 w-auto min-w-[11rem]"
+            value={filtroRegra}
+            onChange={(e) => setFiltroRegra(e.target.value)}
+          >
+            <option value="">Todas as regras</option>
+            {REGRAS_FILTRO.map((r) => (
+              <option key={r.valor} value={r.valor}>{r.label}</option>
+            ))}
+          </NativeSelect>
+
+          <NativeSelect
+            className="h-10 w-auto min-w-[10rem]"
+            value={filtroSituacao}
+            onChange={(e) => setFiltroSituacao(e.target.value)}
+          >
+            <option value="">Ativas e rascunhos</option>
+            <option value="ativo">Só regras ativas</option>
+            <option value="rascunho">Só rascunhos</option>
+            <option value="encerrado">Só encerradas</option>
+          </NativeSelect>
+
+          {(filtroRegra || filtroSituacao) && (
+            <Button
+              variant="ghost"
+              className="h-10 px-2 text-sm text-ink-mute"
+              onClick={() => { setFiltroRegra(''); setFiltroSituacao('') }}
+            >
+              limpar
+            </Button>
+          )}
+        </div>
 
         {canWrite && (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -203,7 +306,14 @@ export default function ContratosList() {
           acc[key].contratos.push(item)
           return acc
         }, {})
-        const clienteKeys = Object.keys(groups).sort()
+        // Alfabetico, mas o cliente que teve casamento exato na busca sobe para
+        // o topo: nao adianta abrir sozinho se fica na 20a linha.
+        const clienteKeys = Object.keys(groups).sort((a, b) => {
+          const aAberto = !!expandedClients[a] && !!search.trim()
+          const bAberto = !!expandedClients[b] && !!search.trim()
+          if (aAberto !== bAberto) return Number(bAberto) - Number(aAberto)
+          return a.localeCompare(b)
+        })
 
         return (
           <div className="rounded-md border overflow-x-auto">
