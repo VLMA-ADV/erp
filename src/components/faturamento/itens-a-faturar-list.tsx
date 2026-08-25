@@ -182,7 +182,14 @@ function filterTreeByRule(
           matchRuleTab(regraTab, linha)
           // Usuário filtra a LINHA, não o caso: um caso pode ter lançamento de
           // várias pessoas, e quem filtra quer ver só o que é seu.
-          && (!usuarioFiltro || (linha.lancado_por || '') === usuarioFiltro),
+          //
+          // Linha SEM responsável passa sempre. Mensalidade, parcela de projeto
+          // e carteira não são lançadas por ninguém — vêm da regra do contrato —
+          // então chegam aqui com lancado_por vazio. Comparando direto, qualquer
+          // pessoa escolhida no filtro derrubava TODAS elas e sobravam só horas:
+          // era o suficiente para uma conferência mensal parecer completa e não
+          // estar. Foi o que aconteceu com o Filipe no batimento de agosto.
+          && (!usuarioFiltro || !linha.lancado_por || linha.lancado_por === usuarioFiltro),
         )
         if (filteredExtrato.length === 0) continue
 
