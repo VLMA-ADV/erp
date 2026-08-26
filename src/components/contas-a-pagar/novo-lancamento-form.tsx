@@ -32,7 +32,7 @@ const emptyForm = {
   valor: '',
   vencimento: '',
   reembolsavel: false,
-  recorrente: false,
+  modo: 'nenhum',
   num_parcelas: '0',
   reajuste_data: '',
   reajuste_percentual_estim: '',
@@ -67,6 +67,8 @@ export default function NovoLancamentoForm() {
   // de Suspense por causa de um link opcional.
   const [editId, setEditId] = useState<string | null>(null)
   const [editStatus, setEditStatus] = useState<string | null>(null)
+  const [serie, setSerie] = useState<{ recorrenciaId: string | null; futuras: number; modo: string }>({ recorrenciaId: null, futuras: 0, modo: '' })
+  const [escopoEdicao, setEscopoEdicao] = useState<'esta' | 'futuras'>('esta')
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('id')
     if (!id) return
@@ -79,6 +81,14 @@ export default function NovoLancamentoForm() {
       if (e) { setError(e.message); return }
       const d = data as Record<string, unknown>
       setEditStatus(String(d.status || ''))
+      // Quantas outras parcelas ainda da para mexer. E esse numero que decide se
+      // a pergunta "esta ou todas" aparece — numa serie de uma parcela so, nao ha
+      // o que perguntar.
+      setSerie({
+        recorrenciaId: d.recorrencia_id ? String(d.recorrencia_id) : null,
+        futuras: Number(d.parcelas_futuras || 0),
+        modo: String(d.serie_modo || ''),
+      })
       setForm((f) => ({
         ...f,
         natureza: (d.natureza as 'pagar' | 'receber') || 'pagar',
@@ -134,6 +144,24 @@ export default function NovoLancamentoForm() {
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  // A frase que impede o engano de voltar: mostra a conta feita, com o total,
+  // antes de salvar. Sem isso a ambiguidade "valor cheio" so muda de lugar.
+  const previaParcelas = useMemo(() => {
+    const v = Number(form.valor || 0)
+    const n = Number(form.num_parcelas || 0)
+    if (!v || form.modo === 'nenhum') return ''
+    if (form.modo === 'parcelado') {
+      if (n < 2) return 'Informe pelo menos 2 parcelas.'
+      const parcela = Math.round((v / n) * 100) / 100
+      const ultima = Math.round((v - parcela * (n - 1)) * 100) / 100
+      const sobra = ultima !== parcela ? ` (a última fica ${fmtMoney(ultima)})` : ''
+      return `${n}x de ${fmtMoney(parcela)}${sobra} — total ${fmtMoney(v)}`
+    }
+    if (n === 0) return `${fmtMoney(v)} todo mês, sem data para acabar`
+    return `${n}x de ${fmtMoney(v)} — total ${fmtMoney(v * n)}`
+  }, [form.valor, form.num_parcelas, form.modo])
+
+
   const submitLote = async () => {
     setError(null)
     if (!canWrite) { setError('Você não tem permissão para lançar.'); return }
@@ -183,14 +211,17 @@ export default function NovoLancamentoForm() {
         ? await supabase.rpc('cp_editar_lancamento', {
             p_user_id: user.id,
             p_id: editId,
-            p_payload: { ...form, valor: Number(form.valor) },
+            p_payload: { ...form, valor: Number(form.valor), escopo: escopoEdicao },
           })
         : await supabase.rpc('cp_criar_lancamento', {
             p_user_id: user.id,
             p_payload: {
               ...form,
               valor: Number(form.valor),
-              num_parcelas: form.recorrente ? Number(form.num_parcelas || 0) : null,
+              // O backend aceita 'modo'; 'recorrente' vai junto porque payload
+              // antigo ainda e aceito e nao custa nada manter os dois de acordo.
+              recorrente: form.modo !== 'nenhum',
+              num_parcelas: form.modo === 'nenhum' ? null : Number(form.num_parcelas || 0),
               reajuste_percentual_estim: form.reajuste_percentual_estim ? Number(form.reajuste_percentual_estim) : null,
             },
           })
@@ -456,20 +487,98 @@ export default function NovoLancamentoForm() {
           </div>
         </div>
 
-        {/* Recorrência */}
-        <div className="rounded-md border border-hairline p-3">
-          <label className="flex items-center justify-between">
-            <span>
-              <span className="block text-sm font-medium text-ink">Despesa recorrente</span>
-              <span className="block text-xs text-ink-mute">Gera lançamentos automáticos nos próximos meses.</span>
+        {/*
+          Editando uma parcela de série: até 25/08 mexer aqui alterava SÓ este mês
+          e as futuras continuavam com o valor velho, caladas. Agora pergunta —
+          mas o padrão continua sendo "só esta", que é o comportamento que já
+          existia e o que ele temia perder ("as outras não se movem").
+        */}
+        {editId && serie.recorrenciaId && serie.futuras > 0 && (
+          <div className="rounded-md border border-primary/40 bg-primary-soft-bg/40 p-3">
+            <span className="block text-sm font-medium text-ink">
+              {serie.modo === 'parcelado' ? 'Esta é uma parcela' : 'Esta é uma despesa recorrente'}
             </span>
-            <input type="checkbox" checked={form.recorrente} onChange={(e) => set('recorrente', e.target.checked)} />
-          </label>
-          {form.recorrente && (
-            <div className="mt-3">
-              <label className={labelCls}>Quantas parcelas? (0 = sem prazo, até cancelar)</label>
-              <input type="number" min="0" className={inputCls} value={form.num_parcelas} onChange={(e) => set('num_parcelas', e.target.value)} />
+            <span className="block text-xs text-ink-mute">
+              Há mais {serie.futuras} {serie.futuras === 1 ? 'parcela futura' : 'parcelas futuras'} não pagas. O que você quer alterar?
+            </span>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {[
+                { v: 'esta' as const, t: 'Só esta', d: 'As outras ficam como estão' },
+                { v: 'futuras' as const, t: `Esta e as ${serie.futuras} futuras`, d: 'Valor e classificação; a data de cada uma é mantida' },
+              ].map((op) => (
+                <button
+                  key={op.v}
+                  type="button"
+                  onClick={() => setEscopoEdicao(op.v)}
+                  className={`rounded-md border p-2 text-left transition ${
+                    escopoEdicao === op.v ? 'border-primary bg-primary-soft-bg' : 'border-hairline hover:bg-canvas-soft'
+                  }`}
+                >
+                  <span className="block text-sm font-medium text-ink">{op.t}</span>
+                  <span className="block text-xs text-ink-mute">{op.d}</span>
+                </button>
+              ))}
             </div>
+          </div>
+        )}
+
+        {/*
+          Antes era um checkbox só, "Despesa recorrente", e o campo de parcelas
+          REPETIA o valor: R$ 12.210 em "3 parcelas" criava três de R$ 12.210.
+          Quem esperava divisão inflava a projeção de saída em 3x sem perceber.
+          Agora são dois modos com nome próprio, e o resumo abaixo mostra a conta
+          antes de salvar — é ele que impede o engano de voltar.
+        */}
+        <div className={`rounded-md border border-hairline p-3 ${editId ? 'hidden' : ''}`}>
+          <span className="block text-sm font-medium text-ink">Repete ou parcela?</span>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {[
+              { v: 'nenhum', t: 'Não repete', d: 'Um lançamento só' },
+              { v: 'recorrente', t: 'Recorrente', d: 'Repete todo mês, sem fim' },
+              { v: 'parcelado', t: 'Parcelado', d: 'Divide um total em N vezes' },
+            ].map((op) => (
+              <button
+                key={op.v}
+                type="button"
+                onClick={() => set('modo', op.v)}
+                className={`rounded-md border p-2 text-left transition ${
+                  form.modo === op.v
+                    ? 'border-primary bg-primary-soft-bg'
+                    : 'border-hairline hover:bg-canvas-soft'
+                }`}
+              >
+                <span className="block text-sm font-medium text-ink">{op.t}</span>
+                <span className="block text-xs text-ink-mute">{op.d}</span>
+              </button>
+            ))}
+          </div>
+
+          {form.modo === 'recorrente' && (
+            <div className="mt-3">
+              <label className={labelCls}>Quantas vezes? (0 = sem prazo, até cancelar)</label>
+              <input type="number" min="0" className={inputCls} value={form.num_parcelas}
+                onChange={(e) => set('num_parcelas', e.target.value)} />
+              <p className="mt-1 text-xs text-ink-mute">
+                O valor digitado é o de <b>cada mês</b> e se repete igual.
+              </p>
+            </div>
+          )}
+
+          {form.modo === 'parcelado' && (
+            <div className="mt-3">
+              <label className={labelCls}>Em quantas parcelas?</label>
+              <input type="number" min="2" className={inputCls} value={form.num_parcelas}
+                onChange={(e) => set('num_parcelas', e.target.value)} />
+              <p className="mt-1 text-xs text-ink-mute">
+                O valor digitado é o <b>total</b>, e o sistema divide.
+              </p>
+            </div>
+          )}
+
+          {previaParcelas && (
+            <p className="mt-2 rounded bg-canvas-soft px-2 py-1.5 text-sm text-ink">
+              {previaParcelas}
+            </p>
           )}
         </div>
 
@@ -553,7 +662,7 @@ export default function NovoLancamentoForm() {
             <div className="flex justify-between"><dt className="text-ink-mute">Centro de custo</dt><dd>{listas?.centros_custo.find((c) => c.id === form.centro_custo_id)?.nome || '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-ink-mute">Conta contábil</dt><dd>{listas?.contas_contabeis.find((c) => c.id === form.conta_contabil_id)?.codigo || '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-ink-mute">Empresa</dt><dd>{listas?.empresas.find((e) => e.id === form.empresa_id)?.nome || '—'}</dd></div>
-            {form.recorrente && <div className="flex justify-between"><dt className="text-ink-mute">Recorrência</dt><dd>{Number(form.num_parcelas) === 0 ? 'sem prazo' : `${form.num_parcelas}x`}</dd></div>}
+            {form.modo !== 'nenhum' && <div className="flex justify-between"><dt className="text-ink-mute">{form.modo === 'parcelado' ? 'Parcelado' : 'Recorrência'}</dt><dd>{form.modo === 'parcelado' ? `${form.num_parcelas}x de ${fmtMoney(Number(form.valor || 0) / Math.max(Number(form.num_parcelas) || 1, 1))}` : (Number(form.num_parcelas) === 0 ? 'sem prazo' : `${form.num_parcelas}x`)}</dd></div>}
             {form.reembolsavel && <div className="flex justify-between"><dt className="text-ink-mute">Reembolsável</dt><dd>sim → gera entrada</dd></div>}
           </dl>
           )}
