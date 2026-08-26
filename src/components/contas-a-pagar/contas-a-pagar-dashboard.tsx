@@ -43,6 +43,8 @@ type Row = {
   reembolso_de_id?: string | null
   vencimento_original?: string | null
   baixa_data?: string | null
+  recorrencia_id?: string | null
+  parcela_numero?: number | null
 }
 type ItemPrevisto = Row & {
   cliente_nome?: string | null
@@ -87,6 +89,9 @@ const FILTERS = [
   { key: 'pendentes', label: 'Pendentes' },
   { key: 'vencidas', label: 'Vencidas' },
   { key: 'pagos', label: 'Pagos/Baixados' },
+  // Filipe, 25/08: achar a despesa de serie no meio do mes para editar a serie
+  // inteira. Sem isto, editar "todas as futuras" depende de topar com a linha.
+  { key: 'recorrentes', label: 'Recorrentes/Parceladas' },
 ] as const
 
 // Janela de leitura do mes (pedido Filipe 13/08): "ali eu vejo geral, mas eu
@@ -402,6 +407,7 @@ export default function ContasAPagarDashboard() {
       case 'pendentes': return rows.filter((r) => ['pendente', 'agendado'].includes(r.status))
       case 'vencidas': return rows.filter((r) => r.status === 'atrasado' || (r.vencimento < dia && !['pago', 'recebido', 'cancelado'].includes(r.status)))
       case 'pagos': return rows.filter((r) => ['pago', 'recebido'].includes(r.status))
+      case 'recorrentes': return rows.filter((r) => !!r.recorrencia_id)
       default: return rows
     }
   }
