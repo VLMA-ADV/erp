@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
@@ -67,7 +67,7 @@ export default function ContratosList() {
   const canRead = hasPermission('contracts.contratos.read')
   const canWrite = hasPermission('contracts.contratos.write')
 
-  const [items, setItems] = useState<ContratoListItem[]>([])
+  const [rawItems, setRawItems] = useState<ContratoListItem[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
@@ -111,72 +111,10 @@ export default function ContratosList() {
         return
       }
 
-      let list = (data.data || []) as ContratoListItem[]
-      if (focusedContratoId) {
-        list = list.filter((c) => c.id === focusedContratoId)
-      }
-      if (search.trim()) {
-        const s = search.toLowerCase()
-        list = list.filter((c) =>
-          String(c.numero || '').includes(s) ||
-          String(c.numero_sequencial || '').includes(s) ||
-          formatContratoDisplay(c.numero_sequencial, c.nome_contrato).full.toLowerCase().includes(s) ||
-          c.nome_contrato.toLowerCase().includes(s) ||
-          c.cliente_nome.toLowerCase().includes(s) ||
-          c.casos?.some((caso) => String(caso.numero || '').includes(s) || caso.nome.toLowerCase().includes(s)),
-        )
-
-        // Buscar "57" ja funcionava — o problema era enxergar. A tela devolve 28
-        // linhas (todo contrato ou caso com "57" em qualquer posicao do numero),
-        // agrupadas por cliente e com os dois niveis FECHADOS. O caso 57 estava
-        // ali dentro o tempo todo, invisivel. Para quem busca, "nao encontra".
-        //
-        // Duas correcoes: o que bate EXATO vem primeiro, e o caminho ate ele
-        // abre sozinho.
-        const exato = (c: ContratoListItem) =>
-          String(c.numero || '') === s ||
-          String(c.numero_sequencial || '') === s ||
-          !!c.casos?.some((caso) => String(caso.numero || '') === s)
-
-        list = [...list].sort((a, b) => Number(exato(b)) - Number(exato(a)))
-
-        const abrirContratos: Record<string, boolean> = {}
-        const abrirClientes: Record<string, boolean> = {}
-        for (const c of list) {
-          if (!exato(c)) continue
-          abrirContratos[c.id] = true
-          // Mesma chave que o agrupamento da tela usa, logo abaixo.
-          abrirClientes[c.cliente_nome || 'Sem cliente'] = true
-        }
-        if (Object.keys(abrirContratos).length > 0) {
-          setExpanded((prev) => ({ ...prev, ...abrirContratos }))
-          setExpandedClients((prev) => ({ ...prev, ...abrirClientes }))
-        }
-      }
-
-      // Filtros de regra: um contrato fica se ALGUM caso dele casar. Filtrar o
-      // contrato inteiro e o certo aqui porque a tela e uma arvore — some o
-      // contrato, some o caso junto.
-      //
-      // A situacao vem da REGRA, nao do caso: um caso ativo pode ter regra em
-      // rascunho, e e exatamente esse o par que nao fatura e nao aparece em
-      // lugar nenhum. Sao 6 casos, R$ 2.600/mes, achados no batimento de agosto.
-      if (filtroRegra || filtroSituacao) {
-        list = list.filter((c) =>
-          (c.casos || []).some((caso) => {
-            const regras = caso.regras_financeiras?.length
-              ? caso.regras_financeiras
-              : [{ regra_cobranca: caso.regra_cobranca, status: caso.status }]
-            return regras.some((r) => {
-              if (filtroRegra && (r.regra_cobranca || '') !== filtroRegra) return false
-              if (filtroSituacao && (r.status || 'ativo') !== filtroSituacao) return false
-              return true
-            })
-          }),
-        )
-      }
-
-      setItems(list)
+      // Guarda o resultado CRU. Filtrar aqui dentro obrigava a refazer a
+      // chamada dos ~500 contratos a cada tecla e a cada troca de filtro; agora
+      // a rede roda uma vez e o resto e memoria.
+      setRawItems((data.data || []) as ContratoListItem[])
     } catch (e) {
       // Caller cancelou (unmount/dependency change): silenciar — não setar erro
       if (e instanceof DOMException && e.name === 'AbortError') return
@@ -195,13 +133,76 @@ export default function ContratosList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
-  useEffect(() => {
-    if (!canRead) return
-    const ac = new AbortController()
-    fetchItems(ac.signal)
-    return () => ac.abort()
+  // Quem bate EXATO na busca. Usado para ordenar e para abrir o caminho.
+  const ehExato = (c: ContratoListItem, s: string) =>
+    String(c.numero || '') === s ||
+    String(c.numero_sequencial || '') === s ||
+    !!c.casos?.some((caso) => String(caso.numero || '') === s)
+
+  // Tudo em memoria: a rede ja trouxe os ~500 contratos uma vez.
+  const items = useMemo(() => {
+    let list = rawItems
+    if (focusedContratoId) list = list.filter((c) => c.id === focusedContratoId)
+
+    const s = search.trim().toLowerCase()
+    if (s) {
+      list = list.filter((c) =>
+        String(c.numero || '').includes(s) ||
+        String(c.numero_sequencial || '').includes(s) ||
+        formatContratoDisplay(c.numero_sequencial, c.nome_contrato).full.toLowerCase().includes(s) ||
+        c.nome_contrato.toLowerCase().includes(s) ||
+        c.cliente_nome.toLowerCase().includes(s) ||
+        c.casos?.some((caso) => String(caso.numero || '').includes(s) || caso.nome.toLowerCase().includes(s)),
+      )
+      // Buscar "57" ja funcionava — o problema era enxergar. A tela devolve 28
+      // linhas (todo contrato ou caso com "57" em qualquer posicao do numero),
+      // agrupadas por cliente e com os dois niveis FECHADOS. Quem busca conclui
+      // que "nao encontrou". O que bate exato vem primeiro.
+      list = [...list].sort((a, b) => Number(ehExato(b, s)) - Number(ehExato(a, s)))
+    }
+
+    // Filtros de regra: o contrato fica se ALGUM caso dele casar — a tela e uma
+    // arvore, some o contrato, some o caso junto.
+    //
+    // A situacao vem da REGRA, nao do caso: um caso ativo pode ter regra em
+    // rascunho, e e esse par que nao fatura e nao aparece em lugar nenhum.
+    if (filtroRegra || filtroSituacao) {
+      list = list.filter((c) =>
+        (c.casos || []).some((caso) => {
+          const regras = caso.regras_financeiras?.length
+            ? caso.regras_financeiras
+            : [{ regra_cobranca: caso.regra_cobranca, status: caso.status }]
+          return regras.some((r) => {
+            if (filtroRegra && (r.regra_cobranca || '') !== filtroRegra) return false
+            if (filtroSituacao && (r.status || 'ativo') !== filtroSituacao) return false
+            return true
+          })
+        }),
+      )
+    }
+
+    return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, focusedContratoId, filtroRegra, filtroSituacao])
+  }, [rawItems, search, focusedContratoId, filtroRegra, filtroSituacao])
+
+  // Abrir o caminho ate o que bateu exato e efeito colateral, entao mora fora do
+  // memo — memo que chama setState re-renderiza em loop.
+  useEffect(() => {
+    const s = search.trim().toLowerCase()
+    if (!s) return
+    const abrirContratos: Record<string, boolean> = {}
+    const abrirClientes: Record<string, boolean> = {}
+    for (const c of items) {
+      if (!ehExato(c, s)) continue
+      abrirContratos[c.id] = true
+      // Mesma chave que o agrupamento da tela usa, mais abaixo.
+      abrirClientes[c.cliente_nome || 'Sem cliente'] = true
+    }
+    if (Object.keys(abrirContratos).length === 0) return
+    setExpanded((prev) => ({ ...prev, ...abrirContratos }))
+    setExpandedClients((prev) => ({ ...prev, ...abrirClientes }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, search])
 
   if (!canRead) {
     return (
