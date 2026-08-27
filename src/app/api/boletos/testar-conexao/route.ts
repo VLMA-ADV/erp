@@ -10,9 +10,14 @@ export const runtime = 'nodejs'
  *
  * Pede um access_token ao STS, que é a única chamada que exerce o caminho
  * inteiro — mTLS com o certificado, credencial aceita, resposta do banco — sem
- * criar um boleto de verdade. Como não existe ambiente de homologação nesta
- * API (a credencial já nasce apontando para produção), é o mais perto que dá
- * de "testar" sem cobrar alguém.
+ * criar um boleto de verdade.
+ *
+ * Correção de 27/08: eu vinha registrando aqui que "não existe ambiente de
+ * homologação nesta API". O portal TEM aba de homologação em gestão de
+ * credenciais. O que é verdade é outra coisa: a nossa credencial nasceu fora do
+ * portal (CSR por e-mail com a implantação) e não aparece em nenhuma das duas
+ * abas, então hoje só temos credencial de produção. Enquanto for assim, este
+ * teste é o mais perto que dá de "testar" sem cobrar alguém.
  *
  * NÃO devolve o token. Só diz se veio, e por quanto tempo vale.
  */
