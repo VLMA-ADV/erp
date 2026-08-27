@@ -22,19 +22,36 @@ import { randomUUID } from 'node:crypto'
  * CHAVE PRIVADA nunca entram no repositório nem trafegam por mensagem.
  */
 
+// MIGRACAO OBRIGATORIA ATE 15/09/2026.
+// O portal do Itau anunciou a troca dos enderecos de conexao e da cadeia de
+// certificados: 'api.itau.com.br' passa a ser 'api.gateway.itau.com.br'. Passada
+// a data, o endereco antigo para de responder e a cobranca por boleto morre sem
+// aviso — por isso ja migramos, e nao na vespera.
+//
+// Verificado em 27/08/2026 pelo endpoint de validacao que eles indicam:
+//   GET https://api.gateway.itau.com.br/sandbox/ca-validation
+//   -> HTTP 200 {"status":"OK"}, TLS autorizado, emissor
+//      'GlobalSign GCC R46 OV TLS CA 2025' (a cadeia nova).
+// O Node confia nessa CA por padrao, entao nao foi preciso importar truststore.
+//
+// 'sts.itau.com.br' (token) NAO esta na lista de enderecos impactados.
 const ENDPOINTS = {
   producao: {
     token: 'https://sts.itau.com.br/api/oauth/token',
-    boletos: 'https://api.itau.com.br/cash_management/v2/boletos',
-    webhooks: 'https://boletos.cloud.itau.com.br/boletos/v3/notificacoes_boletos',
+    boletos: 'https://api.gateway.itau.com.br/cash_management/v2/boletos',
+    // Base documentada da API Boletos v3. Ainda NAO responde para a nossa
+    // credencial (404): o produto nao esta provisionado, e o webhook depende
+    // dele. Pedido em aberto com a equipe de implantacao.
+    webhooks: 'https://api.gateway.itau.com.br/boletos/v3/notificacoes_boletos',
   },
   homologacao: {
-    // O pacote recebido não trouxe as URLs de homologação — é uma das
-    // perguntas em aberto com o banco. Até vir a resposta, homologação aponta
-    // para os mesmos endereços e o ambiente é escolhido pela credencial.
+    // O portal tem aba de homologacao em 'gestao de credenciais', mas nossa
+    // credencial nasceu fora do portal (CSR por e-mail) e nao aparece la. Ate
+    // existir uma credencial de homologacao de verdade, isto aponta para os
+    // mesmos enderecos e quem decide o ambiente e a credencial usada.
     token: 'https://sts.itau.com.br/api/oauth/token',
-    boletos: 'https://api.itau.com.br/cash_management/v2/boletos',
-    webhooks: 'https://boletos.cloud.itau.com.br/boletos/v3/notificacoes_boletos',
+    boletos: 'https://api.gateway.itau.com.br/cash_management/v2/boletos',
+    webhooks: 'https://api.gateway.itau.com.br/boletos/v3/notificacoes_boletos',
   },
 } as const
 
