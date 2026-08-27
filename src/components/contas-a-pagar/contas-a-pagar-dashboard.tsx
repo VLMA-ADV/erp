@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/ui/toast'
 import FluxoMensalChart, { type FluxoMensal } from './fluxo-mensal-chart'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 
@@ -515,6 +516,49 @@ export default function ContasAPagarDashboard() {
 
 
 
+  // Emite o boleto de uma conta a receber. A rota faz o trabalho pesado:
+  // reserva o nosso numero em transacao (dois cliques nao geram dois boletos),
+  // monta o payload, chama o Itau e grava o desfecho — dando certo ou errado.
+  //
+  // Confirmacao explicita porque isto registra o titulo no banco de verdade e
+  // gera cobranca para o cliente. Nao ha desfazer de um clique.
+  const { success: toastSuccess, error: toastErro } = useToast()
+  const [emitindo, setEmitindo] = useState<string | null>(null)
+  const emitirBoleto = async (row: Row) => {
+    if (emitindo) return
+    const ok = window.confirm(
+      `Registrar boleto no Itaú?\n\n${row.descricao}\n${fmtMoney(row.valor)} — vence ${row.vencimento.split('-').reverse().join('/')}\n\n` +
+      'O título passa a existir no banco e o cliente pode pagar.',
+    )
+    if (!ok) return
+    setEmitindo(row.id)
+    try {
+      const resp = await fetch('/api/boletos/emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lancamento_id: row.id }),
+      })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        toastErro(data.error || 'Não foi possível emitir o boleto.')
+        return
+      }
+      // A rota devolve { boleto: <linha gravada> }. A linha digitável é o que a
+      // pessoa precisa ver na hora — é o que ela repassa ao cliente.
+      const linha = (data as { boleto?: { linha_digitavel?: string | null } }).boleto
+      toastSuccess(
+        linha?.linha_digitavel
+          ? `Boleto registrado. Linha digitável: ${linha.linha_digitavel}`
+          : 'Boleto registrado no Itaú.',
+      )
+      void load(dia)
+    } catch {
+      toastErro('Erro de rede ao emitir o boleto.')
+    } finally {
+      setEmitindo(null)
+    }
+  }
+
   const baixar = async (id: string, natureza: 'pagar' | 'receber') => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -840,7 +884,8 @@ export default function ContasAPagarDashboard() {
             onAbrirValor={(r) => { setEditandoValor(r.id); setValorDraft(String(r.valor)) }}
             onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
             arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
-            selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias} />
+            selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias}
+            onEmitirBoleto={emitirBoleto} />
         </div>
       </div>
     </div>
@@ -850,7 +895,7 @@ export default function ContasAPagarDashboard() {
 function ListaColuna({
   titulo, cor, rows, loading, canWrite, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
-  arrastavel, simulacao, onArrastar, selecionado, onSelecionar, onMoverDias,
+  arrastavel, simulacao, onArrastar, selecionado, onSelecionar, onMoverDias, onEmitirBoleto,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onBaixar: (id: string) => void
@@ -861,6 +906,9 @@ function ListaColuna({
   arrastavel: boolean; simulacao: Record<string, string>; onArrastar: (id: string | null) => void
   selecionado: string | null; onSelecionar: (id: string | null) => void
   onMoverDias: (row: Row, delta: number) => void
+  // Só a coluna de recebimentos passa isto: boleto se emite sobre conta a
+  // receber, nunca sobre despesa.
+  onEmitirBoleto?: (row: Row) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -1034,6 +1082,15 @@ function ListaColuna({
                   <div className="flex flex-col gap-1">
                     {!jaBaixada ? (
                       <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
+                    ) : null}
+                    {onEmitirBoleto && !jaBaixada ? (
+                      <button
+                        onClick={() => onEmitirBoleto(r)}
+                        title="Registrar boleto no Itaú"
+                        className="rounded border border-primary px-2 py-0.5 text-xs text-primary hover:bg-primary-soft-bg"
+                      >
+                        boleto
+                      </button>
                     ) : null}
                     <Link href={`/financeiro/contas-a-pagar/novo?id=${r.id}`} title="Editar" className="rounded border border-hairline px-2 py-0.5 text-center text-xs hover:bg-canvas-soft">editar</Link>
                     <button onClick={() => onExcluir(r.id, r.descricao)} title="Excluir" className="rounded border border-hairline px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10">excluir</button>
