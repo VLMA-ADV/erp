@@ -39,9 +39,16 @@ const ENDPOINTS = {
   producao: {
     token: 'https://sts.itau.com.br/api/oauth/token',
     boletos: 'https://api.gateway.itau.com.br/cash_management/v2/boletos',
-    // Base documentada da API Boletos v3. Ainda NAO responde para a nossa
-    // credencial (404): o produto nao esta provisionado, e o webhook depende
-    // dele. Pedido em aberto com a equipe de implantacao.
+    // CONSULTA NAO E O MESMO HOST DA EMISSAO. Levamos dias achando que era
+    // permissao faltando — o 403 'Acesso a rota nao permitido' vinha de bater
+    // GET no endereco de emissao, que so aceita POST. A equipe do Itau
+    // esclareceu em 27/08 e as duas URLs abaixo responderam 200 na hora.
+    consulta: 'https://secure.api.cloud.itau.com.br/boletoscash/v2/boletos',
+    // "Francesinha": as datas em que houve movimentacao no mes. E por ela que
+    // se descobre um pagamento sem depender do webhook.
+    extrato: 'https://boleto.api.itau.com/extrato/v1',
+    // Webhook segue indisponivel para a nossa credencial (403). Enquanto nao
+    // liberarem, a baixa automatica sai da consulta acima.
     webhooks: 'https://api.gateway.itau.com.br/boletos/v3/notificacoes_boletos',
   },
   homologacao: {
