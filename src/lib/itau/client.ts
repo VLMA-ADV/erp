@@ -58,6 +58,8 @@ const ENDPOINTS = {
     // mesmos enderecos e quem decide o ambiente e a credencial usada.
     token: 'https://sts.itau.com.br/api/oauth/token',
     boletos: 'https://api.gateway.itau.com.br/cash_management/v2/boletos',
+    consulta: 'https://secure.api.cloud.itau.com.br/boletoscash/v2/boletos',
+    extrato: 'https://boleto.api.itau.com/extrato/v1',
     webhooks: 'https://api.gateway.itau.com.br/boletos/v3/notificacoes_boletos',
   },
 } as const
@@ -106,7 +108,8 @@ function requisicaoMtls(
   url: string,
   config: ItauConfigAmbiente,
   headers: Record<string, string>,
-  corpo: string,
+  // GET nao tem corpo; vazio nao escreve nada no socket.
+  corpo = '',
   timeoutMs = 30_000,
 ): Promise<RespostaItau> {
   const alvo = new URL(url)
@@ -207,4 +210,82 @@ export async function emitirBoleto(
   }, JSON.stringify(payload))
 
   return { ...r, correlationId }
+}
+
+/**
+ * Consulta um boleto pelo nosso número.
+ *
+ * ATENÇÃO AO HOST: consulta NÃO é o mesmo endereço da emissão. Bater GET no de
+ * emissão devolve 403 "Acesso a rota não permitido" — mensagem que parece falta
+ * de permissão e não é. Custou dias e um pedido de liberação desnecessário ao
+ * banco antes de a equipe do Itaú esclarecer, em 27/08.
+ *
+ * `view=specific` traz os dados de pagamento do título; sem ele vem só o resumo.
+ */
+export async function consultarBoleto(
+  config: ItauConfigAmbiente,
+  params: { idBeneficiario: string; codigoCarteira: string; nossoNumero: string },
+): Promise<RespostaItau & { correlationId: string }> {
+  const token = await obterAccessToken(config)
+  const correlationId = randomUUID()
+
+  const url =
+    `${ENDPOINTS[config.ambiente].consulta}` +
+    `?id_beneficiario=${encodeURIComponent(params.idBeneficiario)}` +
+    `&codigo_carteira=${encodeURIComponent(params.codigoCarteira)}` +
+    `&nosso_numero=${encodeURIComponent(params.nossoNumero)}` +
+    `&view=specific`
+
+  const r = await requisicaoMtls(url, config, {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+    'x-itau-apikey': config.clientId,
+    'x-itau-correlationID': correlationId,
+    'x-itau-correlationid': correlationId,
+    'x-itau-flowID': randomUUID(),
+  })
+
+  return { ...r, correlationId }
+}
+
+/**
+ * Lê o desfecho de uma consulta e diz se o título foi pago.
+ *
+ * O Itaú varia o nível do envelope e o nome dos campos entre as views, então
+ * procuramos em vez de assumir um caminho fixo — mesma estratégia de
+ * `lerRespostaEmissao`. Na dúvida, devolvemos "não pago": marcar como recebido
+ * o que não foi é pior do que deixar para a conferência humana.
+ */
+export function lerPagamentoDaConsulta(corpo: unknown): {
+  pago: boolean
+  valorPago: number | null
+  dataCredito: string | null
+} {
+  const naoPago = { pago: false, valorPago: null, dataCredito: null }
+  if (!corpo || typeof corpo !== 'object') return naoPago
+
+  const achar = (o: unknown, chaves: string[]): unknown => {
+    if (!o || typeof o !== 'object') return undefined
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (chaves.includes(k) && v != null && v !== '') return v
+      if (typeof v === 'object') {
+        const achado = achar(v, chaves)
+        if (achado !== undefined) return achado
+      }
+    }
+    return undefined
+  }
+
+  const num = (v: unknown): number | null => {
+    if (v == null) return null
+    const n = Number(String(v).replace(',', '.'))
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  const valorPago = num(achar(corpo, ['valor_pago_total_cobranca', 'valorPagoTotalCobranca', 'valor_pago']))
+  const dataCredito = (achar(corpo, ['data_credito', 'dataCredito', 'data_inclusao_pagamento']) as string) ?? null
+  const situacao = String(achar(corpo, ['codigo_situacao', 'situacao', 'status']) ?? '').toLowerCase()
+
+  const pago = valorPago != null || /liquidad|pago|baixa/.test(situacao)
+  return pago ? { pago, valorPago, dataCredito } : naoPago
 }
