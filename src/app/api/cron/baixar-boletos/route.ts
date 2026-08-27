@@ -41,40 +41,39 @@ export async function GET(req: NextRequest) {
   }
   const db = createClient(url, chave, { auth: { persistSession: false } })
 
-  // Só o que ainda pode virar dinheiro: registrado e não liquidado. Boleto com
-  // erro na emissão não existe no banco e consultá-lo seria chamada perdida.
-  const { data: abertos, error: erroLista } = await db
-    .schema('finance')
-    .from('boletos')
-    .select('id, tenant_id, nosso_numero, valor, vencimento, status')
-    .in('status', ['registrado', 'aberto'])
-    .limit(300)
+  // Via RPC, e não lendo a tabela: o schema finance não é exposto ao PostgREST
+  // (tentar direto devolve "permission denied for table boletos"). A função já
+  // traz o id_beneficiario e a carteira do tenant junto com cada boleto, que é
+  // o que a consulta precisa — uma viagem em vez de duas.
+  const { data: pendentes, error: erroLista } = await db.rpc('bol_pendentes_para_consulta', {
+    p_limite: 300,
+  })
 
   if (erroLista) {
     return NextResponse.json({ error: erroLista.message }, { status: 500 })
   }
-  if (!abertos?.length) {
+
+  const abertos = (pendentes ?? []) as Array<{
+    boleto_id: string
+    nosso_numero: string
+    valor: number
+    vencimento: string
+    id_beneficiario: string
+    codigo_carteira: string
+  }>
+
+  if (!abertos.length) {
     return NextResponse.json({ verificados: 0, baixados: 0, detalhe: 'nenhum boleto em aberto' })
   }
-
-  const { data: config } = await db
-    .schema('finance')
-    .from('boleto_config')
-    .select('tenant_id, id_beneficiario, codigo_carteira')
-
-  const porTenant = new Map((config ?? []).map((c) => [c.tenant_id, c]))
 
   let baixados = 0
   const erros: Array<{ nosso_numero: string; erro: string }> = []
 
   for (const b of abertos) {
-    const cfgTenant = porTenant.get(b.tenant_id)
-    if (!cfgTenant?.id_beneficiario) continue
-
     try {
       const r = await consultarBoleto(cfg.config, {
-        idBeneficiario: cfgTenant.id_beneficiario,
-        codigoCarteira: cfgTenant.codigo_carteira ?? '109',
+        idBeneficiario: b.id_beneficiario,
+        codigoCarteira: b.codigo_carteira,
         nossoNumero: b.nosso_numero,
       })
       if (r.status < 200 || r.status >= 300) {
