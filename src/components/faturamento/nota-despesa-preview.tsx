@@ -3,6 +3,7 @@
 import { useMemo, useRef } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { montarDocumento } from '@/lib/utils/documento-vlma'
 import {
   Dialog,
   DialogContent,
@@ -63,100 +64,63 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
 }
 
-// HTML completo da nota (A4) — usado no preview via iframe e na impressão/Salvar PDF.
+// HTML completo da nota — papel timbrado compartilhado (documento-vlma.ts),
+// A4 paisagem com logo, a pedido do Filipe em 27/08.
 function buildNotaHtml(data: NotaDespesaData) {
   const total = data.itens.reduce((acc, item) => acc + Number(item.valor || 0), 0)
   const linhas = data.itens
     .map(
       (item) => `
         <tr>
-          <td class="num">${dataBR(item.data_lancamento)}</td>
-          <td>${escapeHtml(item.categoria || '—')}</td>
-          <td>${escapeHtml(item.descricao || '—')}</td>
-          <td class="val">${money(item.valor)}</td>
+          <td class="item nowrap">${dataBR(item.data_lancamento)}</td>
+          <td class="item">${escapeHtml(item.categoria || '—')}</td>
+          <td class="item">${escapeHtml(item.descricao || '—')}</td>
+          <td class="item num">${money(item.valor)}</td>
         </tr>`,
     )
     .join('')
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8" />
-<style>
-  @page { size: A4; margin: 18mm 16mm; }
-  * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 11px; margin: 0; }
-  .logo { text-align: right; font-weight: 700; letter-spacing: 6px; font-size: 22px; }
-  .muted { color: #555; }
-  h1 { font-size: 14px; margin: 0; }
-  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-  .firma { font-size: 10px; line-height: 1.45; }
-  .firma strong { font-size: 11px; }
-  .docbox { width: 240px; }
-  .docrow { display: flex; justify-content: space-between; border-top: 1px solid #ddd; padding: 3px 0; }
-  .docrow strong { font-variant-numeric: tabular-nums; }
-  .destino { margin-top: 22px; line-height: 1.45; }
-  .destino .nome { font-weight: 700; font-size: 12px; }
-  .secao { margin-top: 24px; }
-  .barra { background: #ececec; padding: 4px 8px; font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th { text-align: left; font-size: 10px; border-bottom: 1px solid #333; padding: 4px 6px; }
-  td { padding: 5px 6px; vertical-align: top; border-bottom: 1px solid #f0f0f0; }
-  td.val, th.val, td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .totais { margin-top: 8px; }
-  .totais .linha { display: flex; justify-content: flex-end; gap: 40px; padding: 4px 6px; }
-  .totais .destaque { border-top: 2px solid #333; font-weight: 700; font-size: 12px; }
-  .banco { margin-top: 36px; font-size: 10px; line-height: 1.5; }
-  .rodape { margin-top: 40px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 9px; color: #666; display:flex; justify-content:space-between; }
-</style></head>
-<body>
-  <div class="top">
-    <div class="firma">
-      <strong>${escapeHtml(ESCRITORIO.razao)}</strong><br/>
-      CNPJ: ${ESCRITORIO.cnpj}<br/>
-      I.M.: ${ESCRITORIO.im}&nbsp;&nbsp;I.E.: ${ESCRITORIO.ie}<br/>
-      ${escapeHtml(ESCRITORIO.endereco)}<br/>
-      ${escapeHtml(ESCRITORIO.cidade)}
-    </div>
-    <div class="logo">VLMA</div>
-  </div>
-
-  <div class="top" style="margin-top:18px;">
-    <div><h1>Nota de Despesas</h1></div>
-    <div class="docbox">
-      <div class="docrow"><span class="muted">Emissão</span><strong>${dataBR(data.emissao)}</strong></div>
-      <div class="docrow"><span class="muted">Vencimento</span><strong>${dataBR(data.vencimento)}</strong></div>
-      <div class="docrow"><span class="muted">Documento nº</span><strong>${escapeHtml(data.documentoNumero || '—')}</strong></div>
-    </div>
-  </div>
-
-  <div class="destino">
-    <div class="nome">${escapeHtml(data.clienteNome)}</div>
-    ${data.clienteDocumento ? `<div>${escapeHtml(data.clienteDocumento)}</div>` : ''}
-    ${data.clienteEndereco ? `<div class="muted">${escapeHtml(data.clienteEndereco)}</div>` : ''}
-  </div>
-
-  <div class="secao">
-    <div class="barra">Contrato&nbsp;&nbsp;${escapeHtml(data.contratoLabel)}</div>
-    ${data.casoLabel ? `<div class="barra" style="background:#f5f5f5;font-weight:600;">Caso&nbsp;&nbsp;${escapeHtml(data.casoLabel)}</div>` : ''}
-    <table>
-      <thead>
-        <tr><th class="num">Data</th><th>Categoria</th><th>Descrição</th><th class="val">Valor</th></tr>
-      </thead>
-      <tbody>${linhas || '<tr><td colspan="4" class="muted">Sem despesas reembolsáveis aprovadas.</td></tr>'}</tbody>
-    </table>
-    <div class="totais">
-      <div class="linha"><span class="muted">Total</span><strong>${money(total)}</strong></div>
-      <div class="linha destaque"><span>Valor a pagar&nbsp;R$</span><span>${money(total)}</span></div>
-    </div>
-  </div>
-
-  <div class="banco">
+  const bancoHtml = `<div style="margin-top:8mm;font-size:7.6pt;line-height:1.5">
     <strong>Instruções para pagamento bancário:</strong><br/>
     Favorecido: ${escapeHtml(ESCRITORIO.favorecido)}<br/>
     CNPJ ${ESCRITORIO.cnpj}<br/>
     ${ESCRITORIO.banco}
-  </div>
+  </div>`
 
-  <div class="rodape"><span>${escapeHtml(ESCRITORIO.rodape)}<br/>${ESCRITORIO.site}</span></div>
-</body></html>`
+  // Contrato e caso moram dentro do <thead> junto com as colunas: o thead sobe
+  // para o topo da tabela por definicao do HTML, entao deixa-los fora inverteria
+  // a ordem. De quebra, tudo isso repete se a nota passar de uma pagina.
+  const conteudo = `<table class="itens">
+    <thead class="cab">
+    <tr class="grupo"><td colspan="4">Contrato&nbsp;&nbsp;&nbsp;${escapeHtml(data.contratoLabel)}</td></tr>
+    ${data.casoLabel ? `<tr class="caso"><td colspan="4"><span class="lbl">Caso</span>&nbsp;&nbsp;&nbsp;${escapeHtml(data.casoLabel)}</td></tr>` : ''}
+    <tr>
+      <th style="width:22mm">Data</th>
+      <th style="width:45mm">Categoria</th>
+      <th>Descrição</th>
+      <th class="num" style="width:26mm">Valor (R$)</th>
+    </tr></thead>
+    <tbody>${linhas || '<tr><td class="item" colspan="4">Sem despesas reembolsáveis aprovadas.</td></tr>'}</tbody>
+    <tr class="total"><td class="lbl" colspan="3">Total</td><td class="num">${money(total)}</td></tr>
+    <tr class="totalgeral"><td class="lbl" colspan="3">Valor a pagar&nbsp;&nbsp;R$</td><td class="num">${money(total)}</td></tr>
+  </table>`
+
+  // Mesma moldura do relatório de horas: logo, timbre, paisagem e rodapé.
+  return montarDocumento({
+    doc: {
+      titulo: 'Nota de Débito',
+      emissao: dataBR(data.emissao),
+      vencimento: dataBR(data.vencimento),
+      numero: data.documentoNumero || undefined,
+    },
+    destinatario: {
+      nome: data.clienteNome,
+      documento: data.clienteDocumento || undefined,
+      endereco: data.clienteEndereco || undefined,
+    },
+    conteudo,
+    rodapeExtra: bancoHtml,
+  })
 }
 
 export default function NotaDespesaPreview({

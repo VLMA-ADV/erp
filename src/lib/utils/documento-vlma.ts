@@ -1,0 +1,183 @@
+// Papel timbrado dos documentos que vão para o cliente.
+//
+// Filipe, 27/08, mandando uma Nota de Honorários do sistema antigo: "queria te
+// pedir pra deixar o relatório de timesheet e nota de débito nesse layout aqui
+// (com logo e em formato paisagem)".
+//
+// O que o modelo dele tem e o nosso não tinha: logo, dados do escritório,
+// bloco de emissão/vencimento/documento, agrupamento por contrato e caso, e
+// rodapé com endereço. Isto aqui é a moldura — quem chama só preenche o miolo,
+// para o relatório de horas e a nota de débito saírem iguais.
+
+/** Marca denominativa VLMA. Mesmo traçado de components/ui/vlma-logo.tsx. */
+const LOGO_SVG = `<svg viewBox="0 0 106 14" width="150" xmlns="http://www.w3.org/2000/svg" aria-label="VLMA"><path d="M80.433 3.64859C81.4066 3.64859 82.1955 2.83581 82.1955 1.83321C82.1955 0.830598 81.4066 0.0178223 80.433 0.0178223C79.4598 0.0178223 78.6709 0.830598 78.6709 1.83321C78.6709 2.83581 79.4598 3.64859 80.433 3.64859Z" fill="#FF9900"/><path d="M96.0078 1.39507C96.0078 1.39507 95.9554 1.33247 95.9382 1.2967C95.2349 0.473968 94.2281 0 93.1861 0C93.1861 0 93.1603 0 93.1427 0C93.0215 0 92.8998 0 92.7782 0.0178856C91.884 0.116256 91.0247 0.572337 90.4082 1.2967C90.382 1.33247 90.3562 1.3593 90.3386 1.39507L82.8728 10.463C82.2736 11.2053 81.3971 11.6346 80.4595 11.6435C80.3636 11.6435 80.2768 11.6435 80.1814 11.6256C79.4957 11.563 78.862 11.2768 78.3582 10.8118C78.237 10.6956 78.1154 10.5793 78.0113 10.4451L71.5347 2.41455C70.8315 1.53816 69.7985 1.03736 68.7134 1.03736C68.5832 1.03736 68.4443 1.03736 68.3141 1.06419C67.3851 1.1715 66.5172 1.64547 65.9007 2.39666L61.5426 7.5477C61.1346 8.03061 60.605 8.26314 60.0058 8.20947C59.4762 8.16476 58.9904 7.86965 58.643 7.44932L58.2785 7.01112L54.389 2.41455C53.6685 1.52922 52.6355 1.02842 51.559 1.02842C51.4288 1.02842 51.2899 1.02842 51.1597 1.05525C50.2221 1.16256 49.3538 1.64547 48.7373 2.41455L42.2611 10.4451C41.6533 11.2053 40.7592 11.6346 39.8216 11.6346H29.9509C29.3692 11.6346 28.8483 11.3484 28.5097 10.9102C28.258 10.5793 28.1017 10.159 28.1017 9.70289V0.366654H26.5651C26.3828 0.366654 26.2005 0.384539 26.0182 0.411368C25.3063 0.527622 24.6465 0.858505 24.117 1.38613C24.117 1.38613 14.2202 11.1784 14.1854 11.2053C13.9771 11.4199 13.734 11.5898 13.4649 11.6882C13.1957 11.7866 12.9179 11.8134 12.6575 11.7866C12.6401 11.7866 12.6228 11.7866 12.5967 11.7866C12.5707 11.7866 12.5447 11.7866 12.5273 11.7776C12.0845 11.6972 11.6852 11.4557 11.3987 11.098L4.02816 2.17309L3.90663 2.03001C3.90663 2.03001 3.89795 2.02107 3.88927 2.01212C3.13399 1.09102 2.03145 0.554451 0.86814 0.447139H0C0.217035 0.599166 9.99232 12.3589 9.99232 12.3589C10.0183 12.3947 10.0444 12.4215 10.0617 12.4573C10.6782 13.1816 11.5202 13.6288 12.4231 13.7361C12.5447 13.754 12.6662 13.7629 12.7877 13.7629C12.7877 13.7629 12.8051 13.7629 12.8138 13.7629C12.8138 13.7629 12.8138 13.7629 12.8224 13.7629H12.8311C12.8311 13.7629 12.8485 13.7629 12.8572 13.7629C12.9787 13.7629 13.1002 13.7629 13.2218 13.745C14.1246 13.6377 14.9667 13.1906 15.5831 12.4662L19.7589 8.30785L22.5022 5.59818L22.9363 5.16893C23.2488 4.85592 23.7957 4.54292 24.2124 4.42667C24.2819 4.40877 24.3514 4.39091 24.4208 4.38196C24.6465 4.34619 24.8809 4.36405 25.0979 4.44458C25.4973 4.59658 25.7838 4.90959 25.9921 5.27622C26.1658 5.58027 26.2612 5.93799 26.2612 6.31362V13.5841H39.7958C41.2626 13.5841 42.6519 12.9044 43.6067 11.724L49.6925 4.17628L50.0832 3.68442C50.4564 3.23728 50.986 2.97794 51.5414 2.97794C52.0886 2.97794 52.6092 3.22834 52.9652 3.65759L58.5128 10.2127C58.7471 10.4899 59.0248 10.6866 59.3373 10.8118C59.5806 10.9102 59.8411 10.9638 60.1188 10.9638H60.1274C60.7353 10.9638 61.3341 10.6598 61.7683 10.1411L66.8297 4.15839L67.2635 3.64865C67.6194 3.22834 68.1318 2.97794 68.6786 2.97794C69.243 2.97794 69.7726 3.22834 70.1286 3.66654L76.6134 11.715C77.5509 12.8865 78.9227 13.5573 80.3726 13.5751C80.3899 13.5751 80.4071 13.5751 80.4247 13.5751C80.4767 13.5751 80.5287 13.5751 80.5807 13.5751C81.9873 13.5304 83.3156 12.8597 84.227 11.724L91.311 3.12997L91.7189 2.62917C92.0405 2.21781 92.5353 1.96741 93.0735 1.94058C93.1341 1.94058 93.1947 1.94058 93.2558 1.94058C93.7854 1.96741 94.2802 2.22675 94.6185 2.64706L101.972 11.5719L102.093 11.715C102.093 11.715 102.102 11.724 102.111 11.7329C102.866 12.654 103.968 13.1906 105.132 13.2979H106C105.783 13.1459 96.0078 1.38613 96.0078 1.38613V1.39507Z" fill="#111111"/></svg>`
+
+/** Timbre do escritório, como sai na Nota de Honorários que o Filipe mandou. */
+export const ESCRITORIO = {
+  razao: 'Di Lascio, Vosgerau & Advogados Associados',
+  cnpj: '14.491.612/0001-39',
+  im: '6265382',
+  ie: 'isento',
+  endereco: 'Rua Cândido Xavier, 602 - 2º andar - Água Verde',
+  cidade: '80240-280 - Curitiba - PR - Brasil',
+  rodape: 'CURITIBA  Rua Cândido Xavier, 602, 2º and  (41) 3153-4010',
+  site: 'http://www.vlma.com.br',
+}
+
+export interface DestinatarioDoc {
+  nome: string
+  /** Vira a linha "A/C:" — quem recebe de fato. */
+  aos_cuidados?: string
+  documento?: string
+  endereco?: string
+  cidade?: string
+}
+
+export interface DadosDocumento {
+  /** Título grande à esquerda: "Relatório de Timesheet", "Nota de Débito". */
+  titulo: string
+  emissao?: string
+  vencimento?: string
+  numero?: string | number
+}
+
+export const esc = (s: string) =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+export const money = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0))
+
+/** dd/mm/aaaa a partir de ISO ou de texto já formatado. */
+export const dataBR = (v?: string | null) => {
+  if (!v) return ''
+  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10).split('-').reverse().join('/')
+  return v
+}
+
+/**
+ * Monta a página inteira. `conteudo` é HTML já pronto — quem chama decide se é
+ * tabela de horas ou de despesas.
+ *
+ * Paisagem por pedido do Filipe: a descrição do lançamento é longa e, em
+ * retrato, quebrava em quatro linhas e empurrava o valor para fora do olho.
+ */
+export function montarDocumento({
+  doc,
+  destinatario,
+  conteudo,
+  rodapeExtra,
+}: {
+  doc: DadosDocumento
+  destinatario?: DestinatarioDoc
+  conteudo: string
+  rodapeExtra?: string
+}) {
+  const linhaDoc = (rot: string, val?: string | number) =>
+    val ? `<tr><td class="rot">${esc(rot)}</td><td class="val">${esc(String(val))}</td></tr>` : ''
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8" />
+<title>${esc(doc.titulo)}</title>
+<style>
+  /* Paisagem: pedido do Filipe, e o que faz a coluna de descrição caber. */
+  @page { size: A4 landscape; margin: 12mm 14mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 8.5pt;
+         line-height: 1.35; margin: 0; }
+
+  .topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 20mm; }
+  .emitente { font-size: 7.6pt; line-height: 1.5; }
+  .emitente .razao { font-size: 9.6pt; font-weight: bold; margin-bottom: .6mm; }
+  .logo { flex: none; padding-top: 1mm; }
+
+  .faixa { display: flex; justify-content: space-between; align-items: flex-end;
+           border-top: 1px solid #111; border-bottom: 1px solid #111;
+           margin: 5mm 0 0; padding: 1.5mm 0; }
+  .faixa h1 { font-size: 12pt; font-weight: normal; margin: 0; }
+  table.doc { border-collapse: collapse; font-size: 7.6pt; }
+  table.doc .rot { padding: .2mm 4mm .2mm 0; color: #111; }
+  table.doc .val { text-align: right; white-space: nowrap; }
+
+  .destinatario { margin: 4mm 0 5mm; font-size: 8pt; line-height: 1.5; }
+  .destinatario .nome { font-size: 9.4pt; font-weight: bold; }
+  .destinatario .ac { margin-top: .8mm; }
+
+  table.itens { width: 100%; border-collapse: collapse; }
+  .grupo td { background: #e9e9e9; font-weight: bold; padding: 1.6mm 2mm; font-size: 8.4pt; }
+  .caso td { padding: 2.4mm 2mm .8mm; font-size: 8.4pt; }
+  .caso .lbl { color: #555; font-weight: normal; }
+  thead.cab th { text-align: left; font-weight: normal; color: #333; font-size: 7.6pt;
+                 border-bottom: .6px solid #111; padding: 1mm 2mm; }
+  thead.cab th.num { text-align: right; }
+  td.item { padding: 1.4mm 2mm; vertical-align: top; }
+  td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.nowrap { white-space: nowrap; }
+  tr.total td { border-top: .6px solid #111; padding: 1.2mm 2mm 3mm; font-size: 8.4pt; }
+  tr.total .lbl { text-align: right; }
+  tr.totalgeral td { border-top: 1px solid #111; border-bottom: 1px solid #111;
+                     padding: 2mm; font-size: 9.6pt; font-weight: bold; }
+  tr.totalgeral .lbl { text-align: right; }
+
+  /* Repete o cabeçalho da tabela quando o documento passa de uma página. */
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+
+  footer { position: fixed; bottom: 6mm; left: 14mm; right: 14mm;
+           border-top: .6px solid #111; padding-top: 1.2mm;
+           display: flex; justify-content: space-between; font-size: 7pt; color: #111; }
+
+  .barra { margin: 4mm 0 0; }
+  .barra button { background: #E8871E; color: #fff; border: 0; border-radius: 999px;
+                  padding: 8px 18px; font-size: 11pt; cursor: pointer; font-family: inherit; }
+  @media print { .barra { display: none; } }
+</style></head><body>
+
+<div class="topo">
+  <div class="emitente">
+    <div class="razao">${esc(ESCRITORIO.razao)}</div>
+    <div>CNPJ: ${esc(ESCRITORIO.cnpj)}</div>
+    <div>I.M.:${esc(ESCRITORIO.im)}&nbsp;&nbsp;&nbsp;I.E.:${esc(ESCRITORIO.ie)}</div>
+    <div>${esc(ESCRITORIO.endereco)}</div>
+    <div>${esc(ESCRITORIO.cidade)}</div>
+  </div>
+  <div class="logo">${LOGO_SVG}</div>
+</div>
+
+<div class="faixa">
+  <h1>${esc(doc.titulo)}</h1>
+  <table class="doc">
+    ${linhaDoc('Emissão', doc.emissao)}
+    ${linhaDoc('Vencimento', doc.vencimento)}
+    ${linhaDoc('Documento nº', doc.numero)}
+  </table>
+</div>
+
+</div>
+
+${destinatario ? `<div class="destinatario">
+  <div class="nome">${esc(destinatario.nome)}</div>
+  ${destinatario.aos_cuidados ? `<div class="ac">A/C:&nbsp;&nbsp;&nbsp;${esc(destinatario.aos_cuidados)}</div>` : ''}
+  ${destinatario.documento ? `<div>${esc(destinatario.documento)}</div>` : ''}
+  ${destinatario.endereco ? `<div>${esc(destinatario.endereco)}</div>` : ''}
+  ${destinatario.cidade ? `<div>${esc(destinatario.cidade)}</div>` : ''}
+</div>` : ''}
+
+<div class="barra"><button onclick="window.print()">Imprimir / salvar PDF</button></div>
+
+${conteudo}
+
+${rodapeExtra || ''}
+
+<footer>
+  <span>${esc(ESCRITORIO.rodape)}<br>${esc(ESCRITORIO.site)}</span>
+</footer>
+</body></html>`
+}
+
+/** Abre numa aba nova, pronto para imprimir. */
+export function abrirDocumento(html: string) {
+  const win = window.open('', '_blank')
+  if (!win) return false
+  win.document.write(html)
+  win.document.close()
+  return true
+}
