@@ -342,7 +342,10 @@ export default function TimesheetList() {
     return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replaceAll('.', '')
   }
 
-  const renderLinha = (item: TimesheetItem) => {
+  // `ocultarAutor` existe porque, agrupado por colaborador, a foto e o nome
+  // apareciam de novo em CADA linha da seção da pessoa — o cabeçalho da seção já
+  // diz de quem é. Repetir 11 vezes a mesma foto polui e não informa nada.
+  const renderLinha = (item: TimesheetItem, ocultarAutor = false) => {
   const statusUpper =
     item.status === 'aprovado'
       ? { label: 'APROVADO', cls: 'border-emerald-200 bg-emerald-100 text-emerald-700' }
@@ -367,17 +370,19 @@ export default function TimesheetList() {
       <td className="px-4 py-2 text-xs leading-snug text-ink-mute">{item.descricao || '-'}</td>
       <td className="px-4 py-2 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
       <td className="px-4 py-2 text-sm">
-        <span className="inline-flex items-center gap-2">
-          {autorFoto ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={autorFoto} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
-          ) : (
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
-              {iniciaisDe(autorNome)}
-            </span>
-          )}
-          <span className="text-ink-secondary">{autorNome}</span>
-        </span>
+        {ocultarAutor ? null : (
+          <span className="inline-flex items-center gap-2">
+            {autorFoto ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={autorFoto} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
+                {iniciaisDe(autorNome)}
+              </span>
+            )}
+            <span className="text-ink-secondary">{autorNome}</span>
+          </span>
+        )}
       </td>
       <td className="px-4 py-2">
         <div className="flex items-center gap-1">
@@ -855,7 +860,7 @@ export default function TimesheetList() {
                             </span>
                           </td>
                         </tr>,
-                        ...(aberto ? p.itens.map(renderLinha) : []),
+                        ...(aberto ? p.itens.map((it) => renderLinha(it, true)) : []),
                       ]
                     }),
                   ])
@@ -866,7 +871,7 @@ export default function TimesheetList() {
                         <span className="ml-2 font-tabular font-semibold text-amber-800/80">{formatDuracao(totalMin(linhas))}</span>
                       </td>
                     </tr>,
-                    ...linhas.map(renderLinha),
+                    ...linhas.map((it) => renderLinha(it)),
                   ])
             )}
           </tbody>
