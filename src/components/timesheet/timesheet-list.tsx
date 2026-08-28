@@ -161,6 +161,11 @@ export default function TimesheetList() {
   const [filterCasoId, setFilterCasoId] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterColaborador, setFilterColaborador] = useState('')
+  // Pedido dos sócios (27/08): ver o que cada pessoa fez, sem sair da lista.
+  // Escolha do Filipe entre as duas leituras possíveis: mantém a cronologia por
+  // DIA e separa por pessoa DENTRO do dia — "o que o escritório fez na terça".
+  const [porColaborador, setPorColaborador] = useState(false)
+  const [abertos, setAbertos] = useState<Record<string, boolean>>({})
   // Período: ano + mês em chips (mock do cliente); mês null = ano inteiro.
   const [filterAno, setFilterAno] = useState(() => new Date().getFullYear())
   const [filterMes, setFilterMes] = useState<number | null>(() => new Date().getMonth())
@@ -292,11 +297,114 @@ export default function TimesheetList() {
     return Array.from(g.entries()).sort((a, b) => b[0].localeCompare(a[0]))
   }, [visibleItems])
 
+  // Dentro do dia, uma sub-seção por pessoa. Agosto tem 1.210 lançamentos de 37
+  // pessoas: abrir tudo de uma vez é tela travada e ninguém lê. Por isso as
+  // seções nascem FECHADAS, mostrando quem trabalhou e quanto, e a pessoa abre
+  // quem interessa.
+  const porDiaEPessoa = useMemo(() => {
+    return groupedByDay.map(([dia, linhas]) => {
+      const p = new Map<string, { nome: string; itens: TimesheetItem[] }>()
+      for (const it of linhas) {
+        const k = it.created_by || it.created_by_nome || '—'
+        if (!p.has(k)) p.set(k, { nome: it.created_by_nome || '—', itens: [] })
+        p.get(k)!.itens.push(it)
+      }
+      const pessoas = Array.from(p.entries())
+        .map(([id, v]) => ({ id, ...v }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+      return { dia, linhas, pessoas }
+    })
+  }, [groupedByDay])
+
+  const totalMin = (itens: TimesheetItem[]) =>
+    itens.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0)
+
+  const chaveSecao = (dia: string, pessoaId: string) => `${dia}::${pessoaId}`
+
+  const todasSecoes = useMemo(
+    () => porDiaEPessoa.flatMap((d) => d.pessoas.map((p) => chaveSecao(d.dia, p.id))),
+    [porDiaEPessoa],
+  )
+  const tudoAberto = todasSecoes.length > 0 && todasSecoes.every((k) => abertos[k])
+
+  const alternarTudo = () => {
+    if (tudoAberto) { setAbertos({}); return }
+    // Aviso antes de abrir muita coisa: o clique é barato, o arrependimento não.
+    if (visibleItems.length > 200 &&
+        !window.confirm(`Isto vai abrir ${visibleItems.length} lançamentos de uma vez. Continuar?`)) return
+    setAbertos(Object.fromEntries(todasSecoes.map((k) => [k, true])))
+  }
+
   // "QUA., 15 DE JUL." (mock do cliente)
   const fmtDia = (d: string) => {
     if (!d) return '—'
     const dt = new Date(d + 'T12:00:00')
     return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replaceAll('.', '')
+  }
+
+  const renderLinha = (item: TimesheetItem) => {
+  const statusUpper =
+    item.status === 'aprovado'
+      ? { label: 'APROVADO', cls: 'border-emerald-200 bg-emerald-100 text-emerald-700' }
+      : item.status === 'revisao'
+        ? { label: 'EM REVISÃO', cls: 'border-amber-200 bg-amber-100 text-amber-700' }
+        : { label: 'EM LANÇAMENTO', cls: 'border-blue-200 bg-blue-100 text-blue-700' }
+  // `pode_editar` é a resposta do próprio banco sobre este
+  // lançamento. Sem ele o lápis aparecia em lançamento de outra
+  // pessoa e o servidor recusava depois do clique.
+  const podeEditarEste = item.pode_editar !== false
+  const showEdit = canWrite && canEditTimesheetInList(item.status) && podeEditarEste
+  const clienteNome = contratoInfo.get(item.contrato_id)?.cliente_nome || item.contrato_nome || '-'
+  const autorNome = item.created_by_nome || '-'
+  const autorFoto = fotoDe(item.created_by_nome)
+
+  return (
+    <tr key={item.id}>
+      {/* Bloco mais junto e descrição menor (pedido Filipe 03/08):
+          o texto longo competia com cliente/caso e achatava o contraste. */}
+      <td className="max-w-[200px] px-4 py-2 text-sm font-medium text-ink">{clienteNome}</td>
+      <td className="max-w-[220px] px-4 py-2 text-sm text-ink-secondary">{item.caso_numero || '-'} - {item.caso_nome}</td>
+      <td className="px-4 py-2 text-xs leading-snug text-ink-mute">{item.descricao || '-'}</td>
+      <td className="px-4 py-2 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
+      <td className="px-4 py-2 text-sm">
+        <span className="inline-flex items-center gap-2">
+          {autorFoto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={autorFoto} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+          ) : (
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
+              {iniciaisDe(autorNome)}
+            </span>
+          )}
+          <span className="text-ink-secondary">{autorNome}</span>
+        </span>
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex items-center gap-1">
+          {showEdit ? (
+            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => openEdit(item)} title="Editar lançamento">
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+          {showEdit ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() => void deleteTimesheet(item)}
+              disabled={submitting}
+              title="Excluir lançamento"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-4 py-2">
+        <Badge className={`whitespace-nowrap text-[10px] ${statusUpper.cls}`}>{statusUpper.label}</Badge>
+      </td>
+    </tr>
+  )
   }
 
   const anoOptions = useMemo(() => {
@@ -634,6 +742,26 @@ export default function TimesheetList() {
         />
 
         {/* Só aparece para quem vê mais de uma pessoa — o servidor já escopou. */}
+        {/* Pedido dos sócios (27/08): ver o que cada pessoa fez sem sair da lista.
+            Só faz sentido quando há mais de uma pessoa na tela. */}
+        {colaboradorOptions.length > 1 ? (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={porColaborador ? 'default' : 'outline'}
+              className="h-10 rounded-full"
+              onClick={() => setPorColaborador((v) => !v)}
+            >
+              Por colaborador
+            </Button>
+            {porColaborador ? (
+              <Button type="button" variant="outline" className="h-10 rounded-full" onClick={alternarTudo}>
+                {tudoAberto ? '− Recolher todos' : '+ Expandir todos'}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
         {colaboradorOptions.length > 1 ? (
           <CommandSelect
             value={filterColaborador}
@@ -697,81 +825,49 @@ export default function TimesheetList() {
                 <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum timesheet encontrado.</td>
               </tr>
             ) : (
-              groupedByDay.flatMap(([dia, linhas]) => [
-                <tr key={`sep-${dia}`} className="bg-amber-100/80">
-                  {/* Data em evidência (pedido Filipe 03/08): antes era um
-                      cinza claro que sumia no meio das linhas. */}
-                  <td colSpan={7} className="border-y border-amber-200/70 px-4 py-2 text-xs font-bold uppercase tracking-wide text-amber-900">
-                    {fmtDia(dia)}
-                    <span className="ml-2 font-tabular font-semibold text-amber-800/80">
-                      {formatDuracao(linhas.reduce((s, it) => s + (it.duracao_minutos ?? Math.round(Number(it.horas || 0) * 60)), 0))}
-                    </span>
-                  </td>
-                </tr>,
-                ...linhas.map((item) => {
-                const statusUpper =
-                  item.status === 'aprovado'
-                    ? { label: 'APROVADO', cls: 'border-emerald-200 bg-emerald-100 text-emerald-700' }
-                    : item.status === 'revisao'
-                      ? { label: 'EM REVISÃO', cls: 'border-amber-200 bg-amber-100 text-amber-700' }
-                      : { label: 'EM LANÇAMENTO', cls: 'border-blue-200 bg-blue-100 text-blue-700' }
-                // `pode_editar` é a resposta do próprio banco sobre este
-                // lançamento. Sem ele o lápis aparecia em lançamento de outra
-                // pessoa e o servidor recusava depois do clique.
-                const podeEditarEste = item.pode_editar !== false
-                const showEdit = canWrite && canEditTimesheetInList(item.status) && podeEditarEste
-                const clienteNome = contratoInfo.get(item.contrato_id)?.cliente_nome || item.contrato_nome || '-'
-                const autorNome = item.created_by_nome || '-'
-                const autorFoto = fotoDe(item.created_by_nome)
-
-                return (
-                  <tr key={item.id}>
-                    {/* Bloco mais junto e descrição menor (pedido Filipe 03/08):
-                        o texto longo competia com cliente/caso e achatava o contraste. */}
-                    <td className="max-w-[200px] px-4 py-2 text-sm font-medium text-ink">{clienteNome}</td>
-                    <td className="max-w-[220px] px-4 py-2 text-sm text-ink-secondary">{item.caso_numero || '-'} - {item.caso_nome}</td>
-                    <td className="px-4 py-2 text-xs leading-snug text-ink-mute">{item.descricao || '-'}</td>
-                    <td className="px-4 py-2 text-right text-sm font-semibold font-tabular text-ink">{formatDuracao(item.duracao_minutos != null ? item.duracao_minutos : Number(toMinutes(item.horas)))}</td>
-                    <td className="px-4 py-2 text-sm">
-                      <span className="inline-flex items-center gap-2">
-                        {autorFoto ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={autorFoto} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
-                        ) : (
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">
-                            {iniciaisDe(autorNome)}
-                          </span>
-                        )}
-                        <span className="text-ink-secondary">{autorNome}</span>
-                      </span>
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-1">
-                        {showEdit ? (
-                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => openEdit(item)} title="Editar lançamento">
-                            <Edit className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                        {showEdit ? (
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
-                            onClick={() => void deleteTimesheet(item)}
-                            disabled={submitting}
-                            title="Excluir lançamento"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge className={`whitespace-nowrap text-[10px] ${statusUpper.cls}`}>{statusUpper.label}</Badge>
-                    </td>
-                  </tr>
-                )
-              })])
+              porColaborador
+                ? porDiaEPessoa.flatMap(({ dia, linhas, pessoas }) => [
+                    <tr key={`sep-${dia}`} className="bg-amber-100/80">
+                      <td colSpan={7} className="border-y border-amber-200/70 px-4 py-2 text-xs font-bold uppercase tracking-wide text-amber-900">
+                        {fmtDia(dia)}
+                        <span className="ml-2 font-tabular font-semibold text-amber-800/80">{formatDuracao(totalMin(linhas))}</span>
+                        <span className="ml-2 font-normal normal-case text-amber-800/70">· {pessoas.length} {pessoas.length === 1 ? 'pessoa' : 'pessoas'}</span>
+                      </td>
+                    </tr>,
+                    ...pessoas.flatMap((p) => {
+                      const k = chaveSecao(dia, p.id)
+                      const aberto = !!abertos[k]
+                      return [
+                        <tr key={`p-${k}`} className="cursor-pointer bg-canvas-soft/60 hover:bg-canvas-soft"
+                            onClick={() => setAbertos((prev) => ({ ...prev, [k]: !prev[k] }))}>
+                          <td colSpan={7} className="px-4 py-1.5">
+                            <span className="flex items-center gap-2 text-sm">
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-hairline text-xs font-bold text-ink-mute">{aberto ? '−' : '+'}</span>
+                              {fotoDe(p.nome) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={fotoDe(p.nome) as string} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                              ) : (
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-semibold text-amber-700">{iniciaisDe(p.nome)}</span>
+                              )}
+                              <span className="font-medium text-ink">{p.nome}</span>
+                              <span className="font-tabular font-semibold text-ink-secondary">{formatDuracao(totalMin(p.itens))}</span>
+                              <span className="text-xs text-ink-mute">· {p.itens.length} {p.itens.length === 1 ? 'lançamento' : 'lançamentos'}</span>
+                            </span>
+                          </td>
+                        </tr>,
+                        ...(aberto ? p.itens.map(renderLinha) : []),
+                      ]
+                    }),
+                  ])
+                : groupedByDay.flatMap(([dia, linhas]) => [
+                    <tr key={`sep-${dia}`} className="bg-amber-100/80">
+                      <td colSpan={7} className="border-y border-amber-200/70 px-4 py-2 text-xs font-bold uppercase tracking-wide text-amber-900">
+                        {fmtDia(dia)}
+                        <span className="ml-2 font-tabular font-semibold text-amber-800/80">{formatDuracao(totalMin(linhas))}</span>
+                      </td>
+                    </tr>,
+                    ...linhas.map(renderLinha),
+                  ])
             )}
           </tbody>
         </Table>
