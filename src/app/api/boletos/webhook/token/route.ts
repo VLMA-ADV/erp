@@ -12,6 +12,33 @@ export const runtime = 'nodejs'
  * só mostra os campos do cadastro. Aceitamos as duas formas — é barato e evita
  * uma ida e volta de suporte com o banco para descobrir qual é.
  */
+/**
+ * Diagnóstico de configuração — presença, nunca valor.
+ *
+ * O POST responde 'invalid_client' tanto para credencial errada quanto para
+ * ambiente sem as variáveis, de propósito: quem está do outro lado não precisa
+ * saber a diferença. O efeito colateral é que quem CONFIGUROU também não
+ * consegue saber se acertou, e fica tentando adivinhar.
+ *
+ * Este GET responde só isso: as três variáveis existem? Não devolve, nem
+ * confirma, nem compara nenhum valor — quem souber que o webhook está
+ * configurado não ganha nada com a informação.
+ */
+export function GET() {
+  return NextResponse.json({
+    configurado: Boolean(
+      process.env.ITAU_WEBHOOK_CLIENT_ID &&
+      process.env.ITAU_WEBHOOK_CLIENT_SECRET &&
+      process.env.ITAU_WEBHOOK_TOKEN_SECRET,
+    ),
+    variaveis: {
+      ITAU_WEBHOOK_CLIENT_ID: Boolean(process.env.ITAU_WEBHOOK_CLIENT_ID),
+      ITAU_WEBHOOK_CLIENT_SECRET: Boolean(process.env.ITAU_WEBHOOK_CLIENT_SECRET),
+      ITAU_WEBHOOK_TOKEN_SECRET: Boolean(process.env.ITAU_WEBHOOK_TOKEN_SECRET),
+    },
+  })
+}
+
 export async function POST(req: NextRequest) {
   let clientId = ''
   let clientSecret = ''
