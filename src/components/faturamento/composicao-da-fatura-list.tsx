@@ -302,6 +302,63 @@ export default function ComposicaoDaFaturaList() {
 
   const emBreve = (label: string) => notify(`${label}: automação ainda não implementada nesta etapa.`)
 
+  // Emite o boleto da fatura. A tela trabalha por contrato/nota; a emissão
+  // trabalha por conta a receber — bol_lancamento_da_nota faz a ponte, que já
+  // existia nos dados (lancamentos.origem_ref_id aponta para a nota) mas não
+  // tinha caminho a partir daqui.
+  //
+  // Confirmação explícita: isto registra o título no banco de verdade e o
+  // cliente pode pagar. Não há desfazer de um clique.
+  const [emitindoBoleto, setEmitindoBoleto] = useState(false)
+  const emitirBoleto = async (notaId: string) => {
+    if (emitindoBoleto) return
+    setEmitindoBoleto(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { notify('Sessão expirada.'); return }
+
+      const { data, error } = await supabase.rpc('bol_lancamento_da_nota', {
+        p_user_id: user.id,
+        p_nota_id: notaId,
+      })
+      if (error) { notify(error.message); return }
+      const info = data as {
+        encontrado: boolean; motivo?: string; lancamento_id?: string
+        descricao?: string; valor?: number; vencimento?: string; ja_baixado?: boolean
+      }
+      if (!info?.encontrado) { notify(info?.motivo || 'Conta a receber não encontrada.'); return }
+      if (info.ja_baixado) { notify('Esta fatura já foi recebida — não há o que cobrar.'); return }
+
+      const venc = (info.vencimento || '').split('-').reverse().join('/')
+      const ok = window.confirm(
+        `Registrar boleto no Itaú?\n\n${info.descricao}\n` +
+        `${formatMoney(info.valor || 0)} — vence ${venc}\n\n` +
+        'O título passa a existir no banco e o cliente pode pagar.',
+      )
+      if (!ok) return
+
+      const resp = await fetch('/api/boletos/emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lancamento_id: info.lancamento_id }),
+      })
+      const corpo = await resp.json().catch(() => ({}))
+      if (!resp.ok) { notify(corpo.error || 'Não foi possível emitir o boleto.'); return }
+
+      const linha = (corpo as { boleto?: { linha_digitavel?: string | null } }).boleto
+      notify(linha?.linha_digitavel
+        ? `Boleto registrado. Linha digitável: ${linha.linha_digitavel}`
+        : 'Boleto registrado no Itaú.')
+      void load()
+    } catch {
+      notify('Erro de rede ao emitir o boleto.')
+    } finally {
+      setEmitindoBoleto(false)
+    }
+  }
+
+
   const abrirNota = (kit: ContratoKit) => {
     const linhas = despesaPorContrato.get(kit.contratoId) || []
     const caso = linhas[0]
@@ -477,6 +534,7 @@ export default function ComposicaoDaFaturaList() {
                   notas={notaPorContrato.get(kit.contratoId) || {}}
                   envio={envios[kit.contratoId]}
                   onStub={emBreve}
+                  onEmitirBoleto={emitirBoleto}
                   onAbrirNota={() => abrirNota(kit)}
                   onAbrirEmail={() => void abrirEmail(kit)}
                 />
@@ -561,6 +619,7 @@ function ContratoKitCard({
   notas,
   envio,
   onStub,
+  onEmitirBoleto,
   onAbrirNota,
   onAbrirEmail,
 }: {
@@ -568,6 +627,7 @@ function ContratoKitCard({
   notas: Partial<Record<string, NotaGerada>>
   envio?: EnvioFatura
   onStub: (label: string) => void
+  onEmitirBoleto: (notaId: string) => void
   onAbrirNota: () => void
   onAbrirEmail: () => void
 }) {
@@ -615,14 +675,26 @@ function ContratoKitCard({
           onAcao={() => onStub('Emissão de NFS-e')}
         />
 
-        {/* 2. Boleto — sempre presente; integração Itaú pendente */}
+        {/*
+          2. Boleto — depende da nota: o titulo e registrado no Itau em cima da
+          conta a receber, que so existe depois da NF. Enquanto ela nao sai, o
+          botao explica o que falta em vez de falhar no clique.
+        */}
         <ComposicaoLinha
           icon={<Banknote className="h-4 w-4" />}
           titulo="Boleto"
-          descricao="Cobrança da fatura. Integração com o Itaú ainda não implementada."
+          descricao={
+            notas['nota_fiscal_servico']
+              ? 'Registra o título no Itaú e devolve a linha digitável.'
+              : 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.'
+          }
           nota={notas['boleto_itau']}
           acaoLabel="Emitir boleto"
-          onAcao={() => onStub('Emissão de boleto')}
+          onAcao={() => {
+            const nf = notas['nota_fiscal_servico']
+            if (!nf) { onStub('Boleto: emita a nota fiscal primeiro'); return }
+            onEmitirBoleto(nf.id)
+          }}
         />
 
         {/* 3. Relatório de timesheet — opcional (só quando há horas aprovadas) */}
