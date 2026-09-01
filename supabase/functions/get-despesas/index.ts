@@ -57,6 +57,10 @@ Deno.serve(async (req) => {
       categoria: url.searchParams.get("categoria") || null,
       data_inicio: url.searchParams.get("data_inicio") || null,
       data_fim: url.searchParams.get("data_fim") || null,
+      // Quem fatura pede por competencia: despesa de agosto e cobrada em
+      // setembro. A tela de Despesas nao manda o parametro e continua vendo
+      // pela data do gasto.
+      por_competencia: url.searchParams.get("por_competencia") === "true",
     };
 
     const { data, error } = await supabase.rpc("get_despesas", {

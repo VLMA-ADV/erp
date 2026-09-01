@@ -502,6 +502,11 @@ export default function ItensAFaturarList() {
         data_inicio: dateStart,
         data_fim: dateEnd,
         status: 'em_lancamento',
+        // Despesa segue a mesma regra da hora: gasto de agosto e cobrado em
+        // setembro (Filipe, 01/09). Aqui a janela e de COBRANCA, entao pedimos
+        // por competencia. A tela de Despesas nao manda este parametro e
+        // continua enxergando pela data do gasto.
+        por_competencia: 'true',
       })
       const despesasResponse = await fetchWithRetry(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesas?${despesasParams.toString()}`,
