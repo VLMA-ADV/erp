@@ -38,6 +38,7 @@ interface CasoAgrupado {
     caso_regra?: string | null
     descricao: string
     lancado_por?: string | null
+    valor_hora?: number | string | null
     data_referencia: string | null
     horas: string
     valor: string
@@ -97,6 +98,24 @@ function endOfMonth(date: Date) {
 function formatMoney(value: number | string | null | undefined) {
   const amount = Number(value || 0)
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount)
+}
+
+// Valor da hora de um conjunto de linhas, para a conferência manual (Filipe,
+// 01/09). Só as linhas de hora têm taxa; mensalidade e parcela vêm sem.
+//
+// Quando o caso tem tabela por cargo, a taxa muda de pessoa para pessoa — aí
+// mostramos a faixa em vez de um número só. Exibir apenas o primeiro seria
+// pior que não exibir: pareceria "a regra do caso" e não é.
+function resumoValorHora(linhas: Array<{ valor_hora?: number | string | null }> | undefined) {
+  const taxas = (linhas || [])
+    .map((l) => Number(l.valor_hora || 0))
+    .filter((v) => v > 0)
+  if (taxas.length === 0) return null
+  const menor = Math.min(...taxas)
+  const maior = Math.max(...taxas)
+  return menor === maior
+    ? `${formatMoney(menor)}/h`
+    : `${formatMoney(menor)}–${formatMoney(maior)}/h`
 }
 
 // Horas em "1h 20min" (util compartilhado com a revisão) — decimal confundia.
@@ -1135,6 +1154,17 @@ export default function ItensAFaturarList() {
                       <span className="block truncate text-sm font-semibold text-ink">{cliente.cliente_nome}</span>
                       <span className="block text-xs text-ink-mute">
                         {cliente.total_itens} item(ns) · {formatHours(cliente.total_horas)}
+                        {(() => {
+                          // No cliente a taxa só aparece quando é a mesma em
+                          // todos os casos dele. Um cliente com dois contratos a
+                          // preços diferentes mostraria um número que não vale
+                          // para nenhum dos dois.
+                          const todas = (cliente.contratos || []).flatMap((ct) =>
+                            (ct.casos || []).flatMap((cs) => cs.extrato || []),
+                          )
+                          const r = resumoValorHora(todas)
+                          return r ? <> · <span className="font-medium text-ink-secondary">{r}</span></> : null
+                        })()}
                       </span>
                     </span>
                   </button>
@@ -1179,6 +1209,9 @@ export default function ItensAFaturarList() {
                                 </span>
                                 <span className="block text-xs text-ink-mute">
                                   {caso.total_itens} item(ns) · {formatHours(caso.total_horas)}
+                                  {resumoValorHora(caso.extrato) ? (
+                                    <> · <span className="font-medium text-ink-secondary">{resumoValorHora(caso.extrato)}</span></>
+                                  ) : null}
                                 </span>
                               </span>
                             </button>
