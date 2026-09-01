@@ -910,6 +910,9 @@ export default function ItensAFaturarList() {
       if (!session) return
 
       let created = 0
+      // Casos que nao renderam item — normalmente porque ja foram liberados e a
+      // lista na tela ainda mostra o retrato antigo.
+      let semItens = 0
       for (const caseId of selectedIds) {
         const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
           method: 'POST',
@@ -927,13 +930,34 @@ export default function ItensAFaturarList() {
 
         const payload = await response.json().catch(() => ({}))
         if (!response.ok) {
-          toastError(payload.error || 'Erro ao enviar itens selecionados para revisão')
+          // "Nenhum item elegível" nao e falha da operacao: e um caso que ja
+          // foi liberado antes. Abortar o lote inteiro por causa dele fazia a
+          // selecao toda parecer quebrada — foi o que aconteceu no faturamento
+          // de setembro, com 29 selecionados e nenhum liberado.
+          const msg = String(payload.error || '')
+          if (/nenhum item eleg|nenhuma despesa eleg/i.test(msg)) {
+            semItens += 1
+            continue
+          }
+          toastError(msg || 'Erro ao enviar itens selecionados para revisão')
           return
         }
         created += Number(payload?.data?.itens_criados || 0)
       }
 
-      success(`Itens selecionados enviados para revisão (${created} itens).`)
+      if (created === 0 && semItens > 0) {
+        toastError(
+          semItens === 1
+            ? 'Este caso já havia sido liberado. A lista foi atualizada.'
+            : `Estes ${semItens} casos já haviam sido liberados. A lista foi atualizada.`,
+        )
+      } else {
+        success(
+          semItens > 0
+            ? `${created} itens enviados para revisão. ${semItens} caso(s) já estavam liberados.`
+            : `Itens selecionados enviados para revisão (${created} itens).`,
+        )
+      }
       setSelectedCasos({})
       await loadItems()
     } catch (err) {
