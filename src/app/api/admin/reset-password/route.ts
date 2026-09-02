@@ -73,13 +73,29 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Buscar usuário pelo e-mail
-  const { data: listData, error: listError } = await adminClient.auth.admin.listUsers()
-  if (listError) {
-    return NextResponse.json({ error: listError.message }, { status: 400 })
+  // Buscar usuário pelo e-mail.
+  //
+  // listUsers() devolve UMA PAGINA (50 por padrao) e as mais recentes primeiro.
+  // Com 60 contas, as 10 mais antigas ficavam fora — e sao justamente as
+  // principais: Jessika, Joana, Leonardo, Douglas, Bruna. A tela dizia
+  // "Usuário não encontrado" para gente que existe desde fevereiro.
+  //
+  // Compara em minusculas e sem espaco: o Supabase guarda o e-mail normalizado,
+  // e quem digita costuma deixar espaco ao colar.
+  const alvo = String(email).trim().toLowerCase()
+  let user: { id: string; email?: string } | undefined
+  for (let page = 1; page <= 40 && !user; page += 1) {
+    const { data: listData, error: listError } = await adminClient.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    })
+    if (listError) {
+      return NextResponse.json({ error: listError.message }, { status: 400 })
+    }
+    user = listData.users.find((u) => (u.email || '').trim().toLowerCase() === alvo)
+    if (listData.users.length === 0) break
   }
 
-  const user = listData.users.find((u) => u.email === email)
   if (!user) {
     return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
   }
