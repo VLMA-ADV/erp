@@ -775,6 +775,33 @@ function buildTree(items: RevisaoItem[]): ClienteGroup[] {
     caso.itens.push(item)
   }
 
+  // Ordem cronológica dentro do caso (Filipe, 02/09: "pra facilitar o processo").
+  // Antes saía na ordem em que o banco gravou — que não é ordem nenhuma para
+  // quem confere um mês.
+  //
+  // A data do TRABALHO manda: para hora é timesheetDataLancamento; regra
+  // financeira não tem trabalho e cai em dataReferencia (dia 1º do mês), então
+  // mensalidade e parcela ficam no topo do caso, antes das horas. Foi
+  // confirmado com ele.
+  //
+  // Empate resolvido pelo número do item, para a ordem ser estável: sem isso,
+  // dois lançamentos do mesmo dia trocariam de lugar a cada recarga.
+  const dataDoItem = (i: RevisaoItem) =>
+    (i.timesheetDataLancamento || i.dataReferencia || '').slice(0, 10)
+
+  for (const cliente of clientes.values()) {
+    for (const caso of cliente.casos) {
+      caso.itens.sort((a, b) => {
+        const da = dataDoItem(a)
+        const db = dataDoItem(b)
+        if (da !== db) return da < db ? -1 : 1
+        // id é estável e único; serve de desempate para a ordem não dançar
+        // entre recargas quando dois lançamentos são do mesmo dia.
+        return a.id.localeCompare(b.id)
+      })
+    }
+  }
+
   return Array.from(clientes.values())
 }
 
