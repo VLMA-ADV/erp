@@ -123,24 +123,11 @@ Deno.serve(async (req) => {
     })
 
     let resultData = data
+    let mainNoEligible = false
     if (error) {
       if (isNoEligibleError(error.message)) {
-        const fallback = await startDespesasFallback()
-        if (fallback.handled && fallback.created > 0) {
-          resultData = {
-            batch_id: fallback.batchId,
-            batch_numero: fallback.batchNumero,
-            itens_criados: fallback.created,
-            source: "despesa_fallback",
-          }
-        } else {
-          const fallbackMessage = String(fallback.errorMessage || "").trim()
-          const finalMessage = fallbackMessage || error.message
-          return new Response(JSON.stringify({ error: finalMessage, details: finalMessage }), {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          })
-        }
+        mainNoEligible = true
+        resultData = null
       } else {
         return new Response(JSON.stringify({ error: error.message, details: error.message }), {
           status: 500,
@@ -149,11 +136,74 @@ Deno.serve(async (req) => {
       }
     }
 
-    const batchId = resultData?.batch_id ?? null
-    if (batchId) {
+    // Despesa não é "regra": "Gerar faturamento do mês" (somente_regras) continua
+    // sem arrastar despesa, igual já faz com hora (call Filipe 08/07) — decisão de
+    // produto que não é deste conserto.
+    //
+    // Mas no envio por caso/contrato/cliente (itens-a-faturar-list.tsx), despesa
+    // varria só quando o escopo tinha ZERO timesheet/regra elegível — a exceção
+    // "nenhum item elegível" era a ÚNICA porta para o fallback rodar. Bastava o
+    // caso ter UMA hora pendente (quase sempre tem) que a despesa ficava pra trás,
+    // silenciosamente, sem erro nenhum. Foi o que o Filipe viu em 02/09: ~30k em
+    // despesas já lançadas que nunca chegam na grid de revisão porque o caso
+    // delas sempre tem alguma hora também elegível no mesmo envio.
+    // Agora a varredura de despesa roda sempre (mesmo quando o fluxo principal
+    // já achou item), somando ao mesmo resultado, em vez de só no erro.
+    const somenteRegras = Boolean(body?.somente_regras)
+    let despesasCreated = 0
+    let despesasBatchId: string | null = null
+    let despesasBatchNumero: number | null = null
+    let despesasErrorMessage: string | null = null
+
+    if (!somenteRegras) {
+      const fallback = await startDespesasFallback()
+      if (fallback.handled) {
+        if (fallback.created > 0) {
+          despesasCreated = fallback.created
+          despesasBatchId = fallback.batchId
+          despesasBatchNumero = fallback.batchNumero
+        }
+      } else if (fallback.errorMessage && !isNoEligibleError(fallback.errorMessage)) {
+        // Erro de verdade (não "sem despesa elegível") — não derruba um envio de
+        // timesheet/regra que já tenha dado certo, mas precisa aparecer.
+        despesasErrorMessage = fallback.errorMessage
+      }
+    }
+
+    if (!resultData && despesasCreated === 0) {
+      if (mainNoEligible) {
+        const finalMessage = despesasErrorMessage || error!.message
+        return new Response(JSON.stringify({ error: finalMessage, details: finalMessage }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
+    }
+
+    if (!resultData && despesasCreated > 0) {
+      resultData = {
+        batch_id: despesasBatchId,
+        batch_numero: despesasBatchNumero,
+        itens_criados: despesasCreated,
+        source: "despesa_fallback",
+      }
+    } else if (resultData && despesasCreated > 0) {
+      resultData = {
+        ...resultData,
+        itens_criados: Number(resultData.itens_criados ?? 0) + despesasCreated,
+        despesas_batch_id: despesasBatchId,
+        despesas_batch_numero: despesasBatchNumero,
+        despesas_itens_criados: despesasCreated,
+      }
+    }
+
+    const batchIds = [resultData?.batch_id, resultData?.despesas_batch_id].filter(
+      (id: unknown): id is string => typeof id === "string" && id.length > 0,
+    )
+    for (const id of batchIds) {
       await supabase.rpc("detach_faturamento_batch", {
         p_user_id: user.id,
-        p_batch_id: batchId,
+        p_batch_id: id,
       })
     }
 
@@ -162,7 +212,9 @@ Deno.serve(async (req) => {
         data: {
           itens_criados: resultData?.itens_criados ?? 0,
           batch_numero: resultData?.batch_numero ?? null,
-          mensagem: resultData?.mensagem ?? null,
+          despesas_batch_numero: resultData?.despesas_batch_numero ?? null,
+          despesas_itens_criados: resultData?.despesas_itens_criados ?? 0,
+          mensagem: resultData?.mensagem ?? despesasErrorMessage ?? null,
           source: resultData?.source ?? "rpc",
         },
       }),
