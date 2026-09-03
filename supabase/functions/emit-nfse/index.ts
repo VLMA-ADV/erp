@@ -273,7 +273,13 @@ Deno.serve(async (req) => {
         email_prestador: cfg.email,
         codigo_opcao_simples_nacional: cfg.codigo_opcao_simples_nacional,
         regime_especial_tributacao: regimeEsp,
-        cnpj_tomador: digits(tomador.cnpj),
+        // Pessoa fisica vai em cpf_tomador. O campo cnpj_tomador e validado pela
+        // prefeitura contra o padrao [0-9A-Z]{14}: mandar um CPF de 11 digitos
+        // ali derruba a nota com 'erro_validacao_schema'. Eram 566 clientes PF
+        // na base, todos com a emissao quebrada.
+        ...(digits(tomador.cnpj).length === 11
+          ? { cpf_tomador: digits(tomador.cnpj) }
+          : { cnpj_tomador: digits(tomador.cnpj) }),
         razao_social_tomador: tomador.nome,
         codigo_municipio_tomador: Number(tomador.codigo_ibge),
         cep_tomador: digits(tomador.cep),
