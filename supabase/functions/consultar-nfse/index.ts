@@ -41,13 +41,25 @@ Deno.serve(async (req) => {
     )
 
     const token = authHeader.replace("Bearer ", "")
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-    if (userError || !user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } })
-
-    const { data: tenantId } = await supabase.rpc("get_tenant_for_user", { p_user_id: user.id })
-    if (!tenantId) return new Response(JSON.stringify({ error: "Usuário não associado a tenant" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } })
-
+    // Caminho de SERVICO: o cron nao tem usuario logado, e ate 03/09 nada
+    // consultava a Focus sozinho — o PDF da nota so aparecia se alguem fosse a
+    // "Notas geradas" e mandasse atualizar. Emitia-se a nota e o arquivo nunca
+    // chegava na composicao da fatura (Filipe: "emiti NF mas nao apareceu o
+    // arquivo"). Aqui o cron se identifica pela service role e informa o tenant.
+    const ehServico = token === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "___nunca___")
     const body = await req.json().catch(() => ({}))
+
+    let tenantId: string | null = null
+    if (ehServico) {
+      tenantId = typeof body.tenant_id === "string" ? body.tenant_id : null
+      if (!tenantId) return new Response(JSON.stringify({ error: "tenant_id é obrigatório na chamada de serviço" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    } else {
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token)
+      if (userError || !user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+      const { data: t } = await supabase.rpc("get_tenant_for_user", { p_user_id: user.id })
+      if (!t) return new Response(JSON.stringify({ error: "Usuário não associado a tenant" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+      tenantId = t as string
+    }
     const notaIds: string[] = Array.isArray(body.nota_ids) ? body.nota_ids : []
 
     const { data: cfg } = await supabase.rpc("get_focus_nfe_config", { p_tenant_id: tenantId })
