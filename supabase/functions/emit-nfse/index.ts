@@ -88,14 +88,33 @@ Deno.serve(async (req) => {
     if (podeNfse !== true) return json({ error: "Sem permissão para emitir NFS-e" }, 403)
 
     const body = await req.json()
-    const { contrato_id, descricao_servico: descricaoOverride } = body as { contrato_id?: string; descricao_servico?: string }
+    const { contrato_id, caso_id, descricao_servico: descricaoOverride } = body as
+      { contrato_id?: string; caso_id?: string; descricao_servico?: string }
     if (!contrato_id) return json({ error: "contrato_id é obrigatório" }, 400)
+
+    // ESCOPO DA NOTA. Com caso_id, a nota cobre so aquele caso — e o cliente
+    // recebe o detalhamento por escopo, que e o que o Filipe pediu em 03/09:
+    // "uma nota por caso e nao por contrato".
+    //
+    // Sem caso_id, mantem o comportamento antigo: contrato inteiro. E o que o
+    // contrato marcado como 'agrupar_nota_por_contrato' usa.
+    const escopoCaso = typeof caso_id === "string" && caso_id ? caso_id : null
 
     const { data: cfg } = await supabase.rpc("get_focus_nfe_config", { p_tenant_id: tenantId })
     if (!cfg) return json({ error: "Configuração fiscal não encontrada. Cadastre em /configuracao/fiscal-nfse." }, 422)
 
-    const { data: dataset } = await supabase.rpc("get_billing_items_aprovados_full", { p_tenant_id: tenantId, p_contrato_id: contrato_id })
-    if (!dataset || !dataset.itens || dataset.itens.length === 0) return json({ error: "Nenhum item aprovado encontrado para este contrato" }, 404)
+    const { data: dataset } = await supabase.rpc("get_billing_items_aprovados_full", {
+      p_tenant_id: tenantId,
+      p_contrato_id: contrato_id,
+      p_caso_id: escopoCaso,
+    })
+    if (!dataset || !dataset.itens || dataset.itens.length === 0) {
+      return json({
+        error: escopoCaso
+          ? "Nenhum item aprovado encontrado para este caso"
+          : "Nenhum item aprovado encontrado para este contrato",
+      }, 404)
+    }
 
     const itens = dataset.itens as Array<{ id: string; valor: number; snapshot: Record<string, unknown> }>
     const grupo = dataset.grupo_imposto as Record<string, any> | null
@@ -288,6 +307,9 @@ Deno.serve(async (req) => {
       const { data: noteId } = await supabase.rpc("insert_billing_note", {
         p_tenant_id: tenantId,
         p_contrato_id: contrato_id,
+        // Guarda o caso na nota: e o que permite a composicao mostrar a nota
+        // (e o boleto) na linha do caso certo.
+        p_caso_id: escopoCaso,
         p_tipo_documento: "nota_fiscal_servico",
         p_status: accepted ? "gerado" : "cancelado",
         p_focus_ref: ref,
