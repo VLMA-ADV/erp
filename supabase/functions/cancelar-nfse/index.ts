@@ -104,7 +104,25 @@ Deno.serve(async (req) => {
       .eq("tenant_id", tenantId)
     if (updError) return jsonResponse({ error: updError.message }, 500)
 
-    return jsonResponse({ ok: true, nota_id: nota.id, cancelado_na_prefeitura: nota.focus_status === "autorizado", focus_response: focusCancel }, 200)
+    // Cancelar a nota devolve os itens para revisao. Sem isto eles ficavam em
+    // 'faturado' — estado final — e o caso travava: sem nota valida e sem como
+    // refazer (Filipe, 03/09). Se falhar, a nota ja foi cancelada e o resultado
+    // avisa, em vez de fingir que deu tudo certo.
+    const { data: devolucao, error: devErro } = await supabase.rpc("bol_devolver_itens_da_nota", {
+      p_user_id: user.id,
+      p_nota_id: nota.id,
+    })
+
+    return jsonResponse({
+      ok: true,
+      nota_id: nota.id,
+      cancelado_na_prefeitura: nota.focus_status === "autorizado",
+      focus_response: focusCancel,
+      itens_devolvidos: devErro ? null : devolucao,
+      aviso_devolucao: devErro
+        ? "Nota cancelada, mas os itens não voltaram para revisão. Avise o suporte."
+        : undefined,
+    }, 200)
   } catch (e) {
     return jsonResponse({ error: (e as Error).message }, 500)
   }
