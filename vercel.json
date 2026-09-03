@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/consultar-nfse",
-      "schedule": "15 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }

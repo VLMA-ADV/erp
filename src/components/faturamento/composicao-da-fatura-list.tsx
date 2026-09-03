@@ -347,6 +347,21 @@ export default function ComposicaoDaFaturaList() {
           ? `${n} NFS-e enviadas (rateio). Status: ${payload.focus_status}`
           : `NFS-e enviada. Status: ${payload.focus_status}`)
       }
+      // A prefeitura leva alguns segundos a minutos para autorizar, e so entao
+      // existem numero e PDF. Sem perguntar, o arquivo so apareceria no dia
+      // seguinte (cron) — foi assim que o Filipe emitiu e nao viu o arquivo.
+      // Duas tentativas curtas resolvem o caso comum sem prender a tela.
+      const perguntarDesfecho = async (esperaMs: number) => {
+        await new Promise((r) => setTimeout(r, esperaMs))
+        await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/consultar-nfse`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }).catch(() => null)
+        await load()
+      }
+      void perguntarDesfecho(4000).then(() => perguntarDesfecho(12000))
+
       void load()
     } catch {
       notify('Erro de rede ao emitir a NFS-e.')
