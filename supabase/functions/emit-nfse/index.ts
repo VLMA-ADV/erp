@@ -88,8 +88,14 @@ Deno.serve(async (req) => {
     if (podeNfse !== true) return json({ error: "Sem permissão para emitir NFS-e" }, 403)
 
     const body = await req.json()
-    const { contrato_id, caso_id, descricao_servico: descricaoOverride } = body as
-      { contrato_id?: string; caso_id?: string; descricao_servico?: string }
+    const { contrato_id, caso_id, descricao_servico: descricaoOverride, dry_run } = body as
+      { contrato_id?: string; caso_id?: string; descricao_servico?: string; dry_run?: boolean }
+
+    // ENSAIO. Monta tudo e devolve o que SERIA emitido, sem chamar a prefeitura
+    // e sem gravar nota. Existia em junho, sumiu num refactor, e volta agora
+    // porque o ambiente e producao: e a unica forma de conferir a quebra por
+    // caso sem mandar nota fiscal de verdade.
+    const ensaio = dry_run === true
     if (!contrato_id) return json({ error: "contrato_id é obrigatório" }, 400)
 
     // ESCOPO DA NOTA. Com caso_id, a nota cobre so aquele caso — e o cliente
@@ -165,10 +171,15 @@ Deno.serve(async (req) => {
     // ── Idempotência: reserva atômica de TODOS os itens (aprovado -> faturado)
     // antes de qualquer emissão. 2º clique não acha item 'aprovado' e é barrado.
     const allItemIds = itens.map((i) => i.id)
-    const { data: claimed, error: claimErr } = await supabase.rpc("claim_itens_faturamento", { p_user_id: user.id, p_tenant_id: tenantId, p_item_ids: allItemIds })
-    if (claimErr) return json({ error: "Falha ao reservar itens para faturamento", details: claimErr.message }, 500)
-    if (Number(claimed) !== allItemIds.length) {
-      return json({ error: "Estes itens já estão sendo faturados ou já foram faturados. Atualize a página e verifique as notas emitidas." }, 409)
+    // Ensaio NAO reserva: reservar move o item de 'aprovado' para 'faturado', e
+    // um ensaio que muda o estado dos itens nao e ensaio — deixaria o caso
+    // travado sem nota nenhuma.
+    if (!ensaio) {
+      const { data: claimed, error: claimErr } = await supabase.rpc("claim_itens_faturamento", { p_user_id: user.id, p_tenant_id: tenantId, p_item_ids: allItemIds })
+      if (claimErr) return json({ error: "Falha ao reservar itens para faturamento", details: claimErr.message }, 500)
+      if (Number(claimed) !== allItemIds.length) {
+        return json({ error: "Estes itens já estão sendo faturados ou já foram faturados. Atualize a página e verifique as notas emitidas." }, 409)
+      }
     }
 
     const itemById = new Map(itens.map((i) => [i.id, i]))
@@ -295,6 +306,21 @@ Deno.serve(async (req) => {
         cbs_percentual_reducao: IBS_CBS_REFORMA.cbs_percentual_reducao,
       }
 
+      if (ensaio) {
+        return {
+          ok: true,
+          ensaio: true,
+          cliente_id: p.cliente_id,
+          tomador_nome: tomador.nome,
+          ref,
+          nota_id: null,
+          valor_total: valorTotal,
+          valor_iss: valorIss,
+          focus_status: "ensaio",
+          focus_response: { descricao_servico: descricaoFinal, valor_servico: nfsePayload.valor_servico },
+        }
+      }
+
       const focusResp = await fetch(`${focusBase}/v2/nfsen?ref=${ref}`, {
         method: "POST",
         headers: { Authorization: `Basic ${btoa(focusToken + ":")}`, "Content-Type": "application/json" },
@@ -332,7 +358,9 @@ Deno.serve(async (req) => {
 
     // Nenhuma aceita → reverte o claim para permitir corrigir e reemitir do zero.
     if (aceitas.length === 0) {
-      await supabase.rpc("reverter_itens_faturamento", { p_user_id: user.id, p_tenant_id: tenantId, p_item_ids: allItemIds })
+      if (!ensaio) {
+        await supabase.rpc("reverter_itens_faturamento", { p_user_id: user.id, p_tenant_id: tenantId, p_item_ids: allItemIds })
+      }
       return json({ error: "Focus NFe recusou a emissão", notas: resultados }, 422)
     }
 
