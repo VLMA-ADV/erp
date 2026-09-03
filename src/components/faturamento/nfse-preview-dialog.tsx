@@ -113,6 +113,11 @@ const DESCRICAO_FIXA = [
 interface NfsePreviewDialogProps {
   open: boolean
   contratoId: string | null
+  // Escopo da previa. Com casoId, a previa mostra so o caso — o mesmo recorte
+  // que o emit-nfse vai usar. Sem ele, a previa e do contrato inteiro. Antes
+  // isso nao existia: a Revisao emitia por caso e mostrava a previa do
+  // contrato, entao a pessoa conferia R$ 200 e emitia R$ 100.
+  casoId?: string | null
   contratoLabel?: string | null
   onClose: () => void
   onConfirmEmit?: (descricaoServico: string) => void
@@ -149,6 +154,7 @@ interface PreviewData {
 export default function NfsePreviewDialog({
   open,
   contratoId,
+  casoId,
   contratoLabel,
   onClose,
   onConfirmEmit,
@@ -164,9 +170,9 @@ export default function NfsePreviewDialog({
       setError(null)
       return
     }
-    void loadPreviewData(contratoId)
+    void loadPreviewData(contratoId, casoId ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, contratoId])
+  }, [open, contratoId, casoId])
 
   // (Re)inicializa a descrição editável quando os dados carregam: nome(s) do(s)
   // caso(s) na 1ª linha + bloco fixo. O usuário pode editar antes de emitir.
@@ -183,7 +189,7 @@ export default function NfsePreviewDialog({
     setDescricaoEdit([nomes.join('; '), DESCRICAO_FIXA].filter(Boolean).join('\n'))
   }, [data])
 
-  const loadPreviewData = async (id: string) => {
+  const loadPreviewData = async (id: string, caso: string | null) => {
     try {
       setLoading(true)
       setError(null)
@@ -203,6 +209,7 @@ export default function NfsePreviewDialog({
       const { data: dataset } = await supabase.rpc('get_billing_items_aprovados_full', {
         p_tenant_id: tenantId,
         p_contrato_id: id,
+        p_caso_id: caso,
       })
 
       if (!dataset || !dataset.itens || dataset.itens.length === 0) {

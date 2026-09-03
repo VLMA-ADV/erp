@@ -645,7 +645,7 @@ export default function FluxoDeFaturamentoList() {
   }
 
   // NFS-e: prévia + emissão direto do Fluxo de Faturamento (PR Filipe 22/05)
-  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string } | null>(null)
+  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; casoId: string | null; label: string } | null>(null)
   const [emittingNfse, setEmittingNfse] = useState<string | null>(null)
   const [nfseResult, setNfseResult] = useState<{
     ref: string
@@ -945,7 +945,7 @@ export default function FluxoDeFaturamentoList() {
 
   // Dispara emissão real da NFS-e via edge emit-nfse. Usado quando o usuário
   // confirma na prévia OU clica direto no botão $ ao lado do "Prévia" na linha do caso.
-  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string) => {
+  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string, casoId?: string | null) => {
     try {
       setEmittingNfse(contratoId)
       const supabase = createClient()
@@ -964,6 +964,9 @@ export default function FluxoDeFaturamentoList() {
         },
         body: JSON.stringify({
           contrato_id: contratoId,
+          // O botao vive na faixa do CASO, entao a nota tem que cobrir so ele.
+          // Sem isto a tela emitia o contrato inteiro a partir de um caso.
+          ...(casoId ? { caso_id: casoId } : {}),
           ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
         }),
       })
@@ -1368,10 +1371,11 @@ export default function FluxoDeFaturamentoList() {
                                               className="rounded-full border-blue-300 text-xs text-blue-700 hover:bg-blue-50"
                                               onClick={() => setNfsePreview({
                                                 contratoId: contrato.contratoId,
+                                                casoId: casoG.casoId,
                                                 label: formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full,
                                               })}
                                               disabled={casoG.itens.length === 0}
-                                              title="Visualizar prévia da NFS-e (rascunho) deste contrato"
+                                              title="Visualizar prévia da NFS-e (rascunho) deste caso"
                                             >
                                               <FileText className="mr-1 h-3.5 w-3.5" />
                                               Prévia NFS-e
@@ -1382,9 +1386,11 @@ export default function FluxoDeFaturamentoList() {
                                               onClick={() => void emitNfse(
                                                 contrato.contratoId,
                                                 formatContratoDisplay(contrato.numeroSequencial ?? contrato.numero, contrato.nome).full,
+                                                undefined,
+                                                casoG.casoId,
                                               )}
                                               disabled={casoG.itens.length === 0 || emittingNfse === contrato.contratoId}
-                                              title="Emitir NFS-e via Focus NFe para todos os itens aprovados deste contrato"
+                                              title="Emitir NFS-e via Focus NFe para os itens aprovados deste caso"
                                             >
                                               {emittingNfse === contrato.contratoId ? (
                                                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -1789,13 +1795,14 @@ export default function FluxoDeFaturamentoList() {
       <NfsePreviewDialog
         open={nfsePreview !== null}
         contratoId={nfsePreview?.contratoId ?? null}
+        casoId={nfsePreview?.casoId ?? null}
         contratoLabel={nfsePreview?.label}
         onClose={() => setNfsePreview(null)}
         onConfirmEmit={(descricaoServico) => {
           if (!nfsePreview) return
-          const { contratoId, label } = nfsePreview
+          const { contratoId, casoId, label } = nfsePreview
           setNfsePreview(null)
-          void emitNfse(contratoId, label, descricaoServico)
+          void emitNfse(contratoId, label, descricaoServico, casoId)
         }}
       />
 
