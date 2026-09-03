@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { formatHorasMin } from '@/lib/utils/format-horas'
+import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
 
@@ -298,9 +299,88 @@ export default function ComposicaoDaFaturaList() {
     return map
   }, [items])
 
+  // Mesmo padrão do mapa de despesas acima: as horas do contrato, para o
+  // relatório sair com as linhas de verdade e não com o agregado do kit.
+  const horasPorContrato = useMemo(() => {
+    const map = new Map<string, RevisaoItem[]>()
+    for (const item of items) {
+      if (item.origem_tipo !== 'timesheet' || !item.contrato_id) continue
+      const list = map.get(item.contrato_id) || []
+      list.push(item)
+      map.set(item.contrato_id, list)
+    }
+    return map
+  }, [items])
+
   const totalGeral = useMemo(() => clientes.reduce((acc, c) => acc + c.total, 0), [clientes])
 
   const emBreve = (label: string) => notify(`${label}: automação ainda não implementada nesta etapa.`)
+
+  // Emite a NFS-e do contrato. Mesmo caminho da tela de Revisão (edge emit-nfse):
+  // a emissão é por CONTRATO e já trata rateio, uma nota por pagador. Aqui o
+  // botão existia como aviso de "não implementada" desde o começo — a tela
+  // prometia e não cumpria.
+  const [emitindoNfse, setEmitindoNfse] = useState<string | null>(null)
+  const emitirNfse = async (contratoId: string, label: string) => {
+    if (emitindoNfse) return
+    const ok = window.confirm(
+      `Emitir NFS-e de ${label}?\n\nA nota é enviada à prefeitura e passa a existir de verdade.`,
+    )
+    if (!ok) return
+    setEmitindoNfse(contratoId)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { notify('Sessão expirada.'); return }
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/emit-nfse`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contrato_id: contratoId }),
+      })
+      const payload = await resp.json().catch(() => ({}))
+      if (!resp.ok) { notify(payload.error || 'A prefeitura recusou a emissão.'); return }
+      if (payload.partial) {
+        notify(payload.message || 'Emissão parcial — alguns pagadores foram recusados.')
+      } else {
+        const n = Number(payload.n_notas ?? 1)
+        notify(n > 1
+          ? `${n} NFS-e enviadas (rateio). Status: ${payload.focus_status}`
+          : `NFS-e enviada. Status: ${payload.focus_status}`)
+      }
+      void load()
+    } catch {
+      notify('Erro de rede ao emitir a NFS-e.')
+    } finally {
+      setEmitindoNfse(null)
+    }
+  }
+
+  // Relatório de timesheet do contrato — mesmo gerador das outras telas.
+  const gerarRelatorio = (kit: ContratoKit) => {
+    const linhas = horasPorContrato.get(kit.contratoId) || []
+    if (linhas.length === 0) { notify('Este contrato não tem horas para relatar.'); return }
+    openTimesheetReport({
+      titulo: 'Relatório de timesheet',
+      subtitulo: `${kit.clienteNome} · ${formatContratoDisplay(kit.numero, kit.nome).full}`,
+      mostrarValor: true,
+      rows: linhas
+        .slice()
+        // Cronológico, como a revisão passou a ser em 02/09.
+        .sort((a, b) => String(a.data_referencia || '').localeCompare(String(b.data_referencia || '')))
+        .map((item) => {
+          const t = getTimesheetTotals(item)
+          return {
+            data: String(item.data_referencia || '').split('-').reverse().join('/'),
+            cliente: kit.clienteNome,
+            caso: `${item.caso_numero ? `${item.caso_numero} - ` : ''}${item.caso_nome || ''}`,
+            profissional: String(item.snapshot?.timesheet_profissional || ''),
+            descricao: String(item.snapshot?.timesheet_descricao || ''),
+            horas: formatHours(t.horas),
+            valor: t.valor,
+          }
+        }),
+    })
+  }
 
   // Emite o boleto da fatura. A tela trabalha por contrato/nota; a emissão
   // trabalha por conta a receber — bol_lancamento_da_nota faz a ponte, que já
@@ -357,7 +437,6 @@ export default function ComposicaoDaFaturaList() {
       setEmitindoBoleto(false)
     }
   }
-
 
   const abrirNota = (kit: ContratoKit) => {
     const linhas = despesaPorContrato.get(kit.contratoId) || []
@@ -535,6 +614,8 @@ export default function ComposicaoDaFaturaList() {
                   envio={envios[kit.contratoId]}
                   onStub={emBreve}
                   onEmitirBoleto={emitirBoleto}
+                  onEmitirNfse={() => emitirNfse(kit.contratoId, formatContratoDisplay(kit.numero, kit.nome).full)}
+                  onGerarRelatorio={() => gerarRelatorio(kit)}
                   onAbrirNota={() => abrirNota(kit)}
                   onAbrirEmail={() => void abrirEmail(kit)}
                 />
@@ -620,6 +701,8 @@ function ContratoKitCard({
   envio,
   onStub,
   onEmitirBoleto,
+  onEmitirNfse,
+  onGerarRelatorio,
   onAbrirNota,
   onAbrirEmail,
 }: {
@@ -628,6 +711,8 @@ function ContratoKitCard({
   envio?: EnvioFatura
   onStub: (label: string) => void
   onEmitirBoleto: (notaId: string) => void
+  onEmitirNfse: () => void
+  onGerarRelatorio: () => void
   onAbrirNota: () => void
   onAbrirEmail: () => void
 }) {
@@ -672,7 +757,7 @@ function ContratoKitCard({
           valor={kit.valorServico}
           nota={notas['nota_fiscal_servico']}
           acaoLabel="Emitir no fluxo"
-          onAcao={() => onStub('Emissão de NFS-e')}
+          onAcao={onEmitirNfse}
         />
 
         {/*
@@ -705,7 +790,7 @@ function ContratoKitCard({
             descricao={`${formatHours(kit.horasTimesheet)} aprovadas. Geração de PDF a definir (template pendente).`}
             nota={notas['relatorio_honorarios']}
             acaoLabel="Gerar relatório"
-            onAcao={() => onStub('Relatório de timesheet')}
+            onAcao={onGerarRelatorio}
           />
         ) : null}
 
