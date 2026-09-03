@@ -935,6 +935,10 @@ export default function ItensAFaturarList() {
           // selecao toda parecer quebrada — foi o que aconteceu no faturamento
           // de setembro, com 29 selecionados e nenhum liberado.
           const msg = String(payload.error || '')
+          // Despesa NAO REEMBOLSAVEL nao entra no faturamento por regra — e
+          // gasto do escritorio, nao do cliente. O erro generico dizia
+          // "nenhum item elegivel para o periodo/filtro" e fazia o Filipe
+          // procurar erro de data (02/09, quatro despesas de R$ 12.730,25).
           if (/nenhum item eleg|nenhuma despesa eleg/i.test(msg)) {
             semItens += 1
             continue
@@ -948,8 +952,8 @@ export default function ItensAFaturarList() {
       if (created === 0 && semItens > 0) {
         toastError(
           semItens === 1
-            ? 'Este caso já havia sido liberado. A lista foi atualizada.'
-            : `Estes ${semItens} casos já haviam sido liberados. A lista foi atualizada.`,
+            ? 'Nada a liberar neste caso: já foi liberado, ou a despesa está marcada como não reembolsável (nesse caso ela não é cobrada do cliente).'
+            : `Nada a liberar em ${semItens} casos: já foram liberados, ou as despesas estão marcadas como não reembolsáveis (nesse caso não são cobradas do cliente).`,
         )
       } else {
         success(
