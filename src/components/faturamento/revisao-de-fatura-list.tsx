@@ -887,7 +887,10 @@ export default function RevisaoDeFaturaList() {
   const [allContratos, setAllContratos] = useState<ContratoOption[]>([])
   // NFS-e na faixa do caso: a emissão é por CONTRATO (com rateio por pagador), então
   // "Faturar" sempre passa pela prévia — é ela que mostra o que de fato vai na nota.
-  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; label: string; permitirEmitir: boolean } | null>(null)
+  // A previa/emissao carrega o CASO: a nota e por caso (Filipe, 03/09), e o
+  // botao ja vivia na linha do caso desde 28/07 — so que emitia o contrato
+  // inteiro sem avisar. Era o que o confundia.
+  const [nfsePreview, setNfsePreview] = useState<{ contratoId: string; casoId?: string | null; label: string; permitirEmitir: boolean } | null>(null)
   const [emittingContratoId, setEmittingContratoId] = useState<string | null>(null)
   const [nfseResult, setNfseResult] = useState<{
     ref: string
@@ -1762,7 +1765,7 @@ export default function RevisaoDeFaturaList() {
   // Emite a NFS-e via edge emit-nfse. A emissão é por CONTRATO e já trata o rateio
   // (1 nota por pagador). Só é chamada a partir da prévia, para a pessoa ver antes o
   // que exatamente vai no documento fiscal.
-  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string) => {
+  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string, casoId?: string | null) => {
     try {
       setEmittingContratoId(contratoId)
       const accessToken = await getSessionToken()
@@ -1778,6 +1781,8 @@ export default function RevisaoDeFaturaList() {
         },
         body: JSON.stringify({
           contrato_id: contratoId,
+          // Sem caso, a nota sai do contrato inteiro (comportamento antigo).
+          ...(casoId ? { caso_id: casoId } : {}),
           ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
         }),
       })
@@ -2605,7 +2610,7 @@ export default function RevisaoDeFaturaList() {
                                       size="sm"
                                       variant="outline"
                                       className="rounded-full border-blue-300 text-xs text-blue-700 hover:bg-blue-50"
-                                      onClick={() => setNfsePreview({ contratoId: casoContratoId, label: casoLabelNfse, permitirEmitir: false })}
+                                      onClick={() => setNfsePreview({ contratoId: casoContratoId, casoId: casoGroup.itens[0]?.casoId ?? null, label: casoLabelNfse, permitirEmitir: false })}
                                       title="Ver a prévia da NFS-e (rascunho) deste contrato"
                                     >
                                       <FileText className="mr-1 h-3.5 w-3.5" />
@@ -2615,7 +2620,7 @@ export default function RevisaoDeFaturaList() {
                                       <Button
                                         size="sm"
                                         className="rounded-full bg-green-700 text-xs text-white hover:bg-green-800"
-                                        onClick={() => setNfsePreview({ contratoId: casoContratoId, label: casoLabelNfse, permitirEmitir: true })}
+                                        onClick={() => setNfsePreview({ contratoId: casoContratoId, casoId: casoGroup.itens[0]?.casoId ?? null, label: casoLabelNfse, permitirEmitir: true })}
                                         disabled={emittingContratoId === casoContratoId}
                                         title="Conferir a prévia e emitir a NFS-e deste contrato"
                                       >
@@ -3570,9 +3575,9 @@ export default function RevisaoDeFaturaList() {
           nfsePreview?.permitirEmitir
             ? (descricaoServico) => {
                 if (!nfsePreview) return
-                const { contratoId, label } = nfsePreview
+                const { contratoId, casoId, label } = nfsePreview
                 setNfsePreview(null)
-                void emitNfse(contratoId, label, descricaoServico)
+                void emitNfse(contratoId, label, descricaoServico, casoId)
               }
             : undefined
         }
