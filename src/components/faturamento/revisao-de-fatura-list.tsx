@@ -2611,7 +2611,7 @@ export default function RevisaoDeFaturaList() {
                                       variant="outline"
                                       className="rounded-full border-blue-300 text-xs text-blue-700 hover:bg-blue-50"
                                       onClick={() => setNfsePreview({ contratoId: casoContratoId, casoId: casoGroup.itens[0]?.casoId ?? null, label: casoLabelNfse, permitirEmitir: false })}
-                                      title="Ver a prévia da NFS-e (rascunho) deste contrato"
+                                      title="Ver a prévia da NFS-e (rascunho) deste caso"
                                     >
                                       <FileText className="mr-1 h-3.5 w-3.5" />
                                       Prévia da NF
@@ -2622,7 +2622,7 @@ export default function RevisaoDeFaturaList() {
                                         className="rounded-full bg-green-700 text-xs text-white hover:bg-green-800"
                                         onClick={() => setNfsePreview({ contratoId: casoContratoId, casoId: casoGroup.itens[0]?.casoId ?? null, label: casoLabelNfse, permitirEmitir: true })}
                                         disabled={emittingContratoId === casoContratoId}
-                                        title="Conferir a prévia e emitir a NFS-e deste contrato"
+                                        title="Conferir a prévia e emitir a NFS-e deste caso"
                                       >
                                         {emittingContratoId === casoContratoId ? (
                                           <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -3569,6 +3569,7 @@ export default function RevisaoDeFaturaList() {
       <NfsePreviewDialog
         open={nfsePreview !== null}
         contratoId={nfsePreview?.contratoId ?? null}
+        casoId={nfsePreview?.casoId ?? null}
         contratoLabel={nfsePreview?.label}
         onClose={() => setNfsePreview(null)}
         onConfirmEmit={
