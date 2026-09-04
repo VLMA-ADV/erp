@@ -80,6 +80,27 @@ function somenteDigitos(v: unknown): string {
   return String(v ?? "").replace(/\D/g, "")
 }
 
+/**
+ * Texto livre do jeito que o Itau aceita: sem acento, sem travessao, sem
+ * qualquer simbolo fora de letra, numero, espaco e . , / -
+ *
+ * O banco recusou o boleto da 7 Holding tres vezes (03/09) com "o campo
+ * texto_uso_beneficiario possui caracteres especiais nao aceitos": o valor era
+ * "Honorários — 7 Holding Lt", com acento e travessao vindos da descricao do
+ * lancamento. Toda descricao do escritorio tem acento, entao sem isto nenhum
+ * boleto passa. Corta no tamanho DEPOIS de limpar, para nao perder posicao.
+ */
+export function textoItau(v: unknown, max: number): string {
+  return String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u2012-\u2015]/g, "-")
+    .replace(/[^A-Za-z0-9 .,/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max)
+}
+
 /** Data em YYYY-MM-DD. Aceita Date ou string ja no formato. */
 export function dataIso(v: string | Date): string {
   if (v instanceof Date) return v.toISOString().slice(0, 10)
@@ -239,13 +260,13 @@ export function montarPayloadEmissao(input: EmissaoInput): Record<string, unknow
     data_emissao: dataIso(titulo.data_emissao),
     pagador: {
       pessoa: {
-        nome_pessoa: pagador.nome.trim().slice(0, 50),
+        nome_pessoa: textoItau(pagador.nome, 50),
         tipo_pessoa: tipoPessoa,
       },
       endereco: {
-        nome_logradouro: pagador.logradouro.trim().slice(0, 45),
-        nome_bairro: pagador.bairro.trim().slice(0, 15),
-        nome_cidade: pagador.cidade.trim().slice(0, 20),
+        nome_logradouro: textoItau(pagador.logradouro, 45),
+        nome_bairro: textoItau(pagador.bairro, 15),
+        nome_cidade: textoItau(pagador.cidade, 20),
         sigla_UF: pagador.uf.trim().toUpperCase(),
         numero_CEP: somenteDigitos(pagador.cep),
       },
@@ -255,7 +276,7 @@ export function montarPayloadEmissao(input: EmissaoInput): Record<string, unknow
         numero_nosso_numero: nossoNumero8(titulo.nosso_numero),
         data_vencimento: dataIso(titulo.vencimento),
         valor_titulo: centavos17(titulo.valor),
-        texto_uso_beneficiario: titulo.uso_beneficiario,
+        texto_uso_beneficiario: textoItau(titulo.uso_beneficiario, 25),
         texto_seu_numero: titulo.seu_numero,
       },
     ],

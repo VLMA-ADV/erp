@@ -14,6 +14,7 @@ import {
   percentual12,
   percentual5,
   somarDias,
+  textoItau,
   valor2,
   validarPagador,
   type BoletoConfig,
@@ -286,4 +287,17 @@ Deno.test("lerNotificacoes le o exemplo de webhook do Itau (camelCase)", () => {
   }])
   assertEquals(lerNotificacoes({}), [])
   assertEquals(lerNotificacoes(null), [])
+})
+
+Deno.test("textoItau tira acento e travessao — o caso real recusado pelo Itau", () => {
+  // Resposta do banco em 03/09: "possui caracteres especiais nao aceitos".
+  assertEquals(textoItau("Honorários — 7 Holding Ltda", 25), "Honorarios - 7 Holding Lt")
+  assertEquals(textoItau("Juçara Augustini", 50), "Jucara Augustini")
+  assertEquals(textoItau("Rua Cândido Xavier, 602 — Água Verde", 45), "Rua Candido Xavier, 602 - Agua Verde")
+})
+
+Deno.test("textoItau corta depois de limpar e nao deixa espaco duplo", () => {
+  assertEquals(textoItau("  Honorários   advocatícios  ", 100), "Honorarios advocaticios")
+  assertEquals(textoItau("Nota nº 12 (setembro/2026)", 100), "Nota n 12 setembro/2026")
+  assertEquals(textoItau(null, 10), "")
 })
