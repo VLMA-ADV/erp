@@ -439,7 +439,18 @@ export default function ComposicaoDaFaturaList() {
         body: JSON.stringify({ lancamento_id: info.lancamento_id }),
       })
       const corpo = await resp.json().catch(() => ({}))
-      if (!resp.ok) { notify(corpo.error || 'Não foi possível emitir o boleto.'); return }
+      if (!resp.ok) {
+        // O Itau diz qual campo recusou e por que. Isso vinha na resposta e
+        // ficava so no banco: a tela mostrava "HTTP 400" e a pessoa nao tinha
+        // como saber que era um acento na descricao.
+        const campos = (corpo as { detalhe?: { campos?: Array<{ campo?: string; mensagem?: string }> } })
+          .detalhe?.campos
+        const motivo = Array.isArray(campos) && campos.length
+          ? ' ' + campos.map((c) => c.mensagem).filter(Boolean).join(' ')
+          : ''
+        notify((corpo.error || 'Não foi possível emitir o boleto.') + motivo)
+        return
+      }
 
       const linha = (corpo as { boleto?: { linha_digitavel?: string | null } }).boleto
       notify(linha?.linha_digitavel
