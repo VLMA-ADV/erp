@@ -67,9 +67,41 @@ Deno.serve(async (req) => {
       : (Deno.env.get("FOCUS_NFE_TOKEN_HOMOLOGACAO") ?? "")
 
     let focusCancel: Record<string, any> | null = null
+    let statusAtual = nota.focus_status
+
+    // Nota ainda "processando": pergunta a prefeitura ANTES de cancelar.
+    // Foi assim que a NFS-e 1888 (Voa, 03/09) ficou viva: cancelada aqui
+    // enquanto processava, autorizada la depois, e ninguem voltou a olhar
+    // porque 'cancelado' e status final. Se a prefeitura ja autorizou,
+    // segue como cancelamento fiscal; se ainda esta processando, recusa —
+    // cancelar agora deixaria a nota viva la fora e o item liberado para
+    // cobranca em dobro.
+    if (nota.focus_ref && nota.focus_status === "processando_autorizacao") {
+      const r = await fetch(`${focusBase}/v2/nfsen/${encodeURIComponent(nota.focus_ref)}`, {
+        headers: { Authorization: `Basic ${btoa(focusToken + ":")}` },
+      })
+      const j: Record<string, any> = await r.json().catch(() => ({}))
+      const consultado = typeof j.status === "string" ? j.status : null
+      if (r.ok && consultado && consultado !== "processando_autorizacao") {
+        // Grava o que a prefeitura disse (o gatilho de conta a receber e o
+        // cancelamento em cadeia dependem disto estar certo no banco).
+        await supabase
+          .schema("finance")
+          .from("billing_notes")
+          .update({ focus_status: consultado })
+          .eq("id", nota.id)
+          .eq("tenant_id", tenantId)
+        statusAtual = consultado
+      } else {
+        return jsonResponse({
+          error: "A prefeitura ainda está processando esta nota. Cancelar agora deixaria a nota viva lá fora. Aguarde a autorização (leva de minutos a horas), clique em \"Atualizar NFS-e\" em Notas geradas e tente de novo.",
+          focus_status: consultado ?? "processando_autorizacao",
+        }, 409)
+      }
+    }
 
     // Só existe cancelamento fiscal se a nota foi autorizada na prefeitura.
-    if (nota.focus_ref && nota.focus_status === "autorizado") {
+    if (nota.focus_ref && statusAtual === "autorizado") {
       const r = await fetch(`${focusBase}/v2/nfsen/${encodeURIComponent(nota.focus_ref)}`, {
         method: "DELETE",
         headers: { Authorization: `Basic ${btoa(focusToken + ":")}`, "Content-Type": "application/json" },
@@ -93,7 +125,7 @@ Deno.serve(async (req) => {
           ...(nota.metadata ?? {}),
           nfse_cancelamento: {
             justificativa,
-            cancelado_na_prefeitura: nota.focus_status === "autorizado",
+            cancelado_na_prefeitura: statusAtual === "autorizado",
             focus_response: focusCancel,
             cancelado_por: user.id,
             cancelado_em: new Date().toISOString(),
@@ -116,7 +148,7 @@ Deno.serve(async (req) => {
     return jsonResponse({
       ok: true,
       nota_id: nota.id,
-      cancelado_na_prefeitura: nota.focus_status === "autorizado",
+      cancelado_na_prefeitura: statusAtual === "autorizado",
       focus_response: focusCancel,
       itens_devolvidos: devErro ? null : devolucao,
       aviso_devolucao: devErro

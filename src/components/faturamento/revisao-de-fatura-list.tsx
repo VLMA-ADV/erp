@@ -1147,7 +1147,14 @@ export default function RevisaoDeFaturaList() {
       })
       const payload = await resp.json().catch(() => ({}))
       if (!resp.ok) { toastError(payload.error || 'Erro ao cancelar a nota'); return }
-      success('NFS-e cancelada.')
+      // Boleto ja registrado no Itau nao some com a nota: precisa de baixa
+      // no banco, senao o cliente pode pagar uma cobranca que nao existe mais.
+      const boletos = Number(payload.itens_devolvidos?.boletos_registrados ?? 0)
+      if (boletos > 0) {
+        toastError(`NFS-e cancelada, mas ${boletos === 1 ? 'há um boleto registrado' : `há ${boletos} boletos registrados`} no Itaú sobre esta nota. Dê baixa no banco para o cliente não pagar.`)
+      } else {
+        success(payload.cancelado_na_prefeitura ? 'NFS-e cancelada na prefeitura.' : 'NFS-e cancelada.')
+      }
       await loadNotasEmitidas()
       void loadItems({ silent: true })
     } catch (cancelError) {
