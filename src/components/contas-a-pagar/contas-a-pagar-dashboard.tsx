@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
 import FluxoMensalChart, { type FluxoMensal } from './fluxo-mensal-chart'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { abrirFichaBoleto, copiarTexto, formatarLinhaDigitavel, type BolResumo } from '@/lib/utils/boleto-ficha'
 
 // ── helpers ───────────────────────────────────────────────────────────
 function fmtMoney(value: number | string | null | undefined) {
@@ -175,6 +176,38 @@ export default function ContasAPagarDashboard() {
   const [valorDraft, setValorDraft] = useState('')
   const [salvandoValor, setSalvandoValor] = useState(false)
 
+  // Boletos registrados no Itaú, chaveados pelo lançamento. Vêm em lote pelo
+  // mês (bol_listar) — uma chamada para a coluna inteira — e só os atrasados
+  // de meses anteriores, que o lote não alcança, são buscados um a um.
+  const [boletos, setBoletos] = useState<Record<string, BolResumo>>({})
+  const carregarBoletos = useCallback(async (mes: string, receber: Row[]) => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: lista } = await supabase.rpc('bol_listar', { p_user_id: user.id, p_mes: `${mes}-01` })
+      const mapa: Record<string, BolResumo> = {}
+      for (const b of ((lista as Array<BolResumo & { lancamento_id: string }> | null) || [])) {
+        // Reemissão depois de erro: o que vale é o boleto que deu certo.
+        if (mapa[b.lancamento_id] && b.status === 'erro') continue
+        mapa[b.lancamento_id] = b
+      }
+      const fora = receber
+        .filter((r) => !r.id.startsWith('previsto:') && !mapa[r.id] && !r.vencimento.startsWith(mes))
+        .slice(0, 15)
+      const avulsos = await Promise.all(
+        fora.map(async (r) => {
+          const { data: b } = await supabase.rpc('bol_do_lancamento', { p_user_id: user.id, p_lancamento_id: r.id })
+          return [r.id, (b as BolResumo | null) ?? null] as const
+        }),
+      )
+      for (const [id, b] of avulsos) if (b) mapa[id] = b
+      setBoletos(mapa)
+    } catch {
+      // Sem boleto na tela não é erro de tela; a coluna continua funcionando.
+    }
+  }, [])
+
   const load = useCallback(async (d: string) => {
     try {
       setLoading(true)
@@ -185,13 +218,14 @@ export default function ContasAPagarDashboard() {
       const { data: r, error: e } = await supabase.rpc('cp_rotina_diaria', { p_user_id: user.id, p_data: d })
       if (e) { setError(e.message); return }
       setData(r as Rotina)
+      void carregarBoletos(d.slice(0, 7), ((r as Rotina)?.receber || []) as Row[])
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar a rotina diária.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [carregarBoletos])
 
   const loadMes = useCallback(async (mes: string, sim: Record<string, string> = {}) => {
     try {
@@ -207,6 +241,7 @@ export default function ContasAPagarDashboard() {
       })
       if (e) { setError(e.message); return }
       setFluxo(r as FluxoMensal)
+      void carregarBoletos(mes, ((r as FluxoMensal)?.receber || []) as Row[])
 
       // Previsto é uma consulta à parte, e de propósito: ele não depende da
       // simulação de datas (arrastar uma despesa não muda quando a receita
@@ -223,7 +258,7 @@ export default function ContasAPagarDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [carregarBoletos])
 
   // Sync do faturamento (notas emitidas → contas a receber) uma vez ao abrir,
   // + carrega a conta bancária para edição do saldo inicial.
@@ -551,12 +586,22 @@ export default function ContasAPagarDashboard() {
           ? `Boleto registrado. Linha digitável: ${linha.linha_digitavel}`
           : 'Boleto registrado no Itaú.',
       )
-      void load(dia)
+      recarregar()
     } catch {
       toastErro('Erro de rede ao emitir o boleto.')
     } finally {
       setEmitindo(null)
     }
+  }
+
+  const copiar = async (texto: string, rotulo: string) => {
+    if (await copiarTexto(texto)) toastSuccess(`${rotulo} copiada.`)
+    else toastErro('O navegador não deixou copiar. Selecione o texto e copie.')
+  }
+
+  const verBoleto = async (boletoId: string) => {
+    const erro = await abrirFichaBoleto(boletoId)
+    if (erro) toastErro(erro)
   }
 
   const baixar = async (id: string, natureza: 'pagar' | 'receber') => {
@@ -885,7 +930,7 @@ export default function ContasAPagarDashboard() {
             onMudarValor={setValorDraft} onSalvarValor={salvarValor} onCancelarValor={() => setEditandoValor(null)}
             arrastavel={modo === 'mes'} simulacao={simulacao} onArrastar={setArrastando}
             selecionado={selecionado} onSelecionar={setSelecionado} onMoverDias={moverDias}
-            onEmitirBoleto={emitirBoleto} />
+            onEmitirBoleto={emitirBoleto} boletos={boletos} onCopiar={copiar} onVerBoleto={verBoleto} />
         </div>
       </div>
     </div>
@@ -896,6 +941,7 @@ function ListaColuna({
   titulo, cor, rows, loading, canWrite, onBaixar, onExcluir,
   editandoValor, valorDraft, salvandoValor, onAbrirValor, onMudarValor, onSalvarValor, onCancelarValor,
   arrastavel, simulacao, onArrastar, selecionado, onSelecionar, onMoverDias, onEmitirBoleto,
+  boletos, onCopiar, onVerBoleto,
 }: {
   titulo: string; cor: 'red' | 'green'; rows: Row[]; loading: boolean; canWrite: boolean
   onBaixar: (id: string) => void
@@ -909,6 +955,10 @@ function ListaColuna({
   // Só a coluna de recebimentos passa isto: boleto se emite sobre conta a
   // receber, nunca sobre despesa.
   onEmitirBoleto?: (row: Row) => void
+  /** Boleto já registrado por lançamento (só a coluna de recebimentos). */
+  boletos?: Record<string, BolResumo>
+  onCopiar?: (texto: string, rotulo: string) => void
+  onVerBoleto?: (boletoId: string) => void
 }) {
   const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0)
   return (
@@ -944,6 +994,10 @@ function ListaColuna({
             // seria um botao que finge trabalhar.
             const jaBaixada = ['pago', 'recebido'].includes(r.status)
             const podeMexer = canWrite && !ehPrevisto && r.status !== 'cancelado'
+            // Boleto que existe de verdade no banco: some o botão de emitir e
+            // entra a linha digitável, que é o que se manda para o cliente.
+            const boleto = boletos?.[r.id]
+            const temBoleto = !!boleto && boleto.status !== 'erro' && boleto.status !== 'cancelado'
             return (
             <li
               key={r.id}
@@ -1036,6 +1090,43 @@ function ListaColuna({
                   ) : null}
                   {r.reembolsavel && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">reembolsável</span>}
                 </p>
+                {temBoleto && boleto ? (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700" title={`Vence ${fmtDate(boleto.vencimento)}`}>
+                      boleto {boleto.status}
+                    </span>
+                    {boleto.linha_digitavel ? (
+                      <>
+                        <code className="rounded border border-hairline bg-canvas-soft px-1.5 py-0.5 font-mono text-[11px] text-ink">
+                          {formatarLinhaDigitavel(boleto.linha_digitavel)}
+                        </code>
+                        <button
+                          onClick={() => onCopiar?.(boleto.linha_digitavel!, 'Linha digitável')}
+                          title="Copiar linha digitável"
+                          className="rounded border border-hairline px-1.5 py-0.5 hover:bg-canvas-soft"
+                        >
+                          copiar
+                        </button>
+                      </>
+                    ) : null}
+                    {boleto.pix_copia_cola ? (
+                      <button
+                        onClick={() => onCopiar?.(boleto.pix_copia_cola!, 'Chave Pix copia e cola')}
+                        title="Copiar Pix copia e cola"
+                        className="rounded border border-hairline px-1.5 py-0.5 hover:bg-canvas-soft"
+                      >
+                        copiar Pix
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => onVerBoleto?.(boleto.id)}
+                      title="Abrir a ficha do boleto para imprimir ou salvar em PDF"
+                      className="rounded border border-primary px-1.5 py-0.5 text-primary hover:bg-primary-soft-bg"
+                    >
+                      ver boleto (PDF)
+                    </button>
+                  </div>
+                ) : null}
               </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -1083,7 +1174,7 @@ function ListaColuna({
                     {!jaBaixada ? (
                       <button onClick={() => onBaixar(r.id)} title="Dar baixa" className="rounded border border-hairline px-2 py-0.5 text-xs hover:bg-canvas-soft">baixar</button>
                     ) : null}
-                    {onEmitirBoleto && !jaBaixada ? (
+                    {onEmitirBoleto && !jaBaixada && !temBoleto ? (
                       <button
                         onClick={() => onEmitirBoleto(r)}
                         title="Registrar boleto no Itaú"

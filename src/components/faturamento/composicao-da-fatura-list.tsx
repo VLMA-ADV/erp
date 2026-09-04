@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Banknote, FileText, Loader2, Mail, Receipt, RefreshCw, Clock, ExternalLink } from 'lucide-react'
+import { Banknote, FileText, Loader2, Mail, Receipt, RefreshCw, Clock, ExternalLink, Copy, Printer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
+import { abrirFichaBoleto, copiarTexto, formatarLinhaDigitavel, type BolResumo } from '@/lib/utils/boleto-ficha'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
 
@@ -191,6 +192,10 @@ export default function ComposicaoDaFaturaList() {
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [notes, setNotes] = useState<NotaGerada[]>([])
+  // Boleto já registrado no Itaú, chaveado pela nota fiscal que o originou.
+  // Depois de emitido, a linha do boleto mostra linha digitável e o PDF em vez
+  // do botão de emitir — senão a Jéssica registrava e não tinha como pegar.
+  const [boletosPorNota, setBoletosPorNota] = useState<Record<string, BolResumo | null>>({})
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
   const [emailData, setEmailData] = useState<FaturaEmailData | null>(null)
   const [emailContratoId, setEmailContratoId] = useState<string | null>(null)
@@ -237,7 +242,8 @@ export default function ComposicaoDaFaturaList() {
       const allItems = (revisaoPayload.data || []) as RevisaoItem[]
       // O kit só faz sentido para o que o financeiro já aprovou/faturou.
       setItems(allItems.filter((it) => it.status === 'aprovado' || it.status === 'faturado'))
-      setNotes(notasResp.ok ? ((notasPayload.data || []) as NotaGerada[]) : [])
+      const notasLista = notasResp.ok ? ((notasPayload.data || []) as NotaGerada[]) : []
+      setNotes(notasLista)
 
       // Quais contratos já tiveram a fatura enviada. Uma consulta só para a
       // tela inteira — não uma por linha.
@@ -248,6 +254,17 @@ export default function ComposicaoDaFaturaList() {
           p_contrato_id: null,
         })
         setEnvios((envs as Record<string, EnvioFatura>) || {})
+
+        // Boleto de cada nota fiscal em tela. Uma chamada por nota — são
+        // poucas por mês, e é a nota que liga a tela ao título no banco.
+        const nfs = notasLista.filter((n) => n.tipo_documento === 'nota_fiscal_servico' && n.status !== 'cancelado')
+        const pares = await Promise.all(
+          nfs.map(async (n) => {
+            const { data: b } = await supabase.rpc('bol_da_nota', { p_user_id: user.id, p_nota_id: n.id })
+            return [n.id, (b as BolResumo | null) ?? null] as const
+          }),
+        )
+        setBoletosPorNota(Object.fromEntries(pares))
       }
 
       // Certificado do Itaú: só interessa quando está perto de vencer.
@@ -464,6 +481,21 @@ export default function ComposicaoDaFaturaList() {
     }
   }
 
+  // O boleto é achado pela nota fiscal do contrato: nota → boleto.
+  const boletoDoKit = (contratoId: string): BolResumo | null => {
+    const nf = notaPorContrato.get(contratoId)?.['nota_fiscal_servico']
+    return nf ? boletosPorNota[nf.id] ?? null : null
+  }
+
+  const copiar = async (texto: string, rotulo: string) => {
+    notify((await copiarTexto(texto)) ? `${rotulo} copiada.` : 'O navegador não deixou copiar. Selecione o texto e copie.')
+  }
+
+  const verBoleto = async (boletoId: string) => {
+    const erro = await abrirFichaBoleto(boletoId)
+    if (erro) notify(erro)
+  }
+
   const abrirNota = (kit: ContratoKit) => {
     const linhas = despesaPorContrato.get(kit.contratoId) || []
     const caso = linhas[0]
@@ -639,7 +671,10 @@ export default function ComposicaoDaFaturaList() {
                   notas={notaPorContrato.get(kit.contratoId) || {}}
                   envio={envios[kit.contratoId]}
                   onStub={emBreve}
+                  boleto={boletoDoKit(kit.contratoId)}
                   onEmitirBoleto={emitirBoleto}
+                  onCopiar={copiar}
+                  onVerBoleto={verBoleto}
                   onEmitirNfse={() => emitirNfse(kit.contratoId, formatContratoDisplay(kit.numero, kit.nome).full)}
                   onGerarRelatorio={() => gerarRelatorio(kit)}
                   onAbrirNota={() => abrirNota(kit)}
@@ -725,8 +760,11 @@ function ContratoKitCard({
   kit,
   notas,
   envio,
+  boleto,
   onStub,
   onEmitirBoleto,
+  onCopiar,
+  onVerBoleto,
   onEmitirNfse,
   onGerarRelatorio,
   onAbrirNota,
@@ -735,8 +773,12 @@ function ContratoKitCard({
   kit: ContratoKit
   notas: Partial<Record<string, NotaGerada>>
   envio?: EnvioFatura
+  /** Boleto já registrado sobre a nota fiscal deste contrato, se houver. */
+  boleto: BolResumo | null
   onStub: (label: string) => void
   onEmitirBoleto: (notaId: string) => void
+  onCopiar: (texto: string, rotulo: string) => void
+  onVerBoleto: (boletoId: string) => void
   onEmitirNfse: () => void
   onGerarRelatorio: () => void
   onAbrirNota: () => void
@@ -791,22 +833,26 @@ function ContratoKitCard({
           conta a receber, que so existe depois da NF. Enquanto ela nao sai, o
           botao explica o que falta em vez de falhar no clique.
         */}
-        <ComposicaoLinha
-          icon={<Banknote className="h-4 w-4" />}
-          titulo="Boleto"
-          descricao={
-            notas['nota_fiscal_servico']
-              ? 'Registra o título no Itaú e devolve a linha digitável.'
-              : 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.'
-          }
-          nota={notas['boleto_itau']}
-          acaoLabel="Emitir boleto"
-          onAcao={() => {
-            const nf = notas['nota_fiscal_servico']
-            if (!nf) { onStub('Boleto: emita a nota fiscal primeiro'); return }
-            onEmitirBoleto(nf.id)
-          }}
-        />
+        {boleto ? (
+          <LinhaBoletoRegistrado boleto={boleto} onCopiar={onCopiar} onVerBoleto={onVerBoleto} />
+        ) : (
+          <ComposicaoLinha
+            icon={<Banknote className="h-4 w-4" />}
+            titulo="Boleto"
+            descricao={
+              notas['nota_fiscal_servico']
+                ? 'Registra o título no Itaú e devolve a linha digitável.'
+                : 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.'
+            }
+            nota={notas['boleto_itau']}
+            acaoLabel="Emitir boleto"
+            onAcao={() => {
+              const nf = notas['nota_fiscal_servico']
+              if (!nf) { onStub('Boleto: emita a nota fiscal primeiro'); return }
+              onEmitirBoleto(nf.id)
+            }}
+          />
+        )}
 
         {/* 3. Relatório de timesheet — opcional (só quando há horas aprovadas) */}
         {kit.temTimesheet ? (
@@ -832,6 +878,74 @@ function ContratoKitCard({
           />
         ) : null}
       </div>
+    </div>
+  )
+}
+
+// Boleto já registrado: a linha digitável é o que a Jéssica repassa ao cliente
+// e o PDF é o que vai anexado ao e-mail. Cor pelo status — pago em verde,
+// erro em vermelho, o resto neutro.
+const STATUS_BOLETO: Record<string, string> = {
+  registrado: 'border-blue-200 bg-blue-50 text-blue-700',
+  emitido: 'border-blue-200 bg-blue-50 text-blue-700',
+  pago: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  liquidado: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  baixado: 'border-slate-200 bg-slate-50 text-slate-600',
+  cancelado: 'border-slate-200 bg-slate-50 text-slate-600 line-through',
+  erro: 'border-red-200 bg-red-50 text-red-700',
+}
+
+function LinhaBoletoRegistrado({
+  boleto,
+  onCopiar,
+  onVerBoleto,
+}: {
+  boleto: BolResumo
+  onCopiar: (texto: string, rotulo: string) => void
+  onVerBoleto: (boletoId: string) => void
+}) {
+  const venc = String(boleto.vencimento || '').slice(0, 10).split('-').reverse().join('/')
+  return (
+    <div className="px-4 py-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="text-muted-foreground"><Banknote className="h-4 w-4" /></span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-ink">Boleto</span>
+              <Badge className={STATUS_BOLETO[boleto.status] || 'border-slate-200 bg-slate-50 text-slate-600'}>
+                {boleto.status}
+              </Badge>
+              <span className="text-xs text-muted-foreground">vence {venc}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Registrado no Itaú. A linha digitável abaixo é a que o cliente paga.</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-sm font-tabular text-ink">{formatMoney(boleto.valor)}</span>
+          <Button variant="outline" size="sm" onClick={() => onVerBoleto(boleto.id)}>
+            <Printer className="mr-2 h-3.5 w-3.5" />
+            Ver boleto (PDF)
+          </Button>
+        </div>
+      </div>
+      {boleto.linha_digitavel ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-7">
+          <code className="rounded border bg-muted/40 px-2 py-1 font-mono text-xs text-ink">
+            {formatarLinhaDigitavel(boleto.linha_digitavel)}
+          </code>
+          <Button variant="ghost" size="sm" onClick={() => onCopiar(boleto.linha_digitavel!, 'Linha digitável')}>
+            <Copy className="mr-1.5 h-3.5 w-3.5" />
+            Copiar
+          </Button>
+          {boleto.pix_copia_cola ? (
+            <Button variant="ghost" size="sm" onClick={() => onCopiar(boleto.pix_copia_cola!, 'Chave Pix copia e cola')}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              Copiar Pix
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
