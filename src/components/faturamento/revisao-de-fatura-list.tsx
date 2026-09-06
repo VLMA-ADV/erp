@@ -44,7 +44,9 @@ interface RevisaoItem {
   casoRegraCobranca: string
   revisoresModo: string
   timesheetDescricaoOriginal: string
-  valorHoraAtual: number
+  // null = regra sem preco definido (mantem o que veio do timesheet).
+  // 0 = preco definido em zero, ou regra mensal sem excedente: a hora nao cobra.
+  valorHoraAtual: number | null
   dataReferencia: string
   clienteNome: string
   contratoNome: string
@@ -687,7 +689,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     revisoresModo: asString(data.revisores_modo, ''),
     timesheetDescricaoOriginal: asString(data.timesheet_descricao_original, ''),
-    valorHoraAtual: asOptionalNumber(data.valor_hora_atual) ?? 0,
+    valorHoraAtual: asOptionalNumber(data.valor_hora_atual),
     dataReferencia: asString(data.data_referencia, ''),
     clienteNome: asString(data.cliente_nome, 'Cliente sem nome'),
     contratoNome: asString(data.contrato_nome, 'Contrato sem nome'),
@@ -726,10 +728,17 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
   // Valor/hora VIGENTE da regra do caso: itens ainda pendentes refletem a
   // mudança feita na origem (bug do cliente: 'alterei o valor da hora na
   // regra financeira e não veio'). Aprovados/faturados ficam congelados.
+  //
+  // ZERO tambem vale. Caso 319 (PBIM, 06/09): a regra virou mensal, o banco
+  // ja tinha zerado as horas, mas aqui o "> 0" ignorava o zero e o rascunho
+  // seguia com os 406,70 congelados no timesheet — a tela somava R$ 142 mil
+  // e um "OK" do revisor gravaria esse valor de volta. So null (regra sem
+  // preco) mantem o valor do timesheet.
   if (
     normalized.origemTipo === 'timesheet' &&
     (normalized.status === 'em_revisao' || normalized.status === 'em_aprovacao') &&
-    normalized.valorHoraAtual > 0
+    normalized.valorHoraAtual !== null &&
+    normalized.valorHoraAtual >= 0
   ) {
     normalized.timesheetValorHora = normalized.valorHoraAtual
     if (normalized.horasInformadas !== null && normalized.horasInformadas !== undefined) {
