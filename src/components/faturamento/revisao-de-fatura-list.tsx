@@ -566,6 +566,17 @@ function createDraftRowId() {
 
 function parseSnapshotTimesheetRows(item: RevisaoItem): TimesheetRowDraft[] {
   const rawRows = Array.isArray(item.snapshot?.timesheet_itens_revisao) ? (item.snapshot.timesheet_itens_revisao as unknown[]) : []
+  // Linhas revisadas antes guardam o valor/hora daquela epoca. Em item ainda
+  // pendente, o que vale e o valor/hora VIGENTE da regra (inclusive zero, em
+  // caso mensal) — senao o rascunho ressuscita o preco antigo. Caso 319, 06/09:
+  // sobraram R$ 915,08 vindos de linhas revisadas a 406,70 num caso que
+  // virou mensal.
+  const vigente =
+    item.origemTipo === 'timesheet' &&
+    (item.status === 'em_revisao' || item.status === 'em_aprovacao') &&
+    item.valorHoraAtual !== null && item.valorHoraAtual !== undefined && item.valorHoraAtual >= 0
+      ? item.valorHoraAtual
+      : null
   if (rawRows.length > 0) {
     return rawRows
       .map((entry) => {
@@ -579,7 +590,7 @@ function parseSnapshotTimesheetRows(item: RevisaoItem): TimesheetRowDraft[] {
           horasIniciais: String(asNumber(row.horas_iniciais ?? row.horas_informadas ?? row.horas)),
           horasRevisadas: String(asNumber(row.horas_revisadas ?? row.horas ?? row.horas_iniciais)),
           valorHoraInicial: String(asNumber(row.valor_hora_inicial ?? row.valor_hora)),
-          valorHora: String(asNumber(row.valor_hora)),
+          valorHora: String(vigente !== null ? vigente : asNumber(row.valor_hora)),
         }
       })
       .filter((row): row is TimesheetRowDraft => row !== null)
@@ -1328,6 +1339,11 @@ export default function RevisaoDeFaturaList() {
   const getLiveItemValue = useCallback((item: RevisaoItem, mode: ReviewMode) => {
     const draft = drafts[item.id]
     if (!draft) return getEffectiveItemValue(item)
+    // Item aprovado/faturado esta congelado: vale o que foi aprovado, nao o
+    // rascunho recalculado a partir das horas x valor/hora do timesheet. Caso
+    // 319 (06/09): dois itens aprovados a R$ 0 somavam R$ 915,08 no cabecalho
+    // porque o rascunho multiplicava 2h15 por 406,70.
+    if (item.status !== 'em_revisao' && item.status !== 'em_aprovacao') return getEffectiveItemValue(item)
     if (mode === 'timesheet') {
       return draft.timesheetRows.reduce(
         (acc, row) => acc + parseDecimalInput(row.horasRevisadas || row.horasIniciais) * parseDecimalInput(row.valorHora),
