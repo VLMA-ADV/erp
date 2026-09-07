@@ -367,6 +367,15 @@ const APOS_APROVACAO = new Set(['em_aprovacao', 'aprovado', 'faturado'])
 // "deve aparecer sempre a ultima linha de tempo e texto").
 function getLatestTexto(item: RevisaoItem): string {
   if (item.grupoTexto) return item.grupoTexto
+  // O texto revisado/aprovado mora na linha revisada do snapshot
+  // (timesheet_itens_revisao[].atividade) — e a mesma fonte que a tela usa
+  // para mostrar a etapa. O historico guarda horas e valor, texto vem nulo.
+  const snapshot = (item.snapshot || {}) as Record<string, unknown>
+  const rows = Array.isArray(snapshot.timesheet_itens_revisao)
+    ? (snapshot.timesheet_itens_revisao as Array<Record<string, unknown>>)
+    : []
+  const atividade = String(rows[0]?.atividade ?? '').trim()
+  if (atividade) return atividade
   const hist = item.historico || []
   for (let i = hist.length - 1; i >= 0; i--) {
     const t = (hist[i].texto || '').trim()
