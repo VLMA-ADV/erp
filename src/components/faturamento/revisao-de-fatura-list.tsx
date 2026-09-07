@@ -360,6 +360,21 @@ function canAdvance(status: string) {
 // olhava valor_aprovado em 'em_aprovacao' — em 'aprovado' caia no revisado.
 const APOS_APROVACAO = new Set(['em_aprovacao', 'aprovado', 'faturado'])
 
+// Texto que vai no relatorio e na nota: o da ULTIMA etapa que mexeu no item
+// (aprovador > revisor > envio). Antes os relatorios pegavam
+// timesheetDescricaoOriginal primeiro, ou seja, o texto do envio, e a
+// correcao do revisor/aprovador nunca chegava ao cliente (Filipe, 07/09:
+// "deve aparecer sempre a ultima linha de tempo e texto").
+function getLatestTexto(item: RevisaoItem): string {
+  if (item.grupoTexto) return item.grupoTexto
+  const hist = item.historico || []
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const t = (hist[i].texto || '').trim()
+    if (t) return t
+  }
+  return item.timesheetDescricao || item.timesheetDescricaoOriginal || item.regraNome || ''
+}
+
 function getEffectiveItemHours(item: RevisaoItem) {
   if (APOS_APROVACAO.has(item.status) && item.horasAprovadas !== null && item.horasAprovadas !== undefined) {
     return item.horasAprovadas
@@ -2202,9 +2217,10 @@ export default function RevisaoDeFaturaList() {
             onClick={() => {
               // Pedido 21/07: com seleção, o relatório é a prévia de faturamento
               // apenas dos lançamentos selecionados (por cliente/caso).
-              const base = selectedItemIds.length > 0
+              const base = (selectedItemIds.length > 0
                 ? visibleItems.filter((item) => selectedItemIds.includes(item.id))
                 : visibleItems
+              ).filter((item) => item.origemTipo !== 'despesa')
               openTimesheetReport({
                 titulo: selectedItemIds.length > 0
                   ? 'Prévia de faturamento — lançamentos selecionados'
@@ -2218,7 +2234,7 @@ export default function RevisaoDeFaturaList() {
                   cliente: item.clienteNome || '',
                   caso: `${item.casoNumero || ''} - ${item.casoNome || ''}`,
                   profissional: item.enviadoPorNome || item.timesheetProfissional || '',
-                  descricao: item.timesheetDescricaoOriginal || item.timesheetDescricao || item.regraNome || '',
+                  descricao: getLatestTexto(item),
                   horas: formatHistoryHours(getEffectiveItemHours(item)),
                   valor: getEffectiveItemValue(item),
                 })),
@@ -2405,7 +2421,7 @@ export default function RevisaoDeFaturaList() {
                         .flatMap((casoGroup) =>
                           getReviewRows(casoGroup)
                             .map((row) => row.item)
-                            .filter((it) => it.contratoId === contratoId)
+                            .filter((it) => it.contratoId === contratoId && it.origemTipo !== 'despesa')
                             // Uma linha por grupo: quando os lançamentos foram
                             // agrupados, é o texto do grupo que vai ao cliente.
                             .filter((it, _i, todos) =>
@@ -2432,8 +2448,7 @@ export default function RevisaoDeFaturaList() {
                                 cliente: it.clienteNome || '',
                                 caso: `${it.casoNumero || ''} - ${it.casoNome || ''}`,
                                 profissional: it.enviadoPorNome || it.timesheetProfissional || '',
-                                descricao:
-                                  it.grupoTexto || it.timesheetDescricaoOriginal || it.timesheetDescricao || it.regraNome || '',
+                                descricao: getLatestTexto(it),
                                 horas: formatHistoryHours(it.grupoHoras ?? getEffectiveItemHours(it)),
                                 valor: it.grupoValor ?? getEffectiveItemValue(it),
                               })),
@@ -2615,9 +2630,12 @@ export default function RevisaoDeFaturaList() {
                                   variant="outline"
                                   className="text-xs"
                                   onClick={() => {
-                                    const base = selectedIds.length > 0
+                                    // Despesa nao e hora: sai na Nota de Despesas, nunca no
+                                    // relatorio de timesheet (Filipe, 07/09).
+                                    const base = (selectedIds.length > 0
                                       ? reviewRows.filter((row) => selectedIds.includes(row.item.id)).map((row) => row.item)
                                       : reviewRows.map((row) => row.item)
+                                    ).filter((it) => it.origemTipo !== 'despesa')
                                     openTimesheetReport({
                                       titulo: 'Prévia do relatório de timesheet',
                                       subtitulo: `${casoGroup.numero || ''} - ${casoGroup.nome || ''} · ${base.length} lançamento(s)`,
@@ -2627,8 +2645,7 @@ export default function RevisaoDeFaturaList() {
                                         cliente: it.clienteNome || '',
                                         caso: `${it.casoNumero || ''} - ${it.casoNome || ''}`,
                                         profissional: it.enviadoPorNome || it.timesheetProfissional || '',
-                                        // Com grupo, o que vai no relatorio e o texto do grupo.
-                                        descricao: it.grupoTexto || it.timesheetDescricaoOriginal || it.timesheetDescricao || it.regraNome || '',
+                                        descricao: getLatestTexto(it),
                                         horas: formatHistoryHours(it.grupoHoras ?? getEffectiveItemHours(it)),
                                         valor: it.grupoValor ?? getEffectiveItemValue(it),
                                       })),
