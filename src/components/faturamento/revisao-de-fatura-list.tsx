@@ -354,8 +354,14 @@ function canAdvance(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
 }
 
+// Depois da aprovacao vale o que o APROVADOR definiu, nao o do revisor. Caso
+// 1949 (07/09): revisor deixou 2h05 (R$ 1.562,50), aprovador corrigiu para
+// 3h05 (R$ 2.312,50), e o cabecalho seguia somando os 1.562,50 porque so
+// olhava valor_aprovado em 'em_aprovacao' — em 'aprovado' caia no revisado.
+const APOS_APROVACAO = new Set(['em_aprovacao', 'aprovado', 'faturado'])
+
 function getEffectiveItemHours(item: RevisaoItem) {
-  if (item.status === 'em_aprovacao' && item.horasAprovadas !== null && item.horasAprovadas !== undefined) {
+  if (APOS_APROVACAO.has(item.status) && item.horasAprovadas !== null && item.horasAprovadas !== undefined) {
     return item.horasAprovadas
   }
   if (item.horasRevisadas !== null && item.horasRevisadas !== undefined) return item.horasRevisadas
@@ -368,7 +374,7 @@ function hojeIso() {
 }
 
 function getEffectiveItemValue(item: RevisaoItem) {
-  if (item.status === 'em_aprovacao' && item.valorAprovado !== null && item.valorAprovado !== undefined) {
+  if (APOS_APROVACAO.has(item.status) && item.valorAprovado !== null && item.valorAprovado !== undefined) {
     return item.valorAprovado
   }
   if (item.valorRevisado !== null && item.valorRevisado !== undefined) return item.valorRevisado
@@ -2723,7 +2729,9 @@ export default function RevisaoDeFaturaList() {
                                         title="Gerar a nota de despesa (documento não-fiscal) deste caso"
                                       >
                                         <Receipt className="mr-1 h-3.5 w-3.5" />
-                                        Nota de despesa
+                                        {/* Valor DAS DESPESAS no botao: o total do caso fica ao lado e
+                                            parecia ser o da nota (Filipe, 07/09, caso 1949). */}
+                                        Nota de despesa · {formatMoney(despesasDoCaso.reduce((acc, d) => acc + getEffectiveItemValue(d), 0))}
                                       </Button>
                                     ) : null}
                                   </>
