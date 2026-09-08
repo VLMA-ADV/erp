@@ -902,6 +902,9 @@ export default function RevisaoDeFaturaList() {
   // e ele ocupava o espaço dos dois que faltavam.
   const [centroCusto, setCentroCusto] = useState('')
   const [usuario, setUsuario] = useState('')
+  // Situacao do item: o Filipe pediu (08/09) um filtro de "casos ja aprovados"
+  // para a gestao dos proximos dias. Filtra aqui, sem ida ao servidor.
+  const [situacao, setSituacao] = useState<'' | 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'>('')
   const [caso, setCaso] = useState('')
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
@@ -1256,8 +1259,9 @@ export default function RevisaoDeFaturaList() {
     if (usuario) {
       base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
     }
+    if (situacao) base = base.filter((item) => item.status === situacao)
     return base
-  }, [items, ruleFilter, centroCusto, usuario])
+  }, [items, ruleFilter, centroCusto, usuario, situacao])
 
   const statusSummary = useMemo(() => {
     const counts = { revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
@@ -2148,7 +2152,7 @@ export default function RevisaoDeFaturaList() {
         </TabsList>
       </Tabs>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-5">
         <div className="space-y-1">
           <label className="text-sm font-medium">Cliente</label>
           <CommandSelect
@@ -2196,7 +2200,24 @@ export default function RevisaoDeFaturaList() {
             emptyText="Nenhum caso encontrado."
           />
         </div>
-        <div className="flex items-end justify-end">
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Situação</label>
+          <CommandSelect
+            value={situacao}
+            onValueChange={(value) => setSituacao(value as typeof situacao)}
+            options={[
+              { value: '', label: 'Todas as situações' },
+              { value: 'em_revisao', label: 'Liberados (aguardando revisão)' },
+              { value: 'em_aprovacao', label: 'Revisados (aguardando aprovação)' },
+              { value: 'aprovado', label: 'Aprovados' },
+              { value: 'faturado', label: 'Faturados' },
+            ]}
+            placeholder="Selecione a situação"
+            searchPlaceholder="Buscar situação..."
+            emptyText="Nenhuma situação."
+          />
+        </div>
+        <div className="flex items-end justify-end md:col-span-5">
           <Button onClick={() => void loadItems()} disabled={loading}>
             {loading ? 'Atualizando...' : 'Aplicar filtros'}
           </Button>
