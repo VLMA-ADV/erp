@@ -17,6 +17,7 @@ import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import NfsePreviewDialog from './nfse-preview-dialog'
+import AndamentoPorRegra, { etapaDoStatus, linhaVazia, type AndamentoLinha, type FaturadoMes } from './andamento-por-regra'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 
 // Nota já emitida (finance.billing_notes), usada para "Ver NF"/"Cancelar NF"
@@ -980,6 +981,7 @@ export default function RevisaoDeFaturaList() {
         return
       }
       setIndicadores(data as { resumo: Record<string, unknown>; por_cliente: Array<Record<string, unknown>> })
+      void loadFaturadoMes()
     } finally {
       setIndicadoresLoading(false)
     }
@@ -1273,6 +1275,51 @@ export default function RevisaoDeFaturaList() {
     }
     return counts
   }, [visibleItems])
+
+  // Andamento por regra de cobranca (aba Indicadores). Mesma base dos totais
+  // do cabecalho: obedece aos filtros e conta grupo uma vez so.
+  const andamentoPorRegra = useMemo<AndamentoLinha[]>(() => {
+    const ordem: Array<[string, string]> = [
+      ['hora', 'Horas'], ['mensalidade_processo', 'Mensalidade de processo'], ['mensalidade', 'Mensalidade'],
+      ['projeto', 'Projeto'], ['projeto_parcelado', 'Projeto parcelado'], ['exito', 'Êxito'], ['despesa', 'Despesas'],
+      ['outros', 'Sem regra'],
+    ]
+    const linhas = new Map(ordem.map(([k, l]) => [k, linhaVazia(k, l)]))
+    const gruposContados = new Set<string>()
+    for (const item of visibleItems) {
+      const etapa = etapaDoStatus(item.status)
+      if (!etapa) continue
+      const linha = linhas.get(getRuleFilterKey(item) ?? 'outros')!
+      linha.itens[etapa] += 1
+      if (item.grupoId && item.grupoValor !== null && item.grupoValor !== undefined) {
+        if (gruposContados.has(item.grupoId)) continue
+        gruposContados.add(item.grupoId)
+        linha.valor[etapa] += item.grupoValor
+      } else {
+        linha.valor[etapa] += getEffectiveItemValue(item)
+      }
+    }
+    return ordem.map(([k]) => linhas.get(k)!)
+  }, [visibleItems])
+
+  const [faturadoMes, setFaturadoMes] = useState<FaturadoMes[] | null>(null)
+  const mesAtualLabel = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+  const loadFaturadoMes = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: rpcError } = await supabase.rpc('get_faturado_mes_por_regra', {
+        p_user_id: user.id,
+        p_mes: new Date().toISOString().slice(0, 7) + '-01',
+      })
+      // RPC ausente ou sem acesso: a coluna mostra '—' em vez de zero falso.
+      if (rpcError) { setFaturadoMes(null); return }
+      setFaturadoMes(Array.isArray(data) ? (data as FaturadoMes[]) : [])
+    } catch {
+      setFaturadoMes(null)
+    }
+  }
 
   const tree = useMemo(() => buildTree(visibleItems), [visibleItems])
   const fullTree = useMemo(() => buildTree(items), [items])
@@ -2282,6 +2329,7 @@ export default function RevisaoDeFaturaList() {
 
       {showIndicadores ? (
         <div className="space-y-4">
+          <AndamentoPorRegra linhas={andamentoPorRegra} faturadoMes={faturadoMes} mesLabel={mesAtualLabel} />
           {indicadoresLoading || !indicadores ? (
             <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">Carregando indicadores...</div>
           ) : (
