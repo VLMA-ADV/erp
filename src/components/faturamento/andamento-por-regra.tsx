@@ -83,7 +83,7 @@ export default function AndamentoPorRegra({
         <div>
           <p className="text-sm font-semibold text-ink">Andamento por regra de cobrança</p>
           <p className="text-[11px] text-ink-mute">
-            Segue os filtros da tela. As quatro primeiras colunas são o que está na fila agora; "Faturado no mês" vem do banco.
+            Segue os filtros da tela. As quatro primeiras colunas são o que está na fila agora; a coluna Faturado no mês vem do banco.
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-full border p-0.5 text-xs">
