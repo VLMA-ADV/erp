@@ -1276,51 +1276,6 @@ export default function RevisaoDeFaturaList() {
     return counts
   }, [visibleItems])
 
-  // Andamento por regra de cobranca (aba Indicadores). Mesma base dos totais
-  // do cabecalho: obedece aos filtros e conta grupo uma vez so.
-  const andamentoPorRegra = useMemo<AndamentoLinha[]>(() => {
-    const ordem: Array<[string, string]> = [
-      ['hora', 'Horas'], ['mensalidade_processo', 'Mensalidade de processo'], ['mensalidade', 'Mensalidade'],
-      ['projeto', 'Projeto'], ['projeto_parcelado', 'Projeto parcelado'], ['exito', 'Êxito'], ['despesa', 'Despesas'],
-      ['outros', 'Sem regra'],
-    ]
-    const linhas = new Map(ordem.map(([k, l]) => [k, linhaVazia(k, l)]))
-    const gruposContados = new Set<string>()
-    for (const item of visibleItems) {
-      const etapa = etapaDoStatus(item.status)
-      if (!etapa) continue
-      const linha = linhas.get(getRuleFilterKey(item) ?? 'outros')!
-      linha.itens[etapa] += 1
-      if (item.grupoId && item.grupoValor !== null && item.grupoValor !== undefined) {
-        if (gruposContados.has(item.grupoId)) continue
-        gruposContados.add(item.grupoId)
-        linha.valor[etapa] += item.grupoValor
-      } else {
-        linha.valor[etapa] += getEffectiveItemValue(item)
-      }
-    }
-    return ordem.map(([k]) => linhas.get(k)!)
-  }, [visibleItems])
-
-  const [faturadoMes, setFaturadoMes] = useState<FaturadoMes[] | null>(null)
-  const mesAtualLabel = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
-  const loadFaturadoMes = async () => {
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      const { data, error: rpcError } = await supabase.rpc('get_faturado_mes_por_regra', {
-        p_user_id: user.id,
-        p_mes: new Date().toISOString().slice(0, 7) + '-01',
-      })
-      // RPC ausente ou sem acesso: a coluna mostra '—' em vez de zero falso.
-      if (rpcError) { setFaturadoMes(null); return }
-      setFaturadoMes(Array.isArray(data) ? (data as FaturadoMes[]) : [])
-    } catch {
-      setFaturadoMes(null)
-    }
-  }
-
   const tree = useMemo(() => buildTree(visibleItems), [visibleItems])
   const fullTree = useMemo(() => buildTree(items), [items])
 
@@ -1472,6 +1427,54 @@ export default function RevisaoDeFaturaList() {
       nonTimesheetItems: baseMetrics.nonTimesheetItems,
     }
   }, [getLiveItemHours, getLiveItemValue])
+
+  // Andamento por regra de cobranca (aba Indicadores). Mesma base dos totais
+  // do cabecalho: obedece aos filtros e conta grupo uma vez so.
+  const andamentoPorRegra = useMemo<AndamentoLinha[]>(() => {
+    const ordem: Array<[string, string]> = [
+      ['hora', 'Horas'], ['mensalidade_processo', 'Mensalidade de processo'], ['mensalidade', 'Mensalidade'],
+      ['projeto', 'Projeto'], ['projeto_parcelado', 'Projeto parcelado'], ['exito', 'Êxito'], ['despesa', 'Despesas'],
+      ['outros', 'Sem regra'],
+    ]
+    const linhas = new Map(ordem.map(([k, l]) => [k, linhaVazia(k, l)]))
+    const gruposContados = new Set<string>()
+    for (const item of visibleItems) {
+      const etapa = etapaDoStatus(item.status)
+      if (!etapa) continue
+      const linha = linhas.get(getRuleFilterKey(item) ?? 'outros')!
+      linha.itens[etapa] += 1
+      if (item.grupoId && item.grupoValor !== null && item.grupoValor !== undefined) {
+        if (gruposContados.has(item.grupoId)) continue
+        gruposContados.add(item.grupoId)
+        linha.valor[etapa] += item.grupoValor
+      } else {
+        // Mesmo valor que o cabecalho soma (rascunho vivo, com o valor/hora
+        // vigente). Com getEffectiveItemValue o painel dava R$ 14,5 mil a mais
+        // que o cabecalho e o Filipe ia comparar os dois.
+        linha.valor[etapa] += getLiveItemValue(item, item.origemTipo === 'timesheet' ? 'timesheet' : 'default')
+      }
+    }
+    return ordem.map(([k]) => linhas.get(k)!)
+  }, [visibleItems, getLiveItemValue])
+
+  const [faturadoMes, setFaturadoMes] = useState<FaturadoMes[] | null>(null)
+  const mesAtualLabel = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+  const loadFaturadoMes = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: rpcError } = await supabase.rpc('get_faturado_mes_por_regra', {
+        p_user_id: user.id,
+        p_mes: new Date().toISOString().slice(0, 7) + '-01',
+      })
+      // RPC ausente ou sem acesso: a coluna mostra '—' em vez de zero falso.
+      if (rpcError) { setFaturadoMes(null); return }
+      setFaturadoMes(Array.isArray(data) ? (data as FaturadoMes[]) : [])
+    } catch {
+      setFaturadoMes(null)
+    }
+  }
 
   const getReviewRows = useCallback((casoGroup: CasoGroup) => {
     const metrics = getLiveCaseMetrics(casoGroup)
