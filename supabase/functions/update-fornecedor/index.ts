@@ -59,7 +59,8 @@ Deno.serve(async (req) => {
 
     const hasPermission = !permissionsData || permissionsData.length === 0 ||
       permissionsData.some((p: any) =>
-        ["operations.fornecedores.write", "operations.fornecedores.*", "operations.*", "*"].includes(p.permission_key)
+        ["people.fornecedores.write", "people.fornecedores.*", "people.prestadores.write", "people.prestadores.*", "people.*",
+         "operations.fornecedores.write", "operations.fornecedores.*", "operations.*", "*"].includes(p.permission_key)
       );
 
     if (!hasPermission) {
@@ -79,59 +80,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Verify ownership before update
-    const { data: existing } = await supabase
-      .schema("operations")
-      .from("fornecedores")
-      .select("id, tenant_id")
-      .eq("id", id)
-      .eq("tenant_id", tenantUser.tenant_id)
-      .single();
+    const { error: updateError } = await supabase.rpc("fornecedor_atualizar", {
+      p_user_id: user.id,
+      p_id: id,
+      p_payload: updateFields,
+    });
 
-    if (!existing) {
-      return new Response(JSON.stringify({ error: "Fornecedor não encontrado" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const allowedFields = [
-      "nome_fornecedor", "cpf_cnpj", "tipo_documento", "conta_contabil",
-      "servico_recorrente", "valor_recorrente", "categoria_prestador_parceiro_id",
-      "cep", "rua", "numero", "complemento", "cidade", "estado",
-      "resp_nome", "resp_email", "resp_cpf", "resp_telefone", "resp_whatsapp",
-      "resp_cep", "resp_rua", "resp_numero", "resp_complemento", "resp_cidade", "resp_estado",
-      "banco", "conta_com_digito", "agencia", "chave_pix",
-    ];
-
-    const fieldsToUpdate: Record<string, any> = {};
-    for (const field of allowedFields) {
-      if (Object.prototype.hasOwnProperty.call(updateFields, field)) {
-        fieldsToUpdate[field] = updateFields[field] === "" ? null : updateFields[field];
-      }
-    }
-
-    if (Object.keys(fieldsToUpdate).length === 0) {
-      return new Response(JSON.stringify({ error: "Nenhum campo válido para atualizar" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: updated, error: updateError } = await supabase
-      .schema("operations")
-      .from("fornecedores")
-      .update(fieldsToUpdate)
-      .eq("id", id)
-      .eq("tenant_id", tenantUser.tenant_id)
-      .select("id")
-      .single();
-
-    if (updateError || !updated) {
+    if (updateError) {
       console.error("Update error:", updateError);
+      const notFound = /não encontrado/i.test(updateError.message || "");
       return new Response(
-        JSON.stringify({ error: updateError?.message || "Erro ao atualizar fornecedor" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: updateError.message || "Erro ao atualizar fornecedor" }),
+        { status: notFound ? 404 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -144,8 +104,8 @@ Deno.serve(async (req) => {
       p_entidade_id: id,
       p_acao: "update",
       p_user_id: user.id,
-      p_dados_anteriores: existing,
-      p_dados_novos: fieldsToUpdate,
+      p_dados_anteriores: null,
+      p_dados_novos: updateFields,
       p_ip_address: ipAddress,
       p_user_agent: userAgent,
     }).catch((e: any) => console.error("Audit log error:", e));

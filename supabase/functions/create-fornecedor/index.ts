@@ -59,7 +59,11 @@ Deno.serve(async (req) => {
 
     const hasPermission = !permissionsData || permissionsData.length === 0 ||
       permissionsData.some((p: any) =>
-        ["operations.fornecedores.write", "operations.fornecedores.*", "operations.*", "*"].includes(p.permission_key)
+        // As permissões reais do sistema usam o prefixo people.* (o antigo
+        // operations.fornecedores.* não existe em nenhum perfil — criar
+        // fornecedor estava quebrado para todos; bug achado no teste 21/07).
+        ["people.fornecedores.write", "people.fornecedores.*", "people.prestadores.write", "people.prestadores.*", "people.*",
+         "operations.fornecedores.write", "operations.fornecedores.*", "operations.*", "*"].includes(p.permission_key)
       );
 
     if (!hasPermission) {
@@ -109,51 +113,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: fornecedor, error: insertError } = await supabase
-      .schema("operations")
-      .from("fornecedores")
-      .insert({
-        nome_fornecedor,
-        cpf_cnpj: cpf_cnpj || null,
-        tipo_documento: tipo_documento || "cnpj",
-        conta_contabil: conta_contabil || null,
-        servico_recorrente: servico_recorrente ?? false,
-        valor_recorrente: valor_recorrente ?? null,
-        categoria_prestador_parceiro_id: categoria_prestador_parceiro_id || null,
-        cep: cep || null,
-        rua: rua || null,
-        numero: numero || null,
-        complemento: complemento || null,
-        cidade: cidade || null,
-        estado: estado || null,
-        resp_nome: resp_nome || null,
-        resp_email: resp_email || null,
-        resp_cpf: resp_cpf || null,
-        resp_telefone: resp_telefone || null,
-        resp_whatsapp: resp_whatsapp || null,
-        resp_cep: resp_cep || null,
-        resp_rua: resp_rua || null,
-        resp_numero: resp_numero || null,
-        resp_complemento: resp_complemento || null,
-        resp_cidade: resp_cidade || null,
-        resp_estado: resp_estado || null,
-        banco: banco || null,
-        conta_com_digito: conta_com_digito || null,
-        agencia: agencia || null,
-        chave_pix: chave_pix || null,
-        ativo: true,
-        tenant_id: tenantUser.tenant_id,
-      })
-      .select("id")
-      .single();
+    const { data: fornecedorData, error: insertError } = await supabase.rpc("fornecedor_criar", {
+      p_user_id: user.id,
+      p_payload: body,
+    });
 
-    if (insertError || !fornecedor) {
+    if (insertError) {
       console.error("Insert error:", insertError);
       return new Response(
-        JSON.stringify({ error: insertError?.message || "Erro ao criar fornecedor" }),
+        JSON.stringify({ error: insertError.message || "Erro ao criar fornecedor" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const fornecedor = { id: fornecedorData?.id };
 
     // Audit log (non-blocking)
     const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
