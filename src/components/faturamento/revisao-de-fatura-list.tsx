@@ -2353,7 +2353,7 @@ export default function RevisaoDeFaturaList() {
                       <div className="rounded-xl border bg-white p-4">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Horas lançadas (etapa 1)</p>
                         <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(lancadas)}</p>
-                        <p className="text-[11px] text-ink-mute">no período, por todos os usuários</p>
+                        <p className="text-[11px] text-ink-mute">competência do mês (trabalhadas no mês anterior)</p>
                       </div>
                       <div className="rounded-xl border bg-white p-4">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Enviadas p/ revisão</p>
@@ -2362,6 +2362,7 @@ export default function RevisaoDeFaturaList() {
                       </div>
                       <div className="rounded-xl border bg-white p-4">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Revisadas (etapa 2)</p>
+                        {/* inclui as ja aprovadas: e tudo que passou pela revisao */}
                         <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(revisadas)}</p>
                         <p className="text-[11px] text-ink-mute">{pct(revisadas, enviadas)} das enviadas</p>
                       </div>
