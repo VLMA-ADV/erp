@@ -121,8 +121,16 @@ export function montarDocumento({
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
 
-  footer { position: fixed; bottom: 6mm; left: 14mm; right: 14mm;
-           border-top: .6px solid #111; padding-top: 1.2mm;
+  /* O rodape vive num <tfoot>, nao em position:fixed. Fixed no Chrome se
+     posiciona dentro da AREA DE CONTEUDO da pagina, entao ele imprimia por
+     cima da ultima linha da tabela em toda pagina cheia (Filipe, 13/09:
+     "quando o relatorio tem mais de 1 pagina ele ta puxando aquela linha de
+     rodape errado"). tfoot repete em cada pagina E reserva o espaco. */
+  table.pagina { width: 100%; border-collapse: collapse; }
+  table.pagina > tbody > tr > td, table.pagina > tfoot > tr > td { padding: 0; }
+  tfoot.rodape { display: table-footer-group; }
+  tfoot.rodape td { padding-top: 6mm; }
+  tfoot.rodape .linha { border-top: .6px solid #111; padding-top: 1.2mm;
            display: flex; justify-content: space-between; font-size: 7pt; color: #111; }
 
   .barra { margin: 4mm 0 0; }
@@ -130,6 +138,8 @@ export function montarDocumento({
                   padding: 8px 18px; font-size: 11pt; cursor: pointer; font-family: inherit; }
   @media print { .barra { display: none; } }
 </style></head><body>
+
+<table class="pagina"><tbody><tr><td>
 
 <div class="topo">
   <div class="emitente">
@@ -167,9 +177,10 @@ ${conteudo}
 
 ${rodapeExtra || ''}
 
-<footer>
-  <span>${esc(ESCRITORIO.rodape)}<br>${esc(ESCRITORIO.site)}</span>
-</footer>
+</td></tr></tbody>
+<tfoot class="rodape"><tr><td>
+  <div class="linha"><span>${esc(ESCRITORIO.rodape)}<br>${esc(ESCRITORIO.site)}</span></div>
+</td></tr></tfoot></table>
 </body></html>`
 }
 
