@@ -63,40 +63,13 @@ Deno.serve(async (req) => {
 
     const offset = (page - 1) * limit;
 
-    // Count query
-    let countQuery = supabase
-      .schema("operations")
-      .from("fornecedores")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantUser.tenant_id);
-
-    if (search) {
-      countQuery = countQuery.ilike("nome_fornecedor", `%${search}%`);
-    }
-    if (apenasAtivos) {
-      countQuery = countQuery.eq("ativo", true);
-    }
-
-    const { count } = await countQuery;
-    const total = count ?? 0;
-
-    // Data query
-    let dataQuery = supabase
-      .schema("operations")
-      .from("fornecedores")
-      .select("id, nome_fornecedor, cpf_cnpj, tipo_documento, conta_contabil, servico_recorrente, valor_recorrente, ativo, created_at")
-      .eq("tenant_id", tenantUser.tenant_id)
-      .order("nome_fornecedor", { ascending: true })
-      .range(offset, offset + limit - 1);
-
-    if (search) {
-      dataQuery = dataQuery.ilike("nome_fornecedor", `%${search}%`);
-    }
-    if (apenasAtivos) {
-      dataQuery = dataQuery.eq("ativo", true);
-    }
-
-    const { data: fornecedores, error: listError } = await dataQuery;
+    const { data: listData, error: listError } = await supabase.rpc("fornecedores_listar", {
+      p_user_id: user.id,
+      p_search: search || null,
+      p_somente_ativos: apenasAtivos,
+      p_page: page,
+      p_limit: limit,
+    });
 
     if (listError) {
       console.error("List error:", listError);
@@ -105,6 +78,9 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const fornecedores = listData?.items ?? [];
+    const total = Number(listData?.total ?? 0);
 
     return new Response(
       JSON.stringify({

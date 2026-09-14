@@ -85,14 +85,11 @@ Deno.serve(async (req) => {
         });
       }
 
-      const { data, error } = await supabase
-        .schema("operations")
-        .from("timesheets")
-        .update({ periodo_faturamento: periodoFaturamento })
-        .eq("id", body.id)
-        .eq("tenant_id", tenantId)
-        .select("id, periodo_faturamento")
-        .single();
+      const { data, error } = await supabase.rpc("set_timesheet_periodo_faturamento", {
+        p_user_id: user.id,
+        p_id: body.id,
+        p_periodo: periodoFaturamento,
+      });
 
       if (error) {
         return new Response(JSON.stringify({ error: error.message, details: error.message }), {
