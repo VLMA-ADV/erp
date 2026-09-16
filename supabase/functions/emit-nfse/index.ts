@@ -88,8 +88,20 @@ Deno.serve(async (req) => {
     if (podeNfse !== true) return json({ error: "Sem permissão para emitir NFS-e" }, 403)
 
     const body = await req.json()
-    const { contrato_id, caso_id, descricao_servico: descricaoOverride, dry_run } = body as
-      { contrato_id?: string; caso_id?: string; descricao_servico?: string; dry_run?: boolean }
+    const { contrato_id, caso_id, descricao_servico: descricaoOverride, dry_run, ajustes } = body as
+      {
+        contrato_id?: string; caso_id?: string; descricao_servico?: string; dry_run?: boolean
+        // Ajustes desta nota (Filipe, 11/09: "alterar o pagador, incluir ou
+        // excluir pagadores, alterar o valor fixo, o regime tributario e a data
+        // de vencimento no momento do faturamento"). Valem SO para esta
+        // emissao; gravar no cadastro e outra acao, explicita, na tela.
+        ajustes?: {
+          pagadores?: Array<{ cliente_id: string; percentual: number }>
+          grupo_imposto_id?: string
+          vencimento?: string
+          valor_total?: number
+        }
+      }
 
     // ENSAIO. Monta tudo e devolve o que SERIA emitido, sem chamar a prefeitura
     // e sem gravar nota. Existia em junho, sumiu num refactor, e volta agora
@@ -123,12 +135,60 @@ Deno.serve(async (req) => {
     }
 
     const itens = dataset.itens as Array<{ id: string; valor: number; snapshot: Record<string, unknown> }>
-    const grupo = dataset.grupo_imposto as Record<string, any> | null
+    let grupo = dataset.grupo_imposto as Record<string, any> | null
+
+    // Regime tributario desta nota: troca o grupo de impostos so nesta emissao.
+    if (ajustes?.grupo_imposto_id) {
+      const { data: outroGrupo, error: erroGrupo } = await supabase
+        .schema("contracts").from("grupos_impostos")
+        .select("*").eq("id", ajustes.grupo_imposto_id).maybeSingle()
+      if (erroGrupo || !outroGrupo) return json({ error: "Grupo de impostos escolhido não foi encontrado." }, 422)
+      grupo = outroGrupo as Record<string, any>
+    }
     // Split por pagador (rateio): uma NFS-e por pagador, valor proporcional ao %.
     // Caso sem rateio => 1 pagador (cliente do contrato) a 100% => 1 nota.
-    const pagadores = (dataset.pagadores ?? []) as Pagador[]
+    let pagadores = (dataset.pagadores ?? []) as Pagador[]
 
     if (pagadores.length === 0) return json({ error: "Nenhum pagador resolvido para o contrato." }, 422)
+
+    // Valor desta nota. Sem ajuste, e a soma dos itens aprovados.
+    const valorOriginal = pagadores.reduce((s, p) => s + Number(p.valor_total ?? 0), 0)
+    const valorDaNota = typeof ajustes?.valor_total === "number" && ajustes.valor_total > 0
+      ? ajustes.valor_total
+      : valorOriginal
+
+    // Pagadores desta nota. Quando a tela manda a lista, ela substitui o rateio
+    // do cadastro: os itens continuam os mesmos, muda quem recebe e em que
+    // proporcao. Os percentuais precisam fechar 100 para ninguem faturar a
+    // maior ou a menor sem perceber.
+    if (ajustes?.pagadores && ajustes.pagadores.length > 0) {
+      const soma = ajustes.pagadores.reduce((s, p) => s + Number(p.percentual ?? 0), 0)
+      if (Math.abs(soma - 100) > 0.01) {
+        return json({ error: `Os percentuais dos pagadores somam ${soma.toFixed(2)}%. Ajuste para 100%.` }, 422)
+      }
+      const ids = ajustes.pagadores.map((p) => p.cliente_id)
+      const { data: clientes, error: erroClientes } = await supabase
+        .schema("crm").from("clientes").select("*").in("id", ids)
+      if (erroClientes) return json({ error: erroClientes.message }, 500)
+      const clientePorId = new Map((clientes ?? []).map((c: Record<string, any>) => [c.id, c]))
+      const todosItens = itens.map((i) => i.id)
+      const faltando = ids.filter((id) => !clientePorId.has(id))
+      if (faltando.length > 0) return json({ error: "Pagador escolhido não foi encontrado no cadastro de clientes." }, 422)
+
+      pagadores = ajustes.pagadores.map((p) => ({
+        cliente_id: p.cliente_id,
+        cliente: clientePorId.get(p.cliente_id) ?? null,
+        valor_total: Math.round(valorDaNota * Number(p.percentual) / 100 * 100) / 100,
+        // Todos os itens do escopo: a divisao aqui e por valor, nao por item.
+        item_ids: todosItens,
+      })) as Pagador[]
+    } else if (valorDaNota !== valorOriginal && valorOriginal > 0) {
+      // So o valor mudou: mantem o rateio e reescala proporcionalmente.
+      pagadores = pagadores.map((p) => ({
+        ...p,
+        valor_total: Math.round(Number(p.valor_total ?? 0) * (valorDaNota / valorOriginal) * 100) / 100,
+      }))
+    }
 
     // Aliquota ZERO e valida: o escritorio recolhe ISS por valor fixo, por ser
     // sociedade de advogados (Filipe, 07/08). O teste antigo era `!aliquota_iss`,
@@ -346,7 +406,14 @@ Deno.serve(async (req) => {
         p_status: accepted ? "gerado" : "cancelado",
         p_focus_ref: ref,
         p_focus_status: focusStatus,
-        p_metadata: { focus_request: nfsePayload, focus_response: focusBody, item_ids: p.item_ids, pagador_cliente_id: p.cliente_id, valor_total: valorTotal, valor_iss: valorIss },
+        p_metadata: {
+          focus_request: nfsePayload, focus_response: focusBody, item_ids: p.item_ids,
+          pagador_cliente_id: p.cliente_id, valor_total: valorTotal, valor_iss: valorIss,
+          // Ajustes desta nota ficam gravados: a conta a receber le o
+          // vencimento daqui, e o resto e rastro de quem mudou o que.
+          ...(ajustes ? { ajustes_da_nota: ajustes } : {}),
+          ...(ajustes?.vencimento ? { vencimento_override: ajustes.vencimento } : {}),
+        },
         p_created_by: user.id,
       })
 
