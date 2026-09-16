@@ -506,6 +506,7 @@ export default function ComposicaoDaFaturaList() {
       documentoNumero: null,
       emissao: isoHoje(),
       vencimento: isoHoje(),
+      despesaIds: linhas.map((item) => item.origem_id).filter((v): v is string => !!v),
       itens: linhas.map((item) => ({
         data_lancamento: item.data_referencia || '',
         categoria: String(item.snapshot?.categoria || ''),
