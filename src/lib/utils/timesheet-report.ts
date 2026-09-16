@@ -31,6 +31,31 @@ export interface TimesheetReportRow {
   valor?: number | null
 }
 
+// As horas chegam prontas do jeito que a tela mostra ("3h 5min"). Para somar,
+// volta para decimal e formata de novo — o relatorio nao recebe numero.
+// Filipe, 11/09: "incluir o total de horas no relatorio de horas que esta
+// vindo apenas com valor".
+function horasParaDecimal(texto?: string): number {
+  if (!texto) return 0
+  const t = String(texto).trim()
+  if (!t || t === '—') return 0
+  const h = /(\d+(?:[.,]\d+)?)\s*h/i.exec(t)
+  const m = /(\d+)\s*min/i.exec(t)
+  if (!h && !m) {
+    const n = Number(t.replace(',', '.'))
+    return Number.isFinite(n) ? n : 0
+  }
+  return (h ? Number(h[1].replace(',', '.')) : 0) + (m ? Number(m[1]) / 60 : 0)
+}
+
+function formatHoras(decimal: number): string {
+  const total = Math.round(decimal * 60)
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (!h && !m) return '0h'
+  return m ? `${h}h ${m}min` : `${h}h`
+}
+
 export function openTimesheetReport({
   titulo,
   subtitulo,
@@ -60,6 +85,16 @@ export function openTimesheetReport({
   const colspan = mostrarValor ? 4 : 3
   const soma = (linhas: TimesheetReportRow[]) =>
     linhas.reduce((s, l) => s + Number(l.valor || 0), 0)
+  const somaHoras = (linhas: TimesheetReportRow[]) =>
+    linhas.reduce((s, l) => s + horasParaDecimal(l.horas), 0)
+
+  // Linha de total: rotulo, horas e (quando couber) valor. As horas passam a
+  // aparecer em todos os niveis — caso, contrato e total geral.
+  const linhaTotal = (rotulo: string, horas: number, valor: number, classe = 'total') => `<tr class="${classe}">
+        <td class="lbl" colspan="3">${rotulo}</td>
+        <td class="num" style="width:20mm">${formatHoras(horas)}</td>
+        ${mostrarValor ? `<td class="num" style="width:26mm">${money(valor)}</td>` : ''}
+      </tr>`
 
   // O <thead> sobe para o topo da tabela por definicao do HTML — se so as
   // colunas ficassem aqui, "Data / Descricao / ..." apareceria ACIMA da linha
@@ -82,9 +117,11 @@ export function openTimesheetReport({
     </table>`
 
     let totalContrato = 0
+    let horasContrato = 0
     for (const [caso, linhas] of casos) {
       const totalCaso = soma(linhas)
       totalContrato += totalCaso
+      horasContrato += somaHoras(linhas)
       corpo += `<table class="itens">
         ${cabecalhoCaso(caso)}
         <tbody>
@@ -96,29 +133,20 @@ export function openTimesheetReport({
             ${mostrarValor ? `<td class="item num">${l.valor != null ? money(Number(l.valor)) : '—'}</td>` : ''}
           </tr>`).join('')}
         </tbody>
-        ${mostrarValor ? `<tr class="total">
-          <td class="lbl" colspan="${colspan}">Total</td>
-          <td class="num">${money(totalCaso)}</td>
-        </tr>` : ''}
+        ${linhaTotal('Total', somaHoras(linhas), totalCaso)}
       </table>`
     }
 
-    if (mostrarValor) {
-      // 'break-before: avoid' para o total nao amanhecer sozinho no topo da
-      // pagina seguinte, separado do contrato que ele soma.
-      corpo += `<table class="itens" style="break-before:avoid"><tr class="total">
-        <td class="lbl" colspan="${colspan}">Total do contrato</td>
-        <td class="num" style="width:26mm">${money(totalContrato)}</td>
-      </tr></table>`
-    }
+    // 'break-before: avoid' para o total nao amanhecer sozinho no topo da
+    // pagina seguinte, separado do contrato que ele soma.
+    corpo += `<table class="itens" style="break-before:avoid">
+      ${linhaTotal('Total do contrato', horasContrato, totalContrato)}
+    </table>`
   }
 
   const totalGeral = soma(rows)
-  const rodapeExtra = mostrarValor && porContrato.size > 1
-    ? `<table class="itens"><tr class="totalgeral">
-         <td class="lbl">Total geral</td>
-         <td class="num" style="width:26mm">${money(totalGeral)}</td>
-       </tr></table>`
+  const rodapeExtra = porContrato.size > 1
+    ? `<table class="itens">${linhaTotal('Total geral', somaHoras(rows), totalGeral, 'totalgeral')}</table>`
     : ''
 
   const html = montarDocumento({
