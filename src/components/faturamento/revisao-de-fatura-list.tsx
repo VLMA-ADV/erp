@@ -42,6 +42,8 @@ interface RevisaoItem {
   grupoHoras: number | null
   grupoValor: number | null
   origemTipo: string
+  /** Id da despesa/timesheet de origem — usado para juntar comprovantes. */
+  origemId: string | null
   casoRegraCobranca: string
   revisoresModo: string
   timesheetDescricaoOriginal: string
@@ -728,6 +730,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     grupoHoras: asOptionalNumber(data.grupo_horas) ?? null,
     grupoValor: asOptionalNumber(data.grupo_valor) ?? null,
     origemTipo: asString(data.origem_tipo, ''),
+    origemId: asString(data.origem_id, '') || null,
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     revisoresModo: asString(data.revisores_modo, ''),
     timesheetDescricaoOriginal: asString(data.timesheet_descricao_original, ''),
@@ -2815,6 +2818,7 @@ export default function RevisaoDeFaturaList() {
                                           documentoNumero: null,
                                           emissao: hojeIso(),
                                           vencimento: hojeIso(),
+                                          despesaIds: despesasDoCaso.map((d) => d.origemId).filter((v): v is string => !!v),
                                           itens: despesasDoCaso.map((d) => {
                                             const snap = (d.snapshot || {}) as Record<string, unknown>
                                             return {

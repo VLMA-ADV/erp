@@ -1,8 +1,11 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/ui/toast'
+import { montarNotaComComprovantes, type AnexoDespesa } from '@/lib/utils/nota-despesa-pdf'
 import { montarDocumento } from '@/lib/utils/documento-vlma'
 import {
   Dialog,
@@ -44,6 +47,8 @@ export interface NotaDespesaData {
   emissao: string
   vencimento: string
   itens: NotaDespesaItem[]
+  /** Ids das despesas de origem, para juntar os comprovantes no PDF. */
+  despesaIds?: string[]
 }
 
 function money(v: number) {
@@ -134,6 +139,59 @@ export default function NotaDespesaPreview({
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const html = useMemo(() => (data ? buildNotaHtml(data) : ''), [data])
+  const { error: toastError, success } = useToast()
+  const [montando, setMontando] = useState(false)
+
+  // Nota + comprovantes num PDF so (Filipe, 11/09). Os arquivos vem um a um
+  // pela edge que ja existe (get-despesa-arquivo), que checa permissao.
+  const baixarComComprovantes = async () => {
+    if (!data || montando) return
+    setMontando(true)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toastError('Sessão expirada.'); return }
+      const ids = (data.despesaIds || []).filter(Boolean)
+      let anexos: AnexoDespesa[] = []
+      if (ids.length > 0) {
+        const { data: lista, error } = await supabase.rpc('get_anexos_das_despesas', {
+          p_user_id: session.user.id,
+          p_despesa_ids: ids,
+        })
+        if (error) { toastError(error.message || 'Erro ao listar os comprovantes'); return }
+        anexos = (Array.isArray(lista) ? lista : []) as AnexoDespesa[]
+      }
+
+      const baixarAnexo = async (kind: 'primario' | 'extra', id: string) => {
+        const resp = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesa-arquivo?kind=${kind}&id=${id}`,
+          { headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' } },
+        )
+        const payload = await resp.json().catch(() => ({}))
+        if (!resp.ok || !payload.arquivo_base64) return null
+        return { base64: payload.arquivo_base64 as string, mime: (payload.mime_type as string) ?? null }
+      }
+
+      const { bytes, anexados, naoAnexados } = await montarNotaComComprovantes({ data, anexos, baixarAnexo })
+      const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `nota-de-debito-${(data.clienteNome || 'cliente').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
+      a.click()
+      URL.revokeObjectURL(a.href)
+
+      if (naoAnexados.length > 0) {
+        toastError(`PDF gerado com ${anexados} comprovante(s). ${naoAnexados.length} não pôde(ram) ser anexado(s) — veja a última página.`)
+      } else {
+        success(anexados > 0 ? `PDF gerado com ${anexados} comprovante(s).` : 'PDF gerado (sem comprovantes anexados).')
+      }
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao montar o PDF com os comprovantes.')
+    } finally {
+      setMontando(false)
+    }
+  }
 
   const handlePrint = () => {
     const win = iframeRef.current?.contentWindow
@@ -162,6 +220,9 @@ export default function NotaDespesaPreview({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Fechar
+          </Button>
+          <Button variant="outline" onClick={() => void baixarComComprovantes()} disabled={montando}>
+            {montando ? 'Montando PDF...' : 'Baixar com comprovantes (PDF)'}
           </Button>
           <Button onClick={handlePrint}>
             <Printer className="mr-2 h-4 w-4" />
