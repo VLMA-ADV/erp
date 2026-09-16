@@ -15,6 +15,11 @@ const relatoriosMenuItems = [
     href: '/relatorios/personalizado',
     permission: 'reports.view',
   },
+  {
+    label: 'Carteira e regras de cobrança',
+    href: '/relatorios/carteira',
+    permission: 'reports.view',
+  },
 ]
 
 export default function SidebarMenuRelatorios({
