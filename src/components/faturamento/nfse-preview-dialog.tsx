@@ -313,13 +313,12 @@ export default function NfsePreviewDialog({
         acumuladoMes = Number(acum ?? 0)
       }
 
-      // Listas de apoio dos ajustes: grupos de impostos e clientes.
-      const [{ data: gruposData }, { data: clientesData }] = await Promise.all([
-        supabase.schema('contracts').from('grupos_impostos').select('id, nome').order('nome'),
-        supabase.schema('crm').from('clientes').select('id, nome').order('nome'),
-      ])
-      setGrupos((gruposData || []) as Array<{ id: string; nome: string }>)
-      setClientes((clientesData || []) as Array<{ id: string; nome: string }>)
+      // Listas de apoio dos ajustes. Por RPC porque o schema crm nao e exposto
+      // ao PostgREST e grupos_impostos tem RLS — ler as tabelas direto daqui
+      // devolvia 406 e 403.
+      const { data: opcoes } = await supabase.rpc('get_opcoes_ajuste_nota', { p_user_id: user.id })
+      setGrupos(((opcoes as Record<string, unknown>)?.grupos || []) as Array<{ id: string; nome: string }>)
+      setClientes(((opcoes as Record<string, unknown>)?.clientes || []) as Array<{ id: string; nome: string }>)
 
       // Campos começam com o que já vale hoje, para o ajuste ser uma edição e
       // não um preenchimento do zero.
