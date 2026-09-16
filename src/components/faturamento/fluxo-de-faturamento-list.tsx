@@ -33,7 +33,7 @@ import { useToast } from '@/components/ui/toast'
 import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { formatHorasMin } from '@/lib/utils/format-horas'
-import NfsePreviewDialog from './nfse-preview-dialog'
+import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 
 interface RevisaoItem {
   id: string
@@ -945,7 +945,13 @@ export default function FluxoDeFaturamentoList() {
 
   // Dispara emissão real da NFS-e via edge emit-nfse. Usado quando o usuário
   // confirma na prévia OU clica direto no botão $ ao lado do "Prévia" na linha do caso.
-  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string, casoId?: string | null) => {
+  const emitNfse = async (
+    contratoId: string,
+    label: string,
+    descricaoServico?: string,
+    casoId?: string | null,
+    ajustes?: AjustesDaNota,
+  ) => {
     try {
       setEmittingNfse(contratoId)
       const supabase = createClient()
@@ -967,6 +973,7 @@ export default function FluxoDeFaturamentoList() {
           // O botao vive na faixa do CASO, entao a nota tem que cobrir so ele.
           // Sem isto a tela emitia o contrato inteiro a partir de um caso.
           ...(casoId ? { caso_id: casoId } : {}),
+          ...(ajustes ? { ajustes } : {}),
           ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
         }),
       })
@@ -1798,11 +1805,11 @@ export default function FluxoDeFaturamentoList() {
         casoId={nfsePreview?.casoId ?? null}
         contratoLabel={nfsePreview?.label}
         onClose={() => setNfsePreview(null)}
-        onConfirmEmit={(descricaoServico) => {
+        onConfirmEmit={(descricaoServico, ajustes) => {
           if (!nfsePreview) return
           const { contratoId, casoId, label } = nfsePreview
           setNfsePreview(null)
-          void emitNfse(contratoId, label, descricaoServico, casoId)
+          void emitNfse(contratoId, label, descricaoServico, casoId, ajustes)
         }}
       />
 

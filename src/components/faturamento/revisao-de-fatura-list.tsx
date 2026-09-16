@@ -16,7 +16,7 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
-import NfsePreviewDialog from './nfse-preview-dialog'
+import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import AndamentoPorRegra, { etapaDoStatus, linhaVazia, type AndamentoLinha, type FaturadoMes } from './andamento-por-regra'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 
@@ -1884,7 +1884,13 @@ export default function RevisaoDeFaturaList() {
   // Emite a NFS-e via edge emit-nfse. A emissão é por CONTRATO e já trata o rateio
   // (1 nota por pagador). Só é chamada a partir da prévia, para a pessoa ver antes o
   // que exatamente vai no documento fiscal.
-  const emitNfse = async (contratoId: string, label: string, descricaoServico?: string, casoId?: string | null) => {
+  const emitNfse = async (
+    contratoId: string,
+    label: string,
+    descricaoServico?: string,
+    casoId?: string | null,
+    ajustes?: AjustesDaNota,
+  ) => {
     try {
       setEmittingContratoId(contratoId)
       const accessToken = await getSessionToken()
@@ -1903,6 +1909,8 @@ export default function RevisaoDeFaturaList() {
           // Sem caso, a nota sai do contrato inteiro (comportamento antigo).
           ...(casoId ? { caso_id: casoId } : {}),
           ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
+          // Ajustes feitos na prévia (pagador, valor, regime, vencimento).
+          ...(ajustes ? { ajustes } : {}),
         }),
       })
       const payload = await resp.json().catch(() => ({}))
@@ -3717,11 +3725,11 @@ export default function RevisaoDeFaturaList() {
         onClose={() => setNfsePreview(null)}
         onConfirmEmit={
           nfsePreview?.permitirEmitir
-            ? (descricaoServico) => {
+            ? (descricaoServico, ajustes) => {
                 if (!nfsePreview) return
                 const { contratoId, casoId, label } = nfsePreview
                 setNfsePreview(null)
-                void emitNfse(contratoId, label, descricaoServico, casoId)
+                void emitNfse(contratoId, label, descricaoServico, casoId, ajustes)
               }
             : undefined
         }

@@ -120,7 +120,15 @@ interface NfsePreviewDialogProps {
   casoId?: string | null
   contratoLabel?: string | null
   onClose: () => void
-  onConfirmEmit?: (descricaoServico: string) => void
+  /** Ajustes desta nota seguem junto com a emissão (Filipe, 11/09). */
+  onConfirmEmit?: (descricaoServico: string, ajustes?: AjustesDaNota) => void
+}
+
+export interface AjustesDaNota {
+  pagadores?: Array<{ cliente_id: string; percentual: number }>
+  grupo_imposto_id?: string
+  vencimento?: string
+  valor_total?: number
 }
 
 interface DatasetItem {
@@ -163,6 +171,80 @@ export default function NfsePreviewDialog({
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<PreviewData | null>(null)
   const [descricaoEdit, setDescricaoEdit] = useState('')
+
+  // ── Ajustes desta nota ────────────────────────────────────────────────
+  // Filipe, 11/09: "alterar o pagador, incluir ou excluir pagadores, alterar o
+  // valor fixo, o regime tributário e a data de vencimento no momento do
+  // faturamento". Em 16/09 escolheu: valem só para esta nota, com opção de
+  // salvar também no contrato.
+  const [abrirAjustes, setAbrirAjustes] = useState(false)
+  const [vencimento, setVencimento] = useState('')
+  const [grupoImpostoId, setGrupoImpostoId] = useState('')
+  const [valorEdit, setValorEdit] = useState('')
+  const [pagadoresEdit, setPagadoresEdit] = useState<Array<{ cliente_id: string; percentual: string }>>([])
+  const [salvarNoContrato, setSalvarNoContrato] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [grupos, setGrupos] = useState<Array<{ id: string; nome: string }>>([])
+  const [clientes, setClientes] = useState<Array<{ id: string; nome: string }>>([])
+
+  // Monta os ajustes e, se pedido, grava no cadastro antes de emitir.
+  const confirmar = async () => {
+    if (!onConfirmEmit || salvando) return
+    const num = (v: string) => Number(String(v).replace(/\./g, '').replace(',', '.'))
+    const totalAtual = (data?.pagadores || []).reduce((acc, p) => acc + Number(p.valor_total || 0), 0)
+    const valor = valorEdit.trim() ? num(valorEdit) : NaN
+    const pagadores = pagadoresEdit
+      .filter((p) => p.cliente_id)
+      .map((p) => ({ cliente_id: p.cliente_id, percentual: num(p.percentual) }))
+
+    const ajustes: AjustesDaNota = {}
+    if (Number.isFinite(valor) && valor > 0 && Math.abs(valor - totalAtual) > 0.009) ajustes.valor_total = valor
+    if (grupoImpostoId && grupoImpostoId !== (data?.grupoImposto?.id || '')) ajustes.grupo_imposto_id = grupoImpostoId
+    if (vencimento) ajustes.vencimento = vencimento
+    // So manda a lista de pagadores quando ela de fato mudou.
+    const iguaisAoContrato =
+      pagadores.length === (data?.pagadores || []).length &&
+      pagadores.every((p, i) => {
+        const orig = (data?.pagadores || [])[i]
+        const pctOrig = totalAtual > 0 ? (Number(orig?.valor_total || 0) / totalAtual) * 100 : 100
+        return orig && orig.cliente_id === p.cliente_id && Math.abs(pctOrig - p.percentual) < 0.01
+      })
+    if (pagadores.length > 0 && !iguaisAoContrato) ajustes.pagadores = pagadores
+
+    if (ajustes.pagadores) {
+      const soma = ajustes.pagadores.reduce((acc, p) => acc + p.percentual, 0)
+      if (Math.abs(soma - 100) > 0.01) {
+        setError(`Os percentuais dos pagadores somam ${soma.toFixed(2)}%. Ajuste para 100% antes de emitir.`)
+        return
+      }
+    }
+
+    if (salvarNoContrato && Object.keys(ajustes).length > 0) {
+      setSalvando(true)
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await supabase.rpc('aplicar_ajustes_no_cadastro', {
+            p_user_id: user.id,
+            p_contrato_id: contratoId,
+            p_caso_id: casoId ?? null,
+            p_pagadores: ajustes.pagadores ? ajustes.pagadores : null,
+            p_grupo_imposto_id: ajustes.grupo_imposto_id ?? null,
+            // O dia do vencimento escolhido vira o dia de pagamento do caso.
+            p_dia_pagamento: ajustes.vencimento ? Number(ajustes.vencimento.slice(8, 10)) : null,
+            p_valor_fixo: ajustes.valor_total ?? null,
+          })
+        }
+      } catch (e) {
+        console.error('aplicar_ajustes_no_cadastro', e)
+      } finally {
+        setSalvando(false)
+      }
+    }
+
+    onConfirmEmit(descricaoEdit, Object.keys(ajustes).length > 0 ? ajustes : undefined)
+  }
 
   useEffect(() => {
     if (!open || !contratoId) {
@@ -230,6 +312,32 @@ export default function NfsePreviewDialog({
         })
         acumuladoMes = Number(acum ?? 0)
       }
+
+      // Listas de apoio dos ajustes: grupos de impostos e clientes.
+      const [{ data: gruposData }, { data: clientesData }] = await Promise.all([
+        supabase.schema('contracts').from('grupos_impostos').select('id, nome').order('nome'),
+        supabase.schema('crm').from('clientes').select('id, nome').order('nome'),
+      ])
+      setGrupos((gruposData || []) as Array<{ id: string; nome: string }>)
+      setClientes((clientesData || []) as Array<{ id: string; nome: string }>)
+
+      // Campos começam com o que já vale hoje, para o ajuste ser uma edição e
+      // não um preenchimento do zero.
+      const pagsAtuais = (dataset.pagadores || []) as PreviewData['pagadores']
+      const totalAtual = pagsAtuais.reduce((acc: number, p) => acc + Number(p.valor_total || 0), 0)
+      setGrupoImpostoId(dataset.grupo_imposto?.id || '')
+      setValorEdit(totalAtual ? String(totalAtual.toFixed(2)) : '')
+      setPagadoresEdit(
+        pagsAtuais.length > 0
+          ? pagsAtuais.map((p) => ({
+              cliente_id: p.cliente_id,
+              percentual: totalAtual > 0 ? ((Number(p.valor_total || 0) / totalAtual) * 100).toFixed(2) : '100',
+            }))
+          : [],
+      )
+      setVencimento('')
+      setSalvarNoContrato(false)
+      setAbrirAjustes(false)
 
       setData({
         itens: dataset.itens as DatasetItem[],
@@ -600,6 +708,103 @@ export default function NfsePreviewDialog({
           </div>
         ) : null}
 
+        {/* Ajustes desta nota — fechado por padrao: o caminho normal e emitir
+            com o que veio do contrato. */}
+        {onConfirmEmit && data ? (
+          <div className="rounded-lg border print:hidden">
+            <button
+              type="button"
+              onClick={() => setAbrirAjustes((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium"
+            >
+              <span>Ajustes desta nota</span>
+              <span className="text-xs text-ink-mute">{abrirAjustes ? 'ocultar' : 'pagador, valor, regime, vencimento'}</span>
+            </button>
+            {abrirAjustes ? (
+              <div className="space-y-3 border-t px-4 py-3 text-sm">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="space-y-1">
+                    <span className="text-xs text-ink-mute">Valor total da nota</span>
+                    <input
+                      value={valorEdit}
+                      onChange={(e) => setValorEdit(e.target.value)}
+                      inputMode="decimal"
+                      className="w-full rounded-md border px-2 py-1"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-ink-mute">Regime tributário (grupo de impostos)</span>
+                    <select
+                      value={grupoImpostoId}
+                      onChange={(e) => setGrupoImpostoId(e.target.value)}
+                      className="w-full rounded-md border px-2 py-1"
+                    >
+                      <option value="">Manter o do contrato</option>
+                      {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-ink-mute">Vencimento do boleto</span>
+                    <input
+                      type="date"
+                      value={vencimento}
+                      onChange={(e) => setVencimento(e.target.value)}
+                      className="w-full rounded-md border px-2 py-1"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-ink-mute">
+                      Pagadores — os percentuais precisam somar 100%
+                      {pagadoresEdit.length > 0 ? ` (hoje: ${pagadoresEdit.reduce((a, p) => a + (Number(p.percentual.replace(',', '.')) || 0), 0).toFixed(2)}%)` : ''}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPagadoresEdit((lista) => [...lista, { cliente_id: '', percentual: '0' }])}
+                    >
+                      Incluir pagador
+                    </Button>
+                  </div>
+                  {pagadoresEdit.map((p, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={p.cliente_id}
+                        onChange={(e) => setPagadoresEdit((lista) => lista.map((x, j) => j === i ? { ...x, cliente_id: e.target.value } : x))}
+                        className="min-w-[240px] flex-1 rounded-md border px-2 py-1"
+                      >
+                        <option value="">Selecione o cliente</option>
+                        {clientes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                      <input
+                        value={p.percentual}
+                        onChange={(e) => setPagadoresEdit((lista) => lista.map((x, j) => j === i ? { ...x, percentual: e.target.value } : x))}
+                        inputMode="decimal"
+                        className="w-20 rounded-md border px-2 py-1 text-right"
+                      />
+                      <span className="text-xs text-ink-mute">%</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPagadoresEdit((lista) => lista.filter((_, j) => j !== i))}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={salvarNoContrato} onChange={(e) => setSalvarNoContrato(e.target.checked)} />
+                  Salvar também no contrato (vale para as próximas faturas)
+                </label>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <DialogFooter className="flex justify-between gap-2 print:hidden">
           <Button variant="outline" onClick={onClose}>
             <X className="mr-2 h-4 w-4" /> Fechar
@@ -615,10 +820,10 @@ export default function NfsePreviewDialog({
             {onConfirmEmit && (
               <Button
                 className="bg-green-700 hover:bg-green-800 text-white"
-                onClick={() => onConfirmEmit(descricaoEdit)}
-                disabled={loading || !!error || !data || !descricaoEdit.trim()}
+                onClick={() => void confirmar()}
+                disabled={loading || !!error || !data || !descricaoEdit.trim() || salvando}
               >
-                <FileText className="mr-2 h-4 w-4" /> Confirmar e emitir
+                <FileText className="mr-2 h-4 w-4" /> {salvando ? 'Emitindo...' : 'Confirmar e emitir'}
               </Button>
             )}
           </div>
