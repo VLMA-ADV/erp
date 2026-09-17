@@ -39,6 +39,13 @@ const ENDPOINTS = {
   producao: {
     token: 'https://sts.itau.com.br/api/oauth/token',
     boletos: 'https://api.gateway.itau.com.br/cash_management/v2/boletos',
+    // BOLETO COM PIX (BoleCode) e OUTRA API: "Recebimentos", nao a de
+    // cash_management. Descoberto na documentacao do portal em 17/09/2026 —
+    // por isso o campo de Pix enviado ao endereco antigo era simplesmente
+    // ignorado. O portal mostra o base path de dev
+    // (pix-pj.api.dev.itau.com/recebimentos-pix/v1) e diz que o endereco novo
+    // de producao e pix-pj.itau.com; confirmar com o banco antes de ligar.
+    bolecode: 'https://pix-pj.itau.com/recebimentos-pix/v1/boletos-pix',
     // CONSULTA NAO E O MESMO HOST DA EMISSAO. Levamos dias achando que era
     // permissao faltando — o 403 'Acesso a rota nao permitido' vinha de bater
     // GET no endereco de emissao, que so aceita POST. A equipe do Itau
@@ -58,6 +65,7 @@ const ENDPOINTS = {
     // mesmos enderecos e quem decide o ambiente e a credencial usada.
     token: 'https://sts.itau.com.br/api/oauth/token',
     boletos: 'https://api.gateway.itau.com.br/cash_management/v2/boletos',
+    bolecode: 'https://sandbox.devportal.itau.com.br/itau-ep9-api-recebimentos-v1-externo/v1/boletos-pix',
     consulta: 'https://secure.api.cloud.itau.com.br/boletoscash/v2/boletos',
     extrato: 'https://boleto.api.itau.com/extrato/v1',
     webhooks: 'https://api.gateway.itau.com.br/boletos/v3/notificacoes_boletos',
@@ -204,6 +212,37 @@ export async function emitirBoleto(
     // O Itaú usa o próprio client_id como chave de API neste header. É o que a
     // coleção oficial faz ({{client_id}}); está na lista de confirmações
     // pendentes com o banco.
+    'x-itau-apikey': config.clientId,
+    'x-itau-correlationID': correlationId,
+    'x-itau-flowID': randomUUID(),
+  }, JSON.stringify(payload))
+
+  return { ...r, correlationId }
+}
+
+/**
+ * Emite (ou SIMULA) um Boleto com Pix — o BoleCode.
+ *
+ * Endpoint diferente do boleto comum, e de proposito: o produto vive na API
+ * de Recebimentos. A etapa 'simulacao' roda todas as validacoes e devolve os
+ * dados de saida SEM gerar boleto nem Pix — e como se confere o formato sem
+ * criar cobranca. 'efetivacao' emite de verdade.
+ *
+ * Escopos exigidos pelo portal: cob.write, cobv.write e payments/pix.read. Se
+ * a credencial atual nao os tiver, o banco responde 403 e e preciso pedir
+ * credencial com esses escopos.
+ */
+export async function emitirBoletoPix(
+  config: ItauConfigAmbiente,
+  payload: Record<string, unknown>,
+): Promise<RespostaItau & { correlationId: string }> {
+  const token = await obterAccessToken(config)
+  const correlationId = randomUUID()
+
+  const r = await requisicaoMtls(ENDPOINTS[config.ambiente].bolecode, config, {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
     'x-itau-apikey': config.clientId,
     'x-itau-correlationID': correlationId,
     'x-itau-flowID': randomUUID(),
