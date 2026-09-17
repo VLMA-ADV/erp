@@ -119,6 +119,29 @@ export function codigoBarrasItf(digitos: string): ElementoItf[] {
  * vem em unidades de "estreito" e o SVG é esticado até `larguraMm` x
  * `alturaMm` (13mm é o que a Febraban pede para a ficha de compensação).
  */
+/**
+ * Desenha o QR Code do Pix a partir da matriz ja calculada.
+ *
+ * Fica separado da biblioteca de proposito: o calculo da matriz vem do
+ * pacote `qrcode` (import dinamico, porque este arquivo tambem e lido pelo
+ * Deno no teste) e o desenho e nosso, igual ao codigo de barras — assim a
+ * ficha nao depende de imagem externa nem de internet na hora de imprimir.
+ */
+export function svgQrDeMatriz(tamanho: number, dados: ArrayLike<number>, ladoMm = 24): string {
+  if (!tamanho || !dados || dados.length < tamanho * tamanho) return ''
+  const partes: string[] = []
+  for (let linha = 0; linha < tamanho; linha++) {
+    for (let coluna = 0; coluna < tamanho; coluna++) {
+      if (dados[linha * tamanho + coluna]) partes.push(`<rect x="${coluna}" y="${linha}" width="1" height="1"/>`)
+    }
+  }
+  const borda = 2
+  const total = tamanho + borda * 2
+  return `<svg viewBox="0 0 ${total} ${total}" width="${ladoMm}mm" height="${ladoMm}mm" shape-rendering="crispEdges" role="img" aria-label="QR Code do Pix">`
+    + `<rect width="${total}" height="${total}" fill="#fff"/>`
+    + `<g fill="#000" transform="translate(${borda},${borda})">${partes.join('')}</g></svg>`
+}
+
 export function svgCodigoBarras(digitos: string, larguraMm = 103, alturaMm = 13): string {
   const elementos = codigoBarrasItf(digitos)
   const total = elementos.reduce((s, e) => s + (e.largo ? 3 : 1), 0)
@@ -173,7 +196,7 @@ export interface EmitenteFicha {
  * Monta a página inteira da ficha de compensação. Pura: recebe os dados e o
  * nome do beneficiário, devolve o HTML. Quem chama abre em aba nova.
  */
-export function montarFichaBoletoHtml(ficha: BolFicha, emitente: EmitenteFicha): string {
+export function montarFichaBoletoHtml(ficha: BolFicha, emitente: EmitenteFicha, qrPix = ''): string {
   const b = ficha.boleto
   const p = ficha.pagador
   const ben = ficha.beneficiario
@@ -235,6 +258,10 @@ export function montarFichaBoletoHtml(ficha: BolFicha, emitente: EmitenteFicha):
   .pagador .v { line-height: 1.4; }
 
   .rodape { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 3mm; }
+
+  .qrpix { display: flex; flex-direction: column; align-items: center; gap: 1mm; margin-left: 6mm; }
+
+  .qrpix .leg { font-size: 6.5pt; color: #333; }
   .rodape .aut { font-size: 6.5pt; color: #333; text-align: right; }
 
   .recibo { margin-bottom: 6mm; }
@@ -339,6 +366,7 @@ export function montarFichaBoletoHtml(ficha: BolFicha, emitente: EmitenteFicha):
 
   <div class="rodape">
     <div class="barras">${barras}</div>
+    ${qrPix ? `<div class="qrpix">${qrPix}<span class="leg">Pague com Pix</span></div>` : ''}
     <span class="aut">Autenticação mecânica — Ficha de compensação</span>
   </div>
 
@@ -377,7 +405,23 @@ export async function abrirFichaBoleto(boletoId: string): Promise<string | null>
     if (!ficha?.boleto?.codigo_barras || !ficha.boleto.linha_digitavel) {
       throw new Error('Este boleto ainda não tem código de barras registrado.')
     }
-    const html = montarFichaBoletoHtml(ficha, { nome: ESCRITORIO.razao })
+    // QR do Pix: so existe quando o banco devolveu o "copia e cola" (BoleCode).
+    // Import dinamico para nao quebrar o teste, que le este arquivo no Deno.
+    let qrPix = ''
+    const copiaCola = ficha.boleto.pix_copia_cola
+    if (copiaCola && copiaCola.trim()) {
+      try {
+        const qrcode = (await import('qrcode')) as unknown as {
+          create: (texto: string, opts?: Record<string, unknown>) => { modules: { size: number; data: ArrayLike<number> } }
+        }
+        const matriz = qrcode.create(copiaCola.trim(), { errorCorrectionLevel: 'M' })
+        qrPix = svgQrDeMatriz(matriz.modules.size, matriz.modules.data)
+      } catch {
+        // Sem QR, a ficha sai como antes: linha digitavel e copia e cola.
+        qrPix = ''
+      }
+    }
+    const html = montarFichaBoletoHtml(ficha, { nome: ESCRITORIO.razao }, qrPix)
     if (!win) return 'O navegador bloqueou a aba do boleto. Libere pop-ups para este site.'
     win.document.open()
     win.document.write(html)

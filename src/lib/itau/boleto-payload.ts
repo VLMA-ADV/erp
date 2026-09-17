@@ -132,6 +132,14 @@ export interface BoletoInstrucao {
 }
 
 export interface BoletoConfig {
+  /**
+   * BoleCode (boleto com QR Code de Pix). O Itau confirmou em 16/09/2026 que
+   * o CNPJ do escritorio ja tem o escopo; o bloco so vai no payload quando
+   * bolecode_ativo estiver ligado E houver chave Pix, para que ligar a
+   * novidade seja uma decisao explicita e reversivel.
+   */
+  bolecode_ativo?: boolean
+  chave_pix?: string | null
   id_beneficiario: string
   codigo_carteira: string
   codigo_especie: string
@@ -326,6 +334,14 @@ export function montarPayloadEmissao(input: EmissaoInput): Record<string, unknow
     dadoBoleto.data_limite_pagamento = somarDias(titulo.vencimento, config.dias_limite_pagamento)
   }
 
+  // Pix embutido. O nome do campo (`dados_qrcode`) e o que a documentacao do
+  // Itau usa; a chave vai como esta cadastrada na conta de cobranca. Enquanto
+  // o banco nao confirmar o formato pela etapa de validacao, isto so entra no
+  // payload de quem ligou o BoleCode.
+  if (config.bolecode_ativo && (config.chave_pix ?? '').trim()) {
+    dadoBoleto.dados_qrcode = { chave: String(config.chave_pix).trim() }
+  }
+
   return {
     data: {
       etapa_processo_boleto: etapa,
@@ -363,7 +379,18 @@ export function lerRespostaEmissao(resposta: unknown): BoletoRegistrado {
     nosso_numero: str(individual.numero_nosso_numero),
     codigo_barras: str(individual.codigo_barras ?? d.codigo_barras),
     linha_digitavel: str(individual.numero_linha_digitavel ?? d.numero_linha_digitavel),
-    pix_copia_cola: str(d.dado_boleto?.pix?.pix_copia_e_cola ?? d.pix_copia_e_cola),
+    // O Pix volta com nomes diferentes conforme o produto (cobranca simples,
+    // BoleCode). Procura nos lugares conhecidos em vez de assumir um so.
+    pix_copia_cola: str(
+      d.dado_boleto?.pix?.pix_copia_e_cola
+        ?? d.pix_copia_e_cola
+        ?? individual.dados_qrcode?.emv
+        ?? individual.dados_qrcode?.qrcode
+        ?? d.dado_boleto?.dados_qrcode?.emv
+        ?? d.dado_boleto?.dados_qrcode?.qrcode
+        ?? d.qrcode_pix
+        ?? d.emv,
+    ),
   }
 }
 

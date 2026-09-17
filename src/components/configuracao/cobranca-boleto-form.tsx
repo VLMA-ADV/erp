@@ -41,6 +41,10 @@ interface Config {
   negativacao_dias: number | null
   dias_limite_pagamento: number | null
   forma_envio: 'escritorio' | 'itau'
+  // BoleCode: boleto com QR Code de Pix. Desligado ate o Itau confirmar o
+  // formato pela etapa de validacao (16/09: escopo ja liberado no CNPJ).
+  bolecode_ativo: boolean
+  chave_pix: string | null
 }
 
 const VAZIO: Config = {
@@ -52,6 +56,7 @@ const VAZIO: Config = {
   protesto_ativo: false, protesto_dias: null,
   negativacao_ativo: false, negativacao_dias: null,
   dias_limite_pagamento: null, forma_envio: 'escritorio',
+  bolecode_ativo: false, chave_pix: '',
 }
 
 function Secao({ numero, titulo, descricao, children }: {
@@ -363,6 +368,36 @@ export default function CobrancaBoletoForm() {
 
       <Secao
         numero={4}
+        titulo="Pix no boleto (BoleCode)"
+        descricao="O boleto sai com QR Code de Pix. Exige chave Pix ativa na conta de cobrança; o Itaú confirmou o escopo do CNPJ em 16/09/2026."
+      >
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="text-ink-mute">Chave Pix da conta de cobrança</span>
+            <input
+              value={cfg.chave_pix || ''}
+              onChange={(e) => set('chave_pix', e.target.value)}
+              placeholder="CNPJ, e-mail, telefone ou chave aleatória"
+              className="mt-1 w-full rounded-md border px-2 py-1"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox" className="h-4 w-4"
+              checked={cfg.bolecode_ativo}
+              onChange={(e) => set('bolecode_ativo', e.target.checked)}
+              disabled={!(cfg.chave_pix || '').trim()}
+            />
+            Emitir com QR Code de Pix
+          </label>
+          {!(cfg.chave_pix || '').trim() ? (
+            <p className="text-xs text-ink-mute">Informe a chave Pix para poder ligar.</p>
+          ) : null}
+        </div>
+      </Secao>
+
+      <Secao
+        numero={5}
         titulo="Ligar a cobrança"
         descricao="Enquanto estiver desligada, nenhum boleto é gerado, mesmo com tudo preenchido."
       >
