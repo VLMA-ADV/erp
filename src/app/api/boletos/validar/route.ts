@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { emitirBoleto, lerConfigItau } from '@/lib/itau/client'
+import { emitirBoleto, emitirBoletoPix, lerConfigItau } from '@/lib/itau/client'
 import { montarPayloadEmissao, type BoletoConfig, type BoletoPagador, type BoletoTitulo } from '@/lib/itau/boleto-payload'
 
 // mTLS só existe no runtime Node — mesma razão da rota de emissão.
@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
   if (userErr || !user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { lancamento_id: lancamentoId, chave_pix: chavePix, bolecode } =
-    body as { lancamento_id?: string; chave_pix?: string; bolecode?: boolean }
+  const { lancamento_id: lancamentoId, chave_pix: chavePix, bolecode, via_recebimentos: viaRecebimentos } =
+    body as { lancamento_id?: string; chave_pix?: string; bolecode?: boolean; via_recebimentos?: boolean }
   if (!lancamentoId) return NextResponse.json({ error: 'lancamento_id é obrigatório' }, { status: 400 })
 
   const cfgAmbiente = lerConfigItau()
@@ -86,10 +86,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const resposta = await emitirBoleto(cfgAmbiente.config, payload)
-    await encerrarReserva('Validação de payload (não registra boleto)')
+    // Boleto com Pix vive na API de Recebimentos e chama a etapa de teste de
+    // 'simulacao' (a de boleto comum chama 'validacao'). Nos dois casos nada
+    // e gerado: roda as validacoes e devolve os dados de saida.
+    const dados = payload.data as Record<string, unknown>
+    if (viaRecebimentos) dados.etapa_processo_boleto = 'simulacao'
+
+    const resposta = viaRecebimentos
+      ? await emitirBoletoPix(cfgAmbiente.config, payload)
+      : await emitirBoleto(cfgAmbiente.config, payload)
+    await encerrarReserva(viaRecebimentos
+      ? 'Simulação de BoleCode (não gera boleto nem Pix)'
+      : 'Validação de payload (não registra boleto)')
     return NextResponse.json({
-      etapa: 'validacao',
+      etapa: viaRecebimentos ? 'simulacao' : 'validacao',
+      api: viaRecebimentos ? 'recebimentos (boletos-pix)' : 'cash_management (boletos)',
       http_status: resposta.status,
       aceito: resposta.status >= 200 && resposta.status < 300,
       payload_enviado: payload,
