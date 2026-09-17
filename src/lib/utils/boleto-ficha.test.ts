@@ -9,6 +9,7 @@ import {
   formatarLinhaDigitavel,
   montarFichaBoletoHtml,
   svgCodigoBarras,
+  svgQrDeMatriz,
   type BolFicha,
 } from "./boleto-ficha.ts"
 
@@ -127,4 +128,18 @@ function decodificarItf(el: ReturnType<typeof codigoBarrasItf>): string {
 Deno.test("ida e volta: a sequencia de barras reconstitui os 44 digitos", () => {
   assertEquals(decodificarItf(codigoBarrasItf(CODIGO)), CODIGO)
   assertEquals(decodificarItf(codigoBarrasItf("0123456789")), "0123456789")
+})
+
+Deno.test("svgQrDeMatriz desenha um modulo por bit aceso, com borda", () => {
+  // Matriz 3x3 com a diagonal acesa.
+  const svg = svgQrDeMatriz(3, [1, 0, 0, 0, 1, 0, 0, 0, 1])
+  assertEquals((svg.match(/<rect x=/g) || []).length, 3)
+  // viewBox = tamanho + 2 de borda de cada lado (quiet zone).
+  assertEquals(svg.includes('viewBox="0 0 7 7"'), true)
+  assertEquals(svg.includes('translate(2,2)'), true)
+})
+
+Deno.test("svgQrDeMatriz devolve vazio quando nao ha matriz", () => {
+  assertEquals(svgQrDeMatriz(0, []), '')
+  assertEquals(svgQrDeMatriz(3, [1, 0]), '')
 })
