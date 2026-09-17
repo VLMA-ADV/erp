@@ -379,6 +379,9 @@ export interface BoletoRegistrado {
   nosso_numero: string | null
   codigo_barras: string | null
   linha_digitavel: string | null
+  /** BoleCode: identificador que liga o boleto a transacao Pix. */
+  txid?: string | null
+  id_location?: string | null
   pix_copia_cola: string | null
 }
 
@@ -391,6 +394,8 @@ export function lerRespostaEmissao(resposta: unknown): BoletoRegistrado {
   const raiz = (resposta ?? {}) as Record<string, any>
   const d = (raiz.data ?? raiz) as Record<string, any>
   const individual = d?.dado_boleto?.dados_individuais_boleto?.[0] ?? {}
+  // BoleCode devolve o Pix num bloco proprio, no mesmo nivel do dado_boleto.
+  const qr = (d?.dados_qrcode ?? raiz?.dados_qrcode ?? {}) as Record<string, any>
 
   const str = (v: unknown) => (v === null || v === undefined || v === "" ? null : String(v))
 
@@ -402,15 +407,19 @@ export function lerRespostaEmissao(resposta: unknown): BoletoRegistrado {
     // O Pix volta com nomes diferentes conforme o produto (cobranca simples,
     // BoleCode). Procura nos lugares conhecidos em vez de assumir um so.
     pix_copia_cola: str(
-      d.dado_boleto?.pix?.pix_copia_e_cola
+      // Confirmado contra o banco em 17/09: no BoleCode o "copia e cola" vem
+      // em dados_qrcode.emv. Os outros nomes ficam como rede de seguranca,
+      // porque o Itau varia o envelope entre produtos.
+      qr.emv
+        ?? qr.qrcode
+        ?? d.dado_boleto?.pix?.pix_copia_e_cola
         ?? d.pix_copia_e_cola
-        ?? individual.dados_qrcode?.emv
-        ?? individual.dados_qrcode?.qrcode
-        ?? d.dado_boleto?.dados_qrcode?.emv
-        ?? d.dado_boleto?.dados_qrcode?.qrcode
         ?? d.qrcode_pix
         ?? d.emv,
     ),
+    // Identificadores do Pix, guardados para conciliacao.
+    txid: str(qr.txid),
+    id_location: str(qr.id_location),
   }
 }
 
