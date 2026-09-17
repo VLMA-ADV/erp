@@ -42,10 +42,12 @@ const ENDPOINTS = {
     // BOLETO COM PIX (BoleCode) e OUTRA API: "Recebimentos", nao a de
     // cash_management. Descoberto na documentacao do portal em 17/09/2026 —
     // por isso o campo de Pix enviado ao endereco antigo era simplesmente
-    // ignorado. O portal mostra o base path de dev
-    // (pix-pj.api.dev.itau.com/recebimentos-pix/v1) e diz que o endereco novo
-    // de producao e pix-pj.itau.com; confirmar com o banco antes de ligar.
-    bolecode: 'https://pix-pj.itau.com/recebimentos-pix/v1/boletos-pix',
+    // ignorado. O portal mostra o base path de DEV
+    // (pix-pj.api.dev.itau.com/recebimentos-pix/v1) e a pagina "sobre a API"
+    // cita pix-pj.itau.com para producao — que NAO resolve no DNS (a primeira
+    // simulacao morreu em ENOTFOUND). Quem resolve e pix-pj.api.itau.com, o
+    // mesmo nome de dev sem o '.dev'. Confirmar com o banco antes de emitir.
+    bolecode: 'https://pix-pj.api.itau.com/recebimentos-pix/v1/boletos-pix',
     // CONSULTA NAO E O MESMO HOST DA EMISSAO. Levamos dias achando que era
     // permissao faltando — o 403 'Acesso a rota nao permitido' vinha de bater
     // GET no endereco de emissao, que so aceita POST. A equipe do Itau
