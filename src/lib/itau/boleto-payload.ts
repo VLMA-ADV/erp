@@ -352,6 +352,26 @@ export function montarPayloadEmissao(input: EmissaoInput): Record<string, unknow
   }
 }
 
+/**
+ * Mesmo conteudo, no formato do Boleto com Pix (API de Recebimentos).
+ *
+ * Duas diferencas confirmadas contra o banco em 17/09/2026:
+ *  - os campos vao na RAIZ do corpo, sem o envelope `data` que a API de
+ *    cash_management usa. Mandando com envelope, o Itau responde 422 dizendo
+ *    que etapa_processo_boleto, beneficiario e dado_boleto estao nulos;
+ *  - a etapa de teste chama 'simulacao' (na outra API chama 'validacao').
+ */
+export function montarPayloadBoletoPix(
+  input: Omit<EmissaoInput, "etapa"> & { etapa: "simulacao" | "efetivacao" },
+): Record<string, unknown> {
+  const { etapa, ...resto } = input
+  const comEnvelope = montarPayloadEmissao({
+    ...resto,
+    etapa: etapa === "simulacao" ? "validacao" : "efetivacao",
+  }) as { data: Record<string, unknown> }
+  return { ...comEnvelope.data, etapa_processo_boleto: etapa }
+}
+
 // ------------------------------------------------------- retorno do banco
 
 export interface BoletoRegistrado {

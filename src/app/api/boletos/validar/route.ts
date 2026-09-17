@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { emitirBoleto, emitirBoletoPix, lerConfigItau } from '@/lib/itau/client'
-import { montarPayloadEmissao, type BoletoConfig, type BoletoPagador, type BoletoTitulo } from '@/lib/itau/boleto-payload'
+import {
+  montarPayloadBoletoPix,
+  montarPayloadEmissao,
+  type BoletoConfig,
+  type BoletoPagador,
+  type BoletoTitulo,
+} from '@/lib/itau/boleto-payload'
 
 // mTLS só existe no runtime Node — mesma razão da rota de emissão.
 export const runtime = 'nodejs'
@@ -73,12 +79,10 @@ export async function POST(req: NextRequest) {
 
   let payload: Record<string, unknown>
   try {
-    payload = montarPayloadEmissao({
-      config,
-      pagador: preparado.pagador,
-      titulo: preparado.titulo,
-      etapa: 'validacao',
-    })
+    const base = { config, pagador: preparado.pagador, titulo: preparado.titulo }
+    payload = viaRecebimentos
+      ? montarPayloadBoletoPix({ ...base, etapa: 'simulacao' })
+      : montarPayloadEmissao({ ...base, etapa: 'validacao' })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Payload inválido'
     await encerrarReserva(`Validação: ${msg}`)
@@ -86,12 +90,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Boleto com Pix vive na API de Recebimentos e chama a etapa de teste de
-    // 'simulacao' (a de boleto comum chama 'validacao'). Nos dois casos nada
-    // e gerado: roda as validacoes e devolve os dados de saida.
-    const dados = payload.data as Record<string, unknown>
-    if (viaRecebimentos) dados.etapa_processo_boleto = 'simulacao'
-
     const resposta = viaRecebimentos
       ? await emitirBoletoPix(cfgAmbiente.config, payload)
       : await emitirBoleto(cfgAmbiente.config, payload)
