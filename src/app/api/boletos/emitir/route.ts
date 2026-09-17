@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { emitirBoleto, lerConfigItau } from '@/lib/itau/client'
+import { emitirBoleto, emitirBoletoPix, lerConfigItau } from '@/lib/itau/client'
 import {
   lerRespostaEmissao,
+  montarPayloadBoletoPix,
   montarPayloadEmissao,
   type BoletoConfig,
   type BoletoPagador,
@@ -80,14 +81,18 @@ export async function POST(req: NextRequest) {
       p_erro: erro,
     })
 
+  // Boleto com Pix (BoleCode) e outra API e outro formato de corpo. So entra
+  // quando o escritorio ligou a opcao e cadastrou a chave Pix; caso contrario
+  // segue o caminho de sempre, sem nenhuma diferenca.
+  const cfgBanco = configDoBanco(preparado.config)
+  const comPix = !!cfgBanco.bolecode_ativo && !!(cfgBanco.chave_pix ?? '').trim()
+
   let payload: Record<string, unknown>
   try {
-    payload = montarPayloadEmissao({
-      config: configDoBanco(preparado.config),
-      pagador: preparado.pagador,
-      titulo: preparado.titulo,
-      etapa: 'efetivacao',
-    })
+    const base = { config: cfgBanco, pagador: preparado.pagador, titulo: preparado.titulo }
+    payload = comPix
+      ? montarPayloadBoletoPix({ ...base, etapa: 'efetivacao' })
+      : montarPayloadEmissao({ ...base, etapa: 'efetivacao' })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Payload inválido'
     await registrar(null, null, msg)
@@ -96,7 +101,9 @@ export async function POST(req: NextRequest) {
 
   let resposta
   try {
-    resposta = await emitirBoleto(cfgAmbiente.config, payload)
+    resposta = comPix
+      ? await emitirBoletoPix(cfgAmbiente.config, payload)
+      : await emitirBoleto(cfgAmbiente.config, payload)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Falha ao falar com o Itaú'
     await registrar(payload, null, msg)
@@ -164,5 +171,8 @@ function configDoBanco(c: Record<string, any>): BoletoConfig {
       ? null
       : Number(c.dias_limite_pagamento),
     desconto_expresso: Boolean(c.desconto_expresso),
+    // BoleCode: so ligam quando a config diz que sim e ha chave Pix.
+    bolecode_ativo: Boolean(c.bolecode_ativo),
+    chave_pix: c.chave_pix ? String(c.chave_pix) : null,
   }
 }
