@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { lerNumero } from '@/lib/utils/numero-br'
 import { FileText, Loader2, Printer, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -184,13 +185,17 @@ export default function NfsePreviewDialog({
   const [pagadoresEdit, setPagadoresEdit] = useState<Array<{ cliente_id: string; percentual: string }>>([])
   const [salvarNoContrato, setSalvarNoContrato] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  // Erro de validacao dos ajustes: separado do erro de carregamento, que
+  // desabilita o botao de emitir. Este some assim que a pessoa corrige.
+  const [ajusteErro, setAjusteErro] = useState<string | null>(null)
   const [grupos, setGrupos] = useState<Array<{ id: string; nome: string }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nome: string }>>([])
 
   // Monta os ajustes e, se pedido, grava no cadastro antes de emitir.
   const confirmar = async () => {
     if (!onConfirmEmit || salvando) return
-    const num = (v: string) => Number(String(v).replace(/\./g, '').replace(',', '.'))
+    setAjusteErro(null)
+    const num = (v: string) => lerNumero(v)
     const totalAtual = (data?.pagadores || []).reduce((acc, p) => acc + Number(p.valor_total || 0), 0)
     const valor = valorEdit.trim() ? num(valorEdit) : NaN
     const pagadores = pagadoresEdit
@@ -214,7 +219,7 @@ export default function NfsePreviewDialog({
     if (ajustes.pagadores) {
       const soma = ajustes.pagadores.reduce((acc, p) => acc + p.percentual, 0)
       if (Math.abs(soma - 100) > 0.01) {
-        setError(`Os percentuais dos pagadores somam ${soma.toFixed(2)}%. Ajuste para 100% antes de emitir.`)
+        setAjusteErro(`Os percentuais dos pagadores somam ${soma.toFixed(2)}%. Ajuste para 100% antes de emitir.`)
         return
       }
     }
@@ -757,7 +762,7 @@ export default function NfsePreviewDialog({
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-ink-mute">
                       Pagadores — os percentuais precisam somar 100%
-                      {pagadoresEdit.length > 0 ? ` (hoje: ${pagadoresEdit.reduce((a, p) => a + (Number(p.percentual.replace(',', '.')) || 0), 0).toFixed(2)}%)` : ''}
+                      {pagadoresEdit.length > 0 ? ` (hoje: ${pagadoresEdit.reduce((a, p) => a + (lerNumero(p.percentual) || 0), 0).toFixed(2)}%)` : ''}
                     </span>
                     <Button
                       size="sm"
@@ -795,6 +800,9 @@ export default function NfsePreviewDialog({
                   ))}
                 </div>
 
+                {ajusteErro ? (
+                  <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{ajusteErro}</p>
+                ) : null}
                 <label className="flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={salvarNoContrato} onChange={(e) => setSalvarNoContrato(e.target.checked)} />
                   Salvar também no contrato (vale para as próximas faturas)
