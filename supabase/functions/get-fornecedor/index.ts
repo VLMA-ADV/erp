@@ -63,16 +63,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: fornecedor, error: fetchError } = await supabase
-      .schema("operations")
-      .from("fornecedores")
-      .select("*")
-      .eq("id", id)
-      .eq("tenant_id", tenantUser.tenant_id)
-      .single();
+    const { data: fornecedor, error: getError } = await supabase.rpc("fornecedor_obter", {
+      p_user_id: user.id,
+      p_id: id,
+    });
 
-    if (fetchError || !fornecedor) {
-      return new Response(JSON.stringify({ error: "Fornecedor não encontrado" }), {
+    if (getError || !fornecedor) {
+      return new Response(JSON.stringify({ error: getError?.message || "Fornecedor não encontrado" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
