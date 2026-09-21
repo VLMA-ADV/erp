@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
+import { assinarFotos } from "../_shared/fotos.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -135,6 +136,22 @@ Deno.serve(async (req) => {
     const normalizedData = Array.isArray(data)
       ? data.map((item) => normalizeRevisaoFaturaItem(item))
       : []
+
+    // A RPC devolve enviado_por_foto/revisor_foto/aprovador_foto como o
+    // foto_url cru (path no bucket privado). Troca por signed URL em lote;
+    // o que não assinar fica como veio.
+    const camposFoto = ["enviado_por_foto", "revisor_foto", "aprovador_foto"] as const
+    const rows = normalizedData.map((item) => toRecord(item)).filter(Boolean) as Record<string, unknown>[]
+    const fotosAssinadas = await assinarFotos(
+      supabase,
+      rows.flatMap((row) => camposFoto.map((c) => (typeof row[c] === "string" ? (row[c] as string) : null))),
+    )
+    for (const row of rows) {
+      for (const c of camposFoto) {
+        const v = row[c]
+        if (typeof v === "string" && fotosAssinadas.has(v)) row[c] = fotosAssinadas.get(v)
+      }
+    }
 
     return new Response(JSON.stringify({ data: normalizedData }), {
       status: 200,
