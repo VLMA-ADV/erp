@@ -117,6 +117,22 @@ Deno.serve(async (req) => {
     const contrato = url.searchParams.get("contrato") || null
     const caso = url.searchParams.get("caso") || null
 
+    // Competência (mês de faturamento) da aba aberta: "YYYY-MM" ou
+    // "YYYY-MM-DD". Vai como p_competencia = 1º dia do mês. Sem ela, a chamada
+    // é a de sempre (todos os meses) — a Composição depende disso.
+    const competenciaRaw = (url.searchParams.get("competencia") || "").trim()
+    let competencia: string | null = null
+    if (competenciaRaw) {
+      const m = competenciaRaw.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/)
+      if (!m) {
+        return new Response(JSON.stringify({ error: "competencia inválida: use YYYY-MM ou YYYY-MM-01" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
+      competencia = `${m[1]}-${m[2]}-01`
+    }
+
     const { data, error } = await supabase.rpc("get_revisao_fatura", {
       p_user_id: user.id,
       p_status: status,
@@ -124,6 +140,9 @@ Deno.serve(async (req) => {
       p_cliente: cliente,
       p_contrato: contrato,
       p_caso: caso,
+      // Só manda o parâmetro quando veio: assim a edge continua funcionando
+      // contra a assinatura antiga até a migração 20260922100000 subir.
+      ...(competencia ? { p_competencia: competencia } : {}),
     })
 
     if (error) {
