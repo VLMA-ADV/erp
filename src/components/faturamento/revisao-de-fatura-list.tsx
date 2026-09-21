@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, FileText, Layers, Loader2, Receipt, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, FileText, Layers, Loader2, Receipt, Send, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,26 @@ import { resumoValorHora } from '@/lib/utils/valor-hora'
 import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import AndamentoPorRegra, { etapaDoStatus, statusDaEtapa, linhaVazia, type AndamentoLinha, type EtapaKey, type FaturadoMes } from './andamento-por-regra'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
+import PostergadosList from './postergados-list'
+import {
+  competenciaAtual,
+  lerCompetenciaSalva,
+  normalizarCompetencia,
+  periodoDaCompetencia,
+  rotuloCompetencia,
+  salvarCompetencia,
+  somarMeses,
+} from '@/lib/faturamento/competencia'
+
+// Competência aberta (get_competencias_abertas): um mês com item pendente na
+// revisão ou item ainda na fila de liberação.
+interface CompetenciaAberta {
+  competencia: string
+  pendentes: number
+  naFila: number
+  valorPendente: number
+  valorNaFila: number
+}
 
 // Nota já emitida (finance.billing_notes), usada para "Ver NF"/"Cancelar NF"
 // na faixa do caso. Mesmo shape devolvido por get-notas-geradas.
@@ -87,6 +107,10 @@ interface RevisaoItem {
   timesheetValorHoraGravado: number
   snapshot: Record<string, unknown>
   historico: RevisaoHistoricoEntry[]
+  /** Competência de faturamento ('YYYY-MM-01') e o período que ela cobre. */
+  competencia: string
+  periodoInicio: string
+  periodoFim: string
 }
 
 interface CasoGroup {
@@ -149,9 +173,14 @@ interface DraftFields {
 }
 
 interface CaseMetrics {
+  /** Só itens reais (já liberados): é o que o cabeçalho e a faixa do caso somam. */
   totalHoras: number
   totalValor: number
   itemCount: number
+  /** Itens virtuais "Na fila" — mostrados à parte, em cinza, nunca somados aos reais. */
+  horasNaFila: number
+  valorNaFila: number
+  itensNaFila: number
   timesheetItems: RevisaoItem[]
   nonTimesheetItems: RevisaoItem[]
 }
@@ -346,10 +375,18 @@ function isReviewQueueStatus(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
 }
 
+// Item virtual da fila de liberação (get_fila_por_competencia): ainda não é
+// billing_item, o id começa com 'fila:' e a hora segue editável na origem até
+// ser liberada. Não passa por revisão/aprovação — só Liberar, Postergar, Excluir.
+function isFila(item: Pick<RevisaoItem, 'status'>) {
+  return item.status === 'na_fila'
+}
+
 // Aprovado permanece visível (pedido do Douglas) até o "Enviar para faturamento".
 // Faturado também permanece: a nota passa a ser emitida aqui mesmo (faixa do caso),
 // então o caso não pode sumir no instante da emissão — fica com o badge "Faturado".
 function isVisibleInReview(item: RevisaoItem) {
+  if (isFila(item)) return true
   if (isReviewQueueStatus(item.status)) return true
   if (item.status === 'faturado') return true
   if (item.status === 'aprovado') {
@@ -624,7 +661,7 @@ function parseSnapshotTimesheetRows(item: RevisaoItem): TimesheetRowDraft[] {
   // virou mensal.
   const vigente =
     item.origemTipo === 'timesheet' &&
-    (item.status === 'em_revisao' || item.status === 'em_aprovacao') &&
+    (item.status === 'em_revisao' || item.status === 'em_aprovacao' || isFila(item)) &&
     item.valorHoraAtual !== null && item.valorHoraAtual !== undefined && item.valorHoraAtual >= 0
       ? item.valorHoraAtual
       : null
@@ -736,19 +773,25 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
   const id = asString(pickFirstDefined(data.billing_item_id, data.item_id, data.id))
   if (!id) return null
   const snapshot = toObject(data.snapshot) || {}
+  const status = asString(data.status, 'em_revisao')
+  const origemTipo = asString(data.origem_tipo, '')
+  const origemId = asString(data.origem_id, '') || null
+  // Item da fila não tem timesheet_id próprio: a origem É o timesheet.
+  const timesheetId =
+    asString(data.timesheet_id) || (status === 'na_fila' && origemTipo === 'timesheet' ? origemId : null)
 
   const normalized: RevisaoItem = {
     id,
     contratoId: asString(data.contrato_id),
     casoId: asString(data.caso_id),
-    timesheetId: asString(data.timesheet_id) || null,
-    status: asString(data.status, 'em_revisao'),
+    timesheetId,
+    status,
     grupoId: (() => { const g = asString(data.grupo_id); return g || null })(),
     grupoTexto: (() => { const t = asString(data.grupo_texto); return t || null })(),
     grupoHoras: asOptionalNumber(data.grupo_horas) ?? null,
     grupoValor: asOptionalNumber(data.grupo_valor) ?? null,
-    origemTipo: asString(data.origem_tipo, ''),
-    origemId: asString(data.origem_id, '') || null,
+    origemTipo,
+    origemId,
     casoRegraCobranca: asString(pickFirstDefined(data.caso_regra_cobranca, snapshot.regra_cobranca), ''),
     revisoresModo: asString(data.revisores_modo, ''),
     timesheetDescricaoOriginal: asString(data.timesheet_descricao_original, ''),
@@ -787,6 +830,9 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     timesheetValorHoraGravado: asNumber(data.timesheet_valor_hora),
     snapshot,
     historico: normalizeHistorico(data.historico),
+    competencia: normalizarCompetencia(data.competencia) || '',
+    periodoInicio: normalizeDateInput(asString(data.periodo_inicio)),
+    periodoFim: normalizeDateInput(asString(data.periodo_fim)),
   }
 
   // Valor/hora VIGENTE da regra do caso: itens ainda pendentes refletem a
@@ -800,7 +846,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
   // preco) mantem o valor do timesheet.
   if (
     normalized.origemTipo === 'timesheet' &&
-    (normalized.status === 'em_revisao' || normalized.status === 'em_aprovacao') &&
+    (normalized.status === 'em_revisao' || normalized.status === 'em_aprovacao' || isFila(normalized)) &&
     normalized.valorHoraAtual !== null &&
     normalized.valorHoraAtual >= 0
   ) {
@@ -905,16 +951,31 @@ function getCaseBaseMetrics(casoGroup: CasoGroup): CaseMetrics {
     return acc + getEffectiveItemValue(item)
   }
 
+  // "Na fila" fica fora da soma real: ainda não foi liberado, então não é
+  // valor da fatura — é o que AINDA PODE entrar nela. Vai em campo próprio.
+  const reaisNaoTimesheet = nonTimesheetItems.filter((item) => !isFila(item))
+  const reaisTimesheet = timesheetItems.filter((item) => !isFila(item))
+  const fila = casoGroup.itens.filter(isFila)
+
   return {
-    totalHoras: nonTimesheetItems.reduce(somaHoras, 0) + timesheetItems.reduce(somaHoras, 0),
-    totalValor: nonTimesheetItems.reduce(somaValor, 0) + timesheetItems.reduce(somaValor, 0),
-    itemCount: nonTimesheetItems.length + timesheetItems.length,
+    totalHoras: reaisNaoTimesheet.reduce(somaHoras, 0) + reaisTimesheet.reduce(somaHoras, 0),
+    totalValor: reaisNaoTimesheet.reduce(somaValor, 0) + reaisTimesheet.reduce(somaValor, 0),
+    itemCount: reaisNaoTimesheet.length + reaisTimesheet.length,
+    horasNaFila: fila.reduce((acc, item) => acc + getEffectiveItemHours(item), 0),
+    valorNaFila: fila.reduce((acc, item) => acc + getEffectiveItemValue(item), 0),
+    itensNaFila: fila.length,
     timesheetItems,
     nonTimesheetItems,
   }
 }
 
-export default function RevisaoDeFaturaList() {
+interface RevisaoDeFaturaListProps {
+  /** Avisa a página quando a aba de competência muda (o "Gerar faturamento do
+   *  mês" usa o mesmo mês). Chamado também na restauração inicial. */
+  onCompetenciaChange?: (competencia: string) => void
+}
+
+export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFaturaListProps = {}) {
   const { success, error: toastError } = useToast()
   const { hasPermission } = usePermissionsContext()
   const [loading, setLoading] = useState(true)
@@ -927,8 +988,21 @@ export default function RevisaoDeFaturaList() {
   const [usuario, setUsuario] = useState('')
   // Situacao do item: o Filipe pediu (08/09) um filtro de "casos ja aprovados"
   // para a gestao dos proximos dias. Filtra aqui, sem ida ao servidor.
-  const [situacao, setSituacao] = useState<'' | 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'>('')
+  const [situacao, setSituacao] = useState<'' | 'na_fila' | 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'>('')
   const [caso, setCaso] = useState('')
+  // Abas por mês de FATURAMENTO (competência: hora de agosto = competência
+  // setembro). A fila de liberação (antiga etapa 1) mora aqui dentro como a
+  // etapa "Na fila", calculada ao vivo pela RPC — nada persistido até liberar.
+  const [competencia, setCompetenciaState] = useState(competenciaAtual())
+  const [competencias, setCompetencias] = useState<CompetenciaAberta[]>([])
+  // Só carrega itens depois de saber qual aba restaurar: evita buscar o mês
+  // corrente e logo em seguida o mês salvo.
+  const [competenciaPronta, setCompetenciaPronta] = useState(false)
+  const userIdRef = useRef<string | null>(null)
+  const [liberandoCasoId, setLiberandoCasoId] = useState<string | null>(null)
+  // "Postergados" era uma aba da tela antiga; aqui é um painel inline.
+  const [postergadosAberto, setPostergadosAberto] = useState(false)
+  const [postergadosCount, setPostergadosCount] = useState<number | null>(null)
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
   const [ruleFilter, setRuleFilter] = useState<RuleFilterKey>('all')
@@ -1045,7 +1119,12 @@ export default function RevisaoDeFaturaList() {
     }))
   }
 
+  // Sequência da última carga: trocar de aba rápido não pode deixar a resposta
+  // do mês anterior chegar depois e sobrescrever a do mês escolhido.
+  const loadSeq = useRef(0)
+
   const loadItems = async (options?: { silent?: boolean }) => {
+    const seq = ++loadSeq.current
     try {
       if (!options?.silent) setLoading(true)
       setError(null)
@@ -1055,31 +1134,65 @@ export default function RevisaoDeFaturaList() {
       const params = new URLSearchParams()
       if (cliente.trim()) params.set('cliente', cliente.trim())
       if (caso.trim()) params.set('caso', caso.trim())
+      params.set('competencia', competencia.slice(0, 7))
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura${params.toString() ? `?${params}` : ''}`,
-        {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
+      // Fila de liberação da competência, em paralelo com os itens reais. Se a
+      // RPC não existir ou falhar, a tela segue sem linhas "Na fila" — sem erro
+      // na tela, só aviso no console.
+      const filaPromise = (async (): Promise<unknown[]> => {
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) return []
+          const { data, error: rpcError } = await supabase.rpc('get_fila_por_competencia', {
+            p_user_id: user.id,
+            p_competencia: competencia,
+          })
+          if (rpcError) throw rpcError
+          return Array.isArray(data) ? data : []
+        } catch (filaError) {
+          console.warn('get_fila_por_competencia indisponível — sem linhas "Na fila"', filaError)
+          return []
+        }
+      })()
+
+      const [response, filaRaw] = await Promise.all([
+        fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura${params.toString() ? `?${params}` : ''}`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
           },
-        },
-      )
+        ),
+        filaPromise,
+      ])
 
       const payload = await response.json().catch(() => ({}))
+      if (seq !== loadSeq.current) return
       if (!response.ok) {
         setError(payload.error || 'Erro ao carregar revisão de fatura')
         setItems([])
         return
       }
 
-      const parsed: RevisaoItem[] = Array.isArray(payload.data)
+      const reais: RevisaoItem[] = Array.isArray(payload.data)
         ? payload.data
             .map((entry: unknown) => normalizeItem(entry))
             .filter((entry: RevisaoItem | null): entry is RevisaoItem => entry !== null && isVisibleInReview(entry))
         : []
+      // A RPC da fila não recebe os filtros de cliente/caso da edge; aplica aqui.
+      const clienteFiltro = cliente.trim()
+      const casoFiltro = caso.trim()
+      const fila: RevisaoItem[] = filaRaw
+        .map((entry) => normalizeItem(entry))
+        .filter((entry): entry is RevisaoItem => entry !== null && isFila(entry))
+        .filter((entry) => !clienteFiltro || entry.clienteNome === clienteFiltro)
+        .filter((entry) => !casoFiltro || entry.casoNome === casoFiltro)
+      const parsed: RevisaoItem[] = [...reais, ...fila]
 
       setItems(parsed)
       setSelectedItemIds((prev) => prev.filter((id) => parsed.some((item) => item.id === id)))
@@ -1108,11 +1221,95 @@ export default function RevisaoDeFaturaList() {
       }
       setDrafts(nextDrafts)
     } catch (loadError) {
+      if (seq !== loadSeq.current) return
       console.error(loadError)
       setError('Erro ao carregar revisão de fatura')
       setItems([])
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
+    }
+  }
+
+  // Competências com item pendente ou fila. Se a RPC falhar, fica só a aba do
+  // mês corrente (mais o seguinte) — a lista continua funcionando como antes.
+  const loadCompetencias = async (restaurarSalva: boolean) => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      userIdRef.current = user.id
+      const { data, error: rpcError } = await supabase.rpc('get_competencias_abertas', { p_user_id: user.id })
+      if (rpcError) throw rpcError
+      const lista: CompetenciaAberta[] = (Array.isArray(data) ? data : [])
+        .map((entry) => {
+          const row = toObject(entry)
+          const comp = normalizarCompetencia(row?.competencia)
+          if (!row || !comp) return null
+          return {
+            competencia: comp,
+            pendentes: asNumber(row.pendentes),
+            naFila: asNumber(row.na_fila),
+            valorPendente: asNumber(row.valor_pendente),
+            valorNaFila: asNumber(row.valor_na_fila),
+          }
+        })
+        .filter((entry): entry is CompetenciaAberta => entry !== null)
+      setCompetencias(lista)
+      if (restaurarSalva) {
+        const salva = lerCompetenciaSalva(user.id)
+        if (salva) setCompetenciaState(salva)
+      }
+    } catch (compError) {
+      console.warn('get_competencias_abertas indisponível — só o mês corrente', compError)
+      setCompetencias([])
+    } finally {
+      setCompetenciaPronta(true)
+    }
+  }
+
+  const escolherCompetencia = (next: string) => {
+    const comp = normalizarCompetencia(next)
+    if (!comp || comp === competencia) return
+    setCompetenciaState(comp)
+    setSelectedItemIds([])
+    if (userIdRef.current) salvarCompetencia(userIdRef.current, comp)
+  }
+
+  useEffect(() => {
+    onCompetenciaChange?.(competencia)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [competencia])
+
+  // Abas: as competências abertas + o mês corrente + o mês seguinte, em ordem
+  // cronológica. A aba escolhida entra mesmo que a RPC não a liste.
+  const abasCompetencia = useMemo(() => {
+    const atual = competenciaAtual()
+    const chaves = new Set<string>([atual, somarMeses(atual, 1), competencia, ...competencias.map((c) => c.competencia)])
+    return Array.from(chaves)
+      .sort()
+      .map((comp) => {
+        const info = competencias.find((c) => c.competencia === comp)
+        return {
+          competencia: comp,
+          esteMes: comp === atual,
+          pendentes: info?.pendentes ?? 0,
+          naFila: info?.naFila ?? 0,
+        }
+      })
+  }, [competencias, competencia])
+
+  // Conta os postergados para o botão "Postergados (N)"; a lista em si é o
+  // PostergadosList, que se carrega sozinho quando aberto.
+  const loadPostergadosCount = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: rpcError } = await supabase.rpc('get_faturamento_postergados', { p_user_id: user.id })
+      if (rpcError) { setPostergadosCount(null); return }
+      setPostergadosCount(Array.isArray(data) ? data.length : 0)
+    } catch {
+      setPostergadosCount(null)
     }
   }
 
@@ -1248,28 +1445,44 @@ export default function RevisaoDeFaturaList() {
 
   useEffect(() => {
     if (!canRead) return
-    void loadItems()
+    void loadCompetencias(true)
+    void loadPostergadosCount()
     void loadAllContratos()
     void loadColaboradores()
     void loadPodeEmitirNfse()
     void loadNotasEmitidas()
-    // O painel de andamento agora abre com a tela: a coluna "Faturado no mês"
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRead])
+
+  // Itens e "Faturado no mês" seguem a aba: recarregam a cada troca de
+  // competência (e uma vez na abertura, depois de restaurar a aba salva).
+  useEffect(() => {
+    if (!canRead || !competenciaPronta) return
+    void loadItems()
+    // O painel de andamento abre com a tela: a coluna "Faturado no mês"
     // precisa do banco desde o início, não só quando abrem os Indicadores.
     void loadFaturadoMes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRead])
+  }, [canRead, competenciaPronta, competencia])
 
   // A grid reflete envios/revisões de outros usuários sem depender de F5:
   // refetch silencioso ao focar a janela + polling a cada 60s.
   const loadItemsRef = useRef<(options?: { silent?: boolean }) => Promise<void>>()
   loadItemsRef.current = loadItems
+  const loadCompetenciasRef = useRef<(restaurarSalva: boolean) => Promise<void>>()
+  loadCompetenciasRef.current = loadCompetencias
   useEffect(() => {
     if (!canRead) return
     const refresh = () => {
       if (document.visibilityState === 'visible') void loadItemsRef.current?.({ silent: true })
     }
-    // Refetch imediato quando o "Gerar faturamento do mês" (no topo desta tela) roda.
-    const onGerado = () => void loadItemsRef.current?.({ silent: true })
+    // Refetch imediato quando o "Gerar faturamento do mês" (no topo desta tela)
+    // roda — ou quando alguém libera/posterga da fila, que dispara o mesmo
+    // evento. Os badges das abas também mudam, então recarregam junto.
+    const onGerado = () => {
+      void loadItemsRef.current?.({ silent: true })
+      void loadCompetenciasRef.current?.(false)
+    }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     window.addEventListener('faturamento:gerado', onGerado)
@@ -1295,9 +1508,10 @@ export default function RevisaoDeFaturaList() {
   }, [items, ruleFilter, centroCusto, usuario, situacao])
 
   const statusSummary = useMemo(() => {
-    const counts = { revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
+    const counts = { naFila: 0, revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
     for (const item of visibleItems) {
-      if (item.status === 'em_revisao') counts.revisao += 1
+      if (item.status === 'na_fila') counts.naFila += 1
+      else if (item.status === 'em_revisao') counts.revisao += 1
       else if (item.status === 'em_aprovacao') counts.aprovacao += 1
       else if (item.status === 'aprovado') counts.aprovado += 1
       else if (item.status === 'faturado') counts.faturado += 1
@@ -1443,15 +1657,21 @@ export default function RevisaoDeFaturaList() {
       return getLiveItemValue(item, modo)
     }
 
-    const timesheetHours = baseMetrics.timesheetItems.reduce((acc, item) => acc + horasDoItem(item, 'timesheet'), 0)
-    const timesheetValue = baseMetrics.timesheetItems.reduce((acc, item) => acc + valorDoItem(item, 'timesheet'), 0)
-    const nonTimesheetHours = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + horasDoItem(item, 'default'), 0)
-    const nonTimesheetValue = baseMetrics.nonTimesheetItems.reduce((acc, item) => acc + valorDoItem(item, 'default'), 0)
+    // Item da fila não tem rascunho: o que vale é o que a RPC calculou agora.
+    const reaisTimesheet = baseMetrics.timesheetItems.filter((item) => !isFila(item))
+    const reaisNaoTimesheet = baseMetrics.nonTimesheetItems.filter((item) => !isFila(item))
+    const timesheetHours = reaisTimesheet.reduce((acc, item) => acc + horasDoItem(item, 'timesheet'), 0)
+    const timesheetValue = reaisTimesheet.reduce((acc, item) => acc + valorDoItem(item, 'timesheet'), 0)
+    const nonTimesheetHours = reaisNaoTimesheet.reduce((acc, item) => acc + horasDoItem(item, 'default'), 0)
+    const nonTimesheetValue = reaisNaoTimesheet.reduce((acc, item) => acc + valorDoItem(item, 'default'), 0)
 
     return {
       totalHoras: nonTimesheetHours + timesheetHours,
       totalValor: nonTimesheetValue + timesheetValue,
       itemCount: baseMetrics.itemCount,
+      horasNaFila: baseMetrics.horasNaFila,
+      valorNaFila: baseMetrics.valorNaFila,
+      itensNaFila: baseMetrics.itensNaFila,
       timesheetItems: baseMetrics.timesheetItems,
       nonTimesheetItems: baseMetrics.nonTimesheetItems,
     }
@@ -1511,7 +1731,8 @@ export default function RevisaoDeFaturaList() {
   }, [])
 
   const [faturadoMes, setFaturadoMes] = useState<FaturadoMes[] | null>(null)
-  const mesAtualLabel = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+  // Rótulo e mês da coluna "Faturado no mês" seguem a aba, não o calendário.
+  const mesAtualLabel = new Date(`${competencia}T12:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
   const loadFaturadoMes = async () => {
     try {
       const supabase = createClient()
@@ -1519,7 +1740,7 @@ export default function RevisaoDeFaturaList() {
       if (!user) return
       const { data, error: rpcError } = await supabase.rpc('get_faturado_mes_por_regra', {
         p_user_id: user.id,
-        p_mes: new Date().toISOString().slice(0, 7) + '-01',
+        p_mes: competencia,
       })
       // RPC ausente ou sem acesso: a coluna mostra '—' em vez de zero falso.
       if (rpcError) { setFaturadoMes(null); return }
@@ -1619,10 +1840,12 @@ export default function RevisaoDeFaturaList() {
           acc.horas += metrics.totalHoras
           acc.valor += metrics.totalValor
           acc.itens += metrics.itemCount
+          acc.valorNaFila += metrics.valorNaFila
+          acc.itensNaFila += metrics.itensNaFila
         }
         return acc
       },
-      { horas: 0, valor: 0, itens: 0 },
+      { horas: 0, valor: 0, itens: 0, valorNaFila: 0, itensNaFila: 0 },
     )
   }, [tree, getLiveCaseMetrics])
 
@@ -2003,7 +2226,7 @@ export default function RevisaoDeFaturaList() {
     let ok = 0
     for (const id of ids) {
       const item = items.find((entry) => entry.id === id)
-      if (item?.timesheetId) {
+      if (item && (item.timesheetId || isFila(item))) {
         const done = await postergarItem(item, postergarData || undefined)
         if (done) ok += 1
       }
@@ -2193,26 +2416,154 @@ export default function RevisaoDeFaturaList() {
       const proximoMes = targetDateIso ? new Date(`${targetDateIso}T12:00:00`) : getNextBillingPeriodDate(item)
       const periodoFaturamento = proximoMes.toISOString().slice(0, 10)
 
+      // Item da fila (ainda nao liberado): mesmas RPCs da antiga etapa 1. Hora
+      // grava periodo_faturamento no timesheet; regra (mensalidade, projeto,
+      // parcela) nao e linha de tabela nenhuma e vai por
+      // finance.faturamento_adiamentos, com a competencia da aba — e de la
+      // que ela esta saindo.
+      const postergarNaFila = async () => {
+        if (item.origemTipo === 'timesheet') {
+          return supabase.rpc('postergar_timesheet', {
+            p_user_id: user.id,
+            p_timesheet_id: item.origemId,
+            p_periodo: periodoFaturamento,
+          })
+        }
+        return supabase.rpc('postergar_item_regra', {
+          p_user_id: user.id,
+          p_caso_id: item.casoId,
+          p_origem_id: item.origemId,
+          p_item_tipo: getRuleKind(item) || (item.casoRegraCobranca || '').trim().toLowerCase() || item.origemTipo,
+          p_competencia: competencia,
+          p_periodo: periodoFaturamento,
+          p_valor: getEffectiveItemValue(item),
+          p_descricao: item.timesheetDescricao || item.regraNome || 'Item de faturamento',
+          p_data_referencia: normalizeDateFromDisplay(item.dataReferencia || '') || null,
+        })
+      }
+
       // postergar_timesheet cancela o billing_item atual (este item, ja em
       // em_revisao) e grava o novo periodo — o item sai daqui e reaparece na
       // fila de "A liberar" do mes escolhido.
-      const { error } = await supabase.rpc('postergar_timesheet', {
-        p_user_id: user.id,
-        p_timesheet_id: item.timesheetId,
-        p_periodo: periodoFaturamento,
-      })
+      const { error } = isFila(item)
+        ? await postergarNaFila()
+        : await supabase.rpc('postergar_timesheet', {
+            p_user_id: user.id,
+            p_timesheet_id: item.timesheetId,
+            p_periodo: periodoFaturamento,
+          })
       if (error) {
         toastError(error.message || 'Erro ao postergar item')
         return false
       }
 
       success(`Item postergado para ${proximoMes.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}.`)
-      await loadItems()
+      if (isFila(item)) aposMexerNaFila()
+      else await loadItems()
       return true
     } catch (postergarError) {
       console.error(postergarError)
       toastError('Erro ao postergar item')
       return false
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  // ---- Etapa "Na fila" (antiga etapa 1, agora dentro da Revisão) ----
+
+  // Depois de liberar/postergar/excluir da fila: o mesmo evento que o "Gerar
+  // faturamento do mês" dispara recarrega itens e abas (listener acima).
+  const aposMexerNaFila = () => {
+    void loadPostergadosCount()
+    window.dispatchEvent(new Event('faturamento:gerado'))
+  }
+
+  // Liberar é POR CASO, como na etapa 1: start-faturamento com o mês inteiro
+  // da aba (1º ao último dia) — a idempotência do gerador compara o período
+  // exato, então nunca mandar um recorte.
+  const liberarCaso = async (casoId: string, label: string) => {
+    if (!window.confirm(`Liberar para revisão os lançamentos na fila de ${label}?\n\n${rotuloCompetencia(competencia)}.`)) return
+    try {
+      setLiberandoCasoId(casoId)
+      const accessToken = await getSessionToken()
+      if (!accessToken) { toastError('Sessão expirada — faça login novamente.'); return }
+      const periodo = periodoDaCompetencia(competencia)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data_inicio: periodo.inicio,
+          data_fim: periodo.fim,
+          alvo_tipo: 'caso',
+          alvo_id: casoId,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const msg = String(payload.error || '')
+        // "Nenhum item elegível" não é falha: o caso já foi liberado por outra
+        // pessoa, ou a despesa é não reembolsável (não é cobrada do cliente).
+        if (/nenhum item eleg|nenhuma despesa eleg/i.test(msg)) {
+          toastError('Nada a liberar neste caso: já foi liberado, ou a despesa está marcada como não reembolsável.')
+          aposMexerNaFila()
+          return
+        }
+        toastError(msg || `Erro ao liberar ${label} para revisão`)
+        return
+      }
+      const created = Number(payload?.data?.itens_criados || 0)
+      const batchNumber = payload?.data?.batch_numero
+      success(
+        batchNumber
+          ? `${label} liberado para revisão no lote #${batchNumber} (${created} itens).`
+          : `${label} liberado para revisão (${created} itens).`,
+      )
+      setSelectedItemIds((prev) => prev.filter((id) => !id.startsWith('fila:')))
+      aposMexerNaFila()
+    } catch (liberarError) {
+      console.error(liberarError)
+      toastError(`Erro ao liberar ${label} para revisão`)
+    } finally {
+      setLiberandoCasoId(null)
+    }
+  }
+
+  // Excluir da fila: só hora. O timesheet continua existindo (conta para a
+  // pessoa e para os relatórios); só some da fila de faturamento.
+  const excluirDaFila = async (item: RevisaoItem) => {
+    if (item.origemTipo !== 'timesheet' || !item.origemId) {
+      toastError('Só lançamento de hora pode ser excluído da fila.')
+      return
+    }
+    if (!window.confirm(
+      'Excluir este lançamento da fila de faturamento?\n\n' +
+      'O timesheet continua existindo — as horas seguem contando para a pessoa e para os relatórios. ' +
+      'Só some da fila; pode ser revertido depois se precisar.',
+    )) return
+    try {
+      setBusyKey(`excluir-fila:${item.id}`)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: rpcError } = await supabase.rpc('excluir_timesheets_do_faturamento', {
+        p_user_id: user.id,
+        p_ids: [item.origemId],
+        p_excluir: true,
+        p_motivo: null,
+      })
+      if (rpcError) throw rpcError
+      const afetados = Number((data as { afetados?: number })?.afetados || 0)
+      if (afetados > 0) success('Lançamento excluído da fila de faturamento.')
+      else toastError('O lançamento não foi excluído (já pode ter sido liberado).')
+      setSelectedItemIds((prev) => prev.filter((id) => id !== item.id))
+      aposMexerNaFila()
+    } catch (excluirError) {
+      console.error(excluirError)
+      toastError('Erro ao excluir da fila de faturamento')
     } finally {
       setBusyKey(null)
     }
@@ -2234,6 +2585,43 @@ export default function RevisaoDeFaturaList() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      {/* Abas por mês de FATURAMENTO. Uma por competência com item pendente ou
+          na fila, mais o mês corrente e o seguinte. Tudo abaixo (abas de regra,
+          filtros, painel, lista, "Gerar faturamento do mês") é da aba ativa. */}
+      <div className="flex flex-wrap items-end gap-1 border-b border-hairline" role="tablist" aria-label="Mês de faturamento">
+        {abasCompetencia.map((aba) => {
+          const ativa = aba.competencia === competencia
+          return (
+            <button
+              key={aba.competencia}
+              type="button"
+              role="tab"
+              aria-selected={ativa}
+              onClick={() => escolherCompetencia(aba.competencia)}
+              className={`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition-colors ${
+                ativa ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-mute hover:text-ink-secondary'
+              }`}
+            >
+              <span>
+                {rotuloCompetencia(aba.competencia)}
+                {aba.esteMes ? <span className="ml-1 text-[11px] font-normal text-ink-mute">· este mês</span> : null}
+              </span>
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${aba.pendentes > 0 ? 'bg-amber-100 text-amber-800' : 'bg-canvas-soft text-ink-mute'}`}
+                title="Itens pendentes na revisão"
+              >
+                {aba.pendentes}
+              </span>
+              {aba.naFila > 0 ? (
+                <span className="rounded-full bg-neutral-200 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700" title="Itens na fila, aguardando liberação">
+                  {aba.naFila} na fila
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
 
       {/* Mesma barra da fase "aguardando liberação" (pedido Filipe 07/08): as
           duas telas usavam estilos diferentes para a mesma coisa. Os contadores
@@ -2267,8 +2655,31 @@ export default function RevisaoDeFaturaList() {
           >
             Indicadores
           </button>
+          {/* "Postergados" era aba da tela antiga de itens a faturar; aqui abre
+              o mesmo painel inline. O contador vem da mesma RPC da lista. */}
+          <button
+            type="button"
+            onClick={() => setPostergadosAberto((prev) => !prev)}
+            className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm transition-colors ${
+              postergadosAberto ? 'bg-ink text-white' : 'text-ink-mute hover:text-ink-secondary'
+            }`}
+          >
+            Postergados{postergadosCount !== null ? ` (${postergadosCount})` : ''}
+          </button>
         </TabsList>
       </Tabs>
+
+      {postergadosAberto ? (
+        <div className="rounded-xl border bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-ink">Postergados</p>
+            <p className="text-[11px] text-ink-mute">
+              O que foi adiado na fila ou na revisão, com o mês de origem e o de destino. Hora adiada volta pela fila do mês de destino.
+            </p>
+          </div>
+          <PostergadosList />
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-5">
         <div className="space-y-1">
@@ -2325,6 +2736,7 @@ export default function RevisaoDeFaturaList() {
             onValueChange={(value) => setSituacao(value as typeof situacao)}
             options={[
               { value: '', label: 'Todas as situações' },
+              { value: 'na_fila', label: 'Na fila (aguardando liberação)' },
               { value: 'em_revisao', label: 'Liberados (aguardando revisão)' },
               { value: 'em_aprovacao', label: 'Revisados (aguardando aprovação)' },
               { value: 'aprovado', label: 'Aprovados' },
@@ -2351,6 +2763,7 @@ export default function RevisaoDeFaturaList() {
             Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
           </span>
           <span>
+            {statusSummary.naFila > 0 ? `${statusSummary.naFila} na fila · ` : null}
             {statusSummary.revisao} liberado(s) · {statusSummary.aprovacao} revisado(s) · {statusSummary.aprovado} aprovado(s)
             {statusSummary.faturado > 0 ? ` · ${statusSummary.faturado} faturado(s)` : null}
           </span>
@@ -2368,7 +2781,7 @@ export default function RevisaoDeFaturaList() {
               const base = (selectedItemIds.length > 0
                 ? visibleItems.filter((item) => selectedItemIds.includes(item.id))
                 : visibleItems
-              ).filter((item) => item.origemTipo !== 'despesa')
+              ).filter((item) => item.origemTipo !== 'despesa' && !isFila(item))
               openTimesheetReport({
                 titulo: selectedItemIds.length > 0
                   ? 'Prévia de faturamento — lançamentos selecionados'
@@ -2394,7 +2807,15 @@ export default function RevisaoDeFaturaList() {
           <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
             {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
           </Button>
-          <div className="font-semibold font-tabular">{formatMoney(totals.valor)}</div>
+          <div className="font-semibold font-tabular">
+            {formatMoney(totals.valor)}
+            {/* Fila não soma: ainda não é fatura. Fica ao lado, em cinza. */}
+            {totals.itensNaFila > 0 ? (
+              <span className="ml-2 text-xs font-normal text-ink-mute" title={`${totals.itensNaFila} item(ns) aguardando liberação`}>
+                + {formatMoney(totals.valorNaFila)} na fila
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -2524,7 +2945,7 @@ export default function RevisaoDeFaturaList() {
         </div>
       ) : tree.length === 0 ? (
         <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">
-          Nenhum item em revisão encontrado para os filtros informados.
+          Nenhum item em revisão nem na fila para {rotuloCompetencia(competencia).toLowerCase()} com os filtros informados.
         </div>
       ) : (
         <div className="space-y-5">
@@ -2594,7 +3015,7 @@ export default function RevisaoDeFaturaList() {
                         .flatMap((casoGroup) =>
                           getReviewRows(casoGroup)
                             .map((row) => row.item)
-                            .filter((it) => it.contratoId === contratoId && it.origemTipo !== 'despesa')
+                            .filter((it) => it.contratoId === contratoId && it.origemTipo !== 'despesa' && !isFila(it))
                             // Uma linha por grupo: quando os lançamentos foram
                             // agrupados, é o texto do grupo que vai ao cliente.
                             .filter((it, _i, todos) =>
@@ -2652,9 +3073,18 @@ export default function RevisaoDeFaturaList() {
                         if (!liderDoGrupo.has(item.grupoId)) liderDoGrupo.set(item.grupoId, item.id)
                         tamanhoDoGrupo.set(item.grupoId, (tamanhoDoGrupo.get(item.grupoId) || 0) + 1)
                       }
+                      // Itens reais (revisão/aprovação) e itens da fila são selecionáveis,
+                      // mas em listas separadas: os botões de revisão só recebem os reais
+                      // e "Liberar" só faz sentido com os da fila.
                       const caseRowIds = reviewRows.filter((row) => canAdvance(row.item.status) || row.item.status === 'aprovado').map((row) => row.item.id)
-                      const allSelected = caseRowIds.length > 0 && caseRowIds.every((id) => selectedItemIds.includes(id))
+                      const filaRowIds = reviewRows.filter((row) => isFila(row.item)).map((row) => row.item.id)
+                      const todosSelecionaveis = [...caseRowIds, ...filaRowIds]
+                      const allSelected = todosSelecionaveis.length > 0 && todosSelecionaveis.every((id) => selectedItemIds.includes(id))
                       const selectedIds = caseRowIds.filter((id) => selectedItemIds.includes(id))
+                      const selectedFilaIds = filaRowIds.filter((id) => selectedItemIds.includes(id))
+                      const casoIdLiberar = casoGroup.itens.find((item) => isFila(item))?.casoId || casoGroup.itens[0]?.casoId || ''
+                      const casoLabel = `${casoGroup.numero ? `${casoGroup.numero} - ` : ''}${casoGroup.nome}`
+                      const liberandoEsteCaso = liberandoCasoId !== null && liberandoCasoId === casoIdLiberar
                       const batchKey = `batch:${clienteGroup.key}:${casoGroup.key}`
                       // O CasoGroup não carrega o contrato; ele vem dos itens. A NFS-e é
                       // emitida por contrato, então é esse id que vai para a prévia/emissão.
@@ -2665,7 +3095,8 @@ export default function RevisaoDeFaturaList() {
                         casoGroup.itens[0]?.contratoNome,
                       ).full
                       // Despesas do caso alimentam a nota de despesa (não geram NFS-e).
-                      const despesasDoCaso = casoGroup.itens.filter((item) => item.origemTipo === 'despesa')
+                      // Despesa ainda na fila fica de fora: não foi liberada.
+                      const despesasDoCaso = casoGroup.itens.filter((item) => item.origemTipo === 'despesa' && !isFila(item))
 
                       return (
                         <div key={casoGroup.key} className="rounded-xl border border-hairline">
@@ -2684,6 +3115,7 @@ export default function RevisaoDeFaturaList() {
                                   </p>
                                   <p className="text-xs text-ink-mute">
                                     {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)}
+                                    {caseMetrics.itensNaFila > 0 ? ` · ${caseMetrics.itensNaFila} na fila` : ''}
                                     {/* Valor/hora dos lançamentos do caso (D9=c): faixa quando há
                                         tabela por cargo; caso mensal (tudo zero) não mostra nada. */}
                                     {(() => {
@@ -2708,13 +3140,28 @@ export default function RevisaoDeFaturaList() {
                                       const checked = event.target.checked
                                       setSelectedItemIds((prev) =>
                                         checked
-                                          ? Array.from(new Set([...prev, ...caseRowIds]))
-                                          : prev.filter((id) => !caseRowIds.includes(id)),
+                                          ? Array.from(new Set([...prev, ...todosSelecionaveis]))
+                                          : prev.filter((id) => !todosSelecionaveis.includes(id)),
                                       )
                                     }}
                                   />
                                   Selecionar todos
                                 </label>
+                                {/* Liberar é por caso (start-faturamento não recebe ids): com
+                                    seleção na fila o botão diz "selecionados", mas o title
+                                    avisa que vai o caso inteiro. */}
+                                {filaRowIds.length > 0 && casoIdLiberar ? (
+                                  <Button
+                                    size="sm"
+                                    className="bg-ink text-white hover:bg-ink/90"
+                                    onClick={() => void liberarCaso(casoIdLiberar, casoLabel)}
+                                    disabled={liberandoCasoId !== null || busyKey === batchKey}
+                                    title={`Libera para revisão os ${filaRowIds.length} lançamento(s) na fila deste caso (a liberação é por caso)`}
+                                  >
+                                    {liberandoEsteCaso ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
+                                    {selectedFilaIds.length > 0 ? `Liberar selecionados (${selectedFilaIds.length})` : `Liberar fila do caso (${filaRowIds.length})`}
+                                  </Button>
+                                ) : null}
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -2818,7 +3265,7 @@ export default function RevisaoDeFaturaList() {
                                     const base = (selectedIds.length > 0
                                       ? reviewRows.filter((row) => selectedIds.includes(row.item.id)).map((row) => row.item)
                                       : reviewRows.map((row) => row.item)
-                                    ).filter((it) => it.origemTipo !== 'despesa')
+                                    ).filter((it) => it.origemTipo !== 'despesa' && !isFila(it))
                                     openTimesheetReport({
                                       titulo: 'Prévia do relatório de timesheet',
                                       subtitulo: `${casoGroup.numero || ''} - ${casoGroup.nome || ''} · ${base.length} lançamento(s)`,
@@ -2937,7 +3384,12 @@ export default function RevisaoDeFaturaList() {
                                     ) : null}
                                   </>
                                 ) : null}
-                                <p className="text-sm font-semibold text-ink font-tabular">{formatMoney(caseMetrics.totalValor)}</p>
+                                <p className="text-sm font-semibold text-ink font-tabular">
+                                  {formatMoney(caseMetrics.totalValor)}
+                                  {caseMetrics.itensNaFila > 0 ? (
+                                    <span className="ml-2 text-xs font-normal text-ink-mute">+ {formatMoney(caseMetrics.valorNaFila)} na fila</span>
+                                  ) : null}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -2958,13 +3410,24 @@ export default function RevisaoDeFaturaList() {
                                 // Membro que nao lidera some enquanto o grupo estiver fechado.
                                 if (item.grupoId && !ehLider && !grupoAberto) return null
                                 const draft = drafts[item.id]
-                                const busy = busyKey === key || busyKey === `advance:${item.id}` || busyKey === batchKey || busyKey === `${mode}:${item.id}`
+                                const busy =
+                                  busyKey === key ||
+                                  busyKey === `advance:${item.id}` ||
+                                  busyKey === batchKey ||
+                                  busyKey === `${mode}:${item.id}` ||
+                                  busyKey === `excluir-fila:${item.id}` ||
+                                  liberandoEsteCaso
                                 const isEditing = editorKey === key
+                                // Linha "Na fila": mesmo layout, badge cinza, só a linha de envio
+                                // (sem etapas de revisão/aprovação) e ações Liberar/Postergar/Excluir.
+                                const naFila = isFila(item)
                                 // Linguagem de 4 badges (Fase 1): Liberado -> Revisado -> Aprovado -> Faturado.
                                 // Mapeia os estados atuais: em_revisao = liberado p/ revisão (laranja);
                                 // em_aprovacao = já revisado (verde); aprovado (roxo); faturado (branco).
                                 const badge =
-                                  item.status === 'em_revisao'
+                                  naFila
+                                    ? { label: 'Na fila', cls: 'bg-neutral-200 text-neutral-700' }
+                                    : item.status === 'em_revisao'
                                     ? { label: 'Liberado', cls: 'bg-amber-100 text-amber-800' }
                                     : item.status === 'em_aprovacao'
                                       ? { label: 'Revisado', cls: 'bg-emerald-100 text-emerald-700' }
@@ -3004,9 +3467,14 @@ export default function RevisaoDeFaturaList() {
                                               : prev.filter((id) => id !== item.id),
                                           )
                                         }
-                                        disabled={(!canAdvance(item.status) && item.status !== 'aprovado') || busy}
+                                        disabled={(!canAdvance(item.status) && item.status !== 'aprovado' && !naFila) || busy}
                                       />
                                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>{badge.label}</span>
+                                      {naFila ? (
+                                        <span className="text-[11px] text-ink-mute" title="Calculado agora a partir do lançamento; a hora segue editável na origem até ser liberada">
+                                          aguardando liberação
+                                        </span>
+                                      ) : null}
                                       {item.grupoId ? (
                                         <span
                                           className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700"
@@ -3154,6 +3622,8 @@ export default function RevisaoDeFaturaList() {
                                           <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
                                         </tr>
 
+                                        {naFila ? null : (
+                                        <>
                                         {/* REVISÃO */}
                                         <tr className="border-b bg-emerald-50/50 align-top">
                                           <td className="px-3 py-3">
@@ -3528,12 +3998,55 @@ export default function RevisaoDeFaturaList() {
                                             </td>
                                           </tr>
                                         ) : null}
+                                        </>
+                                        )}
                                       </tbody>
                                     </Table>
                                     </div>
 
                                     {/* bundle de ações do card (lado direito, como no mock) */}
                                     <div className="flex shrink-0 flex-row flex-wrap items-start gap-2 border-t border-hairline p-3 md:w-52 md:flex-col md:border-l md:border-t-0">
+                                      {naFila ? (
+                                        <>
+                                          <Button
+                                            size="sm"
+                                            className="w-full justify-start bg-ink text-white hover:bg-ink/90"
+                                            onClick={() => void liberarCaso(item.casoId, casoLabel)}
+                                            disabled={busy || liberandoCasoId !== null}
+                                            title="Libera para revisão todos os lançamentos na fila deste caso (a liberação é por caso)"
+                                          >
+                                            {liberandoEsteCaso ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
+                                            Liberar caso
+                                          </Button>
+                                          {item.origemTipo !== 'despesa' ? (
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="w-full justify-start text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
+                                              onClick={() => {
+                                                const base = getNextBillingPeriodDate(item)
+                                                setPostergarData(base.toISOString().slice(0, 10))
+                                                setPostergarConfirmId(item.id)
+                                              }}
+                                              disabled={busy}
+                                            >
+                                              <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
+                                            </Button>
+                                          ) : null}
+                                          {item.origemTipo === 'timesheet' ? (
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="w-full justify-start text-destructive hover:bg-destructive/5"
+                                              onClick={() => void excluirDaFila(item)}
+                                              disabled={busy}
+                                              title="Tira o lançamento da fila. O timesheet da pessoa continua intacto."
+                                            >
+                                              <Trash2 className="mr-1 h-3.5 w-3.5" /> Excluir da fila
+                                            </Button>
+                                          ) : null}
+                                        </>
+                                      ) : null}
                                       {item.status === 'em_revisao' ? (
                                         <>
                                           <Button
@@ -3608,18 +4121,20 @@ export default function RevisaoDeFaturaList() {
                                           <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
                                         </Button>
                                       ) : null}
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="w-full justify-start"
-                                        onClick={() => {
-                                          setTransferCasoId('')
-                                          setTransferItemId(item.id)
-                                        }}
-                                        disabled={busy}
-                                      >
-                                        <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir caso
-                                      </Button>
+                                      {naFila ? null : (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start"
+                                          onClick={() => {
+                                            setTransferCasoId('')
+                                            setTransferItemId(item.id)
+                                          }}
+                                          disabled={busy}
+                                        >
+                                          <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir caso
+                                        </Button>
+                                      )}
                                       {item.status === 'em_revisao' || item.status === 'em_aprovacao' ? (
                                         <Button
                                           size="sm"
