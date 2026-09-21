@@ -16,6 +16,7 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { resumoValorHora } from '@/lib/utils/valor-hora'
 import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import AndamentoPorRegra, { etapaDoStatus, linhaVazia, type AndamentoLinha, type FaturadoMes } from './andamento-por-regra'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
@@ -81,6 +82,9 @@ interface RevisaoItem {
   timesheetDescricao: string
   timesheetProfissional: string
   timesheetValorHora: number
+  /** Valor/hora gravado no timesheet, antes do override pelo vigente — só
+   *  para o rótulo saber que o número mostrado veio da regra do caso. */
+  timesheetValorHoraGravado: number
   snapshot: Record<string, unknown>
   historico: RevisaoHistoricoEntry[]
 }
@@ -766,6 +770,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     timesheetDescricao: asString(data.timesheet_descricao),
     timesheetProfissional: asString(data.timesheet_profissional),
     timesheetValorHora: asNumber(data.timesheet_valor_hora),
+    timesheetValorHoraGravado: asNumber(data.timesheet_valor_hora),
     snapshot,
     historico: normalizeHistorico(data.historico),
   }
@@ -2604,6 +2609,16 @@ export default function RevisaoDeFaturaList() {
                                   </p>
                                   <p className="text-xs text-ink-mute">
                                     {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)}
+                                    {/* Valor/hora dos lançamentos do caso (D9=c): faixa quando há
+                                        tabela por cargo; caso mensal (tudo zero) não mostra nada. */}
+                                    {(() => {
+                                      const resumo = resumoValorHora(
+                                        casoGroup.itens
+                                          .filter((i) => i.origemTipo === 'timesheet')
+                                          .map((i) => ({ valor_hora: i.timesheetValorHora })),
+                                      )
+                                      return resumo ? <> · <span className="font-medium text-ink-secondary">{resumo}</span></> : null
+                                    })()}
                                   </p>
                                 </div>
                               </button>
@@ -3045,6 +3060,21 @@ export default function RevisaoDeFaturaList() {
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
                                             {mode === 'timesheet' ? formatHistoryHours(getOriginalItemHours(item)) : '—'}
+                                            {/* Valor/hora do lançamento (D9=c). Em item pendente o número é
+                                                o vigente da regra; o title avisa quando difere do gravado. */}
+                                            {mode === 'timesheet' && item.timesheetValorHora > 0 ? (
+                                              <span
+                                                className="ml-1 text-[10px] text-ink-mute"
+                                                title={
+                                                  (item.status === 'em_revisao' || item.status === 'em_aprovacao') &&
+                                                  item.timesheetValorHora !== item.timesheetValorHoraGravado
+                                                    ? 'valor/hora vigente da regra do caso'
+                                                    : undefined
+                                                }
+                                              >
+                                                {formatMoney(item.timesheetValorHora)}/h
+                                              </span>
+                                            ) : null}
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
                                         </tr>
