@@ -16,8 +16,9 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
+import { resumoValorHora } from '@/lib/utils/valor-hora'
 import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
-import AndamentoPorRegra, { etapaDoStatus, linhaVazia, type AndamentoLinha, type FaturadoMes } from './andamento-por-regra'
+import AndamentoPorRegra, { etapaDoStatus, statusDaEtapa, linhaVazia, type AndamentoLinha, type EtapaKey, type FaturadoMes } from './andamento-por-regra'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 
 // Nota já emitida (finance.billing_notes), usada para "Ver NF"/"Cancelar NF"
@@ -81,6 +82,9 @@ interface RevisaoItem {
   timesheetDescricao: string
   timesheetProfissional: string
   timesheetValorHora: number
+  /** Valor/hora gravado no timesheet, antes do override pelo vigente — só
+   *  para o rótulo saber que o número mostrado veio da regra do caso. */
+  timesheetValorHoraGravado: number
   snapshot: Record<string, unknown>
   historico: RevisaoHistoricoEntry[]
 }
@@ -162,6 +166,8 @@ type RuleFilterKey =
   | 'projeto_parcelado'
   | 'exito'
   | 'despesa'
+  // "Sem regra": só filtro interno (clique no painel), não vira aba.
+  | 'outros'
 type HistoricoRole = 'USUARIO' | 'REVISOR' | 'APROVADOR'
 
 
@@ -558,7 +564,9 @@ function ruleKeyFromKind(kind: string): RuleFilterKey | null {
   return null
 }
 
-function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
+// Item sem regra reconhecida cai em 'outros' ("Sem regra" no painel): aparece
+// em Todas e pode ser filtrado pelo clique no painel, mas não tem aba.
+function getRuleFilterKey(item: RevisaoItem): RuleFilterKey {
   if (item.origemTipo === 'despesa') return 'despesa'
   const kind = getRuleKind(item)
   const casoKind = (item.casoRegraCobranca || '').trim().toLowerCase()
@@ -566,7 +574,7 @@ function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
     const mapped = ruleKeyFromKind(casoKind)
     if (mapped) return mapped
     // aba Horas é exclusiva de casos que cobram por hora; sem regra => só em Todas
-    return casoKind === 'hora' || casoKind === 'hora_com_cap' ? 'hora' : null
+    return casoKind === 'hora' || casoKind === 'hora_com_cap' ? 'hora' : 'outros'
   }
   if (kind === 'hora' || kind === 'hora_com_cap') return 'hora'
   if (kind === 'mensalidade_processo') return 'mensalidade_processo'
@@ -574,7 +582,7 @@ function getRuleFilterKey(item: RevisaoItem): RuleFilterKey | null {
   if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
   if (kind === 'projeto_parcela' || kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
   if (kind === 'exito') return 'exito'
-  return null
+  return 'outros'
 }
 
 function getRuleFilterLabel(key: RuleFilterKey) {
@@ -595,6 +603,8 @@ function getRuleFilterLabel(key: RuleFilterKey) {
       return 'Êxito'
     case 'despesa':
       return 'Despesas'
+    case 'outros':
+      return 'Sem regra'
   }
 }
 
@@ -774,6 +784,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     timesheetDescricao: asString(data.timesheet_descricao),
     timesheetProfissional: asString(data.timesheet_profissional),
     timesheetValorHora: asNumber(data.timesheet_valor_hora),
+    timesheetValorHoraGravado: asNumber(data.timesheet_valor_hora),
     snapshot,
     historico: normalizeHistorico(data.historico),
   }
@@ -973,6 +984,10 @@ export default function RevisaoDeFaturaList() {
   // Nota de despesa (documento não-fiscal) do caso.
   const [notaDespesa, setNotaDespesa] = useState<NotaDespesaData | null>(null)
   const [showIndicadores, setShowIndicadores] = useState(false)
+  // Painel "Andamento por regra" fica na tela inicial (Todas). Quando a pessoa
+  // clica nele a lista filtra por regra e o painel precisa continuar visível
+  // para ela clicar de novo — daí "fixado" até escolher uma aba.
+  const [painelFixado, setPainelFixado] = useState(false)
   const [indicadores, setIndicadores] = useState<{
     resumo: Record<string, unknown>
     por_cliente: Array<Record<string, unknown>>
@@ -1238,6 +1253,9 @@ export default function RevisaoDeFaturaList() {
     void loadColaboradores()
     void loadPodeEmitirNfse()
     void loadNotasEmitidas()
+    // O painel de andamento agora abre com a tela: a coluna "Faturado no mês"
+    // precisa do banco desde o início, não só quando abrem os Indicadores.
+    void loadFaturadoMes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canRead])
 
@@ -1439,8 +1457,20 @@ export default function RevisaoDeFaturaList() {
     }
   }, [getLiveItemHours, getLiveItemValue])
 
-  // Andamento por regra de cobranca (aba Indicadores). Mesma base dos totais
-  // do cabecalho: obedece aos filtros e conta grupo uma vez so.
+  // Base do painel "Andamento por regra": só centro de custo e usuário, SEM
+  // regra/situação (D7=a). Assim, quando a pessoa clica numa etapa do painel,
+  // a lista filtra mas o painel continua mostrando o total — é o mapa.
+  const itensParaPainel = useMemo(() => {
+    let base = items
+    if (centroCusto) base = base.filter((item) => item.centroCustoNome === centroCusto)
+    if (usuario) {
+      base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
+    }
+    return base
+  }, [items, centroCusto, usuario])
+
+  // Andamento por regra de cobranca. Mesma conta dos totais do cabecalho
+  // (rascunho vivo, grupo contado uma vez so), sobre itensParaPainel.
   const andamentoPorRegra = useMemo<AndamentoLinha[]>(() => {
     const ordem: Array<[string, string]> = [
       ['hora', 'Horas'], ['mensalidade_processo', 'Mensalidade de processo'], ['mensalidade', 'Mensalidade'],
@@ -1449,10 +1479,10 @@ export default function RevisaoDeFaturaList() {
     ]
     const linhas = new Map(ordem.map(([k, l]) => [k, linhaVazia(k, l)]))
     const gruposContados = new Set<string>()
-    for (const item of visibleItems) {
+    for (const item of itensParaPainel) {
       const etapa = etapaDoStatus(item.status)
       if (!etapa) continue
-      const linha = linhas.get(getRuleFilterKey(item) ?? 'outros')!
+      const linha = linhas.get(getRuleFilterKey(item))!
       linha.itens[etapa] += 1
       if (item.grupoId && item.grupoValor !== null && item.grupoValor !== undefined) {
         if (gruposContados.has(item.grupoId)) continue
@@ -1466,7 +1496,19 @@ export default function RevisaoDeFaturaList() {
       }
     }
     return ordem.map(([k]) => linhas.get(k)!)
-  }, [visibleItems, getLiveItemValue])
+  }, [itensParaPainel, getLiveItemValue])
+
+  // Seleção ativa no painel, derivada dos filtros (assim o select de situação
+  // e as abas também se refletem nele).
+  const selecaoPainel = useMemo(
+    () => ({ regra: ruleFilter === 'all' ? null : ruleFilter, etapa: situacao ? etapaDoStatus(situacao) : null }),
+    [ruleFilter, situacao],
+  )
+  const selecionarNoPainel = useCallback((regra: string | null, etapa: EtapaKey | null) => {
+    setRuleFilter((regra ?? 'all') as RuleFilterKey)
+    setSituacao(etapa ? statusDaEtapa(etapa) : '')
+    setPainelFixado(regra !== null || etapa !== null)
+  }, [])
 
   const [faturadoMes, setFaturadoMes] = useState<FaturadoMes[] | null>(null)
   const mesAtualLabel = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
@@ -1523,7 +1565,7 @@ export default function RevisaoDeFaturaList() {
     const counts = new Map<RuleFilterKey, number>()
     for (const row of allRows) {
       const key = getRuleFilterKey(row.item)
-      if (!key) continue
+      if (key === 'outros') continue // sem aba própria: só em Todas
       counts.set(key, (counts.get(key) || 0) + 1)
     }
 
@@ -2196,7 +2238,14 @@ export default function RevisaoDeFaturaList() {
       {/* Mesma barra da fase "aguardando liberação" (pedido Filipe 07/08): as
           duas telas usavam estilos diferentes para a mesma coisa. Os contadores
           ficam, porque tirar informação para igualar visual seria piorar. */}
-      <Tabs value={ruleFilter} defaultValue="all" onValueChange={(value) => setRuleFilter(value as RuleFilterKey)}>
+      <Tabs
+        value={ruleFilter}
+        defaultValue="all"
+        onValueChange={(value) => {
+          setRuleFilter(value as RuleFilterKey)
+          setPainelFixado(false)
+        }}
+      >
         <TabsList className="h-auto flex-wrap justify-start">
           {ruleButtons.map((button) => (
             <TabsTrigger key={button.key} value={button.key}>
@@ -2349,9 +2398,20 @@ export default function RevisaoDeFaturaList() {
         </div>
       </div>
 
+      {/* Painel de andamento na tela inicial (Todas), clicável: filtra a lista
+          abaixo e continua visível enquanto o filtro veio dele (D7=a). */}
+      {ruleFilter === 'all' || painelFixado || showIndicadores ? (
+        <AndamentoPorRegra
+          linhas={andamentoPorRegra}
+          faturadoMes={faturadoMes}
+          mesLabel={mesAtualLabel}
+          selecao={selecaoPainel}
+          onSelecionar={selecionarNoPainel}
+        />
+      ) : null}
+
       {showIndicadores ? (
         <div className="space-y-4">
-          <AndamentoPorRegra linhas={andamentoPorRegra} faturadoMes={faturadoMes} mesLabel={mesAtualLabel} />
           {indicadoresLoading || !indicadores ? (
             <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">Carregando indicadores...</div>
           ) : (
@@ -2366,37 +2426,47 @@ export default function RevisaoDeFaturaList() {
                 const ignoradas = num(r.horas_ignoradas)
                 const pct = (parte: number, todo: number) => (todo > 0 ? `${Math.round((parte / todo) * 100)}%` : '—')
                 const motivos = Array.isArray(r.ignorados_por_motivo) ? (r.ignorados_por_motivo as Array<Record<string, unknown>>) : []
+                // Cards clicáveis (D8=a): filtram a lista por situação. Lançadas e
+                // Ignoradas não têm situação na fila — limpam. Clique repetido limpa.
+                const cardSituacao = (alvo: typeof situacao) => ({
+                  type: 'button' as const,
+                  'aria-pressed': alvo !== '' && situacao === alvo,
+                  onClick: () => setSituacao(situacao === alvo ? '' : alvo),
+                  className: `rounded-xl border bg-white p-4 text-left transition-colors hover:bg-canvas-soft ${
+                    alvo !== '' && situacao === alvo ? 'ring-2 ring-ink/60' : ''
+                  }`,
+                })
                 return (
                   <>
                     <div className="grid gap-3 md:grid-cols-5">
-                      <div className="rounded-xl border bg-white p-4">
+                      <button {...cardSituacao('')} title="Limpar o filtro de situação">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Horas lançadas (etapa 1)</p>
                         <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(lancadas)}</p>
                         <p className="text-[11px] text-ink-mute">competência do mês (trabalhadas no mês anterior)</p>
-                      </div>
-                      <div className="rounded-xl border bg-white p-4">
+                      </button>
+                      <button {...cardSituacao('em_revisao')} title="Filtrar a lista: em revisão">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Enviadas p/ revisão</p>
                         <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(enviadas)}</p>
                         <p className="text-[11px] text-ink-mute">{pct(enviadas, lancadas)} das lançadas</p>
-                      </div>
-                      <div className="rounded-xl border bg-white p-4">
+                      </button>
+                      <button {...cardSituacao('em_aprovacao')} title="Filtrar a lista: em aprovação">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Revisadas (etapa 2)</p>
                         {/* inclui as ja aprovadas: e tudo que passou pela revisao */}
                         <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(revisadas)}</p>
                         <p className="text-[11px] text-ink-mute">{pct(revisadas, enviadas)} das enviadas</p>
-                      </div>
-                      <div className="rounded-xl border bg-white p-4">
+                      </button>
+                      <button {...cardSituacao('aprovado')} title="Filtrar a lista: aprovados">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Aprovadas (etapa 3)</p>
                         <p className="mt-1 text-xl font-semibold text-ink font-tabular">{formatHistoryHours(aprovadas)}</p>
                         <p className="text-[11px] text-ink-mute">{pct(aprovadas, revisadas)} das revisadas</p>
-                      </div>
-                      <div className="rounded-xl border bg-white p-4">
+                      </button>
+                      <button {...cardSituacao('')} title="Limpar o filtro de situação">
                         <p className="text-[11px] uppercase tracking-wide text-ink-mute">Ignoradas (cut)</p>
                         <p className="mt-1 text-xl font-semibold text-red-600 font-tabular">{formatHistoryHours(ignoradas)}</p>
                         <p className="text-[11px] text-ink-mute">
                           {num(r.itens_ignorados)} item(ns) · {formatMoney(num(r.valor_ignorado))}
                         </p>
-                      </div>
+                      </button>
                     </div>
 
                     {motivos.length > 0 ? (
@@ -2446,7 +2516,9 @@ export default function RevisaoDeFaturaList() {
             </>
           )}
         </div>
-      ) : loading ? (
+      ) : null}
+
+      {loading ? (
         <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">
           Carregando revisão de fatura...
         </div>
@@ -2612,6 +2684,16 @@ export default function RevisaoDeFaturaList() {
                                   </p>
                                   <p className="text-xs text-ink-mute">
                                     {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)}
+                                    {/* Valor/hora dos lançamentos do caso (D9=c): faixa quando há
+                                        tabela por cargo; caso mensal (tudo zero) não mostra nada. */}
+                                    {(() => {
+                                      const resumo = resumoValorHora(
+                                        casoGroup.itens
+                                          .filter((i) => i.origemTipo === 'timesheet')
+                                          .map((i) => ({ valor_hora: i.timesheetValorHora })),
+                                      )
+                                      return resumo ? <> · <span className="font-medium text-ink-secondary">{resumo}</span></> : null
+                                    })()}
                                   </p>
                                 </div>
                               </button>
@@ -3053,6 +3135,21 @@ export default function RevisaoDeFaturaList() {
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
                                             {mode === 'timesheet' ? formatHistoryHours(getOriginalItemHours(item)) : '—'}
+                                            {/* Valor/hora do lançamento (D9=c). Em item pendente o número é
+                                                o vigente da regra; o title avisa quando difere do gravado. */}
+                                            {mode === 'timesheet' && item.timesheetValorHora > 0 ? (
+                                              <span
+                                                className="ml-1 text-[10px] text-ink-mute"
+                                                title={
+                                                  (item.status === 'em_revisao' || item.status === 'em_aprovacao') &&
+                                                  item.timesheetValorHora !== item.timesheetValorHoraGravado
+                                                    ? 'valor/hora vigente da regra do caso'
+                                                    : undefined
+                                                }
+                                              >
+                                                {formatMoney(item.timesheetValorHora)}/h
+                                              </span>
+                                            ) : null}
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
                                         </tr>

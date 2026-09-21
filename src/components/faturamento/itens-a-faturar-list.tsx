@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
+import { resumoValorHora } from '@/lib/utils/valor-hora'
 
 interface CasoAgrupado {
   caso_id: string
@@ -98,24 +99,6 @@ function endOfMonth(date: Date) {
 function formatMoney(value: number | string | null | undefined) {
   const amount = Number(value || 0)
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount)
-}
-
-// Valor da hora de um conjunto de linhas, para a conferência manual (Filipe,
-// 01/09). Só as linhas de hora têm taxa; mensalidade e parcela vêm sem.
-//
-// Quando o caso tem tabela por cargo, a taxa muda de pessoa para pessoa — aí
-// mostramos a faixa em vez de um número só. Exibir apenas o primeiro seria
-// pior que não exibir: pareceria "a regra do caso" e não é.
-function resumoValorHora(linhas: Array<{ valor_hora?: number | string | null }> | undefined) {
-  const taxas = (linhas || [])
-    .map((l) => Number(l.valor_hora || 0))
-    .filter((v) => v > 0)
-  if (taxas.length === 0) return null
-  const menor = Math.min(...taxas)
-  const maior = Math.max(...taxas)
-  return menor === maior
-    ? `${formatMoney(menor)}/h`
-    : `${formatMoney(menor)}–${formatMoney(maior)}/h`
 }
 
 // Horas em "1h 20min" (util compartilhado com a revisão) — decimal confundia.
