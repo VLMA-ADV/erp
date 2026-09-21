@@ -1,451 +1,249 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Banknote, FileText, Loader2, Mail, Receipt, RefreshCw, Clock, ExternalLink, Copy, Printer } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
-import { formatHorasMin } from '@/lib/utils/format-horas'
-import { openTimesheetReport } from '@/lib/utils/timesheet-report'
-import { abrirFichaBoleto, copiarTexto, formatarLinhaDigitavel, type BolResumo } from '@/lib/utils/boleto-ficha'
+import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
+import { gerarRelatorioTimesheetPdf, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
+import { abrirDocumentoDoKit, gerarERegistrarDocumento } from '@/lib/faturamento/documentos-kit'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
+import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
+import BarraFiltros from './composicao/filtros-composicao'
+import ResumoStatus from './composicao/resumo-status'
+import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
+import AjustesKitDialog from './composicao/ajustes-kit-dialog'
+import {
+  FILTROS_VAZIOS,
+  formatMoney,
+  isoHoje,
+  labelCaso,
+  labelCompetencia,
+  labelCompetenciaCurta,
+  type ComposicaoPayload,
+  type FiltrosComposicao,
+  type KitCaso,
+} from './composicao/types'
 
-// "Composição da fatura": painel onde a Jéssica (financeiro) monta o "kit" enviado
-// ao cliente a partir dos itens já aprovados/faturados. O kit tem no mínimo 2 itens
-// (nota fiscal de serviço + boleto) e no máximo 4 (+ relatório de timesheet e nota
-// de despesa). Boleto/relatório/nota de despesa ainda serão automatizados — aqui
-// surfamos os artefatos já emitidos e deixamos os botões engatilhados (stub).
+// "Composição da fatura": a Jéssica (financeiro) monta aqui o kit que vai ao
+// cliente — NFS-e, boleto, relatório de timesheet e nota de débito — e manda
+// por e-mail. Desde o lote C (Filipe, 21/09) o kit é por CASO e COMPETÊNCIA,
+// vem pronto do banco (get_composicao_fatura) e cada documento gerado fica
+// registrado: quem, quando, qual arquivo. A tela é só a mão que aperta os
+// botões; o que é kit, o que bloqueia exclusão e o status de cada um é
+// decidido na RPC, para a tela e o e-mail nunca discordarem.
 
-interface RevisaoItem {
-  id: string
-  contrato_id: string
-  cliente_nome?: string | null
-  contrato_numero: number | null
-  contrato_nome: string
-  origem_tipo: string
-  status: 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado' | 'cancelado' | 'disponivel'
-  snapshot?: Record<string, unknown> | null
-  horas_aprovadas?: number | null
-  horas_revisadas: number | null
-  horas_informadas: number | null
-  valor_aprovado?: number | null
-  valor_revisado: number | null
-  valor_informado: number | null
-  // Presentes quando origem_tipo === 'despesa' — a Nota de Despesas usa estes,
-  // nao a tabela operations.despesas: o que importa e o que esta sendo
-  // faturado NESTA fatura, nao um status manual que nunca e setado.
-  origem_id?: string | null
-  data_referencia?: string | null
-  caso_numero?: number | null
-  caso_nome?: string | null
+const FUNCTIONS = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
+
+function competenciaCorrente() {
+  return `${new Date().toISOString().slice(0, 7)}-01`
 }
 
-interface NotaGerada {
-  id: string
-  numero: number | null
-  status: string
-  tipo_documento: 'boleto_itau' | 'relatorio_honorarios' | 'nota_fiscal_servico' | string
-  arquivo_nome: string | null
-  arquivo_url: string | null
-  contrato_id: string | null
-}
+/** 'YYYY-MM-01' → 'YYYY-MM' (nome de arquivo). */
+const anoMes = (competencia: string) => competencia.slice(0, 7)
 
-interface EnvioFatura {
-  enviado_em: string
-  destinatario: string
-  remetente: string | null
-  por: string | null
+interface CertificadoItau {
+  configurado: boolean
+  dias_restantes: number | null
+  vence_em: string | null
+  pode_renovar: boolean
   erro: string | null
-  total: number
-}
-
-interface ContratoKit {
-  contratoId: string
-  numero: number | null
-  nome: string
-  clienteNome: string
-  valorServico: number
-  valorDespesa: number
-  horasTimesheet: number
-  temTimesheet: boolean
-  temDespesa: boolean
-}
-
-interface ClienteKit {
-  nome: string
-  contratos: ContratoKit[]
-  total: number
-}
-
-function formatMoney(value: number | null | undefined) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0))
-}
-
-// Horas em "1h 20min" — util compartilhado (pedido do cliente 01/08).
-const formatHours = formatHorasMin
-
-function toObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
-}
-
-function isoHoje() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-// Mês de referência da fatura = mês anterior ao corrente (faturamento fechado).
-function mesReferenciaAtual() {
-  const d = new Date()
-  d.setDate(1)
-  d.setMonth(d.getMonth() - 1)
-  return d.toLocaleDateString('pt-BR', { month: 'long' })
-}
-
-function getEffectiveValue(item: RevisaoItem) {
-  if ((item.status === 'aprovado' || item.status === 'faturado') && item.valor_aprovado != null) {
-    return Number(item.valor_aprovado)
-  }
-  if (item.valor_revisado != null) return Number(item.valor_revisado)
-  if (item.valor_informado != null) return Number(item.valor_informado)
-  return 0
-}
-
-// Totais de timesheet preferindo o snapshot (mesma lógica do Fluxo de faturamento).
-function getTimesheetTotals(item: RevisaoItem) {
-  const rows = Array.isArray(item.snapshot?.timesheet_itens_revisao)
-    ? (item.snapshot?.timesheet_itens_revisao as unknown[])
-    : []
-  if (rows.length === 0) {
-    const horas =
-      item.horas_aprovadas ?? item.horas_revisadas ?? item.horas_informadas ?? 0
-    return { horas: Number(horas) || 0, valor: getEffectiveValue(item) }
-  }
-  let horas = 0
-  let valor = 0
-  for (const raw of rows) {
-    const row = toObject(raw)
-    if (!row) continue
-    const h = Number(row.horas_revisadas ?? row.horas ?? row.horas_iniciais ?? 0)
-    const vh = Number(row.valor_hora ?? 0)
-    const safeH = Number.isFinite(h) ? h : 0
-    horas += safeH
-    valor += safeH * (Number.isFinite(vh) ? vh : 0)
-  }
-  return { horas, valor }
-}
-
-function buildKits(items: RevisaoItem[]): ClienteKit[] {
-  const clientes = new Map<string, Map<string, ContratoKit>>()
-
-  for (const item of items) {
-    if (!item.contrato_id) continue
-    const clienteNome = (item.cliente_nome || '').trim() || 'Cliente sem nome'
-    if (!clientes.has(clienteNome)) clientes.set(clienteNome, new Map())
-    const contratos = clientes.get(clienteNome)!
-
-    if (!contratos.has(item.contrato_id)) {
-      contratos.set(item.contrato_id, {
-        contratoId: item.contrato_id,
-        numero: item.contrato_numero ?? null,
-        nome: item.contrato_nome || 'Contrato sem nome',
-        clienteNome,
-        valorServico: 0,
-        valorDespesa: 0,
-        horasTimesheet: 0,
-        temTimesheet: false,
-        temDespesa: false,
-      })
-    }
-    const kit = contratos.get(item.contrato_id)!
-
-    if (item.origem_tipo === 'despesa') {
-      kit.valorDespesa += getEffectiveValue(item)
-      kit.temDespesa = true
-    } else if (item.origem_tipo === 'timesheet') {
-      const t = getTimesheetTotals(item)
-      kit.horasTimesheet += t.horas
-      kit.valorServico += t.valor
-      kit.temTimesheet = true
-    } else {
-      kit.valorServico += getEffectiveValue(item)
-    }
-  }
-
-  return Array.from(clientes.entries())
-    .map(([nome, contratosMap]) => {
-      const contratos = Array.from(contratosMap.values()).sort((a, b) => {
-        const n = (a.numero ?? 0) - (b.numero ?? 0)
-        return n !== 0 ? n : a.nome.localeCompare(b.nome, 'pt-BR')
-      })
-      const total = contratos.reduce((acc, c) => acc + c.valorServico + c.valorDespesa, 0)
-      return { nome, contratos, total }
-    })
-    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
 export default function ComposicaoDaFaturaList() {
-  const { toast: notify } = useToast()
+  const { toast: notify, success, error: toastError } = useToast()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<RevisaoItem[]>([])
-  const [notes, setNotes] = useState<NotaGerada[]>([])
-  // Boleto já registrado no Itaú, chaveado pela nota fiscal que o originou.
-  // Depois de emitido, a linha do boleto mostra linha digitável e o PDF em vez
-  // do botão de emitir — senão a Jéssica registrava e não tinha como pegar.
-  const [boletosPorNota, setBoletosPorNota] = useState<Record<string, BolResumo | null>>({})
+  const [payload, setPayload] = useState<ComposicaoPayload | null>(null)
+  const [filtros, setFiltros] = useState<FiltrosComposicao>(FILTROS_VAZIOS)
+  const [busca, setBusca] = useState('')
+  // "<chave do kit>:<ação>" em andamento — trava só o botão certo.
+  const [ocupado, setOcupado] = useState<string | null>(null)
+  const [cert, setCert] = useState<CertificadoItau | null>(null)
+
+  // Diálogos
+  const [ajustesKit, setAjustesKit] = useState<KitCaso | null>(null)
+  const [nfseKit, setNfseKit] = useState<KitCaso | null>(null)
+  const [notaKit, setNotaKit] = useState<KitCaso | null>(null)
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
+  const [emailKit, setEmailKit] = useState<KitCaso | null>(null)
   const [emailData, setEmailData] = useState<FaturaEmailData | null>(null)
-  const [emailContratoId, setEmailContratoId] = useState<string | null>(null)
-  // Controle visual do que ja foi enviado (Filipe, 20/08: "um controle visual
-  // ali no modulo da fatura para controlar o que foi enviado, talvez com uma
-  // sinalizacao em verde"). Uma consulta so, chaveada por contrato.
-  const [envios, setEnvios] = useState<Record<string, EnvioFatura>>({})
-  // Vencimento do certificado do Itaú. Fica nesta tela porque é daqui que o
-  // boleto sai — avisar em Configuração seria avisar onde ninguém entra.
-  const [cert, setCert] = useState<{
-    configurado: boolean; dias_restantes: number | null; vence_em: string | null
-    pode_renovar: boolean; erro: string | null
-  } | null>(null)
   const [enviandoEmail, setEnviandoEmail] = useState(false)
 
-  const load = async () => {
+  // A competência padrão só é conhecida depois da primeira resposta (a lista
+  // de meses com kit vem da RPC). Primeira chamada sem filtro; se o mês
+  // corrente existe, ele vira o padrão, senão o mais recente.
+  const inicializado = useRef(false)
+  const filtrosRef = useRef(filtros)
+  filtrosRef.current = filtros
+
+  const carregar = useCallback(async (f: FiltrosComposicao, opts: { silencioso?: boolean } = {}) => {
+    if (!opts.silencioso) setLoading(true)
+    setError(null)
     try {
-      setLoading(true)
-      setError(null)
       const supabase = createClient()
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) return
-
-      const headers = {
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      }
-      const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-
-      const [revisaoResp, notasResp] = await Promise.all([
-        fetch(`${base}/functions/v1/get-revisao-fatura`, { method: 'GET', headers }),
-        fetch(`${base}/functions/v1/get-notas-geradas?status=gerado&limit=200`, { method: 'GET', headers }),
-      ])
-
-      const revisaoPayload = await revisaoResp.json().catch(() => ({}))
-      if (!revisaoResp.ok) {
-        setError(revisaoPayload.error || 'Erro ao carregar itens aprovados')
-        return
-      }
-      const notasPayload = await notasResp.json().catch(() => ({}))
-
-      const allItems = (revisaoPayload.data || []) as RevisaoItem[]
-      // O kit só faz sentido para o que o financeiro já aprovou/faturou.
-      setItems(allItems.filter((it) => it.status === 'aprovado' || it.status === 'faturado'))
-      const notasLista = notasResp.ok ? ((notasPayload.data || []) as NotaGerada[]) : []
-      setNotes(notasLista)
-
-      // Quais contratos já tiveram a fatura enviada. Uma consulta só para a
-      // tela inteira — não uma por linha.
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: envs } = await supabase.rpc('get_envios_fatura', {
-          p_user_id: user.id,
-          p_contrato_id: null,
-        })
-        setEnvios((envs as Record<string, EnvioFatura>) || {})
+      if (!user) { setError('Sessão expirada. Entre de novo para continuar.'); return null }
+      const { data, error: rpcErr } = await supabase.rpc('get_composicao_fatura', {
+        p_user_id: user.id,
+        p_competencia: f.competencia,
+        p_cliente_id: f.clienteId,
+        p_contrato_id: f.contratoId,
+        p_caso_id: f.casoId,
+        p_regra: f.regra,
+        p_status_kit: f.statusKit,
+      })
+      if (rpcErr) { setError(rpcErr.message || 'Erro ao carregar a composição da fatura'); return null }
+      const dados = data as ComposicaoPayload
+      setPayload(dados)
+      return dados
+    } catch (err) {
+      console.error(err)
+      setError('Erro ao carregar a composição da fatura')
+      return null
+    } finally {
+      if (!opts.silencioso) setLoading(false)
+    }
+  }, [])
 
-        // Boleto de cada nota fiscal em tela. Uma chamada por nota — são
-        // poucas por mês, e é a nota que liga a tela ao título no banco.
-        const nfs = notasLista.filter((n) => n.tipo_documento === 'nota_fiscal_servico' && n.status !== 'cancelado')
-        const pares = await Promise.all(
-          nfs.map(async (n) => {
-            const { data: b } = await supabase.rpc('bol_da_nota', { p_user_id: user.id, p_nota_id: n.id })
-            return [n.id, (b as BolResumo | null) ?? null] as const
-          }),
-        )
-        setBoletosPorNota(Object.fromEntries(pares))
-      }
+  /** Recarrega com os filtros atuais sem piscar a tela (depois de uma ação). */
+  const recarregar = useCallback(() => carregar(filtrosRef.current, { silencioso: true }), [carregar])
+
+  useEffect(() => {
+    if (inicializado.current) return
+    inicializado.current = true
+    void (async () => {
+      const dados = await carregar(FILTROS_VAZIOS)
+      const meses = dados?.opcoes.competencias ?? []
+      const atual = competenciaCorrente()
+      const padrao = meses.includes(atual) ? atual : meses[0] ?? null
+      if (padrao) setFiltros((f) => ({ ...f, competencia: padrao }))
 
       // Certificado do Itaú: só interessa quando está perto de vencer.
       try {
         const rc = await fetch('/api/boletos/certificado')
         if (rc.ok) setCert(await rc.json())
       } catch {
-        // Sem certificado configurado ainda é o normal hoje; não é erro de tela.
+        // Sem certificado configurado ainda é o normal; não é erro de tela.
       }
-    } catch (err) {
-      console.error(err)
-      setError('Erro ao carregar composição da fatura')
+    })()
+  }, [carregar])
+
+  // Filtros reconsultam a RPC com debounce; a busca por texto é só de tela.
+  const primeiroFiltro = useRef(true)
+  useEffect(() => {
+    if (primeiroFiltro.current) { primeiroFiltro.current = false; return }
+    const t = setTimeout(() => { void carregar(filtros) }, 300)
+    return () => clearTimeout(t)
+  }, [filtros, carregar])
+
+  const clientesVisiveis = useMemo(() => {
+    const lista = payload?.clientes ?? []
+    const termo = busca.trim().toLocaleLowerCase('pt-BR')
+    if (!termo) return lista
+    return lista
+      .map((c) => {
+        if (c.nome.toLocaleLowerCase('pt-BR').includes(termo)) return c
+        const casos = c.casos.filter((k) => labelCaso(k).toLocaleLowerCase('pt-BR').includes(termo))
+        return casos.length ? { ...c, casos, kits: casos.length, valor_total: casos.reduce((a, k) => a + k.valor_total, 0) } : null
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null)
+  }, [payload, busca])
+
+  const executar = async (kit: KitCaso, acao: string, fn: () => Promise<void>) => {
+    const key = acaoKey(kit, acao)
+    if (ocupado) return
+    setOcupado(key)
+    try {
+      await fn()
     } finally {
-      setLoading(false)
+      setOcupado(null)
     }
   }
 
-  useEffect(() => {
-    void load()
-  }, [])
+  const sessao = async () => {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('Sessão expirada. Entre de novo para continuar.')
+    return { supabase, session, userId: session.user.id }
+  }
 
-  const clientes = useMemo(() => buildKits(items), [items])
-
-  // Notas emitidas por contrato e tipo de documento (ignora canceladas).
-  const notaPorContrato = useMemo(() => {
-    const map = new Map<string, Partial<Record<string, NotaGerada>>>()
-    for (const nota of notes) {
-      if (!nota.contrato_id || nota.status === 'cancelado') continue
-      const current = map.get(nota.contrato_id) || {}
-      if (!current[nota.tipo_documento]) current[nota.tipo_documento] = nota
-      map.set(nota.contrato_id, current)
-    }
-    return map
-  }, [notes])
-
-  // Despesas reembolsáveis, agrupadas por contrato, para o detalhe da Nota de
-  // Despesas. Vem dos MESMOS billing_items que compõem o kit (origem_tipo ===
-  // 'despesa'), nunca da tabela operations.despesas: o que entra na nota é
-  // exatamente o que está sendo faturado nesta fatura, e nao um status manual
-  // que nenhuma tela chega a setar.
-  const despesaPorContrato = useMemo(() => {
-    const map = new Map<string, RevisaoItem[]>()
-    for (const item of items) {
-      if (item.origem_tipo !== 'despesa' || !item.contrato_id) continue
-      const list = map.get(item.contrato_id) || []
-      list.push(item)
-      map.set(item.contrato_id, list)
-    }
-    return map
-  }, [items])
-
-  // Mesmo padrão do mapa de despesas acima: as horas do contrato, para o
-  // relatório sair com as linhas de verdade e não com o agregado do kit.
-  const horasPorContrato = useMemo(() => {
-    const map = new Map<string, RevisaoItem[]>()
-    for (const item of items) {
-      if (item.origem_tipo !== 'timesheet' || !item.contrato_id) continue
-      const list = map.get(item.contrato_id) || []
-      list.push(item)
-      map.set(item.contrato_id, list)
-    }
-    return map
-  }, [items])
-
-  const totalGeral = useMemo(() => clientes.reduce((acc, c) => acc + c.total, 0), [clientes])
-
-  const emBreve = (label: string) => notify(`${label}: automação ainda não implementada nesta etapa.`)
-
-  // Emite a NFS-e do contrato. Mesmo caminho da tela de Revisão (edge emit-nfse):
-  // a emissão é por CONTRATO e já trata rateio, uma nota por pagador. Aqui o
-  // botão existia como aviso de "não implementada" desde o começo — a tela
-  // prometia e não cumpria.
-  const [emitindoNfse, setEmitindoNfse] = useState<string | null>(null)
-  const emitirNfse = async (contratoId: string, label: string) => {
-    if (emitindoNfse) return
-    const ok = window.confirm(
-      `Emitir NFS-e de ${label}?\n\nA nota é enviada à prefeitura e passa a existir de verdade.`,
-    )
-    if (!ok) return
-    setEmitindoNfse(contratoId)
-    try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { notify('Sessão expirada.'); return }
-      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/emit-nfse`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contrato_id: contratoId }),
-      })
-      const payload = await resp.json().catch(() => ({}))
-      if (!resp.ok) { notify(payload.error || 'A prefeitura recusou a emissão.'); return }
-      if (payload.partial) {
-        notify(payload.message || 'Emissão parcial — alguns pagadores foram recusados.')
-      } else {
-        const n = Number(payload.n_notas ?? 1)
-        notify(n > 1
-          ? `${n} NFS-e enviadas (rateio). Status: ${payload.focus_status}`
-          : `NFS-e enviada. Status: ${payload.focus_status}`)
-      }
-      // A prefeitura leva alguns segundos a minutos para autorizar, e so entao
-      // existem numero e PDF. Sem perguntar, o arquivo so apareceria no dia
-      // seguinte (cron) — foi assim que o Filipe emitiu e nao viu o arquivo.
-      // Duas tentativas curtas resolvem o caso comum sem prender a tela.
-      const perguntarDesfecho = async (esperaMs: number) => {
-        await new Promise((r) => setTimeout(r, esperaMs))
-        await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/consultar-nfse`, {
+  // ── NFS-e ──────────────────────────────────────────────────────────────
+  // A prévia é a mesma do Fluxo de faturamento (NfsePreviewDialog com
+  // caso_id) e a emissão é a mesma edge (emit-nfse). A edge não recebe
+  // item_ids: cobre todos os itens aprovados do caso — o que, para um caso
+  // com duas competências abertas, é mais do que este kit. O aviso fica na
+  // confirmação.
+  const emitirNfse = async (descricaoServico: string, ajustes?: AjustesDaNota) => {
+    const kit = nfseKit
+    if (!kit) return
+    setNfseKit(null)
+    await executar(kit, 'nfse', async () => {
+      try {
+        const { session } = await sessao()
+        const resp = await fetch(`${FUNCTIONS()}/emit-nfse`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        }).catch(() => null)
-        await load()
+          body: JSON.stringify({
+            contrato_id: kit.contrato_id,
+            ...(kit.caso_id ? { caso_id: kit.caso_id } : {}),
+            ...(ajustes ? { ajustes } : {}),
+            ...(descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
+          }),
+        })
+        const corpo = await resp.json().catch(() => ({}))
+        if (!resp.ok) { toastError(corpo.error || 'A prefeitura recusou a emissão.'); return }
+        if (corpo.partial) {
+          toastError(corpo.message || 'Emissão parcial — alguns pagadores foram recusados.')
+        } else {
+          const n = Number(corpo.n_notas ?? 1)
+          success(n > 1 ? `${n} NFS-e enviadas (rateio). Status: ${corpo.focus_status}` : `NFS-e enviada. Status: ${corpo.focus_status}`)
+        }
+        await recarregar()
+        // A prefeitura leva alguns segundos a minutos para autorizar, e só
+        // então existem número e PDF. Duas consultas curtas resolvem o caso
+        // comum sem prender a tela (mesmo truque da tela antiga).
+        const perguntarDesfecho = async (esperaMs: number) => {
+          await new Promise((r) => setTimeout(r, esperaMs))
+          await fetch(`${FUNCTIONS()}/consultar-nfse`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          }).catch(() => null)
+          await recarregar()
+        }
+        void perguntarDesfecho(4000).then(() => perguntarDesfecho(12000))
+      } catch (e) {
+        toastError(e instanceof Error ? e.message : 'Erro de rede ao emitir a NFS-e.')
       }
-      void perguntarDesfecho(4000).then(() => perguntarDesfecho(12000))
-
-      void load()
-    } catch {
-      notify('Erro de rede ao emitir a NFS-e.')
-    } finally {
-      setEmitindoNfse(null)
-    }
-  }
-
-  // Relatório de timesheet do contrato — mesmo gerador das outras telas.
-  const gerarRelatorio = (kit: ContratoKit) => {
-    const linhas = horasPorContrato.get(kit.contratoId) || []
-    if (linhas.length === 0) { notify('Este contrato não tem horas para relatar.'); return }
-    openTimesheetReport({
-      titulo: 'Relatório de timesheet',
-      subtitulo: `${kit.clienteNome} · ${formatContratoDisplay(kit.numero, kit.nome).full}`,
-      mostrarValor: true,
-      rows: linhas
-        .slice()
-        // Cronológico, como a revisão passou a ser em 02/09.
-        .sort((a, b) => String(a.data_referencia || '').localeCompare(String(b.data_referencia || '')))
-        .map((item) => {
-          const t = getTimesheetTotals(item)
-          return {
-            data: String(item.data_referencia || '').split('-').reverse().join('/'),
-            cliente: kit.clienteNome,
-            caso: `${item.caso_numero ? `${item.caso_numero} - ` : ''}${item.caso_nome || ''}`,
-            profissional: String(item.snapshot?.timesheet_profissional || ''),
-            descricao: String(item.snapshot?.timesheet_descricao || ''),
-            horas: formatHours(t.horas),
-            valor: t.valor,
-          }
-        }),
     })
   }
 
-  // Emite o boleto da fatura. A tela trabalha por contrato/nota; a emissão
-  // trabalha por conta a receber — bol_lancamento_da_nota faz a ponte, que já
-  // existia nos dados (lancamentos.origem_ref_id aponta para a nota) mas não
-  // tinha caminho a partir daqui.
-  //
-  // Confirmação explícita: isto registra o título no banco de verdade e o
-  // cliente pode pagar. Não há desfazer de um clique.
-  const [emitindoBoleto, setEmitindoBoleto] = useState(false)
-  const emitirBoleto = async (notaId: string) => {
-    if (emitindoBoleto) return
-    setEmitindoBoleto(true)
+  // ── Boleto ─────────────────────────────────────────────────────────────
+  // A tela trabalha por kit/nota; a emissão trabalha por conta a receber —
+  // bol_lancamento_da_nota faz a ponte. Confirmação explícita: registra o
+  // título no banco de verdade e o cliente pode pagar.
+  const emitirBoleto = (kit: KitCaso) => executar(kit, 'boleto', async () => {
+    const nfse = kit.documentos.nfse
+    if (!nfse) { notify('Emita a NFS-e primeiro — o boleto é gerado sobre ela.'); return }
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { notify('Sessão expirada.'); return }
-
-      const { data, error } = await supabase.rpc('bol_lancamento_da_nota', {
-        p_user_id: user.id,
-        p_nota_id: notaId,
-      })
-      if (error) { notify(error.message); return }
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('bol_lancamento_da_nota', { p_user_id: userId, p_nota_id: nfse.id })
+      if (e) { toastError(e.message); return }
       const info = data as {
         encontrado: boolean; motivo?: string; lancamento_id?: string
         descricao?: string; valor?: number; vencimento?: string; ja_baixado?: boolean
       }
-      if (!info?.encontrado) { notify(info?.motivo || 'Conta a receber não encontrada.'); return }
+      if (!info?.encontrado) { toastError(info?.motivo || 'Conta a receber não encontrada.'); return }
       if (info.ja_baixado) { notify('Esta fatura já foi recebida — não há o que cobrar.'); return }
 
       const venc = (info.vencimento || '').split('-').reverse().join('/')
       const ok = window.confirm(
-        `Registrar boleto no Itaú?\n\n${info.descricao}\n` +
-        `${formatMoney(info.valor || 0)} — vence ${venc}\n\n` +
+        `Registrar boleto no Itaú?\n\n${info.descricao}\n${formatMoney(info.valor || 0)} — vence ${venc}\n\n` +
         'O título passa a existir no banco e o cliente pode pagar.',
       )
       if (!ok) return
@@ -457,145 +255,326 @@ export default function ComposicaoDaFaturaList() {
       })
       const corpo = await resp.json().catch(() => ({}))
       if (!resp.ok) {
-        // O Itau diz qual campo recusou e por que. Isso vinha na resposta e
-        // ficava so no banco: a tela mostrava "HTTP 400" e a pessoa nao tinha
-        // como saber que era um acento na descricao.
-        const campos = (corpo as { detalhe?: { campos?: Array<{ campo?: string; mensagem?: string }> } })
-          .detalhe?.campos
-        const motivo = Array.isArray(campos) && campos.length
-          ? ' ' + campos.map((c) => c.mensagem).filter(Boolean).join(' ')
-          : ''
-        notify((corpo.error || 'Não foi possível emitir o boleto.') + motivo)
+        // O Itaú diz qual campo recusou e por quê — mostrar, senão vira "HTTP 400".
+        const campos = (corpo as { detalhe?: { campos?: Array<{ mensagem?: string }> } }).detalhe?.campos
+        const motivo = Array.isArray(campos) && campos.length ? ' ' + campos.map((c) => c.mensagem).filter(Boolean).join(' ') : ''
+        toastError((corpo.error || 'Não foi possível emitir o boleto.') + motivo)
         return
       }
-
-      const linha = (corpo as { boleto?: { linha_digitavel?: string | null } }).boleto
-      notify(linha?.linha_digitavel
-        ? `Boleto registrado. Linha digitável: ${linha.linha_digitavel}`
-        : 'Boleto registrado no Itaú.')
-      void load()
-    } catch {
-      notify('Erro de rede ao emitir o boleto.')
-    } finally {
-      setEmitindoBoleto(false)
+      success('Boleto registrado no Itaú.')
+      await recarregar()
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Erro de rede ao emitir o boleto.')
     }
-  }
-
-  // O boleto é achado pela nota fiscal do contrato: nota → boleto.
-  const boletoDoKit = (contratoId: string): BolResumo | null => {
-    const nf = notaPorContrato.get(contratoId)?.['nota_fiscal_servico']
-    return nf ? boletosPorNota[nf.id] ?? null : null
-  }
-
-  const copiar = async (texto: string, rotulo: string) => {
-    notify((await copiarTexto(texto)) ? `${rotulo} copiada.` : 'O navegador não deixou copiar. Selecione o texto e copie.')
-  }
+  })
 
   const verBoleto = async (boletoId: string) => {
     const erro = await abrirFichaBoleto(boletoId)
-    if (erro) notify(erro)
+    if (erro) toastError(erro)
   }
 
-  const abrirNota = (kit: ContratoKit) => {
-    const linhas = despesaPorContrato.get(kit.contratoId) || []
-    const caso = linhas[0]
+  const copiar = async (texto: string, rotulo: string) => {
+    if (await copiarTexto(texto)) success(`${rotulo} copiada.`)
+    else toastError('O navegador não deixou copiar. Selecione o texto e copie.')
+  }
+
+  const abrirUrl = async (url: string) => {
+    try {
+      const ok = await abrirDocumentoDoKit(url)
+      if (!ok) toastError('O navegador bloqueou a aba. Libere pop-ups para este site e tente de novo.')
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Não foi possível abrir o documento.')
+    }
+  }
+
+  // ── Relatório de timesheet ─────────────────────────────────────────────
+  // PDF com pdf-lib a partir das linhas que a RPC já traz (snapshot da
+  // revisão), subido ao bucket e registrado (D12-a). Regerar substitui.
+  const gerarRelatorio = (kit: KitCaso) => executar(kit, 'relatorio', async () => {
+    const itensTs = kit.itens.filter((i) => i.origem_tipo === 'timesheet')
+    const rows: TimesheetPdfRow[] = itensTs
+      .flatMap((item) => item.linhas_timesheet.map((l) => ({
+        data: l.data ?? item.data_referencia ?? '',
+        profissional: l.profissional ?? '',
+        cargo: l.cargo,
+        descricao: l.descricao ?? item.descricao,
+        horas: Number(l.horas || 0),
+        valorHora: l.valor_hora ?? null,
+        valor: l.valor ?? null,
+      })))
+      .sort((a, b) => a.data.localeCompare(b.data))
+    if (rows.length === 0) { notify('Este kit não tem horas para relatar.'); return }
+    try {
+      const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
+      const bytes = await gerarRelatorioTimesheetPdf({
+        titulo: 'Relatório de timesheet',
+        cliente: clienteNome,
+        casoLabel: kit.caso_id ? labelCaso(kit) : null,
+        contratoLabel: formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full,
+        competenciaLabel: labelCompetenciaCurta(kit.competencia),
+        mostrarValor: true,
+        rows,
+      })
+      const { path } = await gerarERegistrarDocumento({
+        tipo: 'relatorio_timesheet',
+        bytes,
+        nomeArquivo: `Relatorio-timesheet-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
+        casoId: kit.caso_id,
+        contratoId: kit.contrato_id,
+        competencia: kit.competencia,
+        itemIds: itensTs.map((i) => i.id),
+        metadata: { horas: kit.horas, linhas: rows.length },
+      })
+      success('Relatório de timesheet gerado e registrado no kit.')
+      await recarregar()
+      const abriu = await abrirDocumentoDoKit(path).catch(() => false)
+      if (!abriu) notify('O navegador bloqueou a aba — use o botão "Abrir" na linha do relatório.')
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Não foi possível gerar o relatório.')
+    }
+  })
+
+  // ── Nota de débito ─────────────────────────────────────────────────────
+  // A prévia/PDF é a NotaDespesaPreview de sempre (nota + comprovantes). Os
+  // comprovantes precisam do id da DESPESA (origem_id), que a RPC do kit não
+  // traz — vem do get-revisao-fatura filtrado pelo kit, uma chamada por clique.
+  const abrirNotaDebito = (kit: KitCaso) => executar(kit, 'nota', async () => {
+    const despesas = kit.itens.filter((i) => i.origem_tipo === 'despesa')
+    if (despesas.length === 0) { notify('Este kit não tem despesas reembolsáveis.'); return }
+    const origemPorItem = new Map<string, string>()
+    try {
+      const { session } = await sessao()
+      const params = new URLSearchParams({ contrato: kit.contrato_id, competencia: anoMes(kit.competencia) })
+      if (kit.caso_id) params.set('caso', kit.caso_id)
+      const resp = await fetch(`${FUNCTIONS()}/get-revisao-fatura?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      })
+      const corpo = await resp.json().catch(() => ({}))
+      for (const raw of (corpo.data ?? []) as Array<{ id?: string; origem_id?: string | null }>) {
+        if (raw.id && raw.origem_id) origemPorItem.set(raw.id, raw.origem_id)
+      }
+    } catch (e) {
+      console.error('origem das despesas', e)
+      notify('Não foi possível localizar os comprovantes; a nota sai sem eles.')
+    }
+    const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
+    setNotaKit(kit)
     setNotaData({
-      clienteNome: kit.clienteNome,
-      contratoLabel: formatContratoDisplay(kit.numero, kit.nome).full,
-      casoLabel: caso ? `${caso.caso_numero ? `${caso.caso_numero} - ` : ''}${caso.caso_nome}` : null,
+      clienteNome,
+      contratoLabel: formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full,
+      casoLabel: kit.caso_id ? `${kit.caso_numero ? `${kit.caso_numero} - ` : ''}${kit.caso_nome}` : null,
       documentoNumero: null,
       emissao: isoHoje(),
-      vencimento: isoHoje(),
-      despesaIds: linhas.map((item) => item.origem_id).filter((v): v is string => !!v),
-      itens: linhas.map((item) => ({
-        data_lancamento: item.data_referencia || '',
-        categoria: String(item.snapshot?.categoria || ''),
-        descricao: String(item.snapshot?.descricao || ''),
-        valor: getEffectiveValue(item),
+      vencimento: kit.documentos.boleto?.vencimento ?? kit.conta_receber?.vencimento ?? isoHoje(),
+      despesaIds: despesas.map((i) => origemPorItem.get(i.id)).filter((v): v is string => !!v),
+      itens: despesas.map((i) => ({
+        data_lancamento: i.despesa?.data ?? i.data_referencia ?? '',
+        categoria: i.despesa?.categoria ?? '',
+        descricao: i.despesa?.descricao ?? i.descricao,
+        valor: Number(i.valor || 0),
       })),
     })
-  }
+  })
 
-  const abrirEmail = async (kit: ContratoKit) => {
-    setEmailContratoId(kit.contratoId)
-    // Os destinatários vêm dos responsáveis financeiros do cliente — pode haver
-    // mais de um, e a 7 Holding tem três. Chegam preenchidos e a pessoa edita
-    // se precisar.
-    let destinatario: string | null = null
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data } = await supabase.rpc('get_dados_envio_fatura', {
-          p_user_id: user.id,
-          p_contrato_id: kit.contratoId,
-        })
-        const lista = (data as { destinatarios?: string[] } | null)?.destinatarios ?? []
-        destinatario = lista.length ? lista.join(', ') : null
-      }
-    } catch (err) {
-      console.error(err)
-    }
-    const notasKit = notaPorContrato.get(kit.contratoId) || {}
-    const nfse = notasKit['nota_fiscal_servico']
-    const anexos: string[] = []
-    if (nfse) anexos.push(`NFSe ${nfse.numero ?? ''}`.trim())
-    else anexos.push('NFSe (pendente)')
-    if (kit.temDespesa) anexos.push('Nota de despesas')
-    anexos.push(notasKit['boleto_itau'] ? 'Boleto bancário' : 'Boleto bancário (pendente)')
-    if (kit.temTimesheet) anexos.push('Relatório de timesheet')
-
-    setEmailData({
-      clienteNome: kit.clienteNome,
-      contratoLabel: formatContratoDisplay(kit.numero, kit.nome).full,
-      destinatarioEmail: destinatario,
-      nfseNumero: nfse?.numero != null ? String(nfse.numero) : null,
-      mesReferencia: mesReferenciaAtual(),
-      vencimento: new Date().toLocaleDateString('pt-BR'),
-      anexos,
-      completo: kit.temDespesa || kit.temTimesheet,
+  const registrarNotaDebito = async (bytes: Uint8Array, nomeArquivo: string) => {
+    const kit = notaKit
+    if (!kit) return
+    await gerarERegistrarDocumento({
+      tipo: 'nota_debito',
+      bytes,
+      nomeArquivo: `Nota-de-debito-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
+      casoId: kit.caso_id,
+      contratoId: kit.contrato_id,
+      competencia: kit.competencia,
+      itemIds: kit.itens.filter((i) => i.origem_tipo === 'despesa').map((i) => i.id),
+      metadata: { valor_total: kit.valor_despesa, arquivo_baixado: nomeArquivo },
     })
+    success('Nota de débito registrada no kit.')
+    await recarregar()
   }
 
-  /**
-   * Envia de verdade (pedido Filipe 19/08). Destinatários separados por vírgula
-   * — vêm preenchidos do cadastro e a pessoa pode editar antes de mandar.
-   */
-  const enviarFatura = async (assunto: string, corpo: string, para: string) => {
-    if (!emailContratoId) return
+  // ── Toggle "relatório vai no e-mail" (D15-a) ───────────────────────────
+  // Grava pela edge update-caso, que exige contracts.casos.write e passa o
+  // payload pela RPC update_caso. Um payload parcial faria a edge mandar
+  // polo=null e a RPC apagar o polo de um caso contencioso — por isso o caso
+  // é lido antes (get-contrato) e natureza/polo vão junto, como o cadastro faz.
+  const toggleRelatorio = (kit: KitCaso, valor: boolean) => executar(kit, 'toggle', async () => {
+    if (!kit.caso_id) return
+    const aplicarLocal = (v: boolean) => setPayload((p) => p ? {
+      ...p,
+      clientes: p.clientes.map((c) => ({
+        ...c,
+        casos: c.casos.map((k) => (k.caso_id === kit.caso_id ? { ...k, enviar_relatorio_timesheet: v } : k)),
+      })),
+    } : p)
+    aplicarLocal(valor)
     try {
-      setEnviandoEmail(true)
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-      const destinatarios = para
-        .split(/[,;]/)
-        .map((e) => e.trim())
-        .filter(Boolean)
-      const { data, error: e } = await supabase.functions.invoke('enviar-fatura', {
-        body: { contrato_id: emailContratoId, assunto, corpo, destinatarios },
+      const { session } = await sessao()
+      const headers = { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }
+      const rc = await fetch(`${FUNCTIONS()}/get-contrato?id=${kit.contrato_id}`, { headers })
+      const contrato = await rc.json().catch(() => ({}))
+      const casos = (contrato?.data?.casos ?? contrato?.casos ?? []) as Array<Record<string, unknown>>
+      const caso = casos.find((c) => c.id === kit.caso_id)
+      if (!rc.ok || !caso) throw new Error(contrato?.error || 'Não foi possível ler o cadastro do caso.')
+
+      const regras = Array.isArray(caso.regras_financeiras) ? (caso.regras_financeiras as Array<Record<string, unknown>>) : []
+      const cfg = (caso.regra_cobranca_config ?? {}) as Record<string, unknown>
+      const natureza = [
+        caso.natureza_caso,
+        cfg.natureza_caso,
+        regras[0]?.natureza_caso,
+        (regras[0]?.regra_cobranca_config as Record<string, unknown> | undefined)?.natureza_caso,
+      ].map((v) => String(v || '').trim().toLowerCase()).find(Boolean) || ''
+
+      const resp = await fetch(`${FUNCTIONS()}/update-caso`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          id: kit.caso_id,
+          enviar_relatorio_timesheet: valor,
+          ...(natureza ? { natureza_caso: natureza } : {}),
+          ...(caso.polo ? { polo: caso.polo } : {}),
+        }),
       })
-      const resposta = data as { enviado?: boolean; destinatarios?: string[]; error?: string } | null
+      const corpo = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(corpo.error || 'Não foi possível salvar a configuração do caso.')
+      success(valor ? 'O relatório de timesheet passa a ir no e-mail deste caso.' : 'O relatório de timesheet não vai mais no e-mail deste caso.')
+    } catch (e) {
+      aplicarLocal(!valor)
+      toastError(e instanceof Error ? e.message : 'Não foi possível salvar a configuração do caso.')
+    }
+  })
+
+  // ── E-mail ─────────────────────────────────────────────────────────────
+  const abrirEmail = (kit: KitCaso) => executar(kit, 'email', async () => {
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('get_dados_envio_fatura', {
+        p_user_id: userId,
+        p_contrato_id: kit.contrato_id,
+        p_caso_id: kit.caso_id,
+        p_competencia: kit.competencia,
+      })
+      if (e) { toastError(e.message); return }
+      const dados = (data ?? {}) as {
+        cliente_nome?: string
+        destinatarios?: string[]
+        nota?: { id: string; numero: number | null } | null
+        anexos?: Array<{ tipo: string; nome: string | null; url: string | null }>
+      }
+      const anexos = dados.anexos ?? []
+      const temHoras = kit.itens.some((i) => i.origem_tipo === 'timesheet')
+      const temDespesa = kit.itens.some((i) => i.origem_tipo === 'despesa')
+      const nomesAnexos = anexos.map((a) => a.nome || a.tipo)
+      if (!anexos.some((a) => a.tipo === 'nfse')) nomesAnexos.unshift('NFS-e (pendente — ainda sem PDF)')
+      setEmailKit(kit)
+      setEmailData({
+        clienteNome: dados.cliente_nome || payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome || '',
+        contratoLabel: `${formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full}${kit.caso_id ? ` · ${labelCaso(kit)}` : ''}`,
+        destinatarioEmail: (dados.destinatarios ?? []).join(', ') || null,
+        nfseNumero: kit.documentos.nfse?.nfse_numero ?? (dados.nota?.numero != null ? String(dados.nota.numero) : null),
+        mesReferencia: labelCompetencia(kit.competencia),
+        vencimento: (kit.documentos.boleto?.vencimento ?? kit.conta_receber?.vencimento ?? '').slice(0, 10).split('-').reverse().join('/') || '____',
+        anexos: nomesAnexos,
+        completo: temHoras || temDespesa,
+        temRelatorio: anexos.some((a) => a.tipo === 'relatorio_timesheet'),
+      })
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Não foi possível montar a prévia do e-mail.')
+    }
+  })
+
+  const enviarFatura = async (assunto: string, corpo: string, para: string) => {
+    const kit = emailKit
+    if (!kit) return
+    setEnviandoEmail(true)
+    try {
+      const supabase = createClient()
+      const destinatarios = para.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
+      const { data, error: e } = await supabase.functions.invoke('enviar-fatura', {
+        body: { contrato_id: kit.contrato_id, caso_id: kit.caso_id, competencia: kit.competencia, assunto, corpo, destinatarios },
+      })
+      const resposta = data as { enviado?: boolean; destinatarios?: string[]; anexos?: string[]; error?: string } | null
       if (e || resposta?.error || !resposta?.enviado) {
-        setError(resposta?.error || 'Não foi possível enviar a fatura.')
+        toastError(resposta?.error || (e instanceof Error ? e.message : 'Não foi possível enviar a fatura.'))
         return
       }
-      setError(null)
       setEmailData(null)
-      setEmailContratoId(null)
-      window.alert(`Fatura enviada para ${(resposta.destinatarios || []).join(', ')}.`)
-      // Recarrega para o sinal verde aparecer sem a pessoa precisar atualizar.
-      void load()
+      setEmailKit(null)
+      success(`Fatura enviada para ${(resposta.destinatarios || []).join(', ')}${resposta.anexos?.length ? ` com ${resposta.anexos.length} anexo(s)` : ''}.`)
+      await recarregar()
     } catch (err) {
       console.error(err)
-      setError('Erro ao enviar a fatura.')
+      toastError('Erro ao enviar a fatura.')
     } finally {
       setEnviandoEmail(false)
     }
   }
 
+  // ── Excluir kit (D11-a) ────────────────────────────────────────────────
+  const excluirKit = (kit: KitCaso) => executar(kit, 'excluir', async () => {
+    if (!kit.pode_excluir) { toastError(kit.motivo_bloqueio || 'Este kit não pode ser excluído.'); return }
+    const docs = [
+      kit.documentos.relatorio_timesheet ? 'o relatório de timesheet' : null,
+      kit.documentos.nota_debito ? 'a nota de débito' : null,
+      kit.documentos.nfse && kit.documentos.nfse.status === 'gerado' ? 'a NFS-e com erro' : null,
+    ].filter(Boolean)
+    const ok = window.confirm(
+      `Excluir o kit de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)})?\n\n` +
+      `Os ${kit.itens.length} item(ns) voltam para a Revisão como "Liberado" e somem daqui` +
+      (docs.length ? `; ${docs.join(', ')} ficam cancelados.` : '.') +
+      '\n\nNada é apagado da revisão — dá para aprovar de novo.',
+    )
+    if (!ok) return
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('excluir_kit', {
+        p_user_id: userId,
+        p_caso_id: kit.caso_id,
+        p_contrato_id: kit.contrato_id,
+        p_competencia: kit.competencia,
+      })
+      if (e) { toastError(e.message); return }
+      const r = data as { ok?: boolean; itens_devolvidos?: number; motivo?: string | null }
+      if (!r?.ok) { toastError(r?.motivo || 'Não foi possível excluir o kit.'); return }
+      success(`Kit excluído: ${r.itens_devolvidos ?? 0} item(ns) devolvido(s) para a revisão.`)
+      await recarregar()
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Erro ao excluir o kit.')
+    }
+  })
+
+  const acoes: AcoesKit = {
+    ocupado,
+    onEmitirNfse: (kit) => {
+      if (kit.documentos.nfse && kit.documentos.nfse.status === 'gerado' && ['autorizado', 'processando'].includes(kit.documentos.nfse.focus_status ?? '')) {
+        notify('Este kit já tem NFS-e emitida.')
+        return
+      }
+      setNfseKit(kit)
+    },
+    onAbrirUrl: (url) => void abrirUrl(url),
+    onEmitirBoleto: (kit) => void emitirBoleto(kit),
+    onVerBoleto: (id) => void verBoleto(id),
+    onCopiar: (texto, rotulo) => void copiar(texto, rotulo),
+    onGerarRelatorio: (kit) => void gerarRelatorio(kit),
+    onGerarNotaDebito: (kit) => void abrirNotaDebito(kit),
+    onEditarAjustes: (kit) => setAjustesKit(kit),
+    onToggleRelatorio: (kit, valor) => void toggleRelatorio(kit, valor),
+    onEmail: (kit) => void abrirEmail(kit),
+    onExcluir: (kit) => void excluirKit(kit),
+  }
+
+  // Um caso com mais de uma competência aberta: a NFS-e cobre todos os itens
+  // aprovados do caso, não só este kit — aviso na prévia.
+  const casosComVariosKits = useMemo(() => {
+    const contagem = new Map<string, number>()
+    for (const c of payload?.clientes ?? []) for (const k of c.casos) if (k.caso_id) contagem.set(k.caso_id, (contagem.get(k.caso_id) ?? 0) + 1)
+    return contagem
+  }, [payload])
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {error ? (
         <Alert className="border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTitle>Atenção</AlertTitle>
@@ -635,318 +614,89 @@ export default function ComposicaoDaFaturaList() {
         </Alert>
       ) : null}
 
-      <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
-        <div className="text-sm text-muted-foreground">
-          Clientes: <strong className="text-foreground">{clientes.length}</strong>
-          <span className="mx-3">•</span>
-          Total a faturar: <strong className="text-foreground font-tabular">{formatMoney(totalGeral)}</strong>
+      <BarraFiltros
+        opcoes={payload?.opcoes ?? null}
+        filtros={filtros}
+        busca={busca}
+        onChange={setFiltros}
+        onBusca={setBusca}
+      />
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+        <div className="flex-1">
+          <ResumoStatus
+            resumo={payload?.resumo ?? null}
+            ativo={filtros.statusKit}
+            onSelecionar={(status) => setFiltros((f) => ({ ...f, statusKit: status }))}
+          />
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          Atualizar
-        </Button>
+        <div className="flex items-start justify-end">
+          <Button variant="outline" size="sm" onClick={() => void carregar(filtros)} disabled={loading}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Atualizar
+          </Button>
+        </div>
       </div>
 
-      {loading ? (
+      {loading && !payload ? (
         <div className="flex items-center justify-center rounded-md border bg-white py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Carregando composição da fatura...
         </div>
-      ) : clientes.length === 0 ? (
+      ) : clientesVisiveis.length === 0 ? (
         <div className="rounded-md border bg-white py-16 text-center text-sm text-muted-foreground">
-          Nenhum item aprovado pelo financeiro disponível para composição.
+          {busca.trim()
+            ? 'Nenhum cliente ou caso bate com a busca.'
+            : Object.values(filtros).some(Boolean)
+              ? 'Nenhum kit com esses filtros. Limpe os filtros ou escolha outra competência.'
+              : 'Nenhum item aprovado pelo financeiro disponível para composição.'}
         </div>
       ) : (
-        clientes.map((cliente) => (
-          <section key={cliente.nome} className="space-y-3">
-            <div className="flex items-end justify-between">
-              <h2 className="text-base font-semibold text-ink">{cliente.nome}</h2>
-              <span className="text-sm text-muted-foreground font-tabular">{formatMoney(cliente.total)}</span>
-            </div>
-
-            <div className="space-y-3">
-              {cliente.contratos.map((kit) => (
-                <ContratoKitCard
-                  key={kit.contratoId}
-                  kit={kit}
-                  notas={notaPorContrato.get(kit.contratoId) || {}}
-                  envio={envios[kit.contratoId]}
-                  onStub={emBreve}
-                  boleto={boletoDoKit(kit.contratoId)}
-                  onEmitirBoleto={emitirBoleto}
-                  onCopiar={copiar}
-                  onVerBoleto={verBoleto}
-                  onEmitirNfse={() => emitirNfse(kit.contratoId, formatContratoDisplay(kit.numero, kit.nome).full)}
-                  onGerarRelatorio={() => gerarRelatorio(kit)}
-                  onAbrirNota={() => abrirNota(kit)}
-                  onAbrirEmail={() => void abrirEmail(kit)}
-                />
-              ))}
-            </div>
-          </section>
-        ))
+        <div className={loading ? 'space-y-4 opacity-60 transition-opacity' : 'space-y-4'}>
+          {clientesVisiveis.map((cliente) => (
+            <ClienteCard key={cliente.cliente_id ?? cliente.nome} cliente={cliente} acoes={acoes} />
+          ))}
+        </div>
       )}
 
-      <NotaDespesaPreview open={!!notaData} onClose={() => setNotaData(null)} data={notaData} />
+      <AjustesKitDialog
+        kit={ajustesKit}
+        onClose={() => setAjustesKit(null)}
+        onSalvo={() => {
+          setAjustesKit(null)
+          success('Impostos e pagadores salvos no cadastro.')
+          void recarregar()
+        }}
+      />
+
+      <NfsePreviewDialog
+        open={nfseKit !== null}
+        contratoId={nfseKit?.contrato_id ?? null}
+        casoId={nfseKit?.caso_id ?? null}
+        contratoLabel={nfseKit
+          ? `${formatContratoDisplay(nfseKit.contrato_numero, nfseKit.contrato_nome).full}${nfseKit.caso_id ? ` · ${labelCaso(nfseKit)}` : ''}` +
+            (nfseKit.caso_id && (casosComVariosKits.get(nfseKit.caso_id) ?? 0) > 1
+              ? ' — atenção: a nota cobre todos os itens aprovados do caso, de todas as competências'
+              : '')
+          : null}
+        onClose={() => setNfseKit(null)}
+        onConfirmEmit={(descricao, ajustes) => void emitirNfse(descricao, ajustes)}
+      />
+
+      <NotaDespesaPreview
+        open={!!notaData}
+        onClose={() => { setNotaData(null); setNotaKit(null) }}
+        data={notaData}
+        onGerado={registrarNotaDebito}
+      />
+
       <FaturaEmailPreview
         open={!!emailData}
-        onClose={() => setEmailData(null)}
+        onClose={() => { setEmailData(null); setEmailKit(null) }}
         data={emailData}
         enviando={enviandoEmail}
         onEnviar={(assunto, corpo, para) => void enviarFatura(assunto, corpo, para)}
       />
-    </div>
-  )
-}
-
-function ComposicaoLinha({
-  icon,
-  titulo,
-  descricao,
-  valor,
-  nota,
-  acaoLabel,
-  onAcao,
-}: {
-  icon: React.ReactNode
-  titulo: string
-  descricao: string
-  valor?: number | null
-  nota?: NotaGerada
-  acaoLabel: string
-  onAcao: () => void
-}) {
-  const emitida = !!nota
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="text-muted-foreground">{icon}</span>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-ink">{titulo}</span>
-            {emitida ? (
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                Emitido{nota?.numero ? ` #${nota.numero}` : ''}
-              </Badge>
-            ) : (
-              <Badge className="border-amber-200 bg-amber-50 text-amber-700">Pendente</Badge>
-            )}
-          </div>
-          <p className="truncate text-xs text-muted-foreground">{descricao}</p>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-3">
-        {valor != null ? <span className="text-sm font-tabular text-ink">{formatMoney(valor)}</span> : null}
-        {emitida && nota?.arquivo_url ? (
-          <a
-            href={nota.arquivo_url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-700"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Abrir
-          </a>
-        ) : (
-          <Button variant="outline" size="sm" onClick={onAcao}>
-            {acaoLabel}
-          </Button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ContratoKitCard({
-  kit,
-  notas,
-  envio,
-  boleto,
-  onStub,
-  onEmitirBoleto,
-  onCopiar,
-  onVerBoleto,
-  onEmitirNfse,
-  onGerarRelatorio,
-  onAbrirNota,
-  onAbrirEmail,
-}: {
-  kit: ContratoKit
-  notas: Partial<Record<string, NotaGerada>>
-  envio?: EnvioFatura
-  /** Boleto já registrado sobre a nota fiscal deste contrato, se houver. */
-  boleto: BolResumo | null
-  onStub: (label: string) => void
-  onEmitirBoleto: (notaId: string) => void
-  onCopiar: (texto: string, rotulo: string) => void
-  onVerBoleto: (boletoId: string) => void
-  onEmitirNfse: () => void
-  onGerarRelatorio: () => void
-  onAbrirNota: () => void
-  onAbrirEmail: () => void
-}) {
-  const contratoLabel = formatContratoDisplay(kit.numero, kit.nome).full
-  const totalKit = kit.valorServico + kit.valorDespesa
-  const enviadoOk = Boolean(envio && !envio.erro)
-
-  return (
-    <div className={`overflow-hidden rounded-lg border bg-white ${enviadoOk ? 'border-green-300' : ''}`}>
-      <div className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 ${enviadoOk ? 'bg-green-50' : 'bg-canvas-soft'}`}>
-        <div>
-          <span className="text-eyebrow text-xs">KIT DA FATURA</span>
-          <p className="text-sm font-medium text-ink">{contratoLabel}</p>
-          {/* Sinal do que já foi enviado (Filipe, 20/08). Mostra a data, para
-              quem, por quem e quantas vezes — reenvio acontece, e saber que
-              foram três é o que evita o quarto. */}
-          {envio ? (
-            <p className={`mt-1 text-xs ${envio.erro ? 'text-destructive' : 'text-green-700'}`}>
-              {envio.erro ? '✕ Falhou o envio' : '✓ Enviada'} em{' '}
-              {new Date(envio.enviado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-              {' para '}{envio.destinatario}
-              {envio.por ? ` · por ${envio.por}` : ''}
-              {envio.total > 1 ? ` · ${envio.total} envios` : ''}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold font-tabular text-ink">{formatMoney(totalKit)}</span>
-          <Button variant={enviadoOk ? 'outline' : 'default'} size="sm" onClick={onAbrirEmail}>
-            <Mail className="mr-2 h-4 w-4" />
-            {enviadoOk ? 'Reenviar e-mail' : 'Pré-visualizar e-mail'}
-          </Button>
-        </div>
-      </div>
-
-      <div className="divide-y divide-hairline">
-        {/* 1. Nota fiscal de serviço — sempre presente */}
-        <ComposicaoLinha
-          icon={<FileText className="h-4 w-4" />}
-          titulo="Nota fiscal de serviço"
-          descricao="Serviço prestado (timesheet + regras do contrato). Emitida no Fluxo de faturamento."
-          valor={kit.valorServico}
-          nota={notas['nota_fiscal_servico']}
-          acaoLabel="Emitir no fluxo"
-          onAcao={onEmitirNfse}
-        />
-
-        {/*
-          2. Boleto — depende da nota: o titulo e registrado no Itau em cima da
-          conta a receber, que so existe depois da NF. Enquanto ela nao sai, o
-          botao explica o que falta em vez de falhar no clique.
-        */}
-        {boleto ? (
-          <LinhaBoletoRegistrado boleto={boleto} onCopiar={onCopiar} onVerBoleto={onVerBoleto} />
-        ) : (
-          <ComposicaoLinha
-            icon={<Banknote className="h-4 w-4" />}
-            titulo="Boleto"
-            descricao={
-              notas['nota_fiscal_servico']
-                ? 'Registra o título no Itaú e devolve a linha digitável.'
-                : 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.'
-            }
-            nota={notas['boleto_itau']}
-            acaoLabel="Emitir boleto"
-            onAcao={() => {
-              const nf = notas['nota_fiscal_servico']
-              if (!nf) { onStub('Boleto: emita a nota fiscal primeiro'); return }
-              onEmitirBoleto(nf.id)
-            }}
-          />
-        )}
-
-        {/* 3. Relatório de timesheet — opcional (só quando há horas aprovadas) */}
-        {kit.temTimesheet ? (
-          <ComposicaoLinha
-            icon={<Clock className="h-4 w-4" />}
-            titulo="Relatório de timesheet"
-            descricao={`${formatHours(kit.horasTimesheet)} aprovadas. Geração de PDF a definir (template pendente).`}
-            nota={notas['relatorio_honorarios']}
-            acaoLabel="Gerar relatório"
-            onAcao={onGerarRelatorio}
-          />
-        ) : null}
-
-        {/* 4. Nota de despesa — opcional (só quando há despesa reembolsável) */}
-        {kit.temDespesa ? (
-          <ComposicaoLinha
-            icon={<Receipt className="h-4 w-4" />}
-            titulo="Nota de despesa"
-            descricao="Despesas reembolsáveis (não tributadas). Compõe o boleto de despesa."
-            valor={kit.valorDespesa}
-            acaoLabel="Gerar nota de despesa"
-            onAcao={onAbrirNota}
-          />
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-// Boleto já registrado: a linha digitável é o que a Jéssica repassa ao cliente
-// e o PDF é o que vai anexado ao e-mail. Cor pelo status — pago em verde,
-// erro em vermelho, o resto neutro.
-const STATUS_BOLETO: Record<string, string> = {
-  registrado: 'border-blue-200 bg-blue-50 text-blue-700',
-  emitido: 'border-blue-200 bg-blue-50 text-blue-700',
-  pago: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  liquidado: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  baixado: 'border-slate-200 bg-slate-50 text-slate-600',
-  cancelado: 'border-slate-200 bg-slate-50 text-slate-600 line-through',
-  erro: 'border-red-200 bg-red-50 text-red-700',
-}
-
-function LinhaBoletoRegistrado({
-  boleto,
-  onCopiar,
-  onVerBoleto,
-}: {
-  boleto: BolResumo
-  onCopiar: (texto: string, rotulo: string) => void
-  onVerBoleto: (boletoId: string) => void
-}) {
-  const venc = String(boleto.vencimento || '').slice(0, 10).split('-').reverse().join('/')
-  return (
-    <div className="px-4 py-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="text-muted-foreground"><Banknote className="h-4 w-4" /></span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-ink">Boleto</span>
-              <Badge className={STATUS_BOLETO[boleto.status] || 'border-slate-200 bg-slate-50 text-slate-600'}>
-                {boleto.status}
-              </Badge>
-              <span className="text-xs text-muted-foreground">vence {venc}</span>
-            </div>
-            <p className="text-xs text-muted-foreground">Registrado no Itaú. A linha digitável abaixo é a que o cliente paga.</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <span className="text-sm font-tabular text-ink">{formatMoney(boleto.valor)}</span>
-          <Button variant="outline" size="sm" onClick={() => onVerBoleto(boleto.id)}>
-            <Printer className="mr-2 h-3.5 w-3.5" />
-            Ver boleto (PDF)
-          </Button>
-        </div>
-      </div>
-      {boleto.linha_digitavel ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2 pl-7">
-          <code className="rounded border bg-muted/40 px-2 py-1 font-mono text-xs text-ink">
-            {formatarLinhaDigitavel(boleto.linha_digitavel)}
-          </code>
-          <Button variant="ghost" size="sm" onClick={() => onCopiar(boleto.linha_digitavel!, 'Linha digitável')}>
-            <Copy className="mr-1.5 h-3.5 w-3.5" />
-            Copiar
-          </Button>
-          {boleto.pix_copia_cola ? (
-            <Button variant="ghost" size="sm" onClick={() => onCopiar(boleto.pix_copia_cola!, 'Chave Pix copia e cola')}>
-              <Copy className="mr-1.5 h-3.5 w-3.5" />
-              Copiar Pix
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }

@@ -18,8 +18,8 @@ export default async function ComposicaoDaFaturaPage() {
         <span className="text-eyebrow">FINANCEIRO</span>
         <h1 className="mt-2 display-lg text-ink">Composição da fatura</h1>
         <p className="mt-2 text-sm text-ink-mute">
-          Reúne, por cliente e contrato, o kit da fatura: nota fiscal de serviço, boleto, relatório de timesheet e nota
-          de despesa dos itens aprovados pelo financeiro.
+          Reúne, por cliente e caso (competência a competência), o kit da fatura: NFS-e, boleto, relatório de timesheet e nota
+          de débito dos itens aprovados pelo financeiro — e o envio por e-mail.
         </p>
       </header>
       <ComposicaoDaFaturaList />
