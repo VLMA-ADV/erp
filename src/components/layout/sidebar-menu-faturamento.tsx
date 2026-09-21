@@ -13,12 +13,24 @@ interface SidebarMenuFaturamentoProps {
 // separadas: itens a faturar, revisão e fluxo. Elas saíram do menu, mas as rotas
 // continuam de pé — link antigo, favorito e histórico seguem funcionando, e é
 // para lá que se volta se a tela única precisar ser desligada.
+// A fila de liberação (antiga "1. Itens a faturar") virou a etapa "Na fila"
+// dentro da Revisão. A rota antiga segue viva, mas só entra no menu com
+// NEXT_PUBLIC_ETAPA1_LEGADA=true — válvula de escape se a etapa nova falhar.
+const mostrarEtapa1Legada = process.env.NEXT_PUBLIC_ETAPA1_LEGADA === 'true'
+
 const faturamentoMenuItems = [
   {
     label: 'Faturamento',
     href: '/financeiro/faturamento',
     permission: 'finance.faturamento.read',
   },
+  ...(mostrarEtapa1Legada
+    ? [{
+        label: 'Itens a faturar (legado)',
+        href: '/financeiro/itens-a-faturar',
+        permission: 'finance.faturamento.read',
+      }]
+    : []),
   {
     label: 'Notas geradas',
     href: '/financeiro/notas-geradas',
