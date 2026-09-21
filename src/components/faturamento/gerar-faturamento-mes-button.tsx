@@ -63,9 +63,12 @@ function formatBRL(value: number): string {
 interface Props {
   redirectAfterSuccess?: boolean
   onSuccess?: () => void
+  /** Competência fixa ('YYYY-MM' ou 'YYYY-MM-01'). Quando vem, o select some e
+   *  o botão gera o mês da aba ativa da Revisão — não o mês corrente. */
+  competencia?: string
 }
 
-export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true, onSuccess }: Props) {
+export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true, onSuccess, competencia: competenciaFixa }: Props) {
   const router = useRouter()
   const { success, error: toastError } = useToast()
   const supabase = createClient()
@@ -154,10 +157,17 @@ export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true,
     }
   }, [preview, supabase, toastError, success, onSuccess, redirectAfterSuccess, router])
 
+  const competenciaFixaMes = competenciaFixa ? competenciaFixa.slice(0, 7) : null
+
   const openModal = () => {
     setOpen(true)
     setPreview(null)
-    setCompetencia(getCurrentCompetencia())
+    setCompetencia(competenciaFixaMes ?? getCurrentCompetencia())
+  }
+
+  const rotuloCompetencia = (value: string) => {
+    const [ano, mes] = value.split('-').map(Number)
+    return mes ? `${MESES_PT[mes - 1]} / ${ano}` : value
   }
 
   return (
@@ -177,16 +187,23 @@ export default function GerarFaturamentoMesButton({ redirectAfterSuccess = true,
             <div className="space-y-1">
               <Label htmlFor="competencia">Competência</Label>
               <div className="flex gap-2">
-                <NativeSelect
-                  id="competencia"
-                  value={competencia}
-                  onChange={(e) => { setCompetencia(e.target.value); setPreview(null) }}
-                  className="flex-1"
-                >
-                  {compOptions().map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </NativeSelect>
+                {competenciaFixaMes ? (
+                  <div className="flex flex-1 items-center rounded-md border border-hairline bg-canvas-soft px-3 text-sm text-ink">
+                    {rotuloCompetencia(competencia)}
+                    <span className="ml-2 text-[11px] text-ink-mute">(aba ativa da revisão)</span>
+                  </div>
+                ) : (
+                  <NativeSelect
+                    id="competencia"
+                    value={competencia}
+                    onChange={(e) => { setCompetencia(e.target.value); setPreview(null) }}
+                    className="flex-1"
+                  >
+                    {compOptions().map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </NativeSelect>
+                )}
                 <Button variant="outline" onClick={loadPreview} disabled={loadingPreview}>
                   {loadingPreview ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

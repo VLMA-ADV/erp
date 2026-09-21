@@ -11,10 +11,14 @@ import { useState, type KeyboardEvent } from 'react'
 // Desde 21/09 o painel fica na tela inicial e e clicavel (D7=a): clicar em
 // regra/etapa filtra a lista abaixo, mas o painel continua mostrando o total
 // (obedece so a centro de custo e usuario) — e o mapa, nao a lista.
+//
+// Desde a virada de setembro/2026 a fila de liberacao (antiga etapa 1) vive
+// dentro da Revisao como a etapa "Na fila": sao itens virtuais, calculados ao
+// vivo, que ainda nao viraram billing_item. Por isso o painel tem cinco etapas.
 
-export type EtapaKey = 'liberado' | 'revisado' | 'aprovado' | 'faturado'
+export type EtapaKey = 'na_fila' | 'liberado' | 'revisado' | 'aprovado' | 'faturado'
 
-export type StatusFila = 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'
+export type StatusFila = 'na_fila' | 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'
 
 export interface AndamentoLinha {
   key: string
@@ -35,6 +39,7 @@ export interface AndamentoSelecao {
 }
 
 const ETAPAS: Array<{ key: EtapaKey; label: string; cor: string }> = [
+  { key: 'na_fila', label: 'Na fila', cor: 'bg-neutral-300' },
   { key: 'liberado', label: 'Liberado', cor: 'bg-amber-400' },
   { key: 'revisado', label: 'Revisado', cor: 'bg-sky-400' },
   { key: 'aprovado', label: 'Aprovado', cor: 'bg-emerald-500' },
@@ -42,6 +47,7 @@ const ETAPAS: Array<{ key: EtapaKey; label: string; cor: string }> = [
 ]
 
 export function etapaDoStatus(status: string): EtapaKey | null {
+  if (status === 'na_fila') return 'na_fila'
   if (status === 'em_revisao') return 'liberado'
   if (status === 'em_aprovacao') return 'revisado'
   if (status === 'aprovado') return 'aprovado'
@@ -51,6 +57,7 @@ export function etapaDoStatus(status: string): EtapaKey | null {
 
 // Inverso de etapaDoStatus: a etapa clicada no painel vira o filtro de situacao.
 export function statusDaEtapa(etapa: EtapaKey): StatusFila {
+  if (etapa === 'na_fila') return 'na_fila'
   if (etapa === 'liberado') return 'em_revisao'
   if (etapa === 'revisado') return 'em_aprovacao'
   if (etapa === 'aprovado') return 'aprovado'
@@ -61,8 +68,8 @@ export function linhaVazia(key: string, label: string): AndamentoLinha {
   return {
     key,
     label,
-    itens: { liberado: 0, revisado: 0, aprovado: 0, faturado: 0 },
-    valor: { liberado: 0, revisado: 0, aprovado: 0, faturado: 0 },
+    itens: { na_fila: 0, liberado: 0, revisado: 0, aprovado: 0, faturado: 0 },
+    valor: { na_fila: 0, liberado: 0, revisado: 0, aprovado: 0, faturado: 0 },
   }
 }
 
@@ -142,8 +149,8 @@ export default function AndamentoPorRegra({
           <p className="text-sm font-semibold text-ink">Andamento por regra de cobrança</p>
           <p className="text-[11px] text-ink-mute">
             {interativo
-              ? 'Clique numa regra ou etapa para filtrar a lista abaixo; o painel segue só centro de custo e usuário. As quatro primeiras colunas são o que está na fila agora; a coluna Faturado no mês vem do banco.'
-              : 'Segue os filtros da tela. As quatro primeiras colunas são o que está na fila agora; a coluna Faturado no mês vem do banco.'}
+              ? 'Clique numa regra ou etapa para filtrar a lista abaixo; o painel segue só centro de custo e usuário. As cinco primeiras colunas são o que está na fila agora (Na fila = ainda não liberado); a coluna Faturado no mês vem do banco.'
+              : 'Segue os filtros da tela. As cinco primeiras colunas são o que está na fila agora (Na fila = ainda não liberado); a coluna Faturado no mês vem do banco.'}
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-full border p-0.5 text-xs">
