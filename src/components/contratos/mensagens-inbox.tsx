@@ -106,9 +106,20 @@ function iniciais(nome?: string | null) {
 }
 
 function Avatar({ nome, foto }: { nome?: string | null; foto?: string | null }) {
-  if (foto) {
+  // autor_foto vem cru da RPC (path do bucket privado ou URL antiga) e pode não
+  // abrir; se a imagem falhar, cai nas iniciais em vez de mostrar ícone quebrado.
+  const [fotoQuebrada, setFotoQuebrada] = useState(false)
+  useEffect(() => setFotoQuebrada(false), [foto])
+  if (foto && !fotoQuebrada) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={foto} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+    return (
+      <img
+        src={foto}
+        alt=""
+        className="h-9 w-9 shrink-0 rounded-full object-cover"
+        onError={() => setFotoQuebrada(true)}
+      />
+    )
   }
   return (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">
