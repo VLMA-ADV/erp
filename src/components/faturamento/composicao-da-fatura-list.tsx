@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
+import { cn } from '@/lib/utils/cn'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
 import { gerarRelatorioTimesheetPdf, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
@@ -14,6 +15,7 @@ import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
 import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import BarraFiltros from './composicao/filtros-composicao'
+import ChipsStatusKit from './composicao/chips-status-kit'
 import ResumoStatus from './composicao/resumo-status'
 import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
 import AjustesKitDialog from './composicao/ajustes-kit-dialog'
@@ -24,9 +26,11 @@ import {
   labelCaso,
   labelCompetencia,
   labelCompetenciaCurta,
+  progressoDoKit,
   type ComposicaoPayload,
   type FiltrosComposicao,
   type KitCaso,
+  type SituacaoKit,
 } from './composicao/types'
 
 // "Composição da fatura": a Jéssica (financeiro) monta aqui o kit que vai ao
@@ -80,6 +84,10 @@ export default function ComposicaoDaFaturaList() {
   const inicializado = useRef(false)
   const filtrosRef = useRef(filtros)
   filtrosRef.current = filtros
+
+  // Filtro pelos KPIs (kit completo / em andamento / não iniciado): só de
+  // tela, calculado sobre os documentos emitidos — não vai ao banco.
+  const [situacao, setSituacao] = useState<SituacaoKit | null>(null)
 
   const carregar = useCallback(async (f: FiltrosComposicao, opts: { silencioso?: boolean } = {}) => {
     if (!opts.silencioso) setLoading(true)
@@ -144,15 +152,20 @@ export default function ComposicaoDaFaturaList() {
   const clientesVisiveis = useMemo(() => {
     const lista = payload?.clientes ?? []
     const termo = busca.trim().toLocaleLowerCase('pt-BR')
-    if (!termo) return lista
+    if (!termo && !situacao) return lista
     return lista
       .map((c) => {
-        if (c.nome.toLocaleLowerCase('pt-BR').includes(termo)) return c
-        const casos = c.casos.filter((k) => labelCaso(k).toLocaleLowerCase('pt-BR').includes(termo))
-        return casos.length ? { ...c, casos, kits: casos.length, valor_total: casos.reduce((a, k) => a + k.valor_total, 0) } : null
+        const bateNome = !termo || c.nome.toLocaleLowerCase('pt-BR').includes(termo)
+        const casos = c.casos.filter((k) =>
+          (bateNome || labelCaso(k).toLocaleLowerCase('pt-BR').includes(termo)) &&
+          (!situacao || progressoDoKit(k).situacao === situacao),
+        )
+        if (!casos.length) return null
+        if (casos.length === c.casos.length) return c
+        return { ...c, casos, kits: casos.length, valor_total: casos.reduce((a, k) => a + k.valor_total, 0) }
       })
       .filter((c): c is NonNullable<typeof c> => c !== null)
-  }, [payload, busca])
+  }, [payload, busca, situacao])
 
   const executar = async (kit: KitCaso, acao: string, fn: () => Promise<void>) => {
     const key = acaoKey(kit, acao)
@@ -614,45 +627,55 @@ export default function ComposicaoDaFaturaList() {
         </Alert>
       ) : null}
 
+      <ResumoStatus
+        resumo={payload?.resumo ?? null}
+        clientes={payload?.clientes ?? []}
+        ativo={situacao}
+        onSelecionar={setSituacao}
+      />
+
       <BarraFiltros
         opcoes={payload?.opcoes ?? null}
         filtros={filtros}
-        busca={busca}
         onChange={setFiltros}
-        onBusca={setBusca}
-      />
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
-        <div className="flex-1">
-          <ResumoStatus
-            resumo={payload?.resumo ?? null}
-            ativo={filtros.statusKit}
-            onSelecionar={(status) => setFiltros((f) => ({ ...f, statusKit: status }))}
-          />
-        </div>
-        <div className="flex items-start justify-end">
-          <Button variant="outline" size="sm" onClick={() => void carregar(filtros)} disabled={loading}>
+        temBusca={busca.trim() !== '' || situacao !== null}
+        onLimpar={() => {
+          setFiltros(FILTROS_VAZIOS)
+          setBusca('')
+          setSituacao(null)
+        }}
+        extra={
+          <Button variant="outline" size="sm" className="h-9" onClick={() => void carregar(filtros)} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Atualizar
           </Button>
-        </div>
-      </div>
+        }
+      />
+
+      <ChipsStatusKit
+        ativo={filtros.statusKit}
+        onSelecionar={(status) => setFiltros((f) => ({ ...f, statusKit: status }))}
+        busca={busca}
+        onBusca={setBusca}
+      />
 
       {loading && !payload ? (
-        <div className="flex items-center justify-center rounded-md border bg-white py-16 text-sm text-muted-foreground">
+        <div className="flex items-center justify-center rounded-xl border border-hairline bg-white py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Carregando composição da fatura...
         </div>
       ) : clientesVisiveis.length === 0 ? (
-        <div className="rounded-md border bg-white py-16 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border border-hairline bg-white py-16 text-center text-sm text-muted-foreground">
           {busca.trim()
             ? 'Nenhum cliente ou caso bate com a busca.'
-            : Object.values(filtros).some(Boolean)
-              ? 'Nenhum kit com esses filtros. Limpe os filtros ou escolha outra competência.'
-              : 'Nenhum item aprovado pelo financeiro disponível para composição.'}
+            : situacao
+              ? 'Nenhum kit nessa situação. Clique no card de novo para limpar.'
+              : Object.values(filtros).some(Boolean)
+                ? 'Nenhum kit com esses filtros. Limpe os filtros ou escolha outra competência.'
+                : 'Nenhum item aprovado pelo financeiro disponível para composição.'}
         </div>
       ) : (
-        <div className={loading ? 'space-y-4 opacity-60 transition-opacity' : 'space-y-4'}>
+        <div className={cn('grid items-start gap-4 xl:grid-cols-2', loading && 'opacity-60 transition-opacity')}>
           {clientesVisiveis.map((cliente) => (
             <ClienteCard key={cliente.cliente_id ?? cliente.nome} cliente={cliente} acoes={acoes} />
           ))}

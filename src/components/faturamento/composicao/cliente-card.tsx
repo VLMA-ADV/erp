@@ -24,18 +24,24 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatarLinhaDigitavel } from '@/lib/utils/boleto-ficha'
 import {
+  SITUACAO_INFO,
   STATUS_KIT_INFO,
+  boletoEmitido,
   dataBR,
   dataHoraBR,
   formatMoney,
+  iniciaisCliente,
   labelCaso,
   labelCompetencia,
   labelOrigem,
   labelRegra,
-  piorStatus,
+  nfseEmitida,
+  progressoDoKit,
+  somarProgresso,
   type ClienteKits,
   type DocGerado,
   type KitCaso,
+  type ProgressoKit,
 } from './types'
 
 /** Ações que o bloco do caso dispara; quem orquestra (a lista) implementa. */
@@ -58,27 +64,70 @@ export interface AcoesKit {
 export const acaoKey = (kit: KitCaso, acao: string) => `${kit.chave}:${acao}`
 
 // Cartão por CLIENTE (Filipe, 21/09, D13-a) com um bloco por caso dentro.
+// O cabeçalho resume quanto do kit está montado (documentos emitidos sobre
+// os necessários — progressoDoKit); a esteira status_kit fica no bloco do caso.
 export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; acoes: AcoesKit }) {
-  const pior = piorStatus(cliente.casos)
-  const info = STATUS_KIT_INFO[pior]
+  const progresso = somarProgresso(cliente.casos)
+  const situacao = SITUACAO_INFO[progresso.situacao]
   return (
-    <section className={cn('overflow-hidden rounded-xl border-2 bg-white shadow-sm', info.bordaCard)}>
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-canvas-soft px-5 py-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-ink">{cliente.nome}</h2>
-          <Badge className={info.badge}>{info.label}</Badge>
+    <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-white shadow-lift-1">
+      <header className="border-b border-hairline bg-canvas-soft px-5 py-4">
+        <div className="flex items-start gap-3">
+          <div
+            aria-hidden
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-soft-bg text-sm font-semibold text-primary-soft-fg"
+          >
+            {iniciaisCliente(cliente.nome)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-base font-semibold text-ink" title={cliente.nome}>{cliente.nome}</h2>
+            <p className="text-xs text-ink-mute">{cliente.kits} {cliente.kits === 1 ? 'kit' : 'kits'}</p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="text-base font-semibold font-tabular text-ink">{formatMoney(cliente.valor_total)}</span>
+            <Badge className={situacao.badge}>{situacao.label}</Badge>
+          </div>
         </div>
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-ink-mute">{cliente.kits} {cliente.kits === 1 ? 'kit' : 'kits'}</span>
-          <span className="text-base font-semibold font-tabular text-ink">{formatMoney(cliente.valor_total)}</span>
+        <div className="mt-3 flex items-center gap-3">
+          <BarraSegmentada progresso={progresso} />
+          <span className="shrink-0 text-xs font-tabular text-ink-secondary">
+            {progresso.emitidos}/{progresso.necessarios} · {progresso.pct}%
+          </span>
         </div>
       </header>
-      <div className="divide-y">
+      <div className="divide-y divide-hairline">
         {cliente.casos.map((kit) => (
           <KitCasoBloco key={kit.chave} kit={kit} clienteNome={cliente.nome} acoes={acoes} />
         ))}
       </div>
     </section>
+  )
+}
+
+/** Um segmento por documento necessário; verde os que já saíram. */
+function BarraSegmentada({ progresso }: { progresso: ProgressoKit }) {
+  if (progresso.necessarios === 0) {
+    return <div className="h-2 flex-1 rounded-pill bg-hairline" />
+  }
+  return (
+    <div
+      className="flex flex-1 gap-0.5"
+      role="progressbar"
+      aria-valuenow={progresso.pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${progresso.emitidos} de ${progresso.necessarios} documentos emitidos`}
+    >
+      {progresso.segmentos.map((emitido, i) => (
+        <div
+          key={i}
+          className={cn(
+            'h-2 flex-1 first:rounded-l-pill last:rounded-r-pill transition-colors',
+            emitido ? 'bg-emerald-500' : 'bg-hairline',
+          )}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -93,6 +142,9 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   const contratoLabel = formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full
   const ocupado = (acao: string) => acoes.ocupado === acaoKey(kit, acao)
   const enviadoOk = !!kit.envio && !kit.envio.erro
+  const progresso = progressoDoKit(kit)
+  const pendentes = progresso.necessarios - progresso.emitidos
+  const lancamentosTs = kit.itens.filter((i) => i.origem_tipo === 'timesheet').length
 
   return (
     <div className={cn('border-l-4 px-5 py-4', info.borda)}>
@@ -163,29 +215,31 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
       <ItensKit kit={kit} />
 
       {/* Documentos do kit */}
-      <div className="mt-3 divide-y rounded-md border">
+      <div className="mt-3 divide-y divide-hairline rounded-lg border border-hairline">
         {/* 1. NFS-e */}
         <DocumentoLinha
           icon={<FileText className="h-4 w-4" />}
           titulo="NFS-e"
           status={
             !nfse || nfse.status !== 'gerado'
-              ? { tipo: 'pendente', texto: nfse ? 'Cancelada — emitir de novo' : 'Pendente' }
+              ? nfse
+                ? { tipo: 'pendente', badge: 'Cancelada', explicacao: 'A nota anterior foi cancelada — emita de novo.' }
+                : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal na prefeitura — o boleto é gerado sobre ela.' }
               : nfse.focus_status === 'autorizado'
-                ? { tipo: 'ok', texto: `Autorizada${nfse.nfse_numero ? ` nº ${nfse.nfse_numero}` : ''} em ${dataHoraBR(nfse.created_at)}` }
+                ? { tipo: 'ok', badge: nfse.nfse_numero ? `NFS-e nº ${nfse.nfse_numero}` : 'Emitida', explicacao: `Autorizada em ${dataHoraBR(nfse.created_at)}` }
                 : nfse.focus_status === 'processando'
-                  ? { tipo: 'andamento', texto: 'Em processamento na prefeitura' }
-                  : { tipo: 'erro', texto: `Erro na emissão (${nfse.focus_status ?? 'sem status'}) — emitir de novo` }
+                  ? { tipo: 'andamento', badge: 'Processando', explicacao: 'Em processamento na prefeitura — o PDF aparece quando autorizar.' }
+                  : { tipo: 'erro', badge: 'Erro', explicacao: `Erro na emissão (${nfse.focus_status ?? 'sem status'}) — emita de novo.` }
           }
           valor={nfse?.valor_total ?? kit.valor_servico}
           acoes={
-            nfseViva && (nfse.focus_status === 'autorizado' || nfse.focus_status === 'processando') ? (
-              nfse.arquivo_url ? (
+            nfseEmitida(nfse) ? (
+              nfse?.arquivo_url ? (
                 <Button variant="outline" size="sm" onClick={() => acoes.onAbrirUrl(nfse.arquivo_url!)}>
                   <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir
                 </Button>
               ) : (
-                <span className="text-xs text-ink-mute">PDF aparece quando a prefeitura autorizar</span>
+                <span className="text-xs text-ink-mute">Aguardando PDF</span>
               )
             ) : (
               <Button size="sm" onClick={() => acoes.onEmitirNfse(kit)} disabled={ocupado('nfse') || kit.valor_servico <= 0}>
@@ -203,29 +257,29 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           status={
             docs.boleto
               ? docs.boleto.status === 'erro'
-                ? { tipo: 'erro', texto: 'Erro no registro — emitir de novo' }
+                ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
                 : ['cancelado', 'baixado'].includes(docs.boleto.status)
-                  ? { tipo: 'pendente', texto: `${docs.boleto.status} — emitir de novo` }
+                  ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${docs.boleto.status} — emita de novo.` }
                   : ['pago', 'liquidado'].includes(docs.boleto.status)
-                    ? { tipo: 'ok', texto: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
-                    : { tipo: 'ok', texto: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}` }
+                    ? { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
+                    : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}` }
               : nfseAutorizada
-                ? { tipo: 'pendente', texto: 'Pendente — registra o título no Itaú' }
-                : { tipo: 'pendente', texto: 'Aguarda a NFS-e autorizada' }
+                ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Registra o título no Itaú sobre a conta a receber da nota.' }
+                : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
           }
           valor={docs.boleto?.valor ?? kit.conta_receber?.valor ?? null}
           acoes={
-            docs.boleto && !['erro', 'cancelado', 'baixado'].includes(docs.boleto.status) ? (
+            boletoEmitido(docs.boleto) ? (
               <>
                 <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(docs.boleto!.id)}>
                   <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
                 </Button>
-                {docs.boleto.linha_digitavel ? (
+                {docs.boleto!.linha_digitavel ? (
                   <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.linha_digitavel!, 'Linha digitável')}>
                     <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
                   </Button>
                 ) : null}
-                {docs.boleto.pix_emv ? (
+                {docs.boleto!.pix_emv ? (
                   <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.pix_emv!, 'Pix copia e cola')}>
                     <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
                   </Button>
@@ -239,8 +293,8 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             )
           }
           rodape={
-            docs.boleto?.linha_digitavel && !['erro', 'cancelado', 'baixado'].includes(docs.boleto.status) ? (
-              <code className="rounded border bg-muted/40 px-2 py-0.5 font-mono text-[11px] text-ink">
+            docs.boleto?.linha_digitavel && boletoEmitido(docs.boleto) ? (
+              <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
                 {formatarLinhaDigitavel(docs.boleto.linha_digitavel)}
               </code>
             ) : null
@@ -252,9 +306,8 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           <DocumentoLinha
             icon={<Clock className="h-4 w-4" />}
             titulo="Relatório de timesheet"
-            status={statusDocGerado(docs.relatorio_timesheet)}
+            status={statusDocGerado(docs.relatorio_timesheet, `${formatHorasMin(kit.horas)} em ${lancamentosTs} lançamento(s)`)}
             valor={null}
-            descricao={`${formatHorasMin(kit.horas)} em ${kit.itens.filter((i) => i.origem_tipo === 'timesheet').length} lançamento(s)`}
             acoes={
               <>
                 {docs.relatorio_timesheet?.arquivo_url ? (
@@ -281,7 +334,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           <DocumentoLinha
             icon={<Receipt className="h-4 w-4" />}
             titulo="Nota de débito"
-            status={statusDocGerado(docs.nota_debito)}
+            status={statusDocGerado(docs.nota_debito, 'Despesas reembolsáveis do período.')}
             valor={kit.valor_despesa}
             acoes={
               <>
@@ -304,9 +357,14 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         ) : null}
       </div>
 
-      {/* Rodapé: envio e ações do kit */}
+      {/* Rodapé: pendências, envio e ações do kit */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs">
+        <div className="min-w-0 text-xs">
+          <p className={pendentes > 0 ? 'font-medium text-amber-700' : 'font-medium text-emerald-700'}>
+            {pendentes > 0
+              ? `${pendentes} ${pendentes === 1 ? 'documento pendente' : 'documentos pendentes'}`
+              : 'Todos os documentos emitidos'}
+          </p>
           {kit.envio ? (
             <p className={kit.envio.erro ? 'text-destructive' : 'text-green-700'}>
               {kit.envio.erro ? '✕ Falhou o envio' : '✓ Enviada'} em {dataHoraBR(kit.envio.enviado_em)}
@@ -323,20 +381,32 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Mesmo botão de sempre: abre a prévia do e-mail. O rótulo diz o que
+              vai junto — só o que já foi emitido. */}
           <Button
-            variant="outline"
+            variant={enviadoOk ? 'outline' : 'default'}
+            size="sm"
+            onClick={() => acoes.onEmail(kit)}
+            disabled={ocupado('email')}
+            title={
+              pendentes > 0
+                ? `Pré-visualizar o e-mail com o que já está pronto (faltam ${pendentes} documento(s)). Nada é enviado sem confirmar.`
+                : 'Pré-visualizar o e-mail com o kit completo. Nada é enviado sem confirmar.'
+            }
+          >
+            {ocupado('email') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Mail className="mr-1.5 h-3.5 w-3.5" />}
+            {enviadoOk ? 'Reenviar e-mail' : pendentes > 0 ? 'Enviar o que está pronto' : 'Enviar kit'}
+          </Button>
+          <Button
+            variant="ghost"
             size="sm"
             onClick={() => acoes.onExcluir(kit)}
             disabled={!kit.pode_excluir || ocupado('excluir')}
             title={kit.pode_excluir ? 'Devolve os itens para a revisão' : (kit.motivo_bloqueio ?? 'Kit bloqueado')}
-            className="text-destructive hover:text-destructive"
+            className="text-ink-mute hover:text-destructive"
           >
             {ocupado('excluir') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
             Excluir este kit
-          </Button>
-          <Button variant={enviadoOk ? 'outline' : 'default'} size="sm" onClick={() => acoes.onEmail(kit)} disabled={ocupado('email')}>
-            <Mail className="mr-1.5 h-3.5 w-3.5" />
-            {enviadoOk ? 'Reenviar e-mail' : 'Pré-visualizar e-mail'}
           </Button>
         </div>
       </div>
@@ -344,28 +414,34 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   )
 }
 
-function statusDocGerado(doc: DocGerado | null): StatusDoc {
-  if (!doc) return { tipo: 'pendente', texto: 'Não gerado' }
-  return { tipo: 'ok', texto: `Gerado em ${dataHoraBR(doc.gerado_em)}${doc.gerado_por ? ` por ${doc.gerado_por}` : ''}` }
+function statusDocGerado(doc: DocGerado | null, resumo: string): StatusDoc {
+  if (!doc) return { tipo: 'pendente', badge: 'Pendente', explicacao: resumo }
+  return {
+    tipo: 'ok',
+    badge: 'Emitido',
+    explicacao: `${resumo} · gerado em ${dataHoraBR(doc.gerado_em)}${doc.gerado_por ? ` por ${doc.gerado_por}` : ''}`,
+  }
 }
 
 interface StatusDoc {
   tipo: 'pendente' | 'andamento' | 'ok' | 'erro'
-  texto: string
+  /** Texto curto do badge (PENDENTE, EMITIDO, NFS-e nº…). */
+  badge: string
+  /** Uma linha de explicação embaixo do título. */
+  explicacao: string
 }
 
-const STATUS_DOC_CLASS: Record<StatusDoc['tipo'], string> = {
-  pendente: 'border-amber-200 bg-amber-50 text-amber-800',
-  andamento: 'border-blue-200 bg-blue-50 text-blue-800',
-  ok: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  erro: 'border-red-200 bg-red-50 text-red-800',
+const STATUS_DOC_CLASS: Record<StatusDoc['tipo'], { badge: string; icone: string }> = {
+  pendente: { badge: 'border-amber-200 bg-amber-50 text-amber-800', icone: 'bg-amber-50 text-amber-600' },
+  andamento: { badge: 'border-blue-200 bg-blue-50 text-blue-800', icone: 'bg-blue-50 text-blue-600' },
+  ok: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', icone: 'bg-emerald-50 text-emerald-600' },
+  erro: { badge: 'border-red-200 bg-red-50 text-red-800', icone: 'bg-red-50 text-red-600' },
 }
 
 function DocumentoLinha({
   icon,
   titulo,
   status,
-  descricao,
   valor,
   acoes,
   rodape,
@@ -373,22 +449,25 @@ function DocumentoLinha({
   icon: React.ReactNode
   titulo: string
   status: StatusDoc
-  descricao?: string
   valor: number | null
   acoes: React.ReactNode
   rodape?: React.ReactNode
 }) {
+  const classes = STATUS_DOC_CLASS[status.tipo]
   return (
     <div className="px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="text-ink-mute">{icon}</span>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', classes.icone)}>{icon}</span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-ink">{titulo}</span>
-              <Badge className={STATUS_DOC_CLASS[status.tipo]}>{status.tipo === 'erro' ? <AlertTriangle className="mr-1 h-3 w-3" /> : null}{status.texto}</Badge>
+              <Badge className={classes.badge}>
+                {status.tipo === 'erro' ? <AlertTriangle className="mr-1 h-3 w-3" /> : null}
+                {status.badge}
+              </Badge>
             </div>
-            {descricao ? <p className="text-xs text-ink-mute">{descricao}</p> : null}
+            <p className="text-xs text-ink-mute">{status.explicacao}</p>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -396,7 +475,7 @@ function DocumentoLinha({
           {acoes}
         </div>
       </div>
-      {rodape ? <div className="mt-1.5 pl-7">{rodape}</div> : null}
+      {rodape ? <div className="mt-1.5 pl-11">{rodape}</div> : null}
     </div>
   )
 }
@@ -415,9 +494,9 @@ function ItensKit({ kit }: { kit: KitCaso }) {
         {kit.itens.length} {kit.itens.length === 1 ? 'item' : 'itens'} no kit
       </button>
       {aberto ? (
-        <div className="mt-1.5 overflow-x-auto rounded-md border">
+        <div className="mt-1.5 overflow-x-auto rounded-md border border-hairline">
           <table className="w-full text-xs">
-            <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-ink-mute">
+            <thead className="bg-canvas-soft text-left text-[11px] uppercase tracking-wide text-ink-mute">
               <tr>
                 <th className="px-2 py-1.5 font-medium">Origem</th>
                 <th className="px-2 py-1.5 font-medium">Descrição</th>
@@ -426,7 +505,7 @@ function ItensKit({ kit }: { kit: KitCaso }) {
                 <th className="px-2 py-1.5 text-right font-medium">Valor</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-hairline">
               {kit.itens.map((item) => (
                 <tr key={item.id} className={item.status === 'faturado' ? 'text-ink-mute' : ''}>
                   <td className="whitespace-nowrap px-2 py-1.5">
