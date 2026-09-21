@@ -94,6 +94,8 @@ export interface CasoPayload {
   data_ultimo_reajuste: string
   indice_reajuste: string
   possui_cap_horas?: boolean
+  /** Anexa o relatório de timesheet no e-mail da fatura (Filipe, 21/09, D15-a). */
+  enviar_relatorio_timesheet?: boolean
   regra_cobranca:
     | 'hora'
     | 'hora_com_cap'

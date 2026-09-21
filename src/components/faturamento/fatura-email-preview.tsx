@@ -25,6 +25,10 @@ export interface FaturaEmailData {
   anexos: string[]
   // determina o template: completo (horas/despesas) x simples (projeto/manutenção)
   completo: boolean
+  // O relatório de timesheet só vai no e-mail quando o caso pede (Filipe,
+  // 21/09, D15-a). Sem esta prop o texto continua prometendo o relatório, como
+  // sempre fez; com ela, promete só se o relatório estiver entre os anexos.
+  temRelatorio?: boolean
 }
 
 // Templates de cobrança fornecidos pelo escritório (enviados via Resend).
@@ -32,12 +36,13 @@ function montarCorpo(data: FaturaEmailData) {
   const nfse = data.nfseNumero || '____'
   const tratamento = `Sr. ${data.clienteNome}, boa tarde.`
   if (data.completo) {
+    const relatorio = data.temRelatorio === false ? '' : `
+Além disso, segue também o relatório para conferência.
+`
     return `${tratamento}
 
 Segue anexa a NFSe ${nfse}, referente às horas trabalhadas no mês de ${data.mesReferencia}, a nota de despesas cujas custas foram adiantadas pelo escritório, assim como os boletos bancários para pagamento, com vencimento em ${data.vencimento}.
-
-Além disso, segue também o relatório para conferência.
-
+${relatorio}
 Gentileza acusar o recebimento desta mensagem.
 
 Atenciosamente,`
