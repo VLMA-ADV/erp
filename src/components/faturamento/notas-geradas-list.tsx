@@ -1,14 +1,17 @@
 'use client'
 
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Ban, Loader2, RefreshCw, Search } from 'lucide-react'
+import { Ban, Copy, Loader2, RefreshCw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { copiarTexto, formatarLinhaDigitavel } from '@/lib/utils/boleto-ficha'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CommandSelect, type CommandSelectOption } from '@/components/ui/command-select'
 import { Input } from '@/components/ui/input'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
+import { useToast } from '@/components/ui/toast'
 
 interface NotaGerada {
   id: string
@@ -24,6 +27,19 @@ interface NotaGerada {
   contrato_nome: string | null
   caso_numero: number | null
   caso_nome: string | null
+  // Campos da RPC get_notas_geradas (migration 20260921120000). Ficam
+  // opcionais porque a edge ainda tem o fallback sem eles.
+  cliente_id?: string | null
+  cliente_nome?: string | null
+  tomador_nome?: string | null
+  valor_total?: number | string | null
+  vencimento?: string | null
+  lancamento_status?: string | null
+  lancamento_vencimento?: string | null
+  lancamento_valor?: number | string | null
+  boleto_status?: string | null
+  linha_digitavel?: string | null
+  competencia?: string | null
 }
 
 const tipoDocumentoOptions = [
@@ -50,6 +66,57 @@ function formatDateTime(value: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return '-'
+  // Data pura (YYYY-MM-DD) vinda do banco: sem fuso, senao vira o dia anterior.
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`
+  return formatDateTime(value)
+}
+
+function formatCompetencia(value: string | null | undefined) {
+  if (!value) return '-'
+  const match = /^(\d{4})-(\d{2})/.exec(value)
+  return match ? `${match[2]}/${match[1]}` : value
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') return '-'
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (Number.isNaN(parsed)) return '-'
+  return parsed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+// Situacao da conta a receber (finance.lancamentos) e do boleto (finance.boletos).
+const lancamentoStatusLabels: Record<string, string> = {
+  pendente: 'A receber',
+  agendado: 'Agendado',
+  atrasado: 'Atrasado',
+  recebido: 'Recebido',
+  pago: 'Recebido',
+  cancelado: 'Cancelado',
+}
+
+function getLancamentoBadgeClass(status: string) {
+  if (status === 'recebido' || status === 'pago') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'cancelado' || status === 'atrasado') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-amber-200 bg-amber-50 text-amber-700'
+}
+
+const boletoStatusLabels: Record<string, string> = {
+  preparado: 'Boleto preparado',
+  registrado: 'Boleto registrado',
+  erro: 'Boleto com erro',
+  liquidado: 'Boleto liquidado',
+  baixado: 'Boleto baixado',
+}
+
+function getBoletoBadgeClass(status: string) {
+  if (status === 'registrado' || status === 'liquidado') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'erro') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-slate-200 bg-slate-50 text-slate-700'
 }
 
 function getTipoDocumentoLabel(value: string) {
@@ -82,26 +149,24 @@ function getNfseStatusBadgeClass(status: string) {
   return 'border-amber-200 bg-amber-50 text-amber-700'
 }
 
-function formatMetadata(metadata: Record<string, unknown> | null) {
-  if (!metadata || typeof metadata !== 'object') return '-'
-  const entries = Object.entries(metadata).filter(([, value]) => typeof value !== 'object' || value === null)
-  if (entries.length === 0) return '-'
-  return entries
-    .slice(0, 3)
-    .map(([key, value]) => `${key}: ${String(value)}`)
-    .join(' | ')
+function getContratoLabel(note: NotaGerada) {
+  if (note.contrato_numero) return `Contrato ${note.contrato_numero}${note.contrato_nome ? ` - ${note.contrato_nome}` : ''}`
+  return note.contrato_nome || 'Contrato não informado'
 }
 
-function getContractCaseLabel(note: NotaGerada) {
-  const contrato = note.contrato_numero
-    ? `Contrato ${note.contrato_numero}${note.contrato_nome ? ` - ${note.contrato_nome}` : ''}`
-    : note.contrato_nome || 'Contrato não informado'
-  const caso = note.caso_numero ? `Caso ${note.caso_numero}${note.caso_nome ? ` - ${note.caso_nome}` : ''}` : note.caso_nome || ''
-  if (!caso) return contrato
-  return `${contrato} • ${caso}`
+function getCasoLabel(note: NotaGerada) {
+  if (note.caso_numero) return `Caso ${note.caso_numero}${note.caso_nome ? ` - ${note.caso_nome}` : ''}`
+  return note.caso_nome || ''
+}
+
+// Nº da NFS-e devolvido pela prefeitura, quando ja consultada.
+function getNumeroNfse(note: NotaGerada): string | null {
+  const consulta = note.metadata?.nfse_consulta as { numero_nfse?: string | number } | undefined
+  return consulta?.numero_nfse ? String(consulta.numero_nfse) : null
 }
 
 export default function NotasGeradasList() {
+  const { toast: notify } = useToast()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -109,6 +174,11 @@ export default function NotasGeradasList() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState('')
+  const [clienteId, setClienteId] = useState('')
+  const [mes, setMes] = useState('')
+  // Clientes vistos nas notas carregadas. Acumula entre cargas: filtrar por
+  // um cliente nao pode fazer os outros sumirem da lista de opcoes.
+  const [clientesConhecidos, setClientesConhecidos] = useState<Record<string, string>>({})
   const [refreshingNfse, setRefreshingNfse] = useState(false)
   const [cancelingId, setCancelingId] = useState<string | null>(null)
 
@@ -129,6 +199,8 @@ export default function NotasGeradasList() {
       if (search.trim()) params.set('search', search.trim())
       if (status) params.set('status', status)
       if (tipoDocumento) params.set('tipo_documento', tipoDocumento)
+      if (clienteId) params.set('cliente_id', clienteId)
+      if (mes) params.set('mes', mes)
       params.set('limit', '200')
 
       const query = params.toString()
@@ -150,7 +222,15 @@ export default function NotasGeradasList() {
         return
       }
 
-      setNotes((payload.data || []) as NotaGerada[])
+      const rows = (payload.data || []) as NotaGerada[]
+      setNotes(rows)
+      setClientesConhecidos((prev) => {
+        const next = { ...prev }
+        for (const row of rows) {
+          if (row.cliente_id && row.cliente_nome) next[row.cliente_id] = row.cliente_nome
+        }
+        return next
+      })
     } catch (err) {
       console.error(err)
       setError('Erro ao carregar notas geradas')
@@ -178,6 +258,20 @@ export default function NotasGeradasList() {
       ),
     [notes],
   )
+
+  const clienteOptions = useMemo<CommandSelectOption[]>(
+    () => [
+      { value: '', label: 'Todos os clientes' },
+      ...Object.entries(clientesConhecidos)
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
+    ],
+    [clientesConhecidos],
+  )
+
+  const copiar = async (texto: string, rotulo: string) => {
+    notify((await copiarTexto(texto)) ? `${rotulo} copiada.` : 'O navegador não deixou copiar. Selecione o texto e copie.')
+  }
 
   const handleSubmitFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -267,6 +361,8 @@ export default function NotasGeradasList() {
     setSearch('')
     setStatus('')
     setTipoDocumento('')
+    setClienteId('')
+    setMes('')
     setTimeout(() => {
       void loadNotes(true)
     }, 0)
@@ -274,14 +370,29 @@ export default function NotasGeradasList() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSubmitFilters} className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-4">
+      <form onSubmit={handleSubmitFilters} className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-6">
         <div className="md:col-span-2">
           <label className="mb-1 block text-sm font-medium">Buscar</label>
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Número da nota, contrato, caso, lote ou arquivo"
+            placeholder="Cliente, caso, contrato ou nº da nota"
           />
+        </div>
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-sm font-medium">Cliente</label>
+          <CommandSelect
+            value={clienteId}
+            onValueChange={setClienteId}
+            options={clienteOptions}
+            placeholder="Todos os clientes"
+            searchPlaceholder="Buscar cliente..."
+            emptyText="Nenhum cliente encontrado."
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">Mês de emissão</label>
+          <Input type="month" value={mes} onChange={(event) => setMes(event.target.value)} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Tipo de documento</label>
@@ -303,7 +414,7 @@ export default function NotasGeradasList() {
             ))}
           </NativeSelect>
         </div>
-        <div className="md:col-span-4 flex items-center gap-2">
+        <div className="md:col-span-6 flex flex-wrap items-center gap-2">
           <Button type="submit" disabled={submitting}>
             {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
             Filtrar
@@ -335,10 +446,13 @@ export default function NotasGeradasList() {
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Nota</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Documento</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Status</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Contrato / Caso</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Lote</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Cliente</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Caso</th>
+              <th className="h-10 px-2 text-right text-xs font-semibold uppercase tracking-wide text-ink-mute">Valor</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Vencimento</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Cobrança</th>
+              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Competência</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Arquivo</th>
-              <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Metadados</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Gerado em</th>
               <th className="h-10 px-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-mute">Ações</th>
             </tr>
@@ -346,7 +460,7 @@ export default function NotasGeradasList() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-2 py-12 text-center text-sm text-ink-mute">
+                <td colSpan={12} className="px-2 py-12 text-center text-sm text-ink-mute">
                   <span className="inline-flex items-center">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Carregando notas geradas...
@@ -355,14 +469,18 @@ export default function NotasGeradasList() {
               </tr>
             ) : notes.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-2 py-12 text-center text-sm text-ink-mute">
+                <td colSpan={12} className="px-2 py-12 text-center text-sm text-ink-mute">
                   Nenhuma nota encontrada para os filtros informados.
                 </td>
               </tr>
             ) : (
               notes.map((note) => (
                 <tr key={note.id} className="border-b last:border-0">
-                  <td className="p-2 font-medium">#{note.numero || '-'}</td>
+                  <td className="p-2">
+                    <div className="font-medium">#{note.numero || '-'}</div>
+                    {getNumeroNfse(note) ? <div className="text-xs text-ink-mute">NFS-e {getNumeroNfse(note)}</div> : null}
+                    {note.batch_numero ? <div className="text-xs text-ink-mute">Lote #{note.batch_numero}</div> : null}
+                  </td>
                   <td className="p-2">{getTipoDocumentoLabel(note.tipo_documento)}</td>
                   <td className="p-2">
                     <div className="flex flex-wrap items-center gap-1">
@@ -380,8 +498,56 @@ export default function NotasGeradasList() {
                       })()}
                     </div>
                   </td>
-                  <td className="p-2 text-sm text-ink-secondary">{getContractCaseLabel(note)}</td>
-                  <td className="p-2">{note.batch_numero ? `#${note.batch_numero}` : '-'}</td>
+                  <td className="p-2 text-sm">
+                    <div className="max-w-[220px] truncate" title={note.cliente_nome || undefined}>
+                      {note.cliente_nome || <span className="text-ink-mute">-</span>}
+                    </div>
+                    {note.tomador_nome && note.tomador_nome !== note.cliente_nome ? (
+                      <div className="max-w-[220px] truncate text-xs text-ink-mute" title={note.tomador_nome}>
+                        Tomador: {note.tomador_nome}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="p-2 text-sm text-ink-secondary">
+                    <div className="max-w-[260px] truncate" title={getCasoLabel(note) || undefined}>
+                      {getCasoLabel(note) || <span className="text-ink-mute">-</span>}
+                    </div>
+                    <div className="max-w-[260px] truncate text-xs text-ink-mute" title={getContratoLabel(note)}>
+                      {getContratoLabel(note)}
+                    </div>
+                  </td>
+                  <td className="p-2 text-right text-sm font-medium tabular-nums">{formatMoney(note.valor_total)}</td>
+                  <td className="p-2 text-sm tabular-nums">{formatDate(note.lancamento_vencimento || note.vencimento)}</td>
+                  <td className="p-2">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {note.lancamento_status ? (
+                          <Badge className={getLancamentoBadgeClass(note.lancamento_status)}>
+                            {lancamentoStatusLabels[note.lancamento_status] || note.lancamento_status}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-ink-mute">Sem conta a receber</span>
+                        )}
+                        {note.boleto_status ? (
+                          <Badge className={getBoletoBadgeClass(note.boleto_status)}>
+                            {boletoStatusLabels[note.boleto_status] || `Boleto ${note.boleto_status}`}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {note.linha_digitavel ? (
+                        <button
+                          type="button"
+                          onClick={() => void copiar(note.linha_digitavel!, 'Linha digitável')}
+                          className="inline-flex max-w-[260px] items-center gap-1 text-left font-mono text-[11px] text-ink-secondary hover:text-ink"
+                          title="Copiar linha digitável"
+                        >
+                          <Copy className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{formatarLinhaDigitavel(note.linha_digitavel)}</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="p-2 text-sm tabular-nums">{formatCompetencia(note.competencia)}</td>
                   <td className="p-2">
                     {note.arquivo_url ? (
                       <a
@@ -396,7 +562,6 @@ export default function NotasGeradasList() {
                       <span className="text-ink-mute">-</span>
                     )}
                   </td>
-                  <td className="p-2 text-xs text-ink-secondary">{formatMetadata(note.metadata)}</td>
                   <td className="p-2 text-sm text-ink-secondary">{formatDateTime(note.created_at)}</td>
                   <td className="p-2">
                     {note.tipo_documento === 'nota_fiscal_servico' && note.status !== 'cancelado' ? (

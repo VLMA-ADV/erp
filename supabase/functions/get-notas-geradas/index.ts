@@ -83,13 +83,23 @@ Deno.serve(async (req) => {
     const search = url.searchParams.get("search") || null
     const limitParam = Number(url.searchParams.get("limit") || "200")
     const limit = Number.isFinite(limitParam) ? limitParam : 200
+    // Filtros novos (Filipe 11/09 e 16/09): cliente e mes de emissao. O mes
+    // chega como "YYYY-MM" do <input type="month">; a RPC quer uma data.
+    const clienteId = url.searchParams.get("cliente_id") || null
+    const mesParam = url.searchParams.get("mes") || null
+    const mes = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? `${mesParam}-01` : mesParam
 
+    // RPC da migration 20260921120000. Antes dela existir a edge vivia do
+    // fallback abaixo, que fica como rede de seguranca se a migration ainda
+    // nao tiver sido aplicada.
     const { data, error } = await supabase.rpc("get_notas_geradas", {
       p_user_id: user.id,
       p_status: status,
       p_tipo_documento: tipoDocumento,
       p_search: search,
       p_limit: limit,
+      p_cliente_id: clienteId,
+      p_mes: mes,
     })
 
     if (error && !isMissingRpcError(error.message)) {
@@ -132,6 +142,13 @@ Deno.serve(async (req) => {
 
     if (status) notesQuery = notesQuery.eq("status", status)
     if (tipoDocumento) notesQuery = notesQuery.eq("tipo_documento", tipoDocumento)
+    if (mes) {
+      const inicio = new Date(`${mes}T00:00:00Z`)
+      if (!Number.isNaN(inicio.getTime())) {
+        const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1))
+        notesQuery = notesQuery.gte("created_at", inicio.toISOString()).lt("created_at", fim.toISOString())
+      }
+    }
 
     const { data: rawNotes, error: notesError } = await notesQuery
     if (notesError) {
@@ -195,9 +212,15 @@ Deno.serve(async (req) => {
       }
     })
 
+    // Sem a RPC nao ha nome do cliente: o filtro por cliente cai no pagador
+    // gravado na nota, que e o que da para saber daqui.
+    const porCliente = clienteId
+      ? mapped.filter((row: any) => String(row.metadata?.pagador_cliente_id || "") === clienteId)
+      : mapped
+
     const normalizedSearch = String(search || "").trim().toLowerCase()
     const filtered = normalizedSearch
-      ? mapped.filter((row: any) => {
+      ? porCliente.filter((row: any) => {
           const haystack = [
             row.numero,
             row.arquivo_nome,
@@ -211,7 +234,7 @@ Deno.serve(async (req) => {
             .join(" ")
           return haystack.includes(normalizedSearch)
         })
-      : mapped
+      : porCliente
 
     return new Response(JSON.stringify({ data: filtered.slice(0, limit) }), {
       status: 200,
