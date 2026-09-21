@@ -502,6 +502,9 @@ function StageTag({ alterado }: { alterado: boolean; changes?: string[] }) {
 
 // Avatar (foto ou iniciais) ao lado do nome nas etapas — pedido do cliente.
 function PersonBadge({ nome, foto }: { nome: string; foto?: string | null }) {
+  // Se a foto não carregar (signed URL vencida, path antigo...), cai nas iniciais.
+  const [fotoQuebrada, setFotoQuebrada] = useState(false)
+  useEffect(() => setFotoQuebrada(false), [foto])
   const iniciais = (nome || '?')
     .split(/\s+/)
     .filter(Boolean)
@@ -510,9 +513,14 @@ function PersonBadge({ nome, foto }: { nome: string; foto?: string | null }) {
     .join('')
   return (
     <span className="inline-flex items-center gap-2">
-      {foto ? (
+      {foto && !fotoQuebrada ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={foto} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />
+        <img
+          src={foto}
+          alt=""
+          className="h-5 w-5 shrink-0 rounded-full object-cover"
+          onError={() => setFotoQuebrada(true)}
+        />
       ) : (
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-canvas-soft text-[9px] font-semibold text-ink-secondary">
           {iniciais || '?'}
