@@ -42,6 +42,7 @@ const emptyCaso: CasoPayload = {
   pagamento_dia_mes: '',
   inicio_vigencia: '',
   possui_reajuste: true,
+  enviar_relatorio_timesheet: false,
   periodo_reajuste: 'nao_tem',
   data_proximo_reajuste: '',
   data_ultimo_reajuste: '',
@@ -840,6 +841,7 @@ export default function CasoForm({
             pagamento_dia_mes: caso.pagamento_dia_mes ? String(caso.pagamento_dia_mes) : '',
             inicio_vigencia: caso.inicio_vigencia || '',
             possui_reajuste: caso.possui_reajuste !== false,
+            enviar_relatorio_timesheet: caso.enviar_relatorio_timesheet === true,
             periodo_reajuste: caso.periodo_reajuste || '',
             data_proximo_reajuste: caso.data_proximo_reajuste || '',
             data_ultimo_reajuste: caso.data_ultimo_reajuste || '',
@@ -2264,6 +2266,27 @@ export default function CasoForm({
                 />
                 <p className="text-xs text-muted-foreground">
                   A partir de quando este caso entra na fila de faturar. Em branco, vale o início da vigência.
+                </p>
+              </div>
+              {/*
+                Filipe, 21/09 (D15-a): "este caso deve ter relatório de timesheet
+                enviado ao cliente" é configuração do caso. O kit da Composição
+                da fatura mostra e o e-mail da fatura anexa o relatório quando
+                está ligado.
+              */}
+              <div className="space-y-2 md:col-span-2">
+                <Label>Enviar relatório de timesheet ao cliente junto com a fatura?</Label>
+                <ChoiceCards
+                  value={form.enviar_relatorio_timesheet ? 'sim' : 'nao'}
+                  onChange={(value) => setField('enviar_relatorio_timesheet', value === 'sim')}
+                  disabled={isReadOnly}
+                  options={[
+                    { value: 'nao', label: 'Não' },
+                    { value: 'sim', label: 'Sim' },
+                  ]}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Com &quot;Sim&quot;, o relatório de horas do mês vai anexado ao e-mail da fatura, junto com a NFS-e e o boleto.
                 </p>
               </div>
               <div className="space-y-2 md:col-span-2">

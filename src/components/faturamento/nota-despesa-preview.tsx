@@ -132,10 +132,17 @@ export default function NotaDespesaPreview({
   open,
   onClose,
   data,
+  onGerado,
 }: {
   open: boolean
   onClose: () => void
   data: NotaDespesaData | null
+  /**
+   * Chamado com o PDF montado (nota + comprovantes) logo depois do download.
+   * A Composição da fatura usa para REGISTRAR o documento no kit (Filipe,
+   * 21/09, D12-a); as outras telas seguem só baixando.
+   */
+  onGerado?: (bytes: Uint8Array, nomeArquivo: string) => Promise<void> | void
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const html = useMemo(() => (data ? buildNotaHtml(data) : ''), [data])
@@ -173,12 +180,24 @@ export default function NotaDespesaPreview({
       }
 
       const { bytes, anexados, naoAnexados } = await montarNotaComComprovantes({ data, anexos, baixarAnexo })
+      const nomeArquivo = `nota-de-debito-${(data.clienteNome || 'cliente').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
       const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `nota-de-debito-${(data.clienteNome || 'cliente').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
+      a.download = nomeArquivo
       a.click()
       URL.revokeObjectURL(a.href)
+
+      // Registro no kit vem DEPOIS do download: se o registro falhar, a pessoa
+      // já tem o arquivo na mão e o erro aparece separado.
+      if (onGerado) {
+        try {
+          await onGerado(bytes, nomeArquivo)
+        } catch (e) {
+          console.error('registrar nota de débito', e)
+          toastError(e instanceof Error ? e.message : 'O PDF foi baixado, mas não foi possível registrá-lo no kit.')
+        }
+      }
 
       if (naoAnexados.length > 0) {
         toastError(`PDF gerado com ${anexados} comprovante(s). ${naoAnexados.length} não pôde(ram) ser anexado(s) — veja a última página.`)

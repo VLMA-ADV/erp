@@ -58,17 +58,35 @@ Deno.serve(async (req) => {
     if (userError || !user) return json({ error: "Invalid token" }, 401)
 
     const body = await req.json().catch(() => ({}))
-    const { contrato_id, assunto, corpo, destinatarios } = body as {
-      contrato_id?: string; assunto?: string; corpo?: string; destinatarios?: string[]
+    const { contrato_id, caso_id, competencia, assunto, corpo, destinatarios } = body as {
+      contrato_id?: string
+      caso_id?: string | null
+      competencia?: string | null
+      assunto?: string
+      corpo?: string
+      destinatarios?: string[]
     }
     if (!contrato_id) return json({ error: "contrato_id é obrigatório" }, 400)
     if (!corpo?.trim()) return json({ error: "corpo do e-mail é obrigatório" }, 400)
 
+    // Kit por caso/competência (Composição da fatura, D13-a/D15-a, 21/09): a
+    // sobrecarga nova de get_dados_envio_fatura devolve `anexos` com tudo que
+    // vai no e-mail — NFS-e, boleto, nota de débito e o relatório de timesheet
+    // quando o caso pede. Sem caso_id continua o envio por contrato de antes,
+    // que anexa só a NFS-e.
+    const competenciaNorm = (() => {
+      const m = /^(\d{4})-(\d{2})/.exec(String(competencia ?? ""))
+      return m ? `${m[1]}-${m[2]}-01` : null
+    })()
+    const porKit = Boolean(caso_id || competenciaNorm)
+
     // get_dados_envio_fatura já checa a permissão finance.nfse.manage.
-    const { data: dados, error: dadosErr } = await supabase.rpc("get_dados_envio_fatura", {
-      p_user_id: user.id,
-      p_contrato_id: contrato_id,
-    })
+    const { data: dados, error: dadosErr } = await supabase.rpc(
+      "get_dados_envio_fatura",
+      porKit
+        ? { p_user_id: user.id, p_contrato_id: contrato_id, p_caso_id: caso_id ?? null, p_competencia: competenciaNorm }
+        : { p_user_id: user.id, p_contrato_id: contrato_id },
+    )
     if (dadosErr) return json({ error: dadosErr.message }, 403)
 
     const d = dados as {
@@ -76,6 +94,9 @@ Deno.serve(async (req) => {
       destinatarios: string[]
       nota: { id: string; numero: string | null; arquivo_nome: string | null; arquivo_url: string | null } | null
       reply_to: string[]
+      // url: http(s) para a NFS-e (Focus); caminho no bucket
+      // 'faturamento-documentos' para o que o ERP mesmo gerou.
+      anexos?: Array<{ tipo: string; nome: string | null; url: string | null }> | null
     }
 
     // Quem recebe: o que veio da tela, quando veio; senão o cadastro.
@@ -111,27 +132,60 @@ Deno.serve(async (req) => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY")
     if (!resendApiKey) return json({ error: "RESEND_API_KEY não configurada" }, 500)
 
-    // Anexo: a NFS-e, quando já existe arquivo. O boleto entra aqui quando o
-    // certificado do Itaú sair — por isso o texto da prévia ainda não promete.
+    // Anexos. Por contrato (fluxo antigo): só a NFS-e. Por kit: tudo que a RPC
+    // listou — NFS-e (URL da Focus), e os PDFs que o ERP gerou (relatório de
+    // timesheet, nota de débito, boleto), guardados no bucket privado e
+    // baixados aqui com a service role.
     const anexos: Array<{ filename: string; content: string }> = []
-    const anexosResumo: Array<{ nome: string }> = []
-    if (d.nota?.arquivo_url) {
-      try {
-        const arq = await fetch(d.nota.arquivo_url)
-        if (arq.ok) {
-          const bin = new Uint8Array(await arq.arrayBuffer())
-          let s = ""
-          for (let i = 0; i < bin.length; i++) s += String.fromCharCode(bin[i])
-          const nome = d.nota.arquivo_nome || `NFSe-${d.nota.numero ?? "documento"}.pdf`
-          anexos.push({ filename: nome, content: btoa(s) })
-          anexosResumo.push({ nome })
-        } else {
-          console.error("anexo da NFS-e nao baixou:", arq.status)
+    const anexosResumo: Array<{ nome: string; tipo?: string }> = []
+
+    const paraBase64 = (bin: Uint8Array) => {
+      let s = ""
+      for (let i = 0; i < bin.length; i++) s += String.fromCharCode(bin[i])
+      return btoa(s)
+    }
+
+    const baixar = async (url: string): Promise<Uint8Array | null> => {
+      if (/^https?:\/\//i.test(url)) {
+        const arq = await fetch(url)
+        if (!arq.ok) {
+          console.error("anexo nao baixou:", url, arq.status)
+          return null
         }
+        return new Uint8Array(await arq.arrayBuffer())
+      }
+      const { data: blob, error } = await supabase.storage.from("faturamento-documentos").download(url)
+      if (error || !blob) {
+        console.error("anexo do bucket nao baixou:", url, error?.message)
+        return null
+      }
+      return new Uint8Array(await blob.arrayBuffer())
+    }
+
+    const listaAnexos: Array<{ tipo: string; nome: string | null; url: string | null }> = porKit
+      ? (d.anexos ?? [])
+      : (d.nota?.arquivo_url
+        ? [{ tipo: "nota_fiscal_servico", nome: d.nota.arquivo_nome, url: d.nota.arquivo_url }]
+        : [])
+
+    const nomesUsados = new Set<string>()
+    for (const anexo of listaAnexos) {
+      if (!anexo?.url) continue
+      try {
+        const bin = await baixar(anexo.url)
+        if (!bin) continue
+        let nome = anexo.nome
+          || (anexo.tipo === "nota_fiscal_servico" ? `NFSe-${d.nota?.numero ?? "documento"}.pdf` : `${anexo.tipo}.pdf`)
+        if (!/\.pdf$/i.test(nome)) nome = `${nome}.pdf`
+        // Dois anexos com o mesmo nome no Resend viram um só na caixa do cliente.
+        if (nomesUsados.has(nome)) nome = nome.replace(/\.pdf$/i, `-${nomesUsados.size + 1}.pdf`)
+        nomesUsados.add(nome)
+        anexos.push({ filename: nome, content: paraBase64(bin) })
+        anexosResumo.push({ nome, tipo: anexo.tipo })
       } catch (e) {
         // Anexo que falha não impede o envio: melhor a cobrança chegar sem o
         // PDF (e o registro apontar isso) do que não chegar.
-        console.error("falha ao baixar anexo:", e)
+        console.error("falha ao baixar anexo:", anexo.tipo, e)
       }
     }
 

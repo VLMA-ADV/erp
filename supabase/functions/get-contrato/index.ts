@@ -32,6 +32,42 @@ async function enrichContratoWithSequentialData(
   return nextPayload;
 }
 
+// enviar_relatorio_timesheet (Filipe, 21/09, D15-a) não está na projeção da
+// RPC get_contrato, que monta o JSON coluna a coluna. Ela é gravada fora da
+// RPC também (caso-flags-sync.ts), então o caminho de leitura fica espelhado
+// aqui: lê direto de contracts.casos e mescla em cada caso. Se a coluna ainda
+// não existir, o select falha e a resposta segue sem a flag — o formulário
+// trata ausência como "não".
+async function enrichCasosWithFlags(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  payload: any,
+  contratoId: string,
+) {
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.casos) || payload.casos.length === 0) {
+    return payload;
+  }
+  const { data: rows, error } = await supabase
+    .schema("contracts")
+    .from("casos")
+    .select("id, enviar_relatorio_timesheet")
+    .eq("contrato_id", contratoId);
+  if (error || !Array.isArray(rows)) {
+    if (error) console.error("flags do caso nao carregaram:", error.message);
+    return payload;
+  }
+  const porId = new Map<string, Record<string, unknown>>();
+  for (const row of rows as Array<Record<string, unknown>>) porId.set(String(row.id), row);
+  return {
+    ...payload,
+    casos: payload.casos.map((caso: any) => {
+      const flags = caso && typeof caso === "object" ? porId.get(String(caso.id)) : undefined;
+      if (!flags) return caso;
+      return { ...caso, enviar_relatorio_timesheet: flags.enviar_relatorio_timesheet === true };
+    }),
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -94,7 +130,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const enrichedData = await enrichContratoWithSequentialData(supabase, data, contratoId);
+    const enrichedData = await enrichCasosWithFlags(
+      supabase,
+      await enrichContratoWithSequentialData(supabase, data, contratoId),
+      contratoId,
+    );
 
     return new Response(JSON.stringify({ data: enrichedData }), {
       status: 200,
