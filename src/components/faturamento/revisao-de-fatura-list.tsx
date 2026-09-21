@@ -311,6 +311,13 @@ function displayToIso(display: string) {
 }
 
 function getNextBillingPeriodDate(item: RevisaoItem) {
+  // Postergar = mês seguinte ao da ABA (competência), não ao do lançamento:
+  // hora de agosto já cai em setembro por padrão, então "adiar" é outubro.
+  const competencia = normalizeDateFromDisplay(item.competencia || '')
+  if (competencia) {
+    const parsed = new Date(`${competencia}T00:00:00`)
+    if (!Number.isNaN(parsed.getTime())) return new Date(parsed.getFullYear(), parsed.getMonth() + 1, 1)
+  }
   const reference = normalizeDateFromDisplay(item.dataReferencia || item.timesheetDataLancamento)
   const fallbackDate = new Date()
   const parsedReference = reference ? new Date(`${reference}T00:00:00`) : fallbackDate
