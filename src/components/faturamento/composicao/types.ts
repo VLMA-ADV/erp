@@ -296,3 +296,97 @@ export function piorStatus(casos: KitCaso[]): StatusKit {
 export function labelCaso(kit: Pick<KitCaso, 'caso_numero' | 'caso_nome'>) {
   return kit.caso_numero ? `#${kit.caso_numero} · ${kit.caso_nome}` : kit.caso_nome
 }
+
+// ── Progresso do kit por documentos (mock do Filipe, 21/09) ─────────────
+//
+// Só conta no front: quais documentos o kit PRECISA (NFS-e e boleto sempre;
+// relatório quando há horas; nota de débito quando há despesa) e quantos já
+// saíram. A esteira status_kit (pendente → recebido) continua vindo da RPC e
+// é outra régua — esta diz "quanto do kit está montado".
+
+export type SituacaoKit = 'nao_iniciado' | 'em_andamento' | 'completo'
+
+export interface ProgressoKit {
+  emitidos: number
+  necessarios: number
+  /** 0–100, inteiro. */
+  pct: number
+  situacao: SituacaoKit
+  /** Um booleano por documento necessário, na ordem NFS-e, boleto, relatório, nota de débito. */
+  segmentos: boolean[]
+}
+
+export const SITUACAO_INFO: Record<SituacaoKit, {
+  label: string
+  /** Badge do cabeçalho do card. */
+  badge: string
+  /** Card de KPI em repouso / selecionado. */
+  kpi: string
+  kpiAtivo: string
+  /** Cor do número no KPI. */
+  numero: string
+  descricao: string
+}> = {
+  completo: {
+    label: 'Kit completo',
+    badge: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    kpi: 'border-hairline bg-white hover:border-emerald-300',
+    kpiAtivo: 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200',
+    numero: 'text-emerald-600',
+    descricao: 'pronto para envio',
+  },
+  em_andamento: {
+    label: 'Em andamento',
+    badge: 'border-orange-200 bg-orange-50 text-orange-800',
+    kpi: 'border-hairline bg-white hover:border-orange-300',
+    kpiAtivo: 'border-orange-500 bg-orange-50 ring-2 ring-orange-200',
+    numero: 'text-orange-600',
+    descricao: 'algum documento emitido',
+  },
+  nao_iniciado: {
+    label: 'Não iniciado',
+    badge: 'border-hairline bg-canvas-soft text-ink-secondary',
+    kpi: 'border-hairline bg-white hover:border-gray-400',
+    kpiAtivo: 'border-gray-500 bg-canvas-soft ring-2 ring-gray-300',
+    numero: 'text-ink-secondary',
+    descricao: 'nenhum documento emitido',
+  },
+}
+
+/** NFS-e que conta como emitida: gerada e autorizada (ou a caminho). */
+export function nfseEmitida(nfse: DocNfse | null) {
+  return !!nfse && nfse.status === 'gerado' && ['autorizado', 'processando'].includes(nfse.focus_status ?? '')
+}
+
+/** Boleto vivo: existe e não foi cancelado, baixado nem deu erro. */
+export function boletoEmitido(boleto: DocBoleto | null) {
+  return !!boleto && !['cancelado', 'erro', 'baixado'].includes(boleto.status)
+}
+
+export function progressoDoKit(kit: KitCaso): ProgressoKit {
+  const docs = kit.documentos
+  const segmentos: boolean[] = [nfseEmitida(docs.nfse), boletoEmitido(docs.boleto)]
+  if (kit.horas > 0) segmentos.push(!!docs.relatorio_timesheet)
+  if (kit.valor_despesa > 0) segmentos.push(!!docs.nota_debito)
+  return montarProgresso(segmentos)
+}
+
+function montarProgresso(segmentos: boolean[]): ProgressoKit {
+  const necessarios = segmentos.length
+  const emitidos = segmentos.filter(Boolean).length
+  const pct = necessarios > 0 ? Math.round((emitidos / necessarios) * 100) : 0
+  const situacao: SituacaoKit = emitidos === 0 ? 'nao_iniciado' : emitidos >= necessarios ? 'completo' : 'em_andamento'
+  return { emitidos, necessarios, pct, situacao, segmentos }
+}
+
+/** Soma dos kits de um cliente (ou de todos): os segmentos são concatenados. */
+export function somarProgresso(kits: KitCaso[]): ProgressoKit {
+  return montarProgresso(kits.flatMap((k) => progressoDoKit(k).segmentos))
+}
+
+/** Duas letras para o avatar: iniciais das duas primeiras palavras, ou as duas primeiras letras. */
+export function iniciaisCliente(nome: string) {
+  const palavras = nome.trim().split(/\s+/).filter((p) => /^[\p{L}\p{N}]/u.test(p))
+  const letras = palavras.length >= 2 ? palavras[0][0] + palavras[1][0] : nome.trim().slice(0, 2)
+  return letras.toLocaleUpperCase('pt-BR') || '?'
+}
