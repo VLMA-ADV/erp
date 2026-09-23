@@ -72,10 +72,9 @@ export default async function DashboardLayout({
                 trocar de módulo para responder é o que fazia a mensagem
                 esperar. Aqui no layout ela acompanha a pessoa.
 
-                Continua se escondendo sozinha para quem não tem
-                contracts.solicitacoes.read: o próprio componente devolve null,
-                então quem não participa dessa conversa não ganha um botão
-                flutuante que não leva a lugar nenhum. */}
+                Desde 22/09 (Central de chamados) o botão aparece para todo
+                logado: a aba "Chamados" é de todos; Solicitações e Mensagens
+                continuam só para quem tem contracts.solicitacoes.read. */}
             <InboxFlutuante />
           </div>
         </SonnerProvider>

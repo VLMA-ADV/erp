@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { LifeBuoy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import SidebarItem from './sidebar-item'
@@ -117,6 +118,12 @@ export default function SidebarClient() {
       { label: 'Meu PDI', href: '/avaliacoes-pdi/meu' },
     ]
 
+    // Central de chamados (Filipe, 22/09): qualquer colaborador logado abre
+    // chamado de suporte/sugestão do ERP — sem permissão de leitura, o gate é
+    // estar no tenant. Fica no menu enxuto também, senão quem mais tropeça em
+    // erro (quem lança hora) é justamente quem não teria por onde reportar.
+    minItems.push({ label: 'Central de chamados', href: '/chamados' })
+
     // Revisor de caso que não é sócio nem coordenador (ex.: Bruna Fedatto, Rafael
     // Küster) precisa chegar na revisão de fatura. Ter a permissão não bastava: o
     // menu enxuto não mostrava o caminho, e a pessoa ficava com a chave sem a porta.
@@ -145,6 +152,7 @@ export default function SidebarClient() {
               href={item.href}
               label={item.label}
               active={pathname === item.href}
+              icon={item.href === '/chamados' ? LifeBuoy : undefined}
             />
           ))}
         </SidebarContent>
@@ -237,6 +245,14 @@ export default function SidebarClient() {
             />
           )
         })()}
+
+        {/* Central de chamados — visível para todo logado (Filipe, 22/09/2026) */}
+        <SidebarItem
+          href="/chamados"
+          label="Central de chamados"
+          active={pathname === '/chamados'}
+          icon={LifeBuoy}
+        />
 
         {/* Menu Relatórios (Expansível) */}
         <SidebarMenuRelatorios pathname={pathname} hasPermission={checkPermission} />

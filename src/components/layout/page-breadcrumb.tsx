@@ -38,6 +38,7 @@ const labelMap: Record<string, string> = {
   'revisao-de-fatura': 'Revisão de fatura',
   'notas-geradas': 'Notas geradas',
   'solicitacoes-contrato': 'Solicitações de Contrato',
+  chamados: 'Central de chamados',
   timesheet: 'Timesheet',
   despesas: 'Despesas',
   novo: 'Novo',
