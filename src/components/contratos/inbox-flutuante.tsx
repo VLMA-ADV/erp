@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Inbox, MessageSquare, X } from 'lucide-react'
+import { Inbox, LifeBuoy, MessageSquare, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
+import { QK_CHAMADOS_PENDENTES, contarChamadosPendentes } from '@/lib/chamados/api'
 import SolicitacoesInbox from './solicitacoes-inbox'
 import MensagensInbox from './mensagens-inbox'
+import ChamadosInbox from '@/components/chamados/chamados-inbox'
 
 /**
  * Caixa de entrada como ícone, não como aba (pedido Filipe 07/08): ele quer ver
@@ -45,20 +47,41 @@ async function contarPendentes({ signal }: { signal?: AbortSignal } = {}): Promi
     item?.status === 'aberta' && !item?.lido_at).length
 }
 
-type Aba = 'solicitacoes' | 'mensagens'
+type Aba = 'solicitacoes' | 'mensagens' | 'chamados'
 
+/**
+ * Desde 22/09 (Central de chamados, decisão 2.6c) o painel tem a aba
+ * "Chamados" e aparece para TODO logado — antes só quem lia solicitação de
+ * contrato tinha o botão. As abas de Solicitações e Mensagens continuam
+ * condicionadas a contracts.solicitacoes.read; quem não tem cai direto em
+ * Chamados. O badge do botão soma solicitações pendentes + chamados com
+ * novidade, para o Filipe ver de longe que chegou coisa de qualquer um dos dois.
+ */
 export default function InboxFlutuante() {
   const { hasPermission } = usePermissionsContext()
   const canRead = hasPermission('contracts.solicitacoes.read')
   const [aberto, setAberto] = useState(false)
-  const [aba, setAba] = useState<Aba>('solicitacoes')
+  const [aba, setAba] = useState<Aba>(canRead ? 'solicitacoes' : 'chamados')
 
-  const { data: pendentes = 0 } = useQuery({
+  // Se as permissões chegarem depois do primeiro render, a aba padrão acompanha.
+  useEffect(() => {
+    if (!canRead && aba !== 'chamados') setAba('chamados')
+  }, [canRead, aba])
+
+  const { data: pendentesSolicitacoes = 0 } = useQuery({
     queryKey: ['inbox-pendentes'],
     queryFn: ({ signal }) => contarPendentes({ signal }),
     refetchInterval: INTERVALO_ATUALIZACAO_MS,
     enabled: canRead,
   })
+
+  const { data: pendentesChamados = 0 } = useQuery({
+    queryKey: [QK_CHAMADOS_PENDENTES],
+    queryFn: () => contarChamadosPendentes(),
+    refetchInterval: INTERVALO_ATUALIZACAO_MS,
+  })
+
+  const pendentes = (canRead ? pendentesSolicitacoes : 0) + pendentesChamados
 
   // Esc fecha o painel — é meia janela, não uma página.
   useEffect(() => {
@@ -69,8 +92,6 @@ export default function InboxFlutuante() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [aberto])
-
-  if (!canRead) return null
 
   return (
     <>
@@ -113,39 +134,67 @@ export default function InboxFlutuante() {
               </button>
             </header>
 
-            <nav className="flex gap-1 border-b border-hairline px-5">
+            <nav className="flex gap-4 border-b border-hairline px-5">
+              {canRead ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAba('solicitacoes')}
+                    className={`flex items-center gap-1.5 border-b-2 px-1 py-3 text-sm transition ${
+                      aba === 'solicitacoes'
+                        ? 'border-[#E8871E] font-semibold text-ink'
+                        : 'border-transparent text-ink-mute hover:text-ink-secondary'
+                    }`}
+                  >
+                    Solicitações de contrato
+                    {pendentesSolicitacoes > 0 ? (
+                      <span className="rounded-full bg-[#FFF7ED] px-1.5 py-0.5 text-[11px] font-semibold text-[#B45309]">
+                        {pendentesSolicitacoes}
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAba('mensagens')}
+                    className={`flex items-center gap-1.5 border-b-2 px-1 py-3 text-sm transition ${
+                      aba === 'mensagens'
+                        ? 'border-[#E8871E] font-semibold text-ink'
+                        : 'border-transparent text-ink-mute hover:text-ink-secondary'
+                    }`}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Mensagens
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setAba('solicitacoes')}
+                onClick={() => setAba('chamados')}
                 className={`flex items-center gap-1.5 border-b-2 px-1 py-3 text-sm transition ${
-                  aba === 'solicitacoes'
+                  aba === 'chamados'
                     ? 'border-[#E8871E] font-semibold text-ink'
                     : 'border-transparent text-ink-mute hover:text-ink-secondary'
                 }`}
+                data-testid="inbox-aba-chamados"
               >
-                Solicitações de contrato
-                {pendentes > 0 ? (
+                <LifeBuoy className="h-4 w-4" />
+                Chamados
+                {pendentesChamados > 0 ? (
                   <span className="rounded-full bg-[#FFF7ED] px-1.5 py-0.5 text-[11px] font-semibold text-[#B45309]">
-                    {pendentes}
+                    {pendentesChamados}
                   </span>
                 ) : null}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAba('mensagens')}
-                className={`ml-4 flex items-center gap-1.5 border-b-2 px-1 py-3 text-sm transition ${
-                  aba === 'mensagens'
-                    ? 'border-[#E8871E] font-semibold text-ink'
-                    : 'border-transparent text-ink-mute hover:text-ink-secondary'
-                }`}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Mensagens
               </button>
             </nav>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {aba === 'solicitacoes' ? <SolicitacoesInbox embutido /> : <MensagensInbox embutido />}
+              {aba === 'solicitacoes' && canRead ? (
+                <SolicitacoesInbox embutido />
+              ) : aba === 'mensagens' && canRead ? (
+                <MensagensInbox embutido />
+              ) : (
+                <ChamadosInbox onFechar={() => setAberto(false)} />
+              )}
             </div>
           </aside>
         </>
