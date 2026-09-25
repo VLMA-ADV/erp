@@ -6,7 +6,7 @@
 // horas". Em 16/09 ele escolheu: carteira inteira, com filtro de quem faturou
 // no mes. Os tres alertas sao o motivo do pedido e ficam em destaque.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
@@ -69,6 +69,12 @@ export default function RelatorioCarteira({ userId }: { userId: string }) {
   const [filtro, setFiltro] = useState<Filtro>('todos')
   const [busca, setBusca] = useState('')
 
+  // toastError troca de identidade a cada render do hook; se entrar nas
+  // dependencias de carregar, o useEffect abaixo refaz a busca sem parar
+  // (69 chamadas em 15 s em prod, 25/09 - o "fica piscando" do Filipe).
+  const toastRef = useRef(toastError)
+  useEffect(() => { toastRef.current = toastError }, [toastError])
+
   const carregar = useCallback(async () => {
     setCarregando(true)
     try {
@@ -77,12 +83,12 @@ export default function RelatorioCarteira({ userId }: { userId: string }) {
         p_user_id: userId,
         p_mes: `${mes}-01`,
       })
-      if (error) { toastError(error.message || 'Erro ao carregar o relatório'); return }
+      if (error) { toastRef.current(error.message || 'Erro ao carregar o relatório'); return }
       setLinhas(Array.isArray(data) ? (data as Linha[]) : [])
     } finally {
       setCarregando(false)
     }
-  }, [userId, mes, toastError])
+  }, [userId, mes])
 
   useEffect(() => { void carregar() }, [carregar])
 
