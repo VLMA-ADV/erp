@@ -4,6 +4,8 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   Banknote,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -15,7 +17,8 @@ import {
   Pencil,
   Printer,
   Receipt,
-  Trash2,
+  RotateCcw,
+  Undo2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,6 +40,7 @@ import {
   labelRegra,
   nfseEmitida,
   progressoDoKit,
+  situacaoDosKits,
   somarProgresso,
   type ClienteKits,
   type DocGerado,
@@ -58,7 +62,14 @@ export interface AcoesKit {
   onEditarAjustes: (kit: KitCaso) => void
   onToggleRelatorio: (kit: KitCaso, valor: boolean) => void
   onEmail: (kit: KitCaso) => void
+  /** "Devolver para revisão" (excluir_kit): os itens voltam para a Revisão. */
   onExcluir: (kit: KitCaso) => void
+  /** Baixa manual do kit (finalizar_kit) — Filipe 24/09: o e-mail ainda vai pelo Gmail. */
+  onFinalizar: (kit: KitCaso) => void
+  onReabrir: (kit: KitCaso) => void
+  /** Seleção em massa (6.1): chaves dos kits marcados. */
+  selecionados: ReadonlySet<string>
+  onSelecionar: (kit: KitCaso, marcar: boolean) => void
 }
 
 export const acaoKey = (kit: KitCaso, acao: string) => `${kit.chave}:${acao}`
@@ -68,7 +79,7 @@ export const acaoKey = (kit: KitCaso, acao: string) => `${kit.chave}:${acao}`
 // os necessários — progressoDoKit); a esteira status_kit fica no bloco do caso.
 export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; acoes: AcoesKit }) {
   const progresso = somarProgresso(cliente.casos)
-  const situacao = SITUACAO_INFO[progresso.situacao]
+  const situacao = SITUACAO_INFO[situacaoDosKits(cliente.casos)]
   return (
     <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-white shadow-lift-1">
       <header className="border-b border-hairline bg-canvas-soft px-5 py-4">
@@ -131,12 +142,68 @@ function BarraSegmentada({ progresso }: { progresso: ProgressoKit }) {
   )
 }
 
+/** Stepper das 4 etapas do kit (mock do Filipe, 24/09): NF · Boleto · Timesheet · Despesas. */
+function StepperKit({ progresso }: { progresso: ProgressoKit }) {
+  const pendentes = progresso.necessarios - progresso.emitidos
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-3">
+        <ol
+          className="flex flex-1 items-center gap-1"
+          aria-label={`${progresso.emitidos} de ${progresso.necessarios} documentos emitidos`}
+        >
+          {progresso.etapas.map((etapa, i) => (
+            <li key={etapa.rotulo} className="flex min-w-0 flex-1 items-center gap-1">
+              {i > 0 ? (
+                <span
+                  aria-hidden
+                  className={cn('h-0.5 w-3 shrink-0 rounded-pill sm:w-5', etapa.necessaria && etapa.emitida ? 'bg-emerald-500' : 'bg-hairline')}
+                />
+              ) : null}
+              <span
+                className={cn(
+                  'flex items-center gap-1 rounded-pill border px-2 py-0.5 text-[11px] font-medium transition-colors',
+                  !etapa.necessaria
+                    ? 'border-dashed border-hairline text-ink-mute/60'
+                    : etapa.emitida
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                      : 'border-amber-200 bg-amber-50 text-amber-800',
+                )}
+                title={
+                  !etapa.necessaria
+                    ? `${etapa.rotulo}: não se aplica a este kit`
+                    : etapa.emitida
+                      ? `${etapa.rotulo}: emitido`
+                      : `${etapa.rotulo}: pendente`
+                }
+              >
+                {etapa.necessaria && etapa.emitida ? <Check className="h-3 w-3" /> : null}
+                {etapa.rotulo}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <span className="shrink-0 text-xs font-tabular text-ink-secondary">
+          {progresso.emitidos}/{progresso.necessarios} · {progresso.pct}%
+        </span>
+      </div>
+      <p className={cn('mt-1 text-xs font-medium', pendentes > 0 ? 'text-orange-600' : 'text-emerald-700')}>
+        {pendentes > 0
+          ? `${pendentes} ${pendentes === 1 ? 'documento pendente' : 'documentos pendentes'}`
+          : 'Todos os documentos emitidos'}
+      </p>
+    </div>
+  )
+}
+
 function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: string; acoes: AcoesKit }) {
   const info = STATUS_KIT_INFO[kit.status_kit]
   const docs = kit.documentos
   const nfse = docs.nfse
-  const temHoras = kit.itens.some((i) => i.origem_tipo === 'timesheet')
-  const temDespesa = kit.itens.some((i) => i.origem_tipo === 'despesa')
+  // Relatório sempre que há horas (Filipe 24/09, 6.2): a RPC soma todos os
+  // lançamentos, inclusive os de valor 0 em casos mensais/projeto.
+  const temHoras = kit.horas > 0 || kit.itens.some((i) => i.origem_tipo === 'timesheet')
+  const temDespesa = kit.valor_despesa > 0 || kit.itens.some((i) => i.origem_tipo === 'despesa')
   const nfseViva = !!nfse && nfse.status === 'gerado'
   const nfseAutorizada = nfseViva && nfse.focus_status === 'autorizado'
   const contratoLabel = formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full
@@ -144,20 +211,43 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   const enviadoOk = !!kit.envio && !kit.envio.erro
   const progresso = progressoDoKit(kit)
   const pendentes = progresso.necessarios - progresso.emitidos
-  const lancamentosTs = kit.itens.filter((i) => i.origem_tipo === 'timesheet').length
+  const lancamentosTs = kit.lancamentos_timesheet ?? kit.itens.filter((i) => i.origem_tipo === 'timesheet').length
+  const finalizado = kit.finalizado
+  const selecionado = acoes.selecionados.has(kit.chave)
 
   return (
-    <div className={cn('border-l-4 px-5 py-4', info.borda)}>
+    <div
+      className={cn(
+        'border-l-4 px-5 py-4 transition-colors',
+        info.borda,
+        finalizado && 'bg-green-50/40',
+        selecionado && 'bg-primary-soft-bg/40',
+      )}
+    >
       {/* Cabeçalho do caso */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-ink">{labelCaso(kit)}</h3>
-            <Badge className={info.badge}>{info.label}</Badge>
+        <div className="flex min-w-0 items-start gap-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed"
+            checked={selecionado}
+            disabled={!kit.pode_excluir}
+            title={kit.pode_excluir ? 'Selecionar este kit' : (kit.motivo_bloqueio ?? 'Kit bloqueado')}
+            aria-label={`Selecionar o kit de ${labelCaso(kit)}`}
+            onChange={(e) => acoes.onSelecionar(kit, e.target.checked)}
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-ink">{labelCaso(kit)}</h3>
+              <Badge className={info.badge}>
+                {finalizado ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
+                {info.label}
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-xs text-ink-mute">
+              {contratoLabel} · {labelRegra(kit.regra_cobranca)} · {labelCompetencia(kit.competencia)}
+            </p>
           </div>
-          <p className="mt-0.5 text-xs text-ink-mute">
-            {contratoLabel} · {labelRegra(kit.regra_cobranca)} · {labelCompetencia(kit.competencia)}
-          </p>
         </div>
         <div className="text-right text-sm">
           <p className="font-semibold font-tabular text-ink">{formatMoney(kit.valor_total)}</p>
@@ -169,7 +259,10 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         </div>
       </div>
 
-      {/* Impostos e pagadores (D14-b): editáveis enquanto a NFS-e não saiu. */}
+      <StepperKit progresso={progresso} />
+
+      {/* Impostos e pagadores (D14-b): editáveis enquanto a NFS-e não saiu.
+          Desde 25/09 o ajuste vale por padrão só para este kit (finance.kits.ajustes). */}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary">
         <span>
           <span className="text-ink-mute">Impostos:</span>{' '}
@@ -184,6 +277,14 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
               : clienteNome}
           </strong>
         </span>
+        {kit.ajustes_do_kit || kit.ajustes_kit ? (
+          <Badge
+            className="border-violet-200 bg-violet-50 text-violet-800"
+            title="Impostos/pagadores ajustados só para este faturamento; o cadastro do caso não mudou."
+          >
+            ajustado neste kit
+          </Badge>
+        ) : null}
         {nfseViva ? (
           <span className="text-ink-mute" title="A NFS-e já foi emitida com estes dados; para alterar, cancele-a em Notas geradas.">
             (definido na NF)
@@ -329,12 +430,16 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           />
         ) : null}
 
-        {/* 4. Nota de débito — só quando há despesa reembolsável. */}
+        {/* 4. Despesas (nota de débito) — só quando há despesa reembolsável. */}
         {temDespesa ? (
           <DocumentoLinha
             icon={<Receipt className="h-4 w-4" />}
-            titulo="Nota de débito"
-            status={statusDocGerado(docs.nota_debito, 'Despesas reembolsáveis do período.')}
+            titulo="Despesas"
+            status={
+              docs.nota_debito
+                ? statusDocGerado(docs.nota_debito, 'Nota de débito')
+                : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Despesas reembolsáveis do período (nota de débito).' }
+            }
             valor={kit.valor_despesa}
             acoes={
               <>
@@ -357,14 +462,17 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         ) : null}
       </div>
 
-      {/* Rodapé: pendências, envio e ações do kit */}
+      {/* Rodapé: envio, baixa e ações do kit */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 text-xs">
-          <p className={pendentes > 0 ? 'font-medium text-amber-700' : 'font-medium text-emerald-700'}>
-            {pendentes > 0
-              ? `${pendentes} ${pendentes === 1 ? 'documento pendente' : 'documentos pendentes'}`
-              : 'Todos os documentos emitidos'}
-          </p>
+          {finalizado ? (
+            <p className="font-medium text-green-800">
+              <CheckCircle2 className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+              Finalizado em {dataHoraBR(finalizado.em)}
+              {finalizado.por_nome ? ` por ${finalizado.por_nome}` : ''}
+              {finalizado.obs ? ` — ${finalizado.obs}` : ''}
+            </p>
+          ) : null}
           {kit.envio ? (
             <p className={kit.envio.erro ? 'text-destructive' : 'text-green-700'}>
               {kit.envio.erro ? '✕ Falhou o envio' : '✓ Enviada'} em {dataHoraBR(kit.envio.enviado_em)}
@@ -397,16 +505,41 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             {ocupado('email') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Mail className="mr-1.5 h-3.5 w-3.5" />}
             {enviadoOk ? 'Reenviar e-mail' : pendentes > 0 ? 'Enviar o que está pronto' : 'Enviar kit'}
           </Button>
+          {/* Finalizar = baixa manual (Filipe 24/09). As ações de emitir continuam
+              disponíveis num kit finalizado; "Reabrir" só zera a baixa. */}
+          {finalizado ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => acoes.onReabrir(kit)}
+              disabled={ocupado('finalizar')}
+              title="Desfaz a baixa manual; nada é apagado"
+            >
+              {ocupado('finalizar') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
+              Reabrir
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => acoes.onFinalizar(kit)}
+              disabled={ocupado('finalizar')}
+              className="bg-green-700 text-white hover:bg-green-800"
+              title="Dá baixa manual no kit (o e-mail ao cliente vai por fora). Os documentos continuam podendo ser emitidos."
+            >
+              {ocupado('finalizar') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+              Finalizar faturamento
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
             onClick={() => acoes.onExcluir(kit)}
             disabled={!kit.pode_excluir || ocupado('excluir')}
-            title={kit.pode_excluir ? 'Devolve os itens para a revisão' : (kit.motivo_bloqueio ?? 'Kit bloqueado')}
+            title={kit.pode_excluir ? 'Devolve os itens para a revisão (nada é apagado)' : (kit.motivo_bloqueio ?? 'Kit bloqueado')}
             className="text-ink-mute hover:text-destructive"
           >
-            {ocupado('excluir') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-            Excluir este kit
+            {ocupado('excluir') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Undo2 className="mr-1.5 h-3.5 w-3.5" />}
+            Devolver para revisão
           </Button>
         </div>
       </div>

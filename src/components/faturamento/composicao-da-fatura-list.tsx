@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { CheckCircle2, Loader2, RefreshCw, Undo2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import ChipsStatusKit from './composicao/chips-status-kit'
 import ResumoStatus from './composicao/resumo-status'
 import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
 import AjustesKitDialog from './composicao/ajustes-kit-dialog'
+import { mapearOrigemDasDespesas, parametrosBuscaOrigem } from './composicao/origem-despesas'
 import {
   FILTROS_VAZIOS,
   formatMoney,
@@ -26,7 +27,7 @@ import {
   labelCaso,
   labelCompetencia,
   labelCompetenciaCurta,
-  progressoDoKit,
+  situacaoDoKit,
   type ComposicaoPayload,
   type FiltrosComposicao,
   type KitCaso,
@@ -40,6 +41,11 @@ import {
 // registrado: quem, quando, qual arquivo. A tela é só a mão que aperta os
 // botões; o que é kit, o que bloqueia exclusão e o status de cada um é
 // decidido na RPC, para a tela e o e-mail nunca discordarem.
+//
+// 25/09 (Filipe, 24/09): o e-mail ainda sai manual pelo Gmail, então o kit
+// ganhou a baixa manual "Finalizar faturamento" (finalizar_kit/reabrir_kit),
+// seleção em massa para devolver/finalizar vários (excluir_kits) e os
+// impostos/pagadores passaram a valer por kit (salvar_ajustes_kit).
 
 const FUNCTIONS = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
 
@@ -49,6 +55,16 @@ function competenciaCorrente() {
 
 /** 'YYYY-MM-01' → 'YYYY-MM' (nome de arquivo). */
 const anoMes = (competencia: string) => competencia.slice(0, 7)
+
+/** finance.kits.ajustes → AjustesDaNota (só o que a nota entende: grupo e pagadores). */
+function ajustesDoKitParaNota(kit: KitCaso | null): AjustesDaNota | null {
+  const a = kit?.ajustes_kit
+  if (!a) return null
+  const ajustes: AjustesDaNota = {}
+  if (a.grupo_imposto_id) ajustes.grupo_imposto_id = a.grupo_imposto_id
+  if (a.pagadores?.length) ajustes.pagadores = a.pagadores.map((p) => ({ cliente_id: p.cliente_id, percentual: Number(p.percentual || 0) }))
+  return Object.keys(ajustes).length ? ajustes : null
+}
 
 interface CertificadoItau {
   configurado: boolean
@@ -77,6 +93,10 @@ export default function ComposicaoDaFaturaList() {
   const [emailKit, setEmailKit] = useState<KitCaso | null>(null)
   const [emailData, setEmailData] = useState<FaturaEmailData | null>(null)
   const [enviandoEmail, setEnviandoEmail] = useState(false)
+
+  // Seleção em massa (6.1): chaves dos kits marcados. Só de tela; a lista é
+  // podada a cada recarga para não sobrar chave de kit que já sumiu.
+  const [selecionados, setSelecionados] = useState<ReadonlySet<string>>(new Set())
 
   // A competência padrão só é conhecida depois da primeira resposta (a lista
   // de meses com kit vem da RPC). Primeira chamada sem filtro; se o mês
@@ -149,6 +169,19 @@ export default function ComposicaoDaFaturaList() {
     return () => clearTimeout(t)
   }, [filtros, carregar])
 
+  const kitsPorChave = useMemo(() => {
+    const mapa = new Map<string, KitCaso>()
+    for (const c of payload?.clientes ?? []) for (const k of c.casos) mapa.set(k.chave, k)
+    return mapa
+  }, [payload])
+
+  useEffect(() => {
+    setSelecionados((atual) => {
+      const vivos = new Set(Array.from(atual).filter((chave) => kitsPorChave.get(chave)?.pode_excluir))
+      return vivos.size === atual.size ? atual : vivos
+    })
+  }, [kitsPorChave])
+
   const clientesVisiveis = useMemo(() => {
     const lista = payload?.clientes ?? []
     const termo = busca.trim().toLocaleLowerCase('pt-BR')
@@ -158,7 +191,7 @@ export default function ComposicaoDaFaturaList() {
         const bateNome = !termo || c.nome.toLocaleLowerCase('pt-BR').includes(termo)
         const casos = c.casos.filter((k) =>
           (bateNome || labelCaso(k).toLocaleLowerCase('pt-BR').includes(termo)) &&
-          (!situacao || progressoDoKit(k).situacao === situacao),
+          (!situacao || situacaoDoKit(k) === situacao),
         )
         if (!casos.length) return null
         if (casos.length === c.casos.length) return c
@@ -177,6 +210,27 @@ export default function ComposicaoDaFaturaList() {
       setOcupado(null)
     }
   }
+
+  /** Mesmo trava, para as ações em massa (a chave é "massa:<acao>"). */
+  const executarEmMassa = async (acao: string, fn: () => Promise<void>) => {
+    if (ocupado) return
+    setOcupado(`massa:${acao}`)
+    try {
+      await fn()
+    } finally {
+      setOcupado(null)
+    }
+  }
+
+  // Kits visíveis (respeitando filtros e busca) que podem entrar na seleção.
+  const kitsSelecionaveis = useMemo(
+    () => clientesVisiveis.flatMap((c) => c.casos).filter((k) => k.pode_excluir),
+    [clientesVisiveis],
+  )
+  const kitsSelecionados = useMemo(
+    () => Array.from(selecionados).map((chave) => kitsPorChave.get(chave)).filter((k): k is KitCaso => !!k),
+    [selecionados, kitsPorChave],
+  )
 
   const sessao = async () => {
     const supabase = createClient()
@@ -351,24 +405,33 @@ export default function ComposicaoDaFaturaList() {
   // A prévia/PDF é a NotaDespesaPreview de sempre (nota + comprovantes). Os
   // comprovantes precisam do id da DESPESA (origem_id), que a RPC do kit não
   // traz — vem do get-revisao-fatura filtrado pelo kit, uma chamada por clique.
+  // Bug 6.3 (Filipe, 24/09): a busca ia com uuid nos filtros de texto e lia a
+  // chave errada, então nunca achava nada — ver composicao/origem-despesas.ts.
   const abrirNotaDebito = (kit: KitCaso) => executar(kit, 'nota', async () => {
     const despesas = kit.itens.filter((i) => i.origem_tipo === 'despesa')
     if (despesas.length === 0) { notify('Este kit não tem despesas reembolsáveis.'); return }
-    const origemPorItem = new Map<string, string>()
+    let origemPorItem = new Map<string, string>()
     try {
       const { session } = await sessao()
-      const params = new URLSearchParams({ contrato: kit.contrato_id, competencia: anoMes(kit.competencia) })
-      if (kit.caso_id) params.set('caso', kit.caso_id)
+      const params = parametrosBuscaOrigem(kit)
       const resp = await fetch(`${FUNCTIONS()}/get-revisao-fatura?${params.toString()}`, {
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
       })
       const corpo = await resp.json().catch(() => ({}))
-      for (const raw of (corpo.data ?? []) as Array<{ id?: string; origem_id?: string | null }>) {
-        if (raw.id && raw.origem_id) origemPorItem.set(raw.id, raw.origem_id)
-      }
+      if (!resp.ok) throw new Error(corpo?.error || `get-revisao-fatura respondeu ${resp.status}`)
+      origemPorItem = mapearOrigemDasDespesas(corpo.data, kit)
     } catch (e) {
       console.error('origem das despesas', e)
-      notify('Não foi possível localizar os comprovantes; a nota sai sem eles.')
+    }
+    // Aviso na hora, não só no toast do fim: sem a despesa de origem a nota
+    // sai sem comprovante e é assim que ela seria registrada no kit.
+    const semOrigem = despesas.filter((i) => !origemPorItem.has(i.id)).length
+    if (semOrigem > 0) {
+      toastError(
+        semOrigem === despesas.length
+          ? 'Não foi possível localizar os comprovantes das despesas; a nota sairia sem eles.'
+          : `${semOrigem} de ${despesas.length} despesa(s) sem comprovante localizado; a nota sai só com os demais.`,
+      )
     }
     const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
     setNotaKit(kit)
@@ -524,7 +587,124 @@ export default function ComposicaoDaFaturaList() {
     }
   }
 
-  // ── Excluir kit (D11-a) ────────────────────────────────────────────────
+  // ── Finalizar / reabrir (baixa manual, Filipe 24/09) ───────────────────
+  // "Finalizar faturamento" não emite nada nem manda e-mail: registra que o
+  // kit foi tratado (finance.kits.finalizado_*). As ações de emitir continuam
+  // liberadas depois; "Reabrir" só zera a baixa.
+  const chamarFinalizar = async (kit: KitCaso, obs: string | null) => {
+    const { supabase, userId } = await sessao()
+    const { data, error: e } = await supabase.rpc('finalizar_kit', {
+      p_user_id: userId,
+      p_contrato_id: kit.contrato_id,
+      p_caso_id: kit.caso_id,
+      p_competencia: kit.competencia,
+      p_obs: obs,
+    })
+    if (e) throw new Error(e.message)
+    const r = data as { ok?: boolean; motivo?: string; error?: string } | null
+    if (r && r.ok === false) throw new Error(r.motivo || r.error || 'Não foi possível finalizar o kit.')
+  }
+
+  const finalizarKit = (kit: KitCaso) => executar(kit, 'finalizar', async () => {
+    const ok = window.confirm(
+      `Finalizar o faturamento de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)})?\n\n` +
+      'Marca o kit como finalizado (baixa manual). Nada é emitido nem enviado; dá para reabrir.',
+    )
+    if (!ok) return
+    try {
+      await chamarFinalizar(kit, null)
+      success('Kit finalizado.')
+      await recarregar()
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Erro ao finalizar o kit.')
+    }
+  })
+
+  const reabrirKit = (kit: KitCaso) => executar(kit, 'finalizar', async () => {
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('reabrir_kit', {
+        p_user_id: userId,
+        p_contrato_id: kit.contrato_id,
+        p_caso_id: kit.caso_id,
+        p_competencia: kit.competencia,
+      })
+      if (e) { toastError(e.message); return }
+      const r = data as { ok?: boolean; motivo?: string; error?: string } | null
+      if (r && r.ok === false) { toastError(r.motivo || r.error || 'Não foi possível reabrir o kit.'); return }
+      success('Kit reaberto.')
+      await recarregar()
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Erro ao reabrir o kit.')
+    }
+  })
+
+  // ── Ações em massa (6.1) ───────────────────────────────────────────────
+  const finalizarSelecionados = () => executarEmMassa('finalizar', async () => {
+    const kits = kitsSelecionados.filter((k) => !k.finalizado)
+    if (kits.length === 0) { notify('Os kits selecionados já estão finalizados.'); return }
+    const ok = window.confirm(
+      `Finalizar ${kits.length} kit(s)?\n\nMarca cada um como finalizado (baixa manual). Nada é emitido nem enviado; dá para reabrir um a um.`,
+    )
+    if (!ok) return
+    let feitos = 0
+    const falhas: string[] = []
+    // Em sequência: a RPC é por kit e um erro num não deve travar os outros.
+    for (const kit of kits) {
+      try {
+        await chamarFinalizar(kit, null)
+        feitos += 1
+      } catch (e) {
+        falhas.push(`${labelCaso(kit)}: ${e instanceof Error ? e.message : 'erro'}`)
+      }
+    }
+    if (feitos > 0) success(`${feitos} kit(s) finalizado(s).`)
+    if (falhas.length) toastError(`${falhas.length} kit(s) não finalizado(s) — ${falhas.join('; ')}`)
+    setSelecionados(new Set())
+    await recarregar()
+  })
+
+  const devolverSelecionados = () => executarEmMassa('excluir', async () => {
+    const kits = kitsSelecionados
+    if (kits.length === 0) return
+    const itens = kits.reduce((a, k) => a + k.itens.length, 0)
+    const ok = window.confirm(
+      `Devolver ${kits.length} kit(s) para a revisão?\n\n` +
+      `Os ${itens} item(ns) voltam para a Revisão como "Liberado" e somem daqui; relatórios e notas de débito gerados ficam cancelados.` +
+      '\n\nNada é apagado da revisão — dá para aprovar de novo. Kits com NFS-e autorizada ou boleto vivo são recusados.',
+    )
+    if (!ok) return
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('excluir_kits', {
+        p_user_id: userId,
+        p_kits: kits.map((k) => ({ contrato_id: k.contrato_id, caso_id: k.caso_id, competencia: k.competencia })),
+      })
+      if (e) { toastError(e.message); return }
+      const r = (data ?? {}) as {
+        ok?: boolean
+        devolvidos?: number
+        recusados?: Array<{ caso_id: string | null; competencia: string; motivo: string | null }>
+        motivo?: string
+      }
+      if (r.ok === false && !r.devolvidos) { toastError(r.motivo || 'Não foi possível devolver os kits.'); return }
+      const recusados = r.recusados ?? []
+      if ((r.devolvidos ?? 0) > 0) success(`${r.devolvidos} kit(s) devolvido(s) para a revisão.`)
+      if (recusados.length) {
+        const nomes = recusados.map((rec) => {
+          const kit = kits.find((k) => (k.caso_id ?? null) === (rec.caso_id ?? null) && k.competencia.slice(0, 7) === String(rec.competencia).slice(0, 7))
+          return `${kit ? labelCaso(kit) : rec.caso_id ?? 'sem caso'}${rec.motivo ? ` (${rec.motivo})` : ''}`
+        })
+        toastError(`${recusados.length} kit(s) recusado(s): ${nomes.join('; ')}`)
+      }
+      setSelecionados(new Set())
+      await recarregar()
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Erro ao devolver os kits.')
+    }
+  })
+
+  // ── Devolver para revisão (excluir_kit, D11-a) ─────────────────────────
   const excluirKit = (kit: KitCaso) => executar(kit, 'excluir', async () => {
     if (!kit.pode_excluir) { toastError(kit.motivo_bloqueio || 'Este kit não pode ser excluído.'); return }
     const docs = [
@@ -533,7 +713,7 @@ export default function ComposicaoDaFaturaList() {
       kit.documentos.nfse && kit.documentos.nfse.status === 'gerado' ? 'a NFS-e com erro' : null,
     ].filter(Boolean)
     const ok = window.confirm(
-      `Excluir o kit de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)})?\n\n` +
+      `Devolver o kit de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)}) para a revisão?\n\n` +
       `Os ${kit.itens.length} item(ns) voltam para a Revisão como "Liberado" e somem daqui` +
       (docs.length ? `; ${docs.join(', ')} ficam cancelados.` : '.') +
       '\n\nNada é apagado da revisão — dá para aprovar de novo.',
@@ -550,7 +730,7 @@ export default function ComposicaoDaFaturaList() {
       if (e) { toastError(e.message); return }
       const r = data as { ok?: boolean; itens_devolvidos?: number; motivo?: string | null }
       if (!r?.ok) { toastError(r?.motivo || 'Não foi possível excluir o kit.'); return }
-      success(`Kit excluído: ${r.itens_devolvidos ?? 0} item(ns) devolvido(s) para a revisão.`)
+      success(`Kit devolvido: ${r.itens_devolvidos ?? 0} item(ns) de volta na revisão.`)
       await recarregar()
     } catch (e) {
       toastError(e instanceof Error ? e.message : 'Erro ao excluir o kit.')
@@ -576,6 +756,19 @@ export default function ComposicaoDaFaturaList() {
     onToggleRelatorio: (kit, valor) => void toggleRelatorio(kit, valor),
     onEmail: (kit) => void abrirEmail(kit),
     onExcluir: (kit) => void excluirKit(kit),
+    onFinalizar: (kit) => void finalizarKit(kit),
+    onReabrir: (kit) => void reabrirKit(kit),
+    selecionados,
+    onSelecionar: (kit, marcar) => setSelecionados((atual) => {
+      const novo = new Set(atual)
+      if (marcar) novo.add(kit.chave)
+      else novo.delete(kit.chave)
+      return novo
+    }),
+  }
+
+  const toggleTodos = (marcar: boolean) => {
+    setSelecionados(marcar ? new Set(kitsSelecionaveis.map((k) => k.chave)) : new Set())
   }
 
   // Um caso com mais de uma competência aberta: a NFS-e cobre todos os itens
@@ -657,6 +850,11 @@ export default function ComposicaoDaFaturaList() {
         onSelecionar={(status) => setFiltros((f) => ({ ...f, statusKit: status }))}
         busca={busca}
         onBusca={setBusca}
+        selecao={{
+          selecionaveis: kitsSelecionaveis.length,
+          selecionados: kitsSelecionados.filter((k) => kitsSelecionaveis.includes(k)).length,
+          onToggleTodos: toggleTodos,
+        }}
       />
 
       {loading && !payload ? (
@@ -682,20 +880,64 @@ export default function ComposicaoDaFaturaList() {
         </div>
       )}
 
+      {/* Barra flutuante da seleção em massa (6.1). */}
+      {kitsSelecionados.length > 0 ? (
+        <div
+          role="region"
+          aria-label="Ações para os kits selecionados"
+          className="fixed bottom-6 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline bg-white px-4 py-3 shadow-lift-1"
+        >
+          <p className="text-sm text-ink">
+            <strong className="font-semibold font-tabular">{kitsSelecionados.length}</strong>{' '}
+            {kitsSelecionados.length === 1 ? 'kit selecionado' : 'kits selecionados'}
+            <span className="text-ink-mute"> · {formatMoney(kitsSelecionados.reduce((a, k) => a + k.valor_total, 0))}</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void devolverSelecionados()}
+              disabled={!!ocupado}
+              className="text-destructive hover:text-destructive"
+            >
+              {ocupado === 'massa:excluir' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Undo2 className="mr-1.5 h-3.5 w-3.5" />}
+              Devolver {kitsSelecionados.length} para revisão
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void finalizarSelecionados()}
+              disabled={!!ocupado}
+              className="bg-green-700 text-white hover:bg-green-800"
+            >
+              {ocupado === 'massa:finalizar' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+              Finalizar {kitsSelecionados.length}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelecionados(new Set())} aria-label="Limpar seleção" disabled={!!ocupado}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <AjustesKitDialog
         kit={ajustesKit}
         onClose={() => setAjustesKit(null)}
-        onSalvo={() => {
+        onSalvo={({ alteradoNoCadastro }) => {
           setAjustesKit(null)
-          success('Impostos e pagadores salvos no cadastro.')
+          success(alteradoNoCadastro
+            ? 'Impostos e pagadores salvos neste kit e no cadastro do caso/contrato.'
+            : 'Impostos e pagadores salvos só para este faturamento.')
           void recarregar()
         }}
       />
 
+      {/* A nota sai com o pagador/grupo do kit (ajustes_kit) quando ele existe —
+          o mesmo formato de `ajustes` que emit-nfse aceita no body. */}
       <NfsePreviewDialog
         open={nfseKit !== null}
         contratoId={nfseKit?.contrato_id ?? null}
         casoId={nfseKit?.caso_id ?? null}
+        ajustesIniciais={ajustesDoKitParaNota(nfseKit)}
         contratoLabel={nfseKit
           ? `${formatContratoDisplay(nfseKit.contrato_numero, nfseKit.contrato_nome).full}${nfseKit.caso_id ? ` · ${labelCaso(nfseKit)}` : ''}` +
             (nfseKit.caso_id && (casosComVariosKits.get(nfseKit.caso_id) ?? 0) > 1

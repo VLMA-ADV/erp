@@ -149,6 +149,13 @@ export default function NotaDespesaPreview({
   const { error: toastError, success } = useToast()
   const [montando, setMontando] = useState(false)
 
+  // Bug 6.3 (Filipe, 24/09): a nota saía "com comprovantes" sem nenhum porque a
+  // tela não achava a despesa de origem e ninguém era avisado antes de gerar.
+  // Quando falta origem para alguma linha, o aviso fica na cara, antes do botão.
+  const despesasSemOrigem = data
+    ? Math.max(0, data.itens.length - new Set((data.despesaIds || []).filter(Boolean)).size)
+    : 0
+
   // Nota + comprovantes num PDF so (Filipe, 11/09). Os arquivos vem um a um
   // pela edge que ja existe (get-despesa-arquivo), que checa permissao.
   const baixarComComprovantes = async () => {
@@ -201,8 +208,14 @@ export default function NotaDespesaPreview({
 
       if (naoAnexados.length > 0) {
         toastError(`PDF gerado com ${anexados} comprovante(s). ${naoAnexados.length} não pôde(ram) ser anexado(s) — veja a última página.`)
+      } else if (anexados > 0) {
+        success(`PDF gerado com ${anexados} comprovante(s).`)
+      } else if (ids.length === 0) {
+        // Sem id de despesa nem dá para procurar arquivo: isso é falha da
+        // tela, não "despesa sem anexo" — avisa como erro para não passar batido.
+        toastError('PDF gerado SEM comprovantes: as despesas de origem não foram localizadas.')
       } else {
-        success(anexados > 0 ? `PDF gerado com ${anexados} comprovante(s).` : 'PDF gerado (sem comprovantes anexados).')
+        success('PDF gerado (as despesas não têm comprovante cadastrado).')
       }
     } catch (e) {
       console.error(e)
@@ -228,6 +241,13 @@ export default function NotaDespesaPreview({
             Pré-visualização no formato do escritório. Use “Imprimir / Salvar PDF” para gerar o documento.
           </DialogDescription>
         </DialogHeader>
+        {despesasSemOrigem > 0 ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {despesasSemOrigem === data?.itens.length
+              ? 'Não foi possível localizar as despesas de origem: o PDF sai sem comprovantes. Feche e tente de novo; se persistir, baixe os arquivos pela tela de Despesas.'
+              : `${despesasSemOrigem} de ${data?.itens.length} despesa(s) sem origem localizada — o PDF sai só com os comprovantes das demais.`}
+          </p>
+        ) : null}
         <div className="rounded-md border bg-white">
           <iframe
             ref={iframeRef}
