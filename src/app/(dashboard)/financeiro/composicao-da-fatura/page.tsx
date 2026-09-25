@@ -17,9 +17,9 @@ export default async function ComposicaoDaFaturaPage() {
       <header className="mb-8">
         <span className="text-eyebrow">FINANCEIRO</span>
         <h1 className="mt-2 display-lg text-ink">Composição da fatura</h1>
+        {/* Texto do mock do Filipe (24/09). */}
         <p className="mt-2 text-sm text-ink-mute">
-          Reúne, por cliente e caso (competência a competência), o kit da fatura: NFS-e, boleto, relatório de timesheet e nota
-          de débito dos itens aprovados pelo financeiro — e o envio por e-mail.
+          Painel do kit da fatura por cliente: nota fiscal, boleto, relatório de timesheet e despesas.
         </p>
       </header>
       <ComposicaoDaFaturaList />
