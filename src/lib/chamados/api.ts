@@ -113,6 +113,26 @@ export interface PessoaResumo {
   foto_url?: string | null
 }
 
+/**
+ * Quem pediu o chamado (people.colaboradores), quando não é quem abriu
+ * (Filipe 24/09). user_id serve para comparar com autor.id sem depender do nome.
+ */
+export interface SolicitanteResumo {
+  id: string
+  nome: string
+  user_id: string | null
+}
+
+/** Solicitante diferente do autor: só aí a tela mostra "· solicitante Y". */
+export function solicitanteDiferente(
+  autor: PessoaResumo | null | undefined,
+  solicitante: SolicitanteResumo | null | undefined,
+): boolean {
+  if (!solicitante) return false
+  if (solicitante.user_id && autor?.id) return solicitante.user_id !== autor.id
+  return solicitante.nome !== autor?.nome
+}
+
 export interface ChamadoAnexo {
   id: string
   chamado_id?: string
@@ -134,6 +154,7 @@ export interface ChamadoResumoItem {
   urgencia: ChamadoUrgencia
   status: ChamadoStatus
   autor: PessoaResumo | null
+  solicitante: SolicitanteResumo | null
   responsavel: PessoaResumo | null
   created_at: string
   updated_at: string
@@ -174,6 +195,7 @@ export interface ChamadoCompleto {
   status: ChamadoStatus
   rota: string | null
   autor: PessoaResumo | null
+  solicitante: SolicitanteResumo | null
   responsavel: PessoaResumo | null
   created_at: string
   updated_at: string
@@ -288,6 +310,8 @@ export interface NovoChamadoInput {
   descricao: string
   urgencia: ChamadoUrgencia
   rota: string | null
+  /** id em people.colaboradores; null = o próprio autor. */
+  solicitanteColaboradorId: string | null
   arquivos: File[]
 }
 
@@ -317,6 +341,7 @@ export async function criarChamado(input: NovoChamadoInput): Promise<{ id: strin
       descricao: input.descricao.trim(),
       urgencia: input.urgencia,
       rota: input.rota,
+      solicitante_colaborador_id: input.solicitanteColaboradorId || null,
       anexos: enviados,
     },
   })

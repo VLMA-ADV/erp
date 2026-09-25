@@ -13,6 +13,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
+import { useColaboradoresSelecao } from '@/lib/hooks/use-colaboradores-selecao'
 import MensagemAvulsaFormFields, {
   type PendingMensagemAnexo,
 } from '@/components/mensagens/mensagem-avulsa-form-fields'
@@ -30,6 +31,21 @@ interface MensagemAvulsaItem {
   autor_nome: string | null
   autor_foto?: string | null
   lido_at?: string | null
+  // "Em nome de" (24/09): quem pediu o recado, quando não é quem escreveu.
+  solicitante_id?: string | null
+  solicitante_nome?: string | null
+}
+
+/** Título da conversa: cliente · caso, ou "Mensagem livre" quando não há vínculo. */
+function tituloConversa(item: MensagemAvulsaItem) {
+  if (!item.cliente_id && !item.caso_id) return 'Mensagem livre'
+  return [item.cliente_nome || 'Cliente —', item.caso_nome].filter(Boolean).join(' · ')
+}
+
+/** "Lucas · em nome de Filipe" quando há solicitante; só o autor caso contrário. */
+function autorComSolicitante(item: MensagemAvulsaItem) {
+  const autor = item.autor_nome ?? 'Autor desconhecido'
+  return item.solicitante_nome ? `${autor} · em nome de ${item.solicitante_nome}` : autor
 }
 
 interface ClienteOption {
@@ -149,7 +165,9 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
   const [mensagem, setMensagem] = useState('')
   const [selectedClienteId, setSelectedClienteId] = useState('')
   const [selectedCasoId, setSelectedCasoId] = useState('')
+  const [selectedSolicitanteId, setSelectedSolicitanteId] = useState('')
   const [pendingAnexos, setPendingAnexos] = useState<PendingMensagemAnexo[]>([])
+  const { colaboradores, carregando: carregandoColaboradores } = useColaboradoresSelecao(createOpen)
 
   const [clientes, setClientes] = useState<ClienteOption[]>([])
   const [casos, setCasos] = useState<CasoOption[]>([])
@@ -166,11 +184,12 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
 
   // Uma conversa = cliente + caso. É como as pessoas se referem ao assunto
   // ("o da Gramarcal"), em vez de mensagem solta numa pilha (Filipe 07/08).
+  // Mensagens livres (sem cliente nem caso, 24/09) caem numa conversa só.
   const conversas = useMemo(() => {
     const mapa = new Map<string, { chave: string; titulo: string; mensagens: MensagemAvulsaItem[] }>()
     for (const item of mensagens) {
       const chave = `${item.cliente_id || 'sem-cliente'}::${item.caso_id || 'sem-caso'}`
-      const titulo = [item.cliente_nome || 'Cliente —', item.caso_nome].filter(Boolean).join(' · ')
+      const titulo = tituloConversa(item)
       const atual = mapa.get(chave) || { chave, titulo, mensagens: [] }
       atual.mensagens.push(item)
       mapa.set(chave, atual)
@@ -205,6 +224,11 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
         .filter((c) => !selectedClienteId || c.cliente_id === selectedClienteId)
         .map((c) => ({ value: c.id, label: c.nome })),
     [casos, selectedClienteId],
+  )
+
+  const solicitantesOptions = useMemo<CommandSelectOption[]>(
+    () => colaboradores.map((c) => ({ value: c.id, label: c.nome })),
+    [colaboradores],
   )
 
   const getSession = async () => {
@@ -284,6 +308,7 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
     setMensagem('')
     setSelectedClienteId('')
     setSelectedCasoId('')
+    setSelectedSolicitanteId('')
     setPendingAnexos([])
   }
 
@@ -357,10 +382,7 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
       toastError('Mensagem é obrigatória')
       return
     }
-    if (!selectedClienteId && !selectedCasoId) {
-      toastError('Selecione um cliente ou caso')
-      return
-    }
+    // Cliente e caso são opcionais desde 24/09 (mensagem livre): sem validação de vínculo.
 
     try {
       setSubmitting(true)
@@ -392,6 +414,7 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
         p_payload: {
           cliente_id: selectedClienteId || null,
           caso_id: selectedCasoId || null,
+          solicitante_colaborador_id: selectedSolicitanteId || null,
           mensagem: mensagem.trim(),
           anexos: anexosPayload.length ? anexosPayload : undefined,
         },
@@ -446,7 +469,7 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
             <div>
               <p className="text-sm font-semibold text-ink">Mensagens</p>
               <p className="mt-1 text-sm text-ink-mute">
-                Mensagens avulsas vinculadas a clientes e casos (sem solicitação de contrato).
+                Mensagens avulsas: vinculadas a um cliente/caso ou livres (sem solicitação de contrato).
               </p>
             </div>
           </div>
@@ -514,7 +537,7 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
                       <Avatar nome={item.autor_nome} foto={item.autor_foto} />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2">
-                          <span className="text-sm font-semibold text-ink">{item.autor_nome ?? 'Autor desconhecido'}</span>
+                          <span className="text-sm font-semibold text-ink">{autorComSolicitante(item)}</span>
                           <span className="text-xs text-ink-mute">{formatRelativeDate(item.created_at)}</span>
                         </div>
                         <p className="mt-1 whitespace-pre-wrap text-sm text-ink-secondary">{item.mensagem}</p>
@@ -553,7 +576,7 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
                         <span className="shrink-0 text-xs text-ink-mute">{formatRelativeDate(conversa.ultima.created_at)}</span>
                       </div>
                       <p className="mt-0.5 truncate text-xs text-ink-mute">
-                        {conversa.ultima.autor_nome ?? 'Autor desconhecido'}
+                        {autorComSolicitante(conversa.ultima)}
                         {conversa.mensagens.length > 1 ? ` · ${conversa.mensagens.length} mensagens` : ''}
                       </p>
                       <p className="mt-1 line-clamp-2 text-sm text-ink-secondary">{conversa.ultima.mensagem}</p>
@@ -603,6 +626,10 @@ export default function MensagensInbox({ embutido = false }: { embutido?: boolea
             pendingAnexos={pendingAnexos}
             selectedCasoId={selectedCasoId}
             selectedClienteId={selectedClienteId}
+            solicitantesOptions={solicitantesOptions}
+            selectedSolicitanteId={selectedSolicitanteId}
+            onSelectedSolicitanteIdChange={setSelectedSolicitanteId}
+            loadingSolicitantes={carregandoColaboradores}
           />
 
           <DialogFooter>

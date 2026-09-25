@@ -15,6 +15,7 @@ import {
   listarChamados,
   rotuloModulo,
   rotuloStatus,
+  solicitanteDiferente,
   type ChamadoResumoItem,
 } from '@/lib/chamados/api'
 import AvatarAutor from './avatar-autor'
@@ -120,7 +121,11 @@ export default function ChamadosInbox({ onFechar }: { onFechar?: () => void } = 
                   {item.urgencia === 'urgente' ? (
                     <Badge className="border-red-200 bg-red-50 text-red-700">Urgente</Badge>
                   ) : null}
-                  <span className="text-xs text-ink-mute">{item.autor?.nome ?? 'Autor desconhecido'}</span>
+                  <span className="text-xs text-ink-mute">
+                    {solicitanteDiferente(item.autor, item.solicitante)
+                      ? `aberto por ${item.autor?.nome ?? 'autor desconhecido'} · solicitante ${item.solicitante?.nome}`
+                      : item.autor?.nome ?? 'Autor desconhecido'}
+                  </span>
                 </div>
               </div>
             </button>
