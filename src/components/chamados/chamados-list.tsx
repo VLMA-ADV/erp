@@ -19,6 +19,7 @@ import {
   rotuloCategoria,
   rotuloModulo,
   rotuloStatus,
+  solicitanteDiferente,
   type ChamadoCategoria,
   type ChamadoModulo,
   type ChamadoResumoItem,
@@ -283,7 +284,15 @@ function LinhaChamado({ item, onClick }: { item: ChamadoResumoItem; onClick: () 
           ) : null}
         </div>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-mute">
-          <span>{item.autor?.nome ?? 'Autor desconhecido'}</span>
+          {/* "aberto por X · solicitante Y" só quando são pessoas diferentes (Filipe 24/09). */}
+          {solicitanteDiferente(item.autor, item.solicitante) ? (
+            <span>
+              aberto por {item.autor?.nome ?? 'autor desconhecido'} · solicitante{' '}
+              <span className="font-medium text-ink-secondary">{item.solicitante?.nome}</span>
+            </span>
+          ) : (
+            <span>{item.autor?.nome ?? 'Autor desconhecido'}</span>
+          )}
           <span>{dataRelativa(item.updated_at || item.created_at)}</span>
           {item.responsavel?.nome ? <span>com {item.responsavel.nome}</span> : null}
           {item.total_mensagens > 0 ? (

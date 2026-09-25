@@ -28,6 +28,14 @@ interface Props {
   pendingAnexos: PendingMensagemAnexo[]
   selectedCasoId: string
   selectedClienteId: string
+  /**
+   * "Solicitante / Em nome de" (Filipe 24/09): quem pediu o recado, quando
+   * não é quem escreve. Opcional — sem as props o campo não aparece.
+   */
+  solicitantesOptions?: CommandSelectOption[]
+  selectedSolicitanteId?: string
+  onSelectedSolicitanteIdChange?: (value: string) => void
+  loadingSolicitantes?: boolean
 }
 
 export default function MensagemAvulsaFormFields({
@@ -46,13 +54,20 @@ export default function MensagemAvulsaFormFields({
   pendingAnexos,
   selectedCasoId,
   selectedClienteId,
+  solicitantesOptions,
+  selectedSolicitanteId = '',
+  onSelectedSolicitanteIdChange,
+  loadingSolicitantes = false,
 }: Props) {
   const casoDisabled = disabled || !selectedClienteId || loadingCasos
 
   return (
     <div className="space-y-4">
+      {/* Mensagem livre (Filipe 24/09): cliente e caso são opcionais. */}
       <div className="space-y-2">
-        <Label>Cliente</Label>
+        <Label>
+          Cliente <span className="font-normal text-muted-foreground">(opcional)</span>
+        </Label>
         <CommandSelect
           value={selectedClienteId}
           onValueChange={onSelectedClienteIdChange}
@@ -67,7 +82,9 @@ export default function MensagemAvulsaFormFields({
       </div>
 
       <div className="space-y-2">
-        <Label>Caso</Label>
+        <Label>
+          Caso <span className="font-normal text-muted-foreground">(opcional)</span>
+        </Label>
         <CommandSelect
           value={selectedCasoId}
           onValueChange={onSelectedCasoIdChange}
@@ -86,6 +103,24 @@ export default function MensagemAvulsaFormFields({
           disabled={casoDisabled}
         />
       </div>
+
+      {solicitantesOptions && onSelectedSolicitanteIdChange ? (
+        <div className="space-y-2">
+          <Label>
+            Solicitante / Em nome de{' '}
+            <span className="font-normal text-muted-foreground">(opcional)</span>
+          </Label>
+          <CommandSelect
+            value={selectedSolicitanteId}
+            onValueChange={onSelectedSolicitanteIdChange}
+            options={solicitantesOptions}
+            placeholder={loadingSolicitantes ? 'Carregando colaboradores...' : 'Quem pediu o recado'}
+            searchPlaceholder="Buscar colaborador..."
+            emptyText="Nenhum colaborador encontrado"
+            disabled={disabled || loadingSolicitantes}
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label>Mensagem</Label>
