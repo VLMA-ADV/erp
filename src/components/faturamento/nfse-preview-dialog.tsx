@@ -123,6 +123,13 @@ interface NfsePreviewDialogProps {
   onClose: () => void
   /** Ajustes desta nota seguem junto com a emissão (Filipe, 11/09). */
   onConfirmEmit?: (descricaoServico: string, ajustes?: AjustesDaNota) => void
+  /**
+   * Ajustes que já valem para esta nota antes de abrir — o kit da Composição
+   * guarda pagador/grupo "só deste faturamento" (finance.kits.ajustes, 25/09)
+   * e a nota precisa sair com eles. Pré-preenche o bloco de ajustes e o deixa
+   * aberto para a pessoa ver o que vai na nota.
+   */
+  ajustesIniciais?: AjustesDaNota | null
 }
 
 export interface AjustesDaNota {
@@ -167,6 +174,7 @@ export default function NfsePreviewDialog({
   contratoLabel,
   onClose,
   onConfirmEmit,
+  ajustesIniciais,
 }: NfsePreviewDialogProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -342,6 +350,16 @@ export default function NfsePreviewDialog({
       setVencimento('')
       setSalvarNoContrato(false)
       setAbrirAjustes(false)
+
+      // Ajustes do kit (Composição): sobrescrevem o que veio do cadastro e o
+      // bloco abre para ficar visível que a nota sai diferente do contrato.
+      if (ajustesIniciais && (ajustesIniciais.grupo_imposto_id || ajustesIniciais.pagadores?.length)) {
+        if (ajustesIniciais.grupo_imposto_id) setGrupoImpostoId(ajustesIniciais.grupo_imposto_id)
+        if (ajustesIniciais.pagadores?.length) {
+          setPagadoresEdit(ajustesIniciais.pagadores.map((p) => ({ cliente_id: p.cliente_id, percentual: Number(p.percentual).toFixed(2) })))
+        }
+        setAbrirAjustes(true)
+      }
 
       setData({
         itens: dataset.itens as DatasetItem[],

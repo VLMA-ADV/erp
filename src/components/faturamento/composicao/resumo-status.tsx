@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils/cn'
 import {
   SITUACAO_INFO,
   formatMoney,
-  progressoDoKit,
+  situacaoDoKit,
   somarProgresso,
   type ClienteKits,
   type ComposicaoPayload,
@@ -13,8 +13,9 @@ import {
 } from './types'
 
 // Linha de KPIs (mock do Filipe, 21/09): total a faturar, quantos kits
-// estão completos / em andamento / não iniciados (contando documentos
-// emitidos, ver progressoDoKit) e o progresso geral. Os três do meio filtram
+// estão completos / em andamento / não iniciados e o progresso geral. Desde
+// 25/09 "Kit completo" é o kit FINALIZADO (baixa manual) ou recebido — ver
+// situacaoDoKit; o progresso geral continua contando documentos emitidos. Os três do meio filtram
 // a lista na tela — clicar de novo limpa. Os números vêm dos clientes que a
 // RPC devolveu para o filtro atual, sem a busca por texto nem o filtro de
 // situação, para os cards não mudarem quando a pessoa clica num deles.
@@ -37,9 +38,9 @@ export default function ResumoStatus({
       nao_iniciado: { kits: 0, valor: 0 },
     }
     for (const kit of kits) {
-      const p = progressoDoKit(kit)
-      porSituacao[p.situacao].kits += 1
-      porSituacao[p.situacao].valor += Number(kit.valor_total || 0)
+      const sit = situacaoDoKit(kit)
+      porSituacao[sit].kits += 1
+      porSituacao[sit].valor += Number(kit.valor_total || 0)
     }
     return { porSituacao, geral: somarProgresso(kits), clientes: clientes.length }
   }, [clientes])

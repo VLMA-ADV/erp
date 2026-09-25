@@ -5,12 +5,16 @@
 // item sem caso agrupa num bloco "Sem caso" por contrato. Quem muda o
 // contrato da RPC muda aqui — não há geração automática de tipos.
 
-export type StatusKit = 'pendente' | 'nf_emitida' | 'enviado' | 'recebido'
+// 'finalizado' entrou em 25/09 (Filipe, 24/09): o e-mail ainda sai manual
+// pelo Gmail, então "Finalizar faturamento" é a baixa manual do kit. Na RPC
+// ele tem prioridade sobre pendente/nf_emitida/enviado; recebido fica acima.
+export type StatusKit = 'pendente' | 'nf_emitida' | 'enviado' | 'finalizado' | 'recebido'
 
-export const STATUS_KIT_ORDEM: StatusKit[] = ['pendente', 'nf_emitida', 'enviado', 'recebido']
+export const STATUS_KIT_ORDEM: StatusKit[] = ['pendente', 'nf_emitida', 'enviado', 'finalizado', 'recebido']
 
 // Cores pedidas pelo Filipe (21/09): pendente âmbar, NF emitida azul, enviado
-// verde, recebido esmeralda escuro; falha de envio em vermelho.
+// verde, recebido esmeralda escuro; falha de envio em vermelho. Finalizado
+// (24/09) em verde escuro, para não confundir com "enviado".
 export const STATUS_KIT_INFO: Record<StatusKit, {
   label: string
   badge: string
@@ -44,6 +48,14 @@ export const STATUS_KIT_INFO: Record<StatusKit, {
     cardAtivo: 'border-green-500 bg-green-100 ring-2 ring-green-300',
     borda: 'border-l-green-500',
     bordaCard: 'border-green-300',
+  },
+  finalizado: {
+    label: 'Finalizado',
+    badge: 'border-green-700 bg-green-700 text-white',
+    card: 'border-green-700 bg-green-50/60 hover:bg-green-50',
+    cardAtivo: 'border-green-800 bg-green-100 ring-2 ring-green-500',
+    borda: 'border-l-green-800',
+    bordaCard: 'border-green-700',
   },
   recebido: {
     label: 'Recebido',
@@ -137,6 +149,24 @@ export interface Pagador {
   percentual: number
 }
 
+/** Baixa manual do kit (finalizar_kit). */
+export interface FinalizadoKit {
+  em: string
+  por_nome: string | null
+  obs: string | null
+}
+
+/**
+ * Impostos/pagadores que valem SÓ para este kit (finance.kits.ajustes). Quando
+ * existe, `grupo_imposto` e `pagadores` do caso já vêm refletindo o ajuste e
+ * `ajustes_do_kit` é true — a tela mostra o badge "ajustado neste kit".
+ */
+export interface AjustesKit {
+  grupo_imposto_id: string | null
+  grupo_imposto_nome: string | null
+  pagadores: Pagador[] | null
+}
+
 export interface KitCaso {
   chave: string
   caso_id: string | null
@@ -153,7 +183,10 @@ export interface KitCaso {
   pagadores: Pagador[]
   valor_servico: number
   valor_despesa: number
+  /** Soma de TODOS os itens de timesheet do kit, inclusive os de valor 0 (mensal/projeto). */
   horas: number
+  /** Contagem de lançamentos de timesheet do kit. */
+  lancamentos_timesheet: number
   valor_total: number
   itens: ItemKit[]
   documentos: {
@@ -165,6 +198,9 @@ export interface KitCaso {
   envio: EnvioKit | null
   conta_receber: ContaReceberKit | null
   status_kit: StatusKit
+  finalizado: FinalizadoKit | null
+  ajustes_kit: AjustesKit | null
+  ajustes_do_kit?: boolean
   pode_excluir: boolean
   motivo_bloqueio: string | null
 }
@@ -302,9 +338,19 @@ export function labelCaso(kit: Pick<KitCaso, 'caso_numero' | 'caso_nome'>) {
 // Só conta no front: quais documentos o kit PRECISA (NFS-e e boleto sempre;
 // relatório quando há horas; nota de débito quando há despesa) e quantos já
 // saíram. A esteira status_kit (pendente → recebido) continua vindo da RPC e
-// é outra régua — esta diz "quanto do kit está montado".
+// é outra régua — esta diz "quanto do kit está montado". Desde 25/09 o
+// bloco do caso mostra isso como um "stepper" de 4 etapas rotuladas (NF ·
+// Boleto · Timesheet · Despesas), por isso cada segmento carrega o rótulo e
+// se é necessário neste kit.
 
 export type SituacaoKit = 'nao_iniciado' | 'em_andamento' | 'completo'
+
+export interface EtapaKit {
+  rotulo: 'NF' | 'Boleto' | 'Timesheet' | 'Despesas'
+  /** Este kit precisa deste documento? (Timesheet só com horas; Despesas só com despesa.) */
+  necessaria: boolean
+  emitida: boolean
+}
 
 export interface ProgressoKit {
   emitidos: number
@@ -314,6 +360,8 @@ export interface ProgressoKit {
   situacao: SituacaoKit
   /** Um booleano por documento necessário, na ordem NFS-e, boleto, relatório, nota de débito. */
   segmentos: boolean[]
+  /** As 4 etapas do stepper, sempre presentes (as não necessárias ficam apagadas). */
+  etapas: EtapaKit[]
 }
 
 export const SITUACAO_INFO: Record<SituacaoKit, {
@@ -333,7 +381,7 @@ export const SITUACAO_INFO: Record<SituacaoKit, {
     kpi: 'border-hairline bg-white hover:border-emerald-300',
     kpiAtivo: 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200',
     numero: 'text-emerald-600',
-    descricao: 'pronto para envio',
+    descricao: 'finalizado',
   },
   em_andamento: {
     label: 'Em andamento',
@@ -341,7 +389,7 @@ export const SITUACAO_INFO: Record<SituacaoKit, {
     kpi: 'border-hairline bg-white hover:border-orange-300',
     kpiAtivo: 'border-orange-500 bg-orange-50 ring-2 ring-orange-200',
     numero: 'text-orange-600',
-    descricao: 'algum documento emitido',
+    descricao: 'documentos em emissão',
   },
   nao_iniciado: {
     label: 'Não iniciado',
@@ -363,25 +411,59 @@ export function boletoEmitido(boleto: DocBoleto | null) {
   return !!boleto && !['cancelado', 'erro', 'baixado'].includes(boleto.status)
 }
 
-export function progressoDoKit(kit: KitCaso): ProgressoKit {
+export function etapasDoKit(kit: KitCaso): EtapaKit[] {
   const docs = kit.documentos
-  const segmentos: boolean[] = [nfseEmitida(docs.nfse), boletoEmitido(docs.boleto)]
-  if (kit.horas > 0) segmentos.push(!!docs.relatorio_timesheet)
-  if (kit.valor_despesa > 0) segmentos.push(!!docs.nota_debito)
-  return montarProgresso(segmentos)
+  return [
+    { rotulo: 'NF', necessaria: true, emitida: nfseEmitida(docs.nfse) },
+    { rotulo: 'Boleto', necessaria: true, emitida: boletoEmitido(docs.boleto) },
+    { rotulo: 'Timesheet', necessaria: kit.horas > 0, emitida: !!docs.relatorio_timesheet },
+    { rotulo: 'Despesas', necessaria: kit.valor_despesa > 0, emitida: !!docs.nota_debito },
+  ]
 }
 
-function montarProgresso(segmentos: boolean[]): ProgressoKit {
+export function progressoDoKit(kit: KitCaso): ProgressoKit {
+  const etapas = etapasDoKit(kit)
+  return montarProgresso(etapas.filter((e) => e.necessaria).map((e) => e.emitida), etapas)
+}
+
+function montarProgresso(segmentos: boolean[], etapas: EtapaKit[]): ProgressoKit {
   const necessarios = segmentos.length
   const emitidos = segmentos.filter(Boolean).length
   const pct = necessarios > 0 ? Math.round((emitidos / necessarios) * 100) : 0
   const situacao: SituacaoKit = emitidos === 0 ? 'nao_iniciado' : emitidos >= necessarios ? 'completo' : 'em_andamento'
-  return { emitidos, necessarios, pct, situacao, segmentos }
+  return { emitidos, necessarios, pct, situacao, segmentos, etapas }
 }
 
 /** Soma dos kits de um cliente (ou de todos): os segmentos são concatenados. */
 export function somarProgresso(kits: KitCaso[]): ProgressoKit {
-  return montarProgresso(kits.flatMap((k) => progressoDoKit(k).segmentos))
+  return montarProgresso(kits.flatMap((k) => progressoDoKit(k).segmentos), [])
+}
+
+/** Kit finalizado (baixa manual) ou já recebido: conta como "Kit completo" no KPI. */
+export function kitFinalizado(kit: Pick<KitCaso, 'status_kit'>) {
+  return kit.status_kit === 'finalizado' || kit.status_kit === 'recebido'
+}
+
+/**
+ * Situação do kit para os KPIs e o filtro de tela (Filipe, 24/09): "Kit
+ * completo" é o kit FINALIZADO (ou recebido), não o que só tem todos os
+ * documentos — ter tudo emitido e ainda não ter dado a baixa é "em andamento".
+ */
+export function situacaoDoKit(kit: KitCaso): SituacaoKit {
+  if (kitFinalizado(kit)) return 'completo'
+  const p = progressoDoKit(kit)
+  return p.emitidos === 0 ? 'nao_iniciado' : 'em_andamento'
+}
+
+/** Situação do cartão do cliente: o pior entre os kits dele. */
+export function situacaoDosKits(kits: KitCaso[]): SituacaoKit {
+  const ordem: SituacaoKit[] = ['nao_iniciado', 'em_andamento', 'completo']
+  let pior = ordem.length - 1
+  for (const k of kits) {
+    const i = ordem.indexOf(situacaoDoKit(k))
+    if (i < pior) pior = i
+  }
+  return ordem[pior] ?? 'nao_iniciado'
 }
 
 /** Duas letras para o avatar: iniciais das duas primeiras palavras, ou as duas primeiras letras. */
