@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
+import { useColaboradoresSelecao } from '@/lib/hooks/use-colaboradores-selecao'
 import {
   CATEGORIAS,
   DESCRICAO_MAX,
@@ -40,6 +41,9 @@ import AnexosPendentes from './anexos-pendentes'
  * pessoa estava (2.6c) — quem abre pelo botão flutuante do Timesheet quase
  * sempre está falando do Timesheet — mas pode trocar.
  *
+ * "Solicitante" (Filipe 24/09): quem pediu, quando não é quem está abrindo —
+ * a secretária abre em nome do sócio. Padrão = o próprio usuário logado.
+ *
  * Os anexos sobem no bucket ANTES de criar_chamado; se algum falhar, o chamado
  * não é criado (ver criarChamado em lib/chamados/api.ts).
  */
@@ -61,9 +65,13 @@ export default function NovoChamadoDialog({
   const [titulo, setTitulo] = useState('')
   const [descricao, setDescricao] = useState('')
   const [urgencia, setUrgencia] = useState<ChamadoUrgencia>('normal')
+  const [solicitanteId, setSolicitanteId] = useState('')
   const [arquivos, setArquivos] = useState<File[]>([])
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  const { colaboradores, euColaboradorId, carregando: carregandoColaboradores } =
+    useColaboradoresSelecao(open)
 
   // Reinicia o formulário a cada abertura, com o módulo da rota atual.
   useEffect(() => {
@@ -73,9 +81,17 @@ export default function NovoChamadoDialog({
     setTitulo('')
     setDescricao('')
     setUrgencia('normal')
+    setSolicitanteId('')
     setArquivos([])
     setErro(null)
   }, [open, pathname])
+
+  // Padrão do solicitante = eu. Chega depois da abertura (a lista é assíncrona),
+  // então só preenche enquanto a pessoa ainda não escolheu ninguém.
+  useEffect(() => {
+    if (!open || !euColaboradorId) return
+    setSolicitanteId((atual) => atual || euColaboradorId)
+  }, [open, euColaboradorId])
 
   const fechar = (valor: boolean) => {
     if (enviando) return
@@ -112,6 +128,9 @@ export default function NovoChamadoDialog({
         descricao: descricaoLimpa,
         urgencia,
         rota: pathname || null,
+        // Igual a mim = sem solicitante gravado (o autor já é o solicitante).
+        solicitanteColaboradorId:
+          solicitanteId && solicitanteId !== euColaboradorId ? solicitanteId : null,
         arquivos,
       })
       success(`Chamado #${criado.numero} aberto`)
@@ -182,6 +201,28 @@ export default function NovoChamadoDialog({
                 ))}
               </NativeSelect>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="chamado-solicitante">Solicitante</Label>
+            <NativeSelect
+              id="chamado-solicitante"
+              value={solicitanteId}
+              onChange={(e) => setSolicitanteId(e.target.value)}
+              disabled={enviando || carregandoColaboradores}
+              data-testid="chamado-solicitante"
+            >
+              {carregandoColaboradores ? <option value="">Carregando...</option> : null}
+              {!carregandoColaboradores && !solicitanteId ? <option value="">Eu mesmo</option> : null}
+              {colaboradores.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.id === euColaboradorId ? `${c.nome} (eu)` : c.nome}
+                </option>
+              ))}
+            </NativeSelect>
+            <p className="text-[11px] text-ink-mute">
+              Quem pediu o chamado, se não for você (ex.: você abre em nome de um sócio).
+            </p>
           </div>
 
           <div className="space-y-2">

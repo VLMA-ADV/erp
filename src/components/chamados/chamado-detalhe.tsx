@@ -27,6 +27,7 @@ import {
   rotuloCategoria,
   rotuloModulo,
   rotuloStatus,
+  solicitanteDiferente,
   type ChamadoAnexo,
   type ChamadoStatus,
 } from '@/lib/chamados/api'
@@ -212,8 +213,14 @@ export default function ChamadoDetalhe({
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-mute">
                 <span className="inline-flex items-center gap-1.5">
                   <AvatarAutor nome={data.autor?.nome} foto={data.autor?.foto_url} tamanho="sm" />
+                  {solicitanteDiferente(data.autor, data.solicitante) ? 'aberto por ' : ''}
                   {data.autor?.nome ?? 'Autor desconhecido'}
                 </span>
+                {solicitanteDiferente(data.autor, data.solicitante) ? (
+                  <span>
+                    solicitante: <span className="font-medium text-ink-secondary">{data.solicitante?.nome}</span>
+                  </span>
+                ) : null}
                 <span title={dataCompleta(data.created_at)}>aberto {dataRelativa(data.created_at)}</span>
                 {data.responsavel?.nome ? <span>responsável: {data.responsavel.nome}</span> : null}
                 {data.resolvido_em ? (
