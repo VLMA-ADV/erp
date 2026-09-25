@@ -2630,7 +2630,86 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         })}
       </div>
 
-      {/* Mesma barra da fase "aguardando liberação" (pedido Filipe 07/08): as
+      <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3 text-sm">
+        <div className="text-muted-foreground">
+          <span className="mr-4">
+            Itens: <strong className="text-foreground">{totals.itens}</strong>
+          </span>
+          <span className="mr-4">
+            Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
+          </span>
+          <span>
+            {statusSummary.naFila > 0 ? `${statusSummary.naFila} na fila · ` : null}
+            {statusSummary.revisao} liberado(s) · {statusSummary.aprovacao} revisado(s) · {statusSummary.aprovado} aprovado(s)
+            {statusSummary.faturado > 0 ? ` · ${statusSummary.faturado} faturado(s)` : null}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full"
+            disabled={visibleItems.length === 0}
+            title={selectedItemIds.length > 0 ? `Gera a prévia dos ${selectedItemIds.length} lançamento(s) selecionado(s)` : 'Selecione lançamentos para gerar a prévia de um cliente/caso; sem seleção, sai tudo o que está na tela'}
+            onClick={() => {
+              // Pedido 21/07: com seleção, o relatório é a prévia de faturamento
+              // apenas dos lançamentos selecionados (por cliente/caso).
+              const base = (selectedItemIds.length > 0
+                ? visibleItems.filter((item) => selectedItemIds.includes(item.id))
+                : visibleItems
+              ).filter((item) => item.origemTipo !== 'despesa' && !isFila(item))
+              openTimesheetReport({
+                titulo: selectedItemIds.length > 0
+                  ? 'Prévia de faturamento — lançamentos selecionados'
+                  : 'Relatório de timesheet — Revisão de fatura (etapa 2)',
+                subtitulo: selectedItemIds.length > 0
+                  ? `${base.length} lançamento(s) selecionado(s)`
+                  : `${statusSummary.revisao} em revisão · ${statusSummary.aprovacao} em aprovação · ${statusSummary.aprovado} aprovado(s)`,
+                mostrarValor: true,
+                rows: base.map((item) => ({
+                  data: item.timesheetDataLancamento ? formatDate(item.timesheetDataLancamento) : formatDate(item.dataReferencia || ''),
+                  cliente: item.clienteNome || '',
+                  caso: `${item.casoNumero || ''} - ${item.casoNome || ''}`,
+                  profissional: item.enviadoPorNome || item.timesheetProfissional || '',
+                  descricao: getLatestTexto(item),
+                  horas: formatHistoryHours(getEffectiveItemHours(item)),
+                  valor: getEffectiveItemValue(item),
+                })),
+              })
+            }}
+          >
+            Gerar relatório{selectedItemIds.length > 0 ? ` (${selectedItemIds.length})` : ''}
+          </Button>
+          <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
+            {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
+          </Button>
+          <div className="font-semibold font-tabular">
+            {formatMoney(totals.valor)}
+            {/* Fila não soma: ainda não é fatura. Fica ao lado, em cinza. */}
+            {totals.itensNaFila > 0 ? (
+              <span className="ml-2 text-xs font-normal text-ink-mute" title={`${totals.itensNaFila} item(ns) aguardando liberação`}>
+                + {formatMoney(totals.valorNaFila)} na fila
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Painel de andamento na tela inicial (Todas), clicável: filtra a lista
+          abaixo e continua visível enquanto o filtro veio dele (D7=a). */}
+      {ruleFilter === 'all' || painelFixado || showIndicadores ? (
+        <AndamentoPorRegra
+          linhas={andamentoPorRegra}
+          faturadoMes={faturadoMes}
+          mesLabel={mesAtualLabel}
+          selecao={selecaoPainel}
+          onSelecionar={selecionarNoPainel}
+        />
+      ) : null}
+
+      {/* Abas de regra + filtros ficam ABAIXO do resumo e do painel de andamento
+          (pedido Filipe 24/09): aplicar o filtro e ver os contratos logo abaixo.
+          Mesma barra da fase "aguardando liberação" (pedido Filipe 07/08): as
           duas telas usavam estilos diferentes para a mesma coisa. Os contadores
           ficam, porque tirar informação para igualar visual seria piorar. */}
       <Tabs
@@ -2761,83 +2840,6 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         </div>
       </div>
 
-      <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3 text-sm">
-        <div className="text-muted-foreground">
-          <span className="mr-4">
-            Itens: <strong className="text-foreground">{totals.itens}</strong>
-          </span>
-          <span className="mr-4">
-            Horas: <strong className="text-foreground">{formatHours(totals.horas)}</strong>
-          </span>
-          <span>
-            {statusSummary.naFila > 0 ? `${statusSummary.naFila} na fila · ` : null}
-            {statusSummary.revisao} liberado(s) · {statusSummary.aprovacao} revisado(s) · {statusSummary.aprovado} aprovado(s)
-            {statusSummary.faturado > 0 ? ` · ${statusSummary.faturado} faturado(s)` : null}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full"
-            disabled={visibleItems.length === 0}
-            title={selectedItemIds.length > 0 ? `Gera a prévia dos ${selectedItemIds.length} lançamento(s) selecionado(s)` : 'Selecione lançamentos para gerar a prévia de um cliente/caso; sem seleção, sai tudo o que está na tela'}
-            onClick={() => {
-              // Pedido 21/07: com seleção, o relatório é a prévia de faturamento
-              // apenas dos lançamentos selecionados (por cliente/caso).
-              const base = (selectedItemIds.length > 0
-                ? visibleItems.filter((item) => selectedItemIds.includes(item.id))
-                : visibleItems
-              ).filter((item) => item.origemTipo !== 'despesa' && !isFila(item))
-              openTimesheetReport({
-                titulo: selectedItemIds.length > 0
-                  ? 'Prévia de faturamento — lançamentos selecionados'
-                  : 'Relatório de timesheet — Revisão de fatura (etapa 2)',
-                subtitulo: selectedItemIds.length > 0
-                  ? `${base.length} lançamento(s) selecionado(s)`
-                  : `${statusSummary.revisao} em revisão · ${statusSummary.aprovacao} em aprovação · ${statusSummary.aprovado} aprovado(s)`,
-                mostrarValor: true,
-                rows: base.map((item) => ({
-                  data: item.timesheetDataLancamento ? formatDate(item.timesheetDataLancamento) : formatDate(item.dataReferencia || ''),
-                  cliente: item.clienteNome || '',
-                  caso: `${item.casoNumero || ''} - ${item.casoNome || ''}`,
-                  profissional: item.enviadoPorNome || item.timesheetProfissional || '',
-                  descricao: getLatestTexto(item),
-                  horas: formatHistoryHours(getEffectiveItemHours(item)),
-                  valor: getEffectiveItemValue(item),
-                })),
-              })
-            }}
-          >
-            Gerar relatório{selectedItemIds.length > 0 ? ` (${selectedItemIds.length})` : ''}
-          </Button>
-          <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
-            {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
-          </Button>
-          <div className="font-semibold font-tabular">
-            {formatMoney(totals.valor)}
-            {/* Fila não soma: ainda não é fatura. Fica ao lado, em cinza. */}
-            {totals.itensNaFila > 0 ? (
-              <span className="ml-2 text-xs font-normal text-ink-mute" title={`${totals.itensNaFila} item(ns) aguardando liberação`}>
-                + {formatMoney(totals.valorNaFila)} na fila
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      {/* Painel de andamento na tela inicial (Todas), clicável: filtra a lista
-          abaixo e continua visível enquanto o filtro veio dele (D7=a). */}
-      {ruleFilter === 'all' || painelFixado || showIndicadores ? (
-        <AndamentoPorRegra
-          linhas={andamentoPorRegra}
-          faturadoMes={faturadoMes}
-          mesLabel={mesAtualLabel}
-          selecao={selecaoPainel}
-          onSelecionar={selecionarNoPainel}
-        />
-      ) : null}
-
       {showIndicadores ? (
         <div className="space-y-4">
           {indicadoresLoading || !indicadores ? (
@@ -2936,6 +2938,34 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                             </tr>
                           ))}
                         </tbody>
+                        {/* Linha "Total" (pedido Filipe 24/09): soma de casos, horas e projeção. */}
+                        {(() => {
+                          type TotIndicadores = { casos: number; enviadas: number; revisadas: number; aprovadas: number; ignoradas: number; projecao: number }
+                          const tot = (indicadores.por_cliente || []).reduce<TotIndicadores>(
+                            (acc, linha) => ({
+                              casos: acc.casos + Number(linha.casos || 0),
+                              enviadas: acc.enviadas + Number(linha.horas_enviadas || 0),
+                              revisadas: acc.revisadas + Number(linha.horas_revisadas || 0),
+                              aprovadas: acc.aprovadas + Number(linha.horas_aprovadas || 0),
+                              ignoradas: acc.ignoradas + Number(linha.horas_ignoradas || 0),
+                              projecao: acc.projecao + Number(linha.projecao_valor || 0),
+                            }),
+                            { casos: 0, enviadas: 0, revisadas: 0, aprovadas: 0, ignoradas: 0, projecao: 0 },
+                          )
+                          return (
+                            <tfoot>
+                              <tr className="border-t-2 bg-canvas-soft text-xs font-semibold text-ink">
+                                <td className="px-3 py-2">Total</td>
+                                <td className="px-3 py-2 text-right font-tabular">{tot.casos}</td>
+                                <td className="px-3 py-2 text-right font-tabular">{formatHistoryHours(tot.enviadas)}</td>
+                                <td className="px-3 py-2 text-right font-tabular">{formatHistoryHours(tot.revisadas)}</td>
+                                <td className="px-3 py-2 text-right font-tabular">{formatHistoryHours(tot.aprovadas)}</td>
+                                <td className="px-3 py-2 text-right font-tabular text-red-600">{formatHistoryHours(tot.ignoradas)}</td>
+                                <td className="px-3 py-2 text-right font-tabular">{formatMoney(tot.projecao)}</td>
+                              </tr>
+                            </tfoot>
+                          )
+                        })()}
                       </Table>
                     </div>
                   </>
@@ -3609,22 +3639,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                             <div className="max-w-[560px] whitespace-normal break-words text-[11px] leading-snug">{envioTexto}</div>
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs text-ink-secondary font-tabular">
+                                            {/* Sem o "R$ x/h" ao lado das horas (pedido Filipe 24/09): o
+                                                valor/hora aparece só no cabeçalho do caso. */}
                                             {mode === 'timesheet' ? formatHistoryHours(getOriginalItemHours(item)) : '—'}
-                                            {/* Valor/hora do lançamento (D9=c). Em item pendente o número é
-                                                o vigente da regra; o title avisa quando difere do gravado. */}
-                                            {mode === 'timesheet' && item.timesheetValorHora > 0 ? (
-                                              <span
-                                                className="ml-1 text-[10px] text-ink-mute"
-                                                title={
-                                                  (item.status === 'em_revisao' || item.status === 'em_aprovacao') &&
-                                                  item.timesheetValorHora !== item.timesheetValorHoraGravado
-                                                    ? 'valor/hora vigente da regra do caso'
-                                                    : undefined
-                                                }
-                                              >
-                                                {formatMoney(item.timesheetValorHora)}/h
-                                              </span>
-                                            ) : null}
                                           </td>
                                           <td className="px-3 py-2.5 text-right text-xs font-medium text-ink font-tabular">{formatMoney(getOriginalItemValue(item))}</td>
                                         </tr>
