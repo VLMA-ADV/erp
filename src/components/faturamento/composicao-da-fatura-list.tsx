@@ -19,6 +19,7 @@ import ChipsStatusKit from './composicao/chips-status-kit'
 import ResumoStatus from './composicao/resumo-status'
 import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
 import AjustesKitDialog from './composicao/ajustes-kit-dialog'
+import { mapearOrigemDasDespesas, parametrosBuscaOrigem } from './composicao/origem-despesas'
 import {
   FILTROS_VAZIOS,
   formatMoney,
@@ -351,24 +352,33 @@ export default function ComposicaoDaFaturaList() {
   // A prévia/PDF é a NotaDespesaPreview de sempre (nota + comprovantes). Os
   // comprovantes precisam do id da DESPESA (origem_id), que a RPC do kit não
   // traz — vem do get-revisao-fatura filtrado pelo kit, uma chamada por clique.
+  // Bug 6.3 (Filipe, 24/09): a busca ia com uuid nos filtros de texto e lia a
+  // chave errada, então nunca achava nada — ver composicao/origem-despesas.ts.
   const abrirNotaDebito = (kit: KitCaso) => executar(kit, 'nota', async () => {
     const despesas = kit.itens.filter((i) => i.origem_tipo === 'despesa')
     if (despesas.length === 0) { notify('Este kit não tem despesas reembolsáveis.'); return }
-    const origemPorItem = new Map<string, string>()
+    let origemPorItem = new Map<string, string>()
     try {
       const { session } = await sessao()
-      const params = new URLSearchParams({ contrato: kit.contrato_id, competencia: anoMes(kit.competencia) })
-      if (kit.caso_id) params.set('caso', kit.caso_id)
+      const params = parametrosBuscaOrigem(kit)
       const resp = await fetch(`${FUNCTIONS()}/get-revisao-fatura?${params.toString()}`, {
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
       })
       const corpo = await resp.json().catch(() => ({}))
-      for (const raw of (corpo.data ?? []) as Array<{ id?: string; origem_id?: string | null }>) {
-        if (raw.id && raw.origem_id) origemPorItem.set(raw.id, raw.origem_id)
-      }
+      if (!resp.ok) throw new Error(corpo?.error || `get-revisao-fatura respondeu ${resp.status}`)
+      origemPorItem = mapearOrigemDasDespesas(corpo.data, kit)
     } catch (e) {
       console.error('origem das despesas', e)
-      notify('Não foi possível localizar os comprovantes; a nota sai sem eles.')
+    }
+    // Aviso na hora, não só no toast do fim: sem a despesa de origem a nota
+    // sai sem comprovante e é assim que ela seria registrada no kit.
+    const semOrigem = despesas.filter((i) => !origemPorItem.has(i.id)).length
+    if (semOrigem > 0) {
+      toastError(
+        semOrigem === despesas.length
+          ? 'Não foi possível localizar os comprovantes das despesas; a nota sairia sem eles.'
+          : `${semOrigem} de ${despesas.length} despesa(s) sem comprovante localizado; a nota sai só com os demais.`,
+      )
     }
     const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
     setNotaKit(kit)
