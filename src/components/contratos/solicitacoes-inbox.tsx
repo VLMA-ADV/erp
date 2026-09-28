@@ -13,27 +13,13 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
-import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
-
-interface SolicitacaoContratoItem {
-  id: string
-  descricao: string
-  nome?: string | null
-  centro_custo_nome?: string | null
-  responsavel_vlma_nome?: string | null
-  regra_cobranca_texto?: string | null
-  indicacao_cross_sell?: string | null
-  contatos_financeiro?: string | null
-  status: 'aberta' | 'concluida' | 'cancelada'
-  cliente_nome: string | null
-  contrato_numero: number | null
-  contrato_numero_sequencial: number | null
-  contrato_nome: string | null
-  solicitante_nome: string | null
-  created_at: string
-  lido_at?: string | null
-}
+import SolicitacaoContratoDetalhes from '@/components/solicitacoes-contrato/solicitacao-contrato-detalhes'
+import {
+  buscarSolicitacoesContrato,
+  CLIENTE_A_DEFINIR,
+  type SolicitacaoContratoItem,
+} from '@/components/solicitacoes-contrato/solicitacao-contrato-api'
 
 const PREVIEW_LIMIT = 5
 
@@ -57,38 +43,13 @@ function clienteLabel(item: SolicitacaoContratoItem) {
   if (item.contrato_numero && item.contrato_nome) {
     return `Contrato ${item.contrato_numero} - ${item.contrato_nome}`
   }
-  return 'Cliente não informado'
+  // Sem cliente a solicitação continua válida (Filipe 28/09): quem monta o
+  // contrato define o cliente na hora de abrir.
+  return CLIENTE_A_DEFINIR
 }
 
-async function fetchSolicitacoesAbertas({ signal }: { signal?: AbortSignal } = {}): Promise<SolicitacaoContratoItem[]> {
-  const supabase = createClient()
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
-  if (!session) return []
-
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const response = await fetchWithRetry(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-solicitacoes-contrato`,
-    {
-      method: 'GET',
-      cache: 'no-store',
-      signal,
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        ...(anonKey ? { apikey: anonKey } : {}),
-        'Content-Type': 'application/json',
-      },
-    },
-  )
-
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(typeof payload.error === 'string' ? payload.error : 'Erro ao carregar solicitações')
-  }
-
-  const list = Array.isArray(payload.data) ? (payload.data as SolicitacaoContratoItem[]) : []
+async function fetchSolicitacoesAbertas(): Promise<SolicitacaoContratoItem[]> {
+  const list = await buscarSolicitacoesContrato()
   return list.filter((item) => item.status === 'aberta' && !item.lido_at)
 }
 
@@ -110,7 +71,7 @@ export default function SolicitacoesInbox({ embutido = false }: { embutido?: boo
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['solicitacoes-contrato-inbox'],
-    queryFn: ({ signal }) => fetchSolicitacoesAbertas({ signal }),
+    queryFn: fetchSolicitacoesAbertas,
     staleTime: 60_000,
     enabled: canRead,
   })
@@ -261,28 +222,7 @@ export default function SolicitacoesInbox({ embutido = false }: { embutido?: boo
                         {item.solicitante_nome ? ` → ${item.solicitante_nome}` : ''}
                       </p>
                       <p className="mt-2 line-clamp-2 text-sm text-ink-secondary">{item.descricao}</p>
-                      {/* Campos que quem monta o contrato precisa ler sem abrir
-                          a solicitação (Filipe 07/08). */}
-                      {(item.centro_custo_nome || item.responsavel_vlma_nome || item.regra_cobranca_texto
-                        || item.indicacao_cross_sell || item.contatos_financeiro) ? (
-                        <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
-                          {item.centro_custo_nome ? (
-                            <div><dt className="inline text-ink-mute">Centro de custo: </dt><dd className="inline text-ink-secondary">{item.centro_custo_nome}</dd></div>
-                          ) : null}
-                          {item.responsavel_vlma_nome ? (
-                            <div><dt className="inline text-ink-mute">Responsável: </dt><dd className="inline text-ink-secondary">{item.responsavel_vlma_nome}</dd></div>
-                          ) : null}
-                          {item.regra_cobranca_texto ? (
-                            <div className="sm:col-span-2"><dt className="inline text-ink-mute">Cobrança: </dt><dd className="inline text-ink-secondary">{item.regra_cobranca_texto}</dd></div>
-                          ) : null}
-                          {item.indicacao_cross_sell ? (
-                            <div className="sm:col-span-2"><dt className="inline text-ink-mute">Indicação: </dt><dd className="inline text-ink-secondary">{item.indicacao_cross_sell}</dd></div>
-                          ) : null}
-                          {item.contatos_financeiro ? (
-                            <div className="sm:col-span-2"><dt className="inline text-ink-mute">Financeiro: </dt><dd className="inline text-ink-secondary">{item.contatos_financeiro}</dd></div>
-                          ) : null}
-                        </dl>
-                      ) : null}
+                      <SolicitacaoContratoDetalhes item={item} />
                     </div>
                   </button>
                   {canWrite ? (
