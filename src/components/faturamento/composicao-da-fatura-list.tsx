@@ -668,10 +668,12 @@ export default function ComposicaoDaFaturaList() {
     const kits = kitsSelecionados
     if (kits.length === 0) return
     const itens = kits.reduce((a, k) => a + k.itens.length, 0)
+    // Filipe 28/09: devolver reinicia a partir da APROVAÇÃO, nunca do lançamento
+    // original — a revisão fica preservada. O texto precisa dizer isso.
     const ok = window.confirm(
       `Devolver ${kits.length} kit(s) para a revisão?\n\n` +
-      `Os ${itens} item(ns) voltam para a Revisão como "Liberado" e somem daqui; relatórios e notas de débito gerados ficam cancelados.` +
-      '\n\nNada é apagado da revisão — dá para aprovar de novo. Kits com NFS-e autorizada ou boleto vivo são recusados.',
+      `Os ${itens} item(ns) voltam para a etapa de aprovação, com a revisão preservada. Nada é apagado.` +
+      '\n\nRelatórios e notas de débito gerados ficam cancelados. Kits com NFS-e autorizada ou boleto vivo são recusados.',
     )
     if (!ok) return
     try {
@@ -712,11 +714,12 @@ export default function ComposicaoDaFaturaList() {
       kit.documentos.nota_debito ? 'a nota de débito' : null,
       kit.documentos.nfse && kit.documentos.nfse.status === 'gerado' ? 'a NFS-e com erro' : null,
     ].filter(Boolean)
+    // Filipe 28/09: devolver reinicia a partir da APROVAÇÃO, nunca do lançamento
+    // original — a revisão fica preservada. O texto precisa dizer isso.
     const ok = window.confirm(
       `Devolver o kit de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)}) para a revisão?\n\n` +
-      `Os ${kit.itens.length} item(ns) voltam para a Revisão como "Liberado" e somem daqui` +
-      (docs.length ? `; ${docs.join(', ')} ficam cancelados.` : '.') +
-      '\n\nNada é apagado da revisão — dá para aprovar de novo.',
+      `Os ${kit.itens.length} item(ns) voltam para a etapa de aprovação, com a revisão preservada. Nada é apagado.` +
+      (docs.length ? `\n\nSomem daqui; ${docs.join(', ')} ficam cancelados.` : '\n\nSomem daqui.'),
     )
     if (!ok) return
     try {
@@ -730,7 +733,7 @@ export default function ComposicaoDaFaturaList() {
       if (e) { toastError(e.message); return }
       const r = data as { ok?: boolean; itens_devolvidos?: number; motivo?: string | null }
       if (!r?.ok) { toastError(r?.motivo || 'Não foi possível excluir o kit.'); return }
-      success(`Kit devolvido: ${r.itens_devolvidos ?? 0} item(ns) de volta na revisão.`)
+      success(`Kit devolvido: ${r.itens_devolvidos ?? 0} item(ns) de volta na aprovação, com a revisão preservada.`)
       await recarregar()
     } catch (e) {
       toastError(e instanceof Error ? e.message : 'Erro ao excluir o kit.')
