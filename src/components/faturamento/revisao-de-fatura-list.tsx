@@ -1529,6 +1529,21 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   const tree = useMemo(() => buildTree(visibleItems), [visibleItems])
   const fullTree = useMemo(() => buildTree(items), [items])
 
+  // Itens da fila visíveis (respeitam filtros) e os marcados entre eles: alimentam
+  // "Selecionar todos da fila" e a barra de seleção global (Filipe 28/09).
+  const filaVisivel = useMemo(() => visibleItems.filter((item) => isFila(item)), [visibleItems])
+  const filaSelecionada = useMemo(
+    () => filaVisivel.filter((item) => selectedItemIds.includes(item.id)),
+    [filaVisivel, selectedItemIds],
+  )
+  const filaSelecionadaValor = useMemo(
+    () => filaSelecionada.reduce((acc, item) => acc + getEffectiveItemValue(item), 0),
+    [filaSelecionada],
+  )
+  const marcarItens = useCallback((ids: string[], marcar: boolean) => {
+    setSelectedItemIds((prev) => (marcar ? Array.from(new Set([...prev, ...ids])) : prev.filter((id) => !ids.includes(id))))
+  }, [])
+
   const clienteFilterOptions = useMemo<CommandSelectOption[]>(() => {
     const names = Array.from(new Set(items.map((item) => item.clienteNome).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     return [{ value: '', label: 'Todos os clientes' }, ...names.map((name) => ({ value: name, label: name }))]
@@ -2486,54 +2501,101 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     window.dispatchEvent(new Event('faturamento:gerado'))
   }
 
-  // Liberar é POR CASO, como na etapa 1: start-faturamento com o mês inteiro
-  // da aba (1º ao último dia) — a idempotência do gerador compara o período
-  // exato, então nunca mandar um recorte.
+  // Uma chamada ao start-faturamento. Sempre com o mês inteiro da aba (1º ao
+  // último dia): a idempotência do gerador compara o período exato, então nunca
+  // mandar um recorte. Devolve o payload da edge ou lança com a mensagem de erro.
+  // "Nenhum item elegível" NÃO é falha (sinalizado em `nadaElegivel`): o alvo já
+  // foi liberado por outra pessoa, ou a despesa é não reembolsável.
+  const postStartFaturamento = async (
+    accessToken: string,
+    alvo: { alvo_tipo: 'caso'; alvo_id: string } | { alvo_tipo: 'itens'; alvo_ids: string[]; alvo_chaves: string[] },
+  ): Promise<{ nadaElegivel: boolean; itensCriados: number; batchNumero: unknown }> => {
+    const periodo = periodoDaCompetencia(competencia)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ data_inicio: periodo.inicio, data_fim: periodo.fim, ...alvo }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const msg = String(payload.error || '')
+      if (/nenhum item eleg|nenhuma despesa eleg/i.test(msg)) return { nadaElegivel: true, itensCriados: 0, batchNumero: null }
+      throw new Error(msg || 'Erro ao liberar para revisão')
+    }
+    return {
+      nadaElegivel: false,
+      itensCriados: Number(payload?.data?.itens_criados || 0),
+      batchNumero: payload?.data?.batch_numero ?? null,
+    }
+  }
+
+  // Liberar o CASO inteiro (fila do caso), como na etapa 1.
   const liberarCaso = async (casoId: string, label: string) => {
     if (!window.confirm(`Liberar para revisão os lançamentos na fila de ${label}?\n\n${rotuloCompetencia(competencia)}.`)) return
     try {
       setLiberandoCasoId(casoId)
       const accessToken = await getSessionToken()
       if (!accessToken) { toastError('Sessão expirada — faça login novamente.'); return }
-      const periodo = periodoDaCompetencia(competencia)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/start-faturamento`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data_inicio: periodo.inicio,
-          data_fim: periodo.fim,
-          alvo_tipo: 'caso',
-          alvo_id: casoId,
-        }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const msg = String(payload.error || '')
-        // "Nenhum item elegível" não é falha: o caso já foi liberado por outra
-        // pessoa, ou a despesa é não reembolsável (não é cobrada do cliente).
-        if (/nenhum item eleg|nenhuma despesa eleg/i.test(msg)) {
-          toastError('Nada a liberar neste caso: já foi liberado, ou a despesa está marcada como não reembolsável.')
-          aposMexerNaFila()
-          return
-        }
-        toastError(msg || `Erro ao liberar ${label} para revisão`)
+      const r = await postStartFaturamento(accessToken, { alvo_tipo: 'caso', alvo_id: casoId })
+      if (r.nadaElegivel) {
+        toastError('Nada a liberar neste caso: já foi liberado, ou a despesa está marcada como não reembolsável.')
+        aposMexerNaFila()
         return
       }
-      const created = Number(payload?.data?.itens_criados || 0)
-      const batchNumber = payload?.data?.batch_numero
       success(
-        batchNumber
-          ? `${label} liberado para revisão no lote #${batchNumber} (${created} itens).`
-          : `${label} liberado para revisão (${created} itens).`,
+        r.batchNumero
+          ? `${label} liberado para revisão no lote #${r.batchNumero} (${r.itensCriados} itens).`
+          : `${label} liberado para revisão (${r.itensCriados} itens).`,
       )
       setSelectedItemIds((prev) => prev.filter((id) => !id.startsWith('fila:')))
       aposMexerNaFila()
     } catch (liberarError) {
       console.error(liberarError)
-      toastError(`Erro ao liberar ${label} para revisão`)
+      toastError(liberarError instanceof Error && liberarError.message ? liberarError.message : `Erro ao liberar ${label} para revisão`)
+    } finally {
+      setLiberandoCasoId(null)
+    }
+  }
+
+  // Liberar SÓ os itens da fila marcados (Filipe 28/09: "selecionar um a um e
+  // selecionar todos para liberar em massa"). Manda `alvo_ids` (origem_id:
+  // timesheet.id, despesa.id ou id da regra) e também `alvo_chaves` (os ids
+  // virtuais 'fila:<tipo>:<origem_id>'), para o backend escolher por qual
+  // filtrar. Em lotes de 200 para não estourar limite da edge.
+  const LIBERAR_LOTE = 200
+  const liberarItens = async (itens: RevisaoItem[]) => {
+    const alvo = itens.filter((item) => isFila(item) && item.origemId)
+    if (alvo.length === 0) { toastError('Nenhum item da fila selecionado.'); return }
+    if (!window.confirm(`Liberar para revisão ${alvo.length} item(ns) selecionado(s) da fila?\n\n${rotuloCompetencia(competencia)}.`)) return
+    try {
+      setLiberandoCasoId('itens')
+      const accessToken = await getSessionToken()
+      if (!accessToken) { toastError('Sessão expirada — faça login novamente.'); return }
+      let criados = 0
+      let semElegivel = 0
+      for (let i = 0; i < alvo.length; i += LIBERAR_LOTE) {
+        const lote = alvo.slice(i, i + LIBERAR_LOTE)
+        const r = await postStartFaturamento(accessToken, {
+          alvo_tipo: 'itens',
+          alvo_ids: lote.map((item) => item.origemId as string),
+          alvo_chaves: lote.map((item) => item.id),
+        })
+        if (r.nadaElegivel) semElegivel += lote.length
+        else criados += r.itensCriados
+      }
+      if (criados === 0 && semElegivel > 0) {
+        toastError('Nada a liberar: os itens já foram liberados, ou a despesa está marcada como não reembolsável.')
+      } else {
+        success(`${criados} item(ns) liberado(s).`)
+      }
+      setSelectedItemIds((prev) => prev.filter((id) => !alvo.some((item) => item.id === id)))
+      aposMexerNaFila()
+    } catch (liberarError) {
+      console.error(liberarError)
+      toastError(liberarError instanceof Error && liberarError.message ? liberarError.message : 'Erro ao liberar os itens selecionados')
     } finally {
       setLiberandoCasoId(null)
     }
@@ -2680,6 +2742,24 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           >
             Gerar relatório{selectedItemIds.length > 0 ? ` (${selectedItemIds.length})` : ''}
           </Button>
+          {/* Filipe 28/09: "selecionar todos para liberar em massa" — marca todos
+              os itens na fila que estão na tela (respeita filtros). */}
+          {filaVisivel.length > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              disabled={liberandoCasoId !== null}
+              title={
+                filaSelecionada.length === filaVisivel.length
+                  ? 'Desmarca todos os itens da fila que estão na tela'
+                  : `Marca os ${filaVisivel.length} item(ns) na fila que estão na tela (respeita os filtros)`
+              }
+              onClick={() => marcarItens(filaVisivel.map((item) => item.id), filaSelecionada.length !== filaVisivel.length)}
+            >
+              {filaSelecionada.length === filaVisivel.length ? 'Desmarcar fila' : `Selecionar todos da fila (${filaVisivel.length})`}
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
             {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
           </Button>
@@ -2976,6 +3056,38 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         </div>
       ) : null}
 
+      {/* Barra de seleção global (Filipe 28/09): aparece com item da fila marcado
+          em qualquer caso e libera tudo numa chamada só (lotes de 200). Sticky
+          para continuar à mão enquanto a pessoa desce marcando. */}
+      {filaSelecionada.length > 0 ? (
+        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink/20 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur">
+          <p className="text-sm text-ink">
+            <strong>{filaSelecionada.length}</strong> item(ns) da fila selecionado(s) ·{' '}
+            <span className="font-semibold font-tabular">{formatMoney(filaSelecionadaValor)}</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={liberandoCasoId !== null}
+              onClick={() => marcarItens(filaSelecionada.map((item) => item.id), false)}
+            >
+              Limpar seleção
+            </Button>
+            <Button
+              size="sm"
+              className="bg-ink text-white hover:bg-ink/90"
+              disabled={liberandoCasoId !== null}
+              title={`Libera para revisão só os ${filaSelecionada.length} item(ns) marcado(s), de todos os casos`}
+              onClick={() => void liberarItens(filaSelecionada)}
+            >
+              {liberandoCasoId === 'itens' ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
+              Liberar selecionados ({filaSelecionada.length})
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="rounded-xl border bg-white p-8 text-center text-sm text-muted-foreground">
           Carregando revisão de fatura...
@@ -3031,7 +3143,24 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                       Um botão por contrato, e não um só por cliente: cliente com
                       dois contratos recebe duas notas, então juntar tudo num
                       relatório só descasaria do documento fiscal. */}
-                  <div className="flex flex-wrap gap-2 px-4 pb-3">
+                  <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
+                    {/* Filipe 28/09: marca a fila de todos os casos do cliente de uma vez. */}
+                    {(() => {
+                      const filaDoCliente = clienteGroup.casos.flatMap((casoGroup) => casoGroup.itens.filter((item) => isFila(item)).map((item) => item.id))
+                      if (filaDoCliente.length === 0) return null
+                      const todosMarcados = filaDoCliente.every((id) => selectedItemIds.includes(id))
+                      return (
+                        <label className="mr-2 flex items-center gap-2 text-xs text-ink-mute">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-hairline"
+                            checked={todosMarcados}
+                            onChange={(event) => marcarItens(filaDoCliente, event.target.checked)}
+                          />
+                          Selecionar todos da fila ({filaDoCliente.length})
+                        </label>
+                      )
+                    })()}
                     {Array.from(
                       clienteGroup.casos.reduce((mapa, casoGroup) => {
                         for (const item of casoGroup.itens) {
@@ -3184,18 +3313,25 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                   />
                                   Selecionar todos
                                 </label>
-                                {/* Liberar é por caso (start-faturamento não recebe ids): com
-                                    seleção na fila o botão diz "selecionados", mas o title
-                                    avisa que vai o caso inteiro. */}
+                                {/* Com seleção na fila, libera SÓ os marcados (alvo_tipo 'itens',
+                                    Filipe 28/09); sem seleção, libera a fila do caso inteira. */}
                                 {filaRowIds.length > 0 && casoIdLiberar ? (
                                   <Button
                                     size="sm"
                                     className="bg-ink text-white hover:bg-ink/90"
-                                    onClick={() => void liberarCaso(casoIdLiberar, casoLabel)}
+                                    onClick={() =>
+                                      selectedFilaIds.length > 0
+                                        ? void liberarItens(reviewRows.map((row) => row.item).filter((item) => selectedFilaIds.includes(item.id)))
+                                        : void liberarCaso(casoIdLiberar, casoLabel)
+                                    }
                                     disabled={liberandoCasoId !== null || busyKey === batchKey}
-                                    title={`Libera para revisão os ${filaRowIds.length} lançamento(s) na fila deste caso (a liberação é por caso)`}
+                                    title={
+                                      selectedFilaIds.length > 0
+                                        ? `Libera para revisão só os ${selectedFilaIds.length} item(ns) marcado(s) na fila deste caso`
+                                        : `Libera para revisão os ${filaRowIds.length} lançamento(s) na fila deste caso`
+                                    }
                                   >
-                                    {liberandoEsteCaso ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
+                                    {liberandoEsteCaso || (liberandoCasoId === 'itens' && selectedFilaIds.length > 0) ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
                                     {selectedFilaIds.length > 0 ? `Liberar selecionados (${selectedFilaIds.length})` : `Liberar fila do caso (${filaRowIds.length})`}
                                   </Button>
                                 ) : null}

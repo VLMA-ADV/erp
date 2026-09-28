@@ -62,7 +62,7 @@ export interface AcoesKit {
   onEditarAjustes: (kit: KitCaso) => void
   onToggleRelatorio: (kit: KitCaso, valor: boolean) => void
   onEmail: (kit: KitCaso) => void
-  /** "Devolver para revisão" (excluir_kit): os itens voltam para a Revisão. */
+  /** "Devolver para revisão" (excluir_kit): os itens voltam para a etapa de aprovação, com a revisão preservada (Filipe 28/09). */
   onExcluir: (kit: KitCaso) => void
   /** Baixa manual do kit (finalizar_kit) — Filipe 24/09: o e-mail ainda vai pelo Gmail. */
   onFinalizar: (kit: KitCaso) => void
@@ -408,6 +408,22 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             icon={<Clock className="h-4 w-4" />}
             titulo="Relatório de timesheet"
             status={statusDocGerado(docs.relatorio_timesheet, `${formatHorasMin(kit.horas)} em ${lancamentosTs} lançamento(s)`)}
+            // Filipe 28/09: "é importante ter a info na tela de que originalmente
+            // aquele caso precisa enviar o relatório" — o toggle acima continua
+            // valendo; o badge só espelha a configuração na própria linha.
+            extra={
+              kit.caso_id ? (
+                kit.enviar_relatorio_timesheet ? (
+                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800" title="O caso está configurado para enviar o relatório de timesheet junto com a nota.">
+                    Cliente recebe relatório
+                  </Badge>
+                ) : (
+                  <Badge className="border-hairline bg-canvas-soft text-ink-mute" title="O caso está configurado para NÃO enviar o relatório de timesheet no e-mail.">
+                    Não vai no e-mail
+                  </Badge>
+                )
+              ) : null
+            }
             valor={null}
             acoes={
               <>
@@ -575,6 +591,7 @@ function DocumentoLinha({
   icon,
   titulo,
   status,
+  extra,
   valor,
   acoes,
   rodape,
@@ -582,6 +599,8 @@ function DocumentoLinha({
   icon: React.ReactNode
   titulo: string
   status: StatusDoc
+  /** Badge adicional ao lado do status (ex.: se o relatório vai no e-mail). */
+  extra?: React.ReactNode
   valor: number | null
   acoes: React.ReactNode
   rodape?: React.ReactNode
@@ -599,6 +618,7 @@ function DocumentoLinha({
                 {status.tipo === 'erro' ? <AlertTriangle className="mr-1 h-3 w-3" /> : null}
                 {status.badge}
               </Badge>
+              {extra}
             </div>
             <p className="text-xs text-ink-mute">{status.explicacao}</p>
           </div>
