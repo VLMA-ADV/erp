@@ -113,7 +113,27 @@ async function baixarFotoPadrao(url: string): Promise<FotoBaixada | null> {
   if (typeof fetch !== 'function') return null
   const resp = await fetch(url)
   if (!resp.ok) return null
-  return { bytes: new Uint8Array(await resp.arrayBuffer()), contentType: resp.headers.get('content-type') }
+  const bytes = new Uint8Array(await resp.arrayBuffer())
+  const contentType = resp.headers.get('content-type')
+  // Metade das fotos do escritório é WebP (23 de 48 em 28/09), e o pdf-lib só
+  // embute PNG/JPEG. No navegador, redesenha num canvas e sai PNG; fora dele
+  // (testes, Node) devolve como veio e a linha cai nas iniciais.
+  const ehWebp = /webp/i.test(contentType || '') || (bytes.length > 12 && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP')
+  if (!ehWebp || typeof document === 'undefined' || typeof createImageBitmap !== 'function') return { bytes, contentType }
+  try {
+    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/webp' }))
+    const lado = Math.min(160, bmp.width, bmp.height)
+    const canvas = document.createElement('canvas')
+    canvas.width = lado; canvas.height = lado
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(bmp, (bmp.width - lado) / 2, (bmp.height - lado) / 2, lado, lado, 0, 0, lado, lado)
+    const png = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+    if (!png) return null
+    return { bytes: new Uint8Array(await png.arrayBuffer()), contentType: 'image/png' }
+  } catch {
+    return null
+  }
 }
 
 // PNG começa com 0x89 'P' 'N' 'G'; JPEG com FF D8 FF. O content-type do
