@@ -75,6 +75,13 @@ export interface LinhaTimesheet {
   horas: number
   valor_hora: number
   valor: number
+  /**
+   * Foto do profissional como está em people.colaboradores.foto_url (path no
+   * bucket privado `colaboradores-fotos` ou URL pública antiga). Opcional:
+   * a RPC get_composicao_fatura ainda não devolve; quando devolver, o
+   * relatório de timesheet passa a sair com o avatar sem mais mudança no front.
+   */
+  foto_url?: string | null
 }
 
 export interface DespesaItem {

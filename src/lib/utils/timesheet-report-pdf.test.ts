@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
-import { formatarHoras, gerarRelatorioTimesheetPdf, type TimesheetPdfRow } from './timesheet-report-pdf'
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
+import { formatarHoras, gerarRelatorioTimesheetPdf, type FotoBaixada, type TimesheetPdfRow } from './timesheet-report-pdf'
+import { LOGO_VLMA } from './documento-vlma'
 
-// pdf-lib escreve texto de fonte padrão como string hexadecimal no fluxo de
-// conteúdo de cada página (comprimido com Flate). Descomprimir e decodificar
-// essas strings é o bastante para conferir se um rótulo saiu no PDF, sem
-// depender de um extrator de texto.
-async function textosDoPdf(bytes: Uint8Array): Promise<string> {
+// Conteúdo bruto (descomprimido) de todas as páginas: serve para procurar
+// operadores de desenho (logo vetorial, clip do avatar, XObject de imagem).
+async function conteudoDoPdf(bytes: Uint8Array): Promise<string> {
   const doc = await PDFDocument.load(bytes)
   const partes: string[] = []
   for (const page of doc.getPages()) {
@@ -19,7 +18,36 @@ async function textosDoPdf(bytes: Uint8Array): Promise<string> {
       }
     }
   }
-  const raw = partes.join('\n')
+  return partes.join('\n')
+}
+
+// Quantas imagens distintas as páginas usam — o pdf-lib cria uma chave nova
+// no dicionário XObject a cada drawImage, mas todas apontam para o mesmo
+// objeto quando a foto foi embutida uma vez só (e PNG com alfa ainda gera
+// um SMask à parte, por isso não dá para contar objetos /Image do arquivo).
+async function imagensEmbutidas(bytes: Uint8Array): Promise<number> {
+  const doc = await PDFDocument.load(bytes)
+  const refs = new Set<string>()
+  for (const page of doc.getPages()) {
+    const xobjects = page.node.Resources()?.lookup(PDFName.of('XObject'))
+    if (!(xobjects instanceof PDFDict)) continue
+    for (const [, ref] of xobjects.entries()) refs.add(String(ref))
+  }
+  return refs.size
+}
+
+// PNG 1×1 laranja, o menor que o pdf-lib aceita.
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+// pdf-lib escreve texto de fonte padrão como string hexadecimal no fluxo de
+// conteúdo de cada página (comprimido com Flate). Descomprimir e decodificar
+// essas strings é o bastante para conferir se um rótulo saiu no PDF, sem
+// depender de um extrator de texto.
+async function textosDoPdf(bytes: Uint8Array): Promise<string> {
+  const raw = await conteudoDoPdf(bytes)
   const hex = raw.match(/<([0-9A-Fa-f]+)>\s*Tj/g) || []
   return hex
     .map((m) => Buffer.from(m.slice(1, m.indexOf('>')), 'hex').toString('latin1'))
@@ -99,6 +127,83 @@ describe('gerarRelatorioTimesheetPdf', () => {
     })
     const doc = await PDFDocument.load(bytes)
     expect(doc.getPageCount()).toBe(1)
+  })
+})
+
+describe('logo e foto no relatório', () => {
+  const base = { titulo: 'Relatório de Timesheet', cliente: 'Cliente', mostrarValor: true }
+
+  it('desenha a marca VLMA como vetor (não mais o texto "VLMA") no cabeçalho', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, rows: [linha(1)] })
+    const textos = await textosDoPdf(bytes)
+    expect(textos.split('\n')).not.toContain('VLMA')
+    const conteudo = await conteudoDoPdf(bytes)
+    // Cor laranja do ponto (#FF9900 → 1 0.6 0 rg); o traço é preto como o texto.
+    expect(conteudo).toMatch(/1 0\.6 0 rg/)
+    // Os dois paths saem como curvas Bézier; o segundo tem muitas.
+    expect((conteudo.match(/ c\n/g) || []).length).toBeGreaterThan(50)
+    expect(LOGO_VLMA.paths).toHaveLength(2)
+  })
+
+  it('sem fotoUrl não incorpora imagem nem desenha avatar', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, rows: [linha(1), linha(2)] })
+    expect(await imagensEmbutidas(bytes)).toBe(0)
+    // Sem clip circular
+    expect(await conteudoDoPdf(bytes)).not.toMatch(/W\nn/)
+  })
+
+  it('com fotoUrl baixa uma vez por URL, embute a imagem e recorta em círculo', async () => {
+    const chamadas: string[] = []
+    const baixarFoto = async (url: string): Promise<FotoBaixada | null> => {
+      chamadas.push(url)
+      return { bytes: new Uint8Array(PNG_1X1), contentType: 'image/png' }
+    }
+    const rows = [
+      linha(1, { profissional: 'Ana Souza', fotoUrl: 'https://x/ana.png' }),
+      linha(2, { profissional: 'Ana Souza', fotoUrl: 'https://x/ana.png' }),
+      linha(3, { profissional: 'Bruno Lima', fotoUrl: 'https://x/bruno.png' }),
+      linha(4, { profissional: 'Carla Dias', fotoUrl: null }),
+    ]
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, rows, baixarFoto })
+    expect(chamadas.sort()).toEqual(['https://x/ana.png', 'https://x/bruno.png'])
+
+    // Duas imagens embutidas (Ana reaproveitada), três desenhos + clip.
+    expect(await imagensEmbutidas(bytes)).toBe(2)
+    const conteudo = await conteudoDoPdf(bytes)
+    expect((conteudo.match(/W\nn\n/g) || []).length).toBe(3)
+    expect((conteudo.match(/\/Image-?\d+ Do/g) || []).length).toBe(3)
+    // Carla, sem foto, sai com as iniciais num círculo.
+    const textos = await textosDoPdf(bytes)
+    expect(textos.split('\n')).toContain('CD')
+    expect(textos).toContain('Ana Souza')
+  })
+
+  it('foto que falha ou vem em formato desconhecido cai nas iniciais', async () => {
+    const baixarFoto = async (url: string): Promise<FotoBaixada | null> => {
+      if (url.endsWith('erro')) throw new Error('rede')
+      if (url.endsWith('nula')) return null
+      return { bytes: new Uint8Array([1, 2, 3, 4, 5]), contentType: 'image/gif' }
+    }
+    const rows = [
+      linha(1, { profissional: 'Ana Souza', fotoUrl: 'https://x/erro' }),
+      linha(2, { profissional: 'Bruno Lima', fotoUrl: 'https://x/nula' }),
+      linha(3, { profissional: 'Carla Dias', fotoUrl: 'https://x/gif' }),
+    ]
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, rows, baixarFoto })
+    expect(await imagensEmbutidas(bytes)).toBe(0)
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    expect(textos).toContain('AS')
+    expect(textos).toContain('BL')
+    expect(textos).toContain('CD')
+  })
+
+  it('JPEG identificado pelos bytes quando o content-type não ajuda', async () => {
+    // JPEG mínimo válido não é trivial; aqui basta que o sniff escolha jpg e
+    // o embed falhe de forma controlada (cai nas iniciais, sem estourar).
+    const baixarFoto = async (): Promise<FotoBaixada | null> =>
+      ({ bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]), contentType: 'application/octet-stream' })
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, rows: [linha(1, { profissional: 'Ana Souza', fotoUrl: 'https://x/a' })], baixarFoto })
+    expect((await textosDoPdf(bytes)).split('\n')).toContain('AS')
   })
 })
 
