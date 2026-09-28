@@ -10,8 +10,13 @@
 // com título e emissão, destinatário, contrato/caso e a tabela
 // data · profissional · descrição · horas · valor, com totais.
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
+import {
+  PDFDocument, StandardFonts, rgb,
+  appendBezierCurve, clip, closePath, endPath, moveTo, popGraphicsState, pushGraphicsState,
+  type PDFFont, type PDFImage, type PDFPage,
+} from 'pdf-lib'
 import { ESCRITORIO } from './documento-vlma'
+import { desenharLogoVlma, LOGO_LARGURA_TIMBRE } from './logo-vlma-pdf'
 
 export interface TimesheetPdfRow {
   /** ISO ('2026-08-03') ou já em dd/mm/aaaa. */
@@ -23,6 +28,18 @@ export interface TimesheetPdfRow {
   horas: number
   valorHora?: number | null
   valor?: number | null
+  /**
+   * URL (assinada) da foto do profissional. Quando alguma linha traz foto, o
+   * relatório ganha um avatar redondo antes do nome em TODAS as linhas — quem
+   * não tem foto (ou cuja foto falhou) sai com as iniciais num círculo cinza.
+   */
+  fotoUrl?: string | null
+}
+
+/** Bytes de uma foto já baixada e o content-type que veio na resposta. */
+export interface FotoBaixada {
+  bytes: Uint8Array
+  contentType: string | null
 }
 
 export interface TimesheetPdfInput {
@@ -37,6 +54,11 @@ export interface TimesheetPdfInput {
   rows: TimesheetPdfRow[]
   /** Data de emissão; padrão hoje. */
   emissao?: string
+  /**
+   * Como baixar cada foto (padrão: `fetch` global). Injetável para teste e
+   * para quem já tem os bytes. Deve devolver null quando não conseguir.
+   */
+  baixarFoto?: (url: string) => Promise<FotoBaixada | null>
 }
 
 const A4_PAISAGEM: [number, number] = [841.89, 595.28]
@@ -75,6 +97,134 @@ const limpar = (texto: string) =>
     // eslint-disable-next-line no-control-regex
     .replace(/[^\x00-\xFF]/g, '')
 
+/** Diâmetro do avatar redondo antes do nome do profissional. */
+const AVATAR = 14
+const AVATAR_FUNDO = rgb(0.85, 0.85, 0.85)
+
+const iniciais = (nome: string) =>
+  limpar(nome || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || '')
+    .join('') || '?'
+
+async function baixarFotoPadrao(url: string): Promise<FotoBaixada | null> {
+  if (typeof fetch !== 'function') return null
+  const resp = await fetch(url)
+  if (!resp.ok) return null
+  const bytes = new Uint8Array(await resp.arrayBuffer())
+  const contentType = resp.headers.get('content-type')
+  // Metade das fotos do escritório é WebP (23 de 48 em 28/09), e o pdf-lib só
+  // embute PNG/JPEG. No navegador, redesenha num canvas e sai PNG; fora dele
+  // (testes, Node) devolve como veio e a linha cai nas iniciais.
+  const ehWebp = /webp/i.test(contentType || '') || (bytes.length > 12 && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP')
+  if (!ehWebp || typeof document === 'undefined' || typeof createImageBitmap !== 'function') return { bytes, contentType }
+  try {
+    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/webp' }))
+    const lado = Math.min(160, bmp.width, bmp.height)
+    const canvas = document.createElement('canvas')
+    canvas.width = lado; canvas.height = lado
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(bmp, (bmp.width - lado) / 2, (bmp.height - lado) / 2, lado, lado, 0, 0, lado, lado)
+    const png = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+    if (!png) return null
+    return { bytes: new Uint8Array(await png.arrayBuffer()), contentType: 'image/png' }
+  } catch {
+    return null
+  }
+}
+
+// PNG começa com 0x89 'P' 'N' 'G'; JPEG com FF D8 FF. O content-type do
+// storage costuma vir certo, mas foto antiga subida como "octet-stream" ou
+// com extensão errada ainda precisa entrar.
+function tipoDaImagem(foto: FotoBaixada): 'png' | 'jpg' | null {
+  const ct = (foto.contentType || '').toLowerCase()
+  if (ct.includes('png')) return 'png'
+  if (ct.includes('jpeg') || ct.includes('jpg')) return 'jpg'
+  const b = foto.bytes
+  if (b.length > 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png'
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
+  return null
+}
+
+/**
+ * Baixa e incorpora cada foto UMA vez por URL (o mesmo profissional aparece
+ * em dezenas de linhas). Falha de rede, formato desconhecido ou imagem
+ * corrompida viram null — a linha cai nas iniciais, o relatório sai.
+ */
+async function carregarFotos(
+  pdf: PDFDocument,
+  rows: TimesheetPdfRow[],
+  baixar: (url: string) => Promise<FotoBaixada | null>,
+): Promise<Map<string, PDFImage>> {
+  const urls = Array.from(new Set(rows.map((r) => r.fotoUrl).filter((u): u is string => !!u)))
+  const resultado = new Map<string, PDFImage>()
+  await Promise.all(urls.map(async (url) => {
+    try {
+      const foto = await baixar(url)
+      if (!foto || !foto.bytes.length) return
+      const tipo = tipoDaImagem(foto)
+      if (!tipo) return
+      const img = tipo === 'png' ? await pdf.embedPng(foto.bytes) : await pdf.embedJpg(foto.bytes)
+      resultado.set(url, img)
+    } catch {
+      // sem foto: iniciais
+    }
+  }))
+  return resultado
+}
+
+// Círculo como caminho de 4 curvas de Bézier (kappa = 0.5523), sem
+// pintar — serve de clip. O drawEllipsePath do pdf-lib não presta para isso:
+// ele embrulha o caminho em q/Q, e o Q descarta o caminho antes do `W n`.
+const KAPPA = 0.5523
+function caminhoCirculo(cx: number, cy: number, r: number) {
+  const k = KAPPA * r
+  return [
+    moveTo(cx + r, cy),
+    appendBezierCurve(cx + r, cy + k, cx + k, cy + r, cx, cy + r),
+    appendBezierCurve(cx - k, cy + r, cx - r, cy + k, cx - r, cy),
+    appendBezierCurve(cx - r, cy - k, cx - k, cy - r, cx, cy - r),
+    appendBezierCurve(cx + k, cy - r, cx + r, cy - k, cx + r, cy),
+    closePath(),
+  ]
+}
+
+/**
+ * Avatar redondo com o canto superior esquerdo em (x, topo). Com imagem,
+ * recorta num círculo (clip path do PDF: `W n` sobre o caminho circular) e
+ * desenha a foto preenchendo o círculo, centralizada. Sem imagem, círculo
+ * cinza com as iniciais.
+ */
+function desenharAvatar(
+  pagina: PDFPage, fonte: PDFFont, nome: string, img: PDFImage | undefined, x: number, topo: number,
+) {
+  const raio = AVATAR / 2
+  const cx = x + raio
+  const cy = topo - raio
+  if (img) {
+    const escala = Math.max(AVATAR / img.width, AVATAR / img.height)
+    const largura = img.width * escala
+    const altura = img.height * escala
+    pagina.pushOperators(pushGraphicsState(), ...caminhoCirculo(cx, cy, raio), clip(), endPath())
+    pagina.drawImage(img, { x: cx - largura / 2, y: cy - altura / 2, width: largura, height: altura })
+    pagina.pushOperators(popGraphicsState())
+    return
+  }
+  pagina.drawCircle({ x: cx, y: cy, size: raio, color: AVATAR_FUNDO })
+  const texto = iniciais(nome)
+  const tam = texto.length > 1 ? 5.5 : 6.5
+  pagina.drawText(texto, {
+    x: cx - fonte.widthOfTextAtSize(texto, tam) / 2,
+    y: cy - tam * 0.36,
+    size: tam,
+    font: fonte,
+    color: CINZA,
+  })
+}
+
 function quebrar(texto: string, fonte: PDFFont, tamanho: number, largura: number): string[] {
   const palavras = limpar(texto).split(/\s+/).filter(Boolean)
   const linhas: string[] = []
@@ -110,6 +260,11 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   const normal = await pdf.embedFont(StandardFonts.Helvetica)
   const negrito = await pdf.embedFont(StandardFonts.HelveticaBold)
   const mostrarValor = input.mostrarValor !== false
+  // Avatar só existe se alguma linha veio com foto; senão o layout é o de
+  // sempre (nome encostado na coluna).
+  const comAvatar = input.rows.some((r) => !!r.fotoUrl)
+  const fotos = comAvatar ? await carregarFotos(pdf, input.rows, input.baixarFoto ?? baixarFotoPadrao) : new Map<string, PDFImage>()
+  const recuoNome = comAvatar ? AVATAR + 4 : 0
 
   const larguraUtil = A4_PAISAGEM[0] - MARGEM * 2
   const direita = A4_PAISAGEM[0] - MARGEM
@@ -155,7 +310,7 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   texto(`I.M.: ${ESCRITORIO.im}   I.E.: ${ESCRITORIO.ie}`, MARGEM, y - 32, 7.6)
   texto(ESCRITORIO.endereco, MARGEM, y - 42, 7.6)
   texto(ESCRITORIO.cidade, MARGEM, y - 52, 7.6)
-  textoDireita('VLMA', direita, y - 14, 16, negrito)
+  desenharLogoVlma(pagina, { x: direita - LOGO_LARGURA_TIMBRE, y: y - 6, largura: LOGO_LARGURA_TIMBRE })
   y -= 66
 
   // Faixa com título, emissão e competência
@@ -205,15 +360,21 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     const linhasDesc = quebrar(item.descricao || '—', normal, 8, larguraDescricao)
     const linhasProf = quebrar(
       [item.profissional, item.cargo].filter(Boolean).join(' · ') || '—',
-      normal, 8, colunas.descricao - colunas.profissional - 8,
+      normal, 8, colunas.descricao - colunas.profissional - 8 - recuoNome,
     )
-    const altura = Math.max(linhasDesc.length, linhasProf.length) * ALTURA_LINHA
+    // Com avatar a linha precisa de um pouco mais para os círculos não se tocarem.
+    const altura = Math.max(Math.max(linhasDesc.length, linhasProf.length) * ALTURA_LINHA, comAvatar ? AVATAR - 2 : 0)
     if (y - altura < limiteInferior) {
       novaPagina()
       cabecalhoTabela()
     }
     texto(dataBR(item.data), colunas.data, y, 8)
-    linhasProf.forEach((l, i) => texto(l, colunas.profissional, y - i * ALTURA_LINHA, 8))
+    if (comAvatar) {
+      // Topo do avatar alinhado com o topo das maiúsculas da primeira linha
+      // (baseline y + ~6pt para fonte 8).
+      desenharAvatar(pagina, negrito, item.profissional, item.fotoUrl ? fotos.get(item.fotoUrl) : undefined, colunas.profissional, y + 7)
+    }
+    linhasProf.forEach((l, i) => texto(l, colunas.profissional + recuoNome, y - i * ALTURA_LINHA, 8))
     linhasDesc.forEach((l, i) => texto(l, colunas.descricao, y - i * ALTURA_LINHA, 8))
     textoDireita(formatarHoras(item.horas), colunas.horas, y, 8)
     if (mostrarValor) textoDireita(item.valor != null ? money(Number(item.valor)) : '—', colunas.valor, y, 8)

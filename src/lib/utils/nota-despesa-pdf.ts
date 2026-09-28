@@ -12,6 +12,7 @@
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { ESCRITORIO } from './documento-vlma'
+import { desenharLogoVlma, LOGO_LARGURA_TIMBRE } from './logo-vlma-pdf'
 
 // A nota de debito tem favorecido e banco proprios, que a pre-visualizacao
 // mantem numa copia local do timbre. Mesmos valores, para os dois documentos
@@ -90,6 +91,7 @@ export function montarPaginasDaNota(pdf: PDFDocument, data: NotaDespesaData, fon
   texto(`I.M.: ${ESCRITORIO.im}   I.E.: ${ESCRITORIO.ie}`, MARGEM, y - 32, 7.6)
   texto(ESCRITORIO.endereco, MARGEM, y - 42, 7.6)
   texto(ESCRITORIO.cidade, MARGEM, y - 52, 7.6)
+  desenharLogoVlma(pagina, { x: A4_PAISAGEM[0] - MARGEM - LOGO_LARGURA_TIMBRE, y: y - 6, largura: LOGO_LARGURA_TIMBRE })
   y -= 66
 
   // Faixa com título e datas

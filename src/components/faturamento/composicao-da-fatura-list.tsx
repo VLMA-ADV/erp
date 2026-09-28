@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils/cn'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
 import { gerarRelatorioTimesheetPdf, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
+import { assinarFotosColaboradores } from '@/lib/utils/foto-colaborador'
 import { abrirDocumentoDoKit, gerarERegistrarDocumento } from '@/lib/faturamento/documentos-kit'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
@@ -359,19 +360,25 @@ export default function ComposicaoDaFaturaList() {
   // revisão), subido ao bucket e registrado (D12-a). Regerar substitui.
   const gerarRelatorio = (kit: KitCaso) => executar(kit, 'relatorio', async () => {
     const itensTs = kit.itens.filter((i) => i.origem_tipo === 'timesheet')
-    const rows: TimesheetPdfRow[] = itensTs
-      .flatMap((item) => item.linhas_timesheet.map((l) => ({
-        data: l.data ?? item.data_referencia ?? '',
-        profissional: l.profissional ?? '',
-        cargo: l.cargo,
-        descricao: l.descricao ?? item.descricao,
-        horas: Number(l.horas || 0),
-        valorHora: l.valor_hora ?? null,
-        valor: l.valor ?? null,
-      })))
-      .sort((a, b) => a.data.localeCompare(b.data))
-    if (rows.length === 0) { notify('Este kit não tem horas para relatar.'); return }
+    const linhas = itensTs.flatMap((item) => item.linhas_timesheet.map((l) => ({ item, l })))
+    if (linhas.length === 0) { notify('Este kit não tem horas para relatar.'); return }
     try {
+      // Foto do profissional (Filipe, 28/09). A RPC devolve foto_url cru
+      // (path no bucket privado); assina em lote e o PDF baixa uma vez por
+      // profissional. Sem foto, o PDF desenha as iniciais.
+      const fotos = await assinarFotosColaboradores(linhas.map(({ l }) => l.foto_url))
+      const rows: TimesheetPdfRow[] = linhas
+        .map(({ item, l }) => ({
+          data: l.data ?? item.data_referencia ?? '',
+          profissional: l.profissional ?? '',
+          cargo: l.cargo,
+          descricao: l.descricao ?? item.descricao,
+          horas: Number(l.horas || 0),
+          valorHora: l.valor_hora ?? null,
+          valor: l.valor ?? null,
+          fotoUrl: (l.foto_url && fotos.get(l.foto_url)) || null,
+        }))
+        .sort((a, b) => a.data.localeCompare(b.data))
       const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
       const bytes = await gerarRelatorioTimesheetPdf({
         titulo: 'Relatório de timesheet',
