@@ -1088,8 +1088,9 @@ export default function ContratoForm({
 
   // "Abrir contrato" na caixa de entrada (Filipe 07/08): o contrato nasce com o
   // que a solicitação já trouxe, em vez de o financeiro digitar tudo de novo.
-  // Cliente e responsável vão para a aba contrato; nome do caso e centro de
-  // custo, para a aba caso — foi o mapeamento que ele definiu.
+  // Cliente e responsável vão para a aba contrato; nome do caso, centro de
+  // custo, serviço, produto e timesheet (blocos de 28/09), para a aba caso.
+  // Rateio e timesheet_config já vêm no formato de contracts.casos.
   const solicitacaoPrefillId = searchParams.get('solicitacao')
   const prefillAplicado = useRef(false)
   useEffect(() => {
@@ -1108,6 +1109,17 @@ export default function ContratoForm({
         const s = (data as Array<Record<string, unknown>>).find((item) => String(item.id) === solicitacaoPrefillId)
         if (!s) return
 
+        const rateioSolicitacao = (Array.isArray(s.centro_custo_rateio) ? s.centro_custo_rateio : [])
+          .map((item) => {
+            const obj = (item || {}) as Record<string, unknown>
+            return { centro_custo_id: String(obj.centro_custo_id || ''), percentual: Number(obj.percentual) || 0 }
+          })
+          .filter((item) => item.centro_custo_id)
+        const timesheetSolicitacao =
+          s.timesheet_config && typeof s.timesheet_config === 'object'
+            ? (s.timesheet_config as Record<string, unknown>)
+            : null
+
         setForm((prev) => {
           const primeiroCaso = prev.casos[0] || { ...emptyCaso }
           return {
@@ -1123,9 +1135,16 @@ export default function ContratoForm({
               {
                 ...primeiroCaso,
                 nome: String(s.nome || '') || primeiroCaso.nome,
-                centro_custo_rateio: s.centro_custo_id
-                  ? [{ centro_custo_id: String(s.centro_custo_id), percentual: 100 }]
-                  : primeiroCaso.centro_custo_rateio,
+                servico_id: String(s.servico_id || '') || primeiroCaso.servico_id,
+                produto_id: String(s.produto_id || '') || primeiroCaso.produto_id,
+                centro_custo_rateio: rateioSolicitacao.length
+                  ? rateioSolicitacao
+                  : s.centro_custo_id
+                    ? [{ centro_custo_id: String(s.centro_custo_id), percentual: 100 }]
+                    : primeiroCaso.centro_custo_rateio,
+                timesheet_config: timesheetSolicitacao
+                  ? { ...(primeiroCaso.timesheet_config || {}), ...timesheetSolicitacao }
+                  : primeiroCaso.timesheet_config,
               },
               ...prev.casos.slice(1),
             ],

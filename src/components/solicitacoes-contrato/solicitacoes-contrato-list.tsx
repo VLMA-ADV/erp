@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown, ChevronRight, FilePlus2, Trash2 } from 'lucide-react'
@@ -9,39 +9,23 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CommandSelect } from '@/components/ui/command-select'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
 import SolicitacaoMensagens from './solicitacao-mensagens'
-import SolicitacaoContratoFormFields, { type PendingSolicitacaoAnexo } from './solicitacao-contrato-form-fields'
-
-interface SolicitacaoAnexo {
-  id: string
-  nome: string
-  arquivo_nome: string
-  mime_type: string | null
-  tamanho_bytes: number | null
-  created_at: string
-}
-
-interface SolicitacaoContrato {
-  id: string
-  descricao: string
-  nome?: string | null
-  status: 'aberta' | 'concluida' | 'cancelada'
-  cliente_id: string | null
-  cliente_nome: string | null
-  contrato_id: string | null
-  contrato_numero: number | null
-  contrato_nome: string | null
-  solicitante_user_id: string
-  solicitante_nome: string | null
-  concluida_em: string | null
-  created_at: string
-  anexos: SolicitacaoAnexo[]
-}
+import SolicitacaoContratoFormFields, {
+  emptySolicitacaoServico,
+  montarPayloadServico,
+  type PendingSolicitacaoAnexo,
+  type SolicitacaoServicoValues,
+} from './solicitacao-contrato-form-fields'
+import SolicitacaoContratoDetalhes from './solicitacao-contrato-detalhes'
+import {
+  buscarSolicitacoesContrato,
+  CLIENTE_A_DEFINIR,
+  type SolicitacaoContratoItem as SolicitacaoContrato,
+} from './solicitacao-contrato-api'
 
 interface ClienteOption {
   id: string
@@ -100,7 +84,7 @@ export default function SolicitacoesContratoList() {
   const [createOpen, setCreateOpen] = useState(false)
   const [nomeSolicitacao, setNomeSolicitacao] = useState('')
   const [descricaoSolicitacao, setDescricaoSolicitacao] = useState('')
-  const [centroCustoId, setCentroCustoId] = useState('')
+  const [servico, setServico] = useState<SolicitacaoServicoValues>(emptySolicitacaoServico)
   const [responsavelVlmaId, setResponsavelVlmaId] = useState('')
   const [regraCobrancaTexto, setRegraCobrancaTexto] = useState('')
   const [indicacaoCrossSell, setIndicacaoCrossSell] = useState('')
@@ -197,30 +181,18 @@ export default function SolicitacoesContratoList() {
     try {
       setLoading(true)
       setError(null)
-      const session = await getSession()
-      if (!session) return
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-solicitacoes-contrato`, {
-        method: 'GET',
-        headers: {
-          ...getFunctionsHeaders(session.access_token),
-        },
-      })
-
-      const payload = await response.json()
-      if (!response.ok) {
-        setError(payload.error || 'Erro ao carregar solicitações')
-        return
-      }
-
-      setItems((payload.data || []) as SolicitacaoContrato[])
+      setItems(await buscarSolicitacoesContrato())
     } catch (err) {
       console.error(err)
-      setError('Erro ao carregar solicitações')
+      setError(err instanceof Error ? err.message : 'Erro ao carregar solicitações')
     } finally {
       setLoading(false)
     }
   }
+
+  const onServicoChange = useCallback((patch: Partial<SolicitacaoServicoValues>) => {
+    setServico((prev) => ({ ...prev, ...patch }))
+  }, [])
 
   const fetchAreas = async () => {
     const session = await getSession()
@@ -316,10 +288,14 @@ export default function SolicitacoesContratoList() {
 
     if (!token || token === lastCrmPrefillToken) return
 
+    const centroCustoPrefill = searchParams.get('centro_custo_id') || ''
     setNomeSolicitacao(searchParams.get('nome') || '')
     setDescricaoSolicitacao(searchParams.get('descricao') || '')
     setSelectedClienteId(searchParams.get('cliente_id') || '')
-    setCentroCustoId(searchParams.get('centro_custo_id') || '')
+    setServico({
+      ...emptySolicitacaoServico,
+      centroCustoRateio: centroCustoPrefill ? [{ centro_custo_id: centroCustoPrefill, percentual: 100 }] : [],
+    })
     setPendingAnexos([])
     setCrmCardIdPrefill(searchParams.get('crm_card_id') || '')
     setCreateOpen(true)
@@ -332,7 +308,11 @@ export default function SolicitacoesContratoList() {
     setNomeSolicitacao('')
     setDescricaoSolicitacao('')
     setSelectedClienteId('')
-    setCentroCustoId('')
+    setServico(emptySolicitacaoServico)
+    setResponsavelVlmaId('')
+    setRegraCobrancaTexto('')
+    setIndicacaoCrossSell('')
+    setContatosFinanceiro('')
     setPendingAnexos([])
     setCrmCardIdPrefill('')
   }
@@ -448,10 +428,12 @@ export default function SolicitacoesContratoList() {
       const { data: rpcData, error: rpcError } = await supabase.rpc('create_solicitacao_contrato', {
         p_user_id: user.id,
         p_payload: {
+          // Nada é obrigatório (Filipe 28/09): sem cliente e sem nome a RPC
+          // grava cliente_id nulo e nomeia como 'Solicitação sem nome'.
           nome: nomeSolicitacao.trim(),
           descricao: descricaoSolicitacao.trim(),
           cliente_id: selectedClienteId || null,
-          centro_custo_id: centroCustoId || null,
+          ...montarPayloadServico(servico),
           responsavel_vlma_id: responsavelVlmaId || null,
           regra_cobranca_texto: regraCobrancaTexto.trim() || null,
           indicacao_cross_sell: indicacaoCrossSell.trim() || null,
@@ -639,8 +621,11 @@ export default function SolicitacoesContratoList() {
                           <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.descricao}</p>
                         ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">Criada em {formatDate(item.created_at)}</p>
+                        <SolicitacaoContratoDetalhes item={item} />
                       </td>
-                      <td className="px-4 py-3 text-sm text-ink-secondary">{item.cliente_nome || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-ink-secondary">
+                        {item.cliente_nome || <span className="italic text-ink-mute">{CLIENTE_A_DEFINIR}</span>}
+                      </td>
                       <td className="px-4 py-3 text-sm text-ink-secondary">{item.solicitante_nome || '-'}</td>
                       <td className="px-4 py-3">
                         <Badge className={statusClassName}>{item.status}</Badge>
@@ -721,14 +706,14 @@ export default function SolicitacoesContratoList() {
 
           <SolicitacaoContratoFormFields
             areasOptions={areasOptions}
-            centroCustoId={centroCustoId}
+            servico={servico}
+            onServicoChange={onServicoChange}
             clientesOptions={clientesOptions}
             creatingCliente={creatingCliente}
             descricaoSolicitacao={descricaoSolicitacao}
             disabled={submitting}
             nomeSolicitacao={nomeSolicitacao}
             onAddFiles={onAddFiles}
-            onCentroCustoChange={setCentroCustoId}
             onCreateCliente={(value) => void createClienteOnDemand(value)}
             onDescricaoSolicitacaoChange={setDescricaoSolicitacao}
             onNomeSolicitacaoChange={setNomeSolicitacao}

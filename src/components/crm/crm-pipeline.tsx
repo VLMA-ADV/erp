@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Edit3, GripVertical, MoveRight, Plus, Trash2, UserPlus, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -16,7 +16,12 @@ import { MoneyInput } from '@/components/ui/money-input'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
-import SolicitacaoContratoFormFields, { type PendingSolicitacaoAnexo } from '@/components/solicitacoes-contrato/solicitacao-contrato-form-fields'
+import SolicitacaoContratoFormFields, {
+  emptySolicitacaoServico,
+  montarPayloadServico,
+  type PendingSolicitacaoAnexo,
+  type SolicitacaoServicoValues,
+} from '@/components/solicitacoes-contrato/solicitacao-contrato-form-fields'
 import CrmPipelineRail from './crm-pipeline-rail'
 
 type EtapaKanban =
@@ -245,7 +250,7 @@ export default function CrmPipeline() {
   const [solicitacaoNome, setSolicitacaoNome] = useState('')
   const [solicitacaoDescricao, setSolicitacaoDescricao] = useState('')
   const [solicitacaoClienteId, setSolicitacaoClienteId] = useState('')
-  const [solicitacaoCentroCustoId, setSolicitacaoCentroCustoId] = useState('')
+  const [solicitacaoServico, setSolicitacaoServico] = useState<SolicitacaoServicoValues>(emptySolicitacaoServico)
   const [solicitacaoResponsavelId, setSolicitacaoResponsavelId] = useState('')
   const [solicitacaoRegraCobranca, setSolicitacaoRegraCobranca] = useState('')
   const [solicitacaoIndicacao, setSolicitacaoIndicacao] = useState('')
@@ -655,7 +660,7 @@ export default function CrmPipeline() {
     setSolicitacaoNome('')
     setSolicitacaoDescricao('')
     setSolicitacaoClienteId('')
-    setSolicitacaoCentroCustoId('')
+    setSolicitacaoServico(emptySolicitacaoServico)
     setSolicitacaoResponsavelId('')
     setSolicitacaoRegraCobranca('')
     setSolicitacaoIndicacao('')
@@ -670,8 +675,18 @@ export default function CrmPipeline() {
     setSolicitacaoNome(nome)
     setSolicitacaoDescricao(card.observacoes || 'Solicitação criada via CRM (conversão).')
     setSolicitacaoClienteId(card.cliente_id || '')
+    // O card já sabe serviço e produto: vão pré-preenchidos no bloco Serviço.
+    setSolicitacaoServico({
+      ...emptySolicitacaoServico,
+      servicoId: card.servico_id || '',
+      produtoId: card.produto_id || '',
+    })
     setSolicitacaoOpen(true)
   }
+
+  const onSolicitacaoServicoChange = useCallback((patch: Partial<SolicitacaoServicoValues>) => {
+    setSolicitacaoServico((prev) => ({ ...prev, ...patch }))
+  }, [])
 
   const handleSelectSolicitacaoFiles = (files: FileList | null) => {
     if (!files?.length) return
@@ -758,7 +773,7 @@ export default function CrmPipeline() {
           nome: solicitacaoNome.trim(),
           descricao: solicitacaoDescricao.trim(),
           cliente_id: solicitacaoClienteId || null,
-          centro_custo_id: solicitacaoCentroCustoId || null,
+          ...montarPayloadServico(solicitacaoServico),
           responsavel_vlma_id: solicitacaoResponsavelId || null,
           regra_cobranca_texto: solicitacaoRegraCobranca.trim() || null,
           indicacao_cross_sell: solicitacaoIndicacao.trim() || null,
@@ -1859,14 +1874,14 @@ export default function CrmPipeline() {
             contatosFinanceiro={solicitacaoContatosFin}
             onContatosFinanceiroChange={setSolicitacaoContatosFin}
             areasOptions={areasOptions}
-            centroCustoId={solicitacaoCentroCustoId}
+            servico={solicitacaoServico}
+            onServicoChange={onSolicitacaoServicoChange}
             clientesOptions={clientesOptions}
             creatingCliente={creatingSolicitacaoCliente}
             descricaoSolicitacao={solicitacaoDescricao}
             disabled={solicitacaoSubmitting}
             nomeSolicitacao={solicitacaoNome}
             onAddFiles={handleSelectSolicitacaoFiles}
-            onCentroCustoChange={setSolicitacaoCentroCustoId}
             onCreateCliente={
               canWrite
                 ? (value) =>
