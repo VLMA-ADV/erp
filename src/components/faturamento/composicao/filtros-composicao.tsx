@@ -5,14 +5,16 @@ import { Button } from '@/components/ui/button'
 import { NativeSelect } from '@/components/ui/native-select'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import {
-  labelCompetencia,
   labelRegra,
+  temFiltroAlemDaCompetencia,
   type ComposicaoPayload,
   type FiltrosComposicao,
 } from './types'
 
-// Barra de filtros (Filipe, 21/09): competência, cliente, contrato, caso e
-// regra de cobrança, numa linha só em telas largas. As opções vêm da RPC SEM
+// Barra de filtros (Filipe, 21/09): cliente, contrato, caso e regra de
+// cobrança, numa linha só em telas largas. A competência saiu daqui em 30/09:
+// virou a barra de abas por mês (AbasCompetencia) acima; "Limpar filtros"
+// não mexe na aba. As opções vêm da RPC SEM
 // filtro (para o select não esvaziar quando o filtro não casa com nada) e só
 // contrato/caso são estreitados aqui pelo que está acima na hierarquia. O
 // status do kit virou chip (ChipsStatusKit) e a busca foi junto com ele.
@@ -27,7 +29,7 @@ export default function FiltrosComposicao({
   opcoes: ComposicaoPayload['opcoes'] | null
   filtros: FiltrosComposicao
   onChange: (next: FiltrosComposicao) => void
-  /** Zera filtros E busca — quem orquestra sabe onde a busca mora. */
+  /** Zera filtros E busca (mas não a aba de mês) — quem orquestra sabe onde a busca mora. */
   onLimpar: () => void
   temBusca: boolean
   /** Botões à direita da barra (ex.: Atualizar). */
@@ -39,7 +41,7 @@ export default function FiltrosComposicao({
     if (filtros.clienteId) return contratos.some((ct) => ct.id === c.contrato_id)
     return true
   })
-  const temFiltro = Object.values(filtros).some(Boolean) || temBusca
+  const temFiltro = temFiltroAlemDaCompetencia(filtros) || temBusca
 
   const set = (patch: Partial<FiltrosComposicao>) => onChange({ ...filtros, ...patch })
   const selectClass = 'h-9 text-xs'
@@ -47,21 +49,7 @@ export default function FiltrosComposicao({
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-hairline bg-white p-3 xl:flex-row xl:items-end">
-      <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="space-y-1">
-          <span className={labelClass}>Competência</span>
-          <NativeSelect
-            className={selectClass}
-            value={filtros.competencia ?? ''}
-            onChange={(e) => set({ competencia: e.target.value || null })}
-          >
-            <option value="">Todas</option>
-            {(opcoes?.competencias ?? []).map((c) => (
-              <option key={c} value={c}>{labelCompetencia(c)}</option>
-            ))}
-          </NativeSelect>
-        </label>
-
+      <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-1">
           <span className={labelClass}>Cliente</span>
           <NativeSelect

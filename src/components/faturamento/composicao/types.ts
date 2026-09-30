@@ -254,6 +254,66 @@ export const FILTROS_VAZIOS: FiltrosComposicao = {
   statusKit: null,
 }
 
+/** Uma aba da barra de meses da Composição: kits e valor do mês inteiro. */
+export interface AbaCompetencia {
+  /** 'YYYY-MM-01' */
+  competencia: string
+  kits: number
+  valor: number
+}
+
+/**
+ * Contagem de kits e valor por competência a partir de uma resposta SEM
+ * filtro da RPC (clientes[].casos[] traz todos os kits). É o que alimenta
+ * os badges das abas; uma chamada só, em vez de uma por mês.
+ */
+export function contarKitsPorMes(payload: ComposicaoPayload | null): Map<string, { kits: number; valor: number }> {
+  const mapa = new Map<string, { kits: number; valor: number }>()
+  for (const cliente of payload?.clientes ?? []) {
+    for (const kit of cliente.casos) {
+      const atual = mapa.get(kit.competencia) ?? { kits: 0, valor: 0 }
+      atual.kits += 1
+      atual.valor += Number(kit.valor_total || 0)
+      mapa.set(kit.competencia, atual)
+    }
+  }
+  return mapa
+}
+
+/**
+ * Abas = meses com kit ∪ mês corrente ∪ mês seguinte ∪ a aba escolhida (para
+ * ela nunca sumir debaixo da pessoa), em ordem crescente.
+ */
+export function montarAbasCompetencia(
+  contagens: Map<string, { kits: number; valor: number }>,
+  mesAtual: string,
+  mesSeguinte: string,
+  escolhida: string | null,
+): AbaCompetencia[] {
+  const chaves = new Set<string>([mesAtual, mesSeguinte, ...Array.from(contagens.keys())])
+  if (escolhida) chaves.add(escolhida)
+  return Array.from(chaves)
+    .sort()
+    .map((competencia) => ({ competencia, kits: contagens.get(competencia)?.kits ?? 0, valor: contagens.get(competencia)?.valor ?? 0 }))
+}
+
+/**
+ * Competência padrão da Composição: a salva pela pessoa (se ainda faz
+ * sentido, i.e. está entre as abas), senão o mês corrente se tiver kit,
+ * senão o mais recente com kit, senão o mês corrente.
+ */
+export function competenciaPadraoComposicao(mesesComKit: string[], mesAtual: string, salva: string | null): string {
+  if (salva && (salva === mesAtual || mesesComKit.includes(salva))) return salva
+  if (mesesComKit.includes(mesAtual)) return mesAtual
+  const maisRecente = [...mesesComKit].sort().at(-1)
+  return maisRecente ?? mesAtual
+}
+
+/** Filtros da barra (sem a competência, que é a aba e está sempre preenchida). */
+export function temFiltroAlemDaCompetencia(filtros: FiltrosComposicao) {
+  return Boolean(filtros.clienteId || filtros.contratoId || filtros.casoId || filtros.regra || filtros.statusKit)
+}
+
 export function formatMoney(value: number | null | undefined) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0))
 }

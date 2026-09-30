@@ -53,17 +53,26 @@ export function rotuloCompetencia(competencia: string): string {
 
 const STORAGE_PREFIX = 'faturamento:competencia:'
 
-export function lerCompetenciaSalva(userId: string): string | null {
+/** Cada tela guarda a própria aba: a Revisão de fatura e a Composição da
+ *  fatura têm ritmos diferentes (revisar outubro enquanto se dá baixa em
+ *  setembro), então uma não pode sobrescrever a escolha da outra. */
+export type TelaCompetencia = 'faturamento' | 'composicao'
+
+function chaveStorage(userId: string, tela: TelaCompetencia) {
+  return tela === 'faturamento' ? `${STORAGE_PREFIX}${userId}` : `${STORAGE_PREFIX}${tela}:${userId}`
+}
+
+export function lerCompetenciaSalva(userId: string, tela: TelaCompetencia = 'faturamento'): string | null {
   try {
-    return normalizarCompetencia(window.localStorage.getItem(`${STORAGE_PREFIX}${userId}`))
+    return normalizarCompetencia(window.localStorage.getItem(chaveStorage(userId, tela)))
   } catch {
     return null
   }
 }
 
-export function salvarCompetencia(userId: string, competencia: string) {
+export function salvarCompetencia(userId: string, competencia: string, tela: TelaCompetencia = 'faturamento') {
   try {
-    window.localStorage.setItem(`${STORAGE_PREFIX}${userId}`, competencia)
+    window.localStorage.setItem(chaveStorage(userId, tela), competencia)
   } catch {
     // localStorage indisponível (modo privado, etc.): a aba só não persiste.
   }
