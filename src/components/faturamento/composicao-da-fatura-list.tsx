@@ -12,10 +12,12 @@ import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
 import { gerarRelatorioTimesheetPdf, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
 import { assinarFotosColaboradores } from '@/lib/utils/foto-colaborador'
 import { abrirDocumentoDoKit, gerarERegistrarDocumento } from '@/lib/faturamento/documentos-kit'
+import { competenciaAtual, lerCompetenciaSalva, salvarCompetencia, somarMeses } from '@/lib/faturamento/competencia'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
 import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import BarraFiltros from './composicao/filtros-composicao'
+import AbasCompetencia from './composicao/abas-competencia'
 import ChipsStatusKit from './composicao/chips-status-kit'
 import ResumoStatus from './composicao/resumo-status'
 import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
@@ -23,11 +25,15 @@ import AjustesKitDialog from './composicao/ajustes-kit-dialog'
 import { mapearOrigemDasDespesas, parametrosBuscaOrigem } from './composicao/origem-despesas'
 import {
   FILTROS_VAZIOS,
+  competenciaPadraoComposicao,
+  contarKitsPorMes,
   formatMoney,
   isoHoje,
   labelCaso,
   labelCompetencia,
   labelCompetenciaCurta,
+  montarAbasCompetencia,
+  temFiltroAlemDaCompetencia,
   situacaoDoKit,
   type ComposicaoPayload,
   type FiltrosComposicao,
@@ -47,12 +53,14 @@ import {
 // ganhou a baixa manual "Finalizar faturamento" (finalizar_kit/reabrir_kit),
 // seleção em massa para devolver/finalizar vários (excluir_kits) e os
 // impostos/pagadores passaram a valer por kit (salvar_ajustes_kit).
+//
+// 30/09 (Filipe): a competência deixou de ser um select e virou a barra de
+// abas por mês (como na Revisão de fatura), para dar baixa em setembro e ir
+// acompanhando outubro. Os badges das abas (kits e valor do mês) saem de UMA
+// chamada da RPC sem filtro nenhum (contarKitsPorMes), feita na abertura e
+// depois de cada ação/Atualizar; a lista continua vindo da chamada filtrada.
 
 const FUNCTIONS = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
-
-function competenciaCorrente() {
-  return `${new Date().toISOString().slice(0, 7)}-01`
-}
 
 /** 'YYYY-MM-01' → 'YYYY-MM' (nome de arquivo). */
 const anoMes = (competencia: string) => competencia.slice(0, 7)
@@ -99,12 +107,17 @@ export default function ComposicaoDaFaturaList() {
   // podada a cada recarga para não sobrar chave de kit que já sumiu.
   const [selecionados, setSelecionados] = useState<ReadonlySet<string>>(new Set())
 
+  // Kits e valor por mês para os badges das abas (leitura SEM filtro).
+  const [contagens, setContagens] = useState<Map<string, { kits: number; valor: number }>>(new Map())
+
   // A competência padrão só é conhecida depois da primeira resposta (a lista
-  // de meses com kit vem da RPC). Primeira chamada sem filtro; se o mês
-  // corrente existe, ele vira o padrão, senão o mais recente.
+  // de meses com kit vem da RPC). Primeira chamada sem filtro; a aba salva
+  // no localStorage vale se ainda existe, senão o mês corrente se tiver kit,
+  // senão o mais recente com kit, senão o mês corrente (sempre há uma aba).
   const inicializado = useRef(false)
   const filtrosRef = useRef(filtros)
   filtrosRef.current = filtros
+  const userIdRef = useRef<string | null>(null)
 
   // Filtro pelos KPIs (kit completo / em andamento / não iniciado): só de
   // tela, calculado sobre os documentos emitidos — não vai ao banco.
@@ -117,6 +130,7 @@ export default function ComposicaoDaFaturaList() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setError('Sessão expirada. Entre de novo para continuar.'); return null }
+      userIdRef.current = user.id
       const { data, error: rpcErr } = await supabase.rpc('get_composicao_fatura', {
         p_user_id: user.id,
         p_competencia: f.competencia,
@@ -139,18 +153,45 @@ export default function ComposicaoDaFaturaList() {
     }
   }, [])
 
+  /**
+   * Badges das abas: uma chamada da RPC sem filtro nenhum (~0,2 s) e a conta
+   * por mês é feita aqui. Silenciosa: não mexe em loading/erro/payload.
+   */
+  const carregarContagens = useCallback(async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return null
+      const { data, error: rpcErr } = await supabase.rpc('get_composicao_fatura', { p_user_id: user.id })
+      if (rpcErr) { console.warn('contagem por mês indisponível', rpcErr); return null }
+      const dados = data as ComposicaoPayload
+      setContagens(contarKitsPorMes(dados))
+      return dados
+    } catch (err) {
+      console.warn('contagem por mês indisponível', err)
+      return null
+    }
+  }, [])
+
   /** Recarrega com os filtros atuais sem piscar a tela (depois de uma ação). */
-  const recarregar = useCallback(() => carregar(filtrosRef.current, { silencioso: true }), [carregar])
+  const recarregar = useCallback(async () => {
+    const [dados] = await Promise.all([carregar(filtrosRef.current, { silencioso: true }), carregarContagens()])
+    return dados
+  }, [carregar, carregarContagens])
 
   useEffect(() => {
     if (inicializado.current) return
     inicializado.current = true
     void (async () => {
+      // A primeira resposta (sem filtro) serve para os dois: badges das abas
+      // e a competência padrão. A lista filtrada vem logo em seguida, pelo
+      // efeito dos filtros.
       const dados = await carregar(FILTROS_VAZIOS)
+      setContagens(contarKitsPorMes(dados))
       const meses = dados?.opcoes.competencias ?? []
-      const atual = competenciaCorrente()
-      const padrao = meses.includes(atual) ? atual : meses[0] ?? null
-      if (padrao) setFiltros((f) => ({ ...f, competencia: padrao }))
+      const salva = userIdRef.current ? lerCompetenciaSalva(userIdRef.current, 'composicao') : null
+      const padrao = competenciaPadraoComposicao(meses, competenciaAtual(), salva)
+      setFiltros((f) => ({ ...f, competencia: padrao }))
 
       // Certificado do Itaú: só interessa quando está perto de vencer.
       try {
@@ -169,6 +210,17 @@ export default function ComposicaoDaFaturaList() {
     const t = setTimeout(() => { void carregar(filtros) }, 300)
     return () => clearTimeout(t)
   }, [filtros, carregar])
+
+  const abasCompetencia = useMemo(() => {
+    const atual = competenciaAtual()
+    return montarAbasCompetencia(contagens, atual, somarMeses(atual, 1), filtros.competencia)
+  }, [contagens, filtros.competencia])
+
+  const escolherCompetencia = useCallback((competencia: string) => {
+    setFiltros((f) => (f.competencia === competencia ? f : { ...f, competencia }))
+    setSelecionados(new Set())
+    if (userIdRef.current) salvarCompetencia(userIdRef.current, competencia, 'composicao')
+  }, [])
 
   const kitsPorChave = useMemo(() => {
     const mapa = new Map<string, KitCaso>()
@@ -830,6 +882,8 @@ export default function ComposicaoDaFaturaList() {
         </Alert>
       ) : null}
 
+      <AbasCompetencia abas={abasCompetencia} ativa={filtros.competencia} onEscolher={escolherCompetencia} />
+
       <ResumoStatus
         resumo={payload?.resumo ?? null}
         clientes={payload?.clientes ?? []}
@@ -843,12 +897,19 @@ export default function ComposicaoDaFaturaList() {
         onChange={setFiltros}
         temBusca={busca.trim() !== '' || situacao !== null}
         onLimpar={() => {
-          setFiltros(FILTROS_VAZIOS)
+          // A aba de mês fica; só os filtros da barra, a busca e a situação zeram.
+          setFiltros((f) => ({ ...FILTROS_VAZIOS, competencia: f.competencia }))
           setBusca('')
           setSituacao(null)
         }}
         extra={
-          <Button variant="outline" size="sm" className="h-9" onClick={() => void carregar(filtros)} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => { void carregar(filtros); void carregarContagens() }}
+            disabled={loading}
+          >
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Atualizar
           </Button>
@@ -878,9 +939,9 @@ export default function ComposicaoDaFaturaList() {
             ? 'Nenhum cliente ou caso bate com a busca.'
             : situacao
               ? 'Nenhum kit nessa situação. Clique no card de novo para limpar.'
-              : Object.values(filtros).some(Boolean)
-                ? 'Nenhum kit com esses filtros. Limpe os filtros ou escolha outra competência.'
-                : 'Nenhum item aprovado pelo financeiro disponível para composição.'}
+              : temFiltroAlemDaCompetencia(filtros)
+                ? 'Nenhum kit com esses filtros. Limpe os filtros ou escolha outro mês.'
+                : 'Nenhum kit neste mês. Escolha outro mês nas abas acima.'}
         </div>
       ) : (
         <div className={cn('grid items-start gap-4 xl:grid-cols-2', loading && 'opacity-60 transition-opacity')}>
