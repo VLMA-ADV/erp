@@ -2859,7 +2859,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
         <div className="space-y-1">
           <label className="text-sm font-medium">Cliente</label>
           <CommandSelect
