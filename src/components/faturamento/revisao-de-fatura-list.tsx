@@ -993,6 +993,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   // e ele ocupava o espaço dos dois que faltavam.
   const [centroCusto, setCentroCusto] = useState('')
   const [usuario, setUsuario] = useState('')
+  // Revisor (Filipe 01/10): "apareça apenas os casos em que a pessoa
+  // selecionada seja de fato revisora". Usa o revisor resolvido do item
+  // (responsavel_revisao_nome), não quem lançou.
+  const [revisor, setRevisor] = useState('')
   // Situacao do item: o Filipe pediu (08/09) um filtro de "casos ja aprovados"
   // para a gestao dos proximos dias. Filtra aqui, sem ida ao servidor.
   const [situacao, setSituacao] = useState<'' | 'na_fila' | 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'>('')
@@ -1510,9 +1514,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     if (usuario) {
       base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
     }
+    if (revisor) base = base.filter((item) => item.responsavelRevisaoNome === revisor)
     if (situacao) base = base.filter((item) => item.status === situacao)
     return base
-  }, [items, ruleFilter, centroCusto, usuario, situacao])
+  }, [items, ruleFilter, centroCusto, usuario, revisor, situacao])
 
   const statusSummary = useMemo(() => {
     const counts = { naFila: 0, revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
@@ -1560,6 +1565,12 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       items.map((item) => item.enviadoPorNome || item.timesheetProfissional).filter(Boolean) as string[],
     )).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     return [{ value: '', label: 'Todos os usuários' }, ...nomes.map((n) => ({ value: n, label: n }))]
+  }, [items])
+
+  const revisorFilterOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = Array.from(new Set(items.map((item) => item.responsavelRevisaoNome).filter(Boolean) as string[]))
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return [{ value: '', label: 'Todos os revisores' }, ...nomes.map((n) => ({ value: n, label: n }))]
   }, [items])
 
   const casoFilterOptions = useMemo<CommandSelectOption[]>(() => {
@@ -1708,8 +1719,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     if (usuario) {
       base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
     }
+    if (revisor) base = base.filter((item) => item.responsavelRevisaoNome === revisor)
     return base
-  }, [items, centroCusto, usuario])
+  }, [items, centroCusto, usuario, revisor])
 
   // Andamento por regra de cobranca. Mesma conta dos totais do cabecalho
   // (rascunho vivo, grupo contado uma vez so), sobre itensParaPainel.
@@ -2882,6 +2894,17 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             placeholder="Selecione o usuário"
             searchPlaceholder="Buscar usuário..."
             emptyText="Nenhum usuário encontrado."
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Revisor</label>
+          <CommandSelect
+            value={revisor}
+            onValueChange={setRevisor}
+            options={revisorFilterOptions}
+            placeholder="Selecione o revisor"
+            searchPlaceholder="Buscar revisor..."
+            emptyText="Nenhum revisor encontrado."
           />
         </div>
         <div className="space-y-1">
