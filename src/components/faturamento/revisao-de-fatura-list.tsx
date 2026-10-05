@@ -2215,6 +2215,8 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           contrato_id: contratoId,
           // Sem caso, a nota sai do contrato inteiro (comportamento antigo).
           ...(casoId ? { caso_id: casoId } : {}),
+          // Só os itens do mês da aba aberta (Filipe, 05/10).
+          ...(competencia ? { competencia } : {}),
           ...(descricaoServico && descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
           // Ajustes feitos na prévia (pagador, valor, regime, vencimento).
           ...(ajustes ? { ajustes } : {}),
@@ -4524,6 +4526,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         open={nfsePreview !== null}
         contratoId={nfsePreview?.contratoId ?? null}
         casoId={nfsePreview?.casoId ?? null}
+        competenciaKit={competencia || null}
         contratoLabel={nfsePreview?.label}
         onClose={() => setNfsePreview(null)}
         onConfirmEmit={

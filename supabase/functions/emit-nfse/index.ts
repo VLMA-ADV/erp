@@ -88,9 +88,9 @@ Deno.serve(async (req) => {
     if (podeNfse !== true) return json({ error: "Sem permissão para emitir NFS-e" }, 403)
 
     const body = await req.json()
-    const { contrato_id, caso_id, descricao_servico: descricaoOverride, dry_run, ajustes } = body as
+    const { contrato_id, caso_id, competencia, descricao_servico: descricaoOverride, dry_run, ajustes } = body as
       {
-        contrato_id?: string; caso_id?: string; descricao_servico?: string; dry_run?: boolean
+        contrato_id?: string; caso_id?: string; competencia?: string | null; descricao_servico?: string; dry_run?: boolean
         // Ajustes desta nota (Filipe, 11/09: "alterar o pagador, incluir ou
         // excluir pagadores, alterar o valor fixo, o regime tributario e a data
         // de vencimento no momento do faturamento"). Valem SO para esta
@@ -121,10 +121,17 @@ Deno.serve(async (req) => {
     const { data: cfg } = await supabase.rpc("get_focus_nfe_config", { p_tenant_id: tenantId })
     if (!cfg) return json({ error: "Configuração fiscal não encontrada. Cadastre em /configuracao/fiscal-nfse." }, 422)
 
-    const { data: dataset } = await supabase.rpc("get_billing_items_aprovados_full", {
+    // MES DO KIT. A nota cobre so os itens da competencia pedida. Sem ela,
+    // todo item aprovado do escopo entrava: caso 41 (Filipe, 05/10) saiu na
+    // previa com setembro + outubro. Formato 'YYYY-MM' ou 'YYYY-MM-01'.
+    const mComp = /^(\d{4})-(\d{2})/.exec(String(competencia ?? ""))
+    const escopoCompetencia = mComp ? `${mComp[1]}-${mComp[2]}-01` : null
+
+    const { data: dataset } = await supabase.rpc("get_billing_items_aprovados_escopo", {
       p_tenant_id: tenantId,
       p_contrato_id: contrato_id,
       p_caso_id: escopoCaso,
+      p_competencia: escopoCompetencia,
     })
     if (!dataset || !dataset.itens || dataset.itens.length === 0) {
       return json({

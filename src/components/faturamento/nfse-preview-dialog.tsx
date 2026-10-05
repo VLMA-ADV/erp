@@ -119,6 +119,8 @@ interface NfsePreviewDialogProps {
   // isso nao existia: a Revisao emitia por caso e mostrava a previa do
   // contrato, entao a pessoa conferia R$ 200 e emitia R$ 100.
   casoId?: string | null
+  /** Mês do kit ('YYYY-MM-01'). Sem ele, entram todos os itens aprovados do escopo. */
+  competenciaKit?: string | null
   contratoLabel?: string | null
   onClose: () => void
   /** Ajustes desta nota seguem junto com a emissão (Filipe, 11/09). */
@@ -171,6 +173,7 @@ export default function NfsePreviewDialog({
   open,
   contratoId,
   casoId,
+  competenciaKit,
   contratoLabel,
   onClose,
   onConfirmEmit,
@@ -267,7 +270,7 @@ export default function NfsePreviewDialog({
     }
     void loadPreviewData(contratoId, casoId ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, contratoId, casoId])
+  }, [open, contratoId, casoId, competenciaKit])
 
   // (Re)inicializa a descrição editável quando os dados carregam: nome(s) do(s)
   // caso(s) na 1ª linha + bloco fixo. O usuário pode editar antes de emitir.
@@ -301,10 +304,13 @@ export default function NfsePreviewDialog({
         return
       }
 
-      const { data: dataset } = await supabase.rpc('get_billing_items_aprovados_full', {
+      // Mesmo recorte da emissão: caso + mês do kit (Filipe, 05/10, caso 41 —
+      // a prévia somava setembro e outubro).
+      const { data: dataset } = await supabase.rpc('get_billing_items_aprovados_escopo', {
         p_tenant_id: tenantId,
         p_contrato_id: id,
         p_caso_id: caso,
+        p_competencia: competenciaKit ? `${competenciaKit.slice(0, 7)}-01` : null,
       })
 
       if (!dataset || !dataset.itens || dataset.itens.length === 0) {
