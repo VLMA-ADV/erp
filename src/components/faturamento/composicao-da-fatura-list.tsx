@@ -311,6 +311,8 @@ export default function ComposicaoDaFaturaList() {
           body: JSON.stringify({
             contrato_id: kit.contrato_id,
             ...(kit.caso_id ? { caso_id: kit.caso_id } : {}),
+            // A nota cobre só o mês deste kit (Filipe, 05/10).
+            competencia: kit.competencia,
             ...(ajustes ? { ajustes } : {}),
             ...(descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
           }),
@@ -1008,6 +1010,7 @@ export default function ComposicaoDaFaturaList() {
         open={nfseKit !== null}
         contratoId={nfseKit?.contrato_id ?? null}
         casoId={nfseKit?.caso_id ?? null}
+        competenciaKit={nfseKit?.competencia ?? null}
         ajustesIniciais={ajustesDoKitParaNota(nfseKit)}
         contratoLabel={nfseKit
           ? `${formatContratoDisplay(nfseKit.contrato_numero, nfseKit.contrato_nome).full}${nfseKit.caso_id ? ` · ${labelCaso(nfseKit)}` : ''}` +
