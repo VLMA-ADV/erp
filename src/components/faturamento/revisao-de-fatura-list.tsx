@@ -186,6 +186,14 @@ interface CaseMetrics {
 }
 
 type ReviewMode = 'default' | 'timesheet'
+type UnitResult = { ok: true } | { ok: false; motivo: string }
+type MassaAcao = 'revisar' | 'aprovar'
+type MassaPulado = { itemId: string; rotulo: string; motivo: string }
+type MassaState =
+  | { fase: 'confirmar'; acao: MassaAcao; itens: RevisaoItem[] }
+  | { fase: 'executando'; acao: MassaAcao; total: number; feitos: number; ok: number }
+  | { fase: 'resumo'; acao: MassaAcao; total: number; feitos: number; ok: number; pulados: MassaPulado[]; interrompido: boolean }
+const MASSA_BLOCO = 20
 type RuleFilterKey =
   | 'all'
   | 'hora'
@@ -387,6 +395,12 @@ function isReviewQueueStatus(status: string) {
 // ser liberada. Não passa por revisão/aprovação — só Liberar, Postergar, Excluir.
 function isFila(item: Pick<RevisaoItem, 'status'>) {
   return item.status === 'na_fila'
+}
+
+// Elegível às ações em massa da barra: só o que está em revisão ou em
+// aprovação. A edge decide, por item, se a pessoa pode mesmo avançar.
+function isEmMassa(item: Pick<RevisaoItem, 'status'>) {
+  return item.status === 'em_revisao' || item.status === 'em_aprovacao'
 }
 
 // Aprovado permanece visível (pedido do Douglas) até o "Enviar para faturamento".
@@ -1037,6 +1051,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   }
   const [editorKey, setEditorKey] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  // Revisar/aprovar em massa (Filipe 06/10): confirmação → execução em blocos
+  // de 20 chamadas paralelas → resumo. `pararMassaRef` interrompe entre blocos.
+  const [massa, setMassa] = useState<MassaState | null>(null)
+  const pararMassaRef = useRef(false)
   const [postergarConfirmId, setPostergarConfirmId] = useState<string | null>(null)
   const [postergarData, setPostergarData] = useState('')
   const [transferItemId, setTransferItemId] = useState<string | null>(null)
@@ -1553,6 +1571,26 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     setSelectedItemIds((prev) => (marcar ? Array.from(new Set([...prev, ...ids])) : prev.filter((id) => !ids.includes(id))))
   }, [])
 
+  // Itens "reais" (já liberados, em revisão ou em aprovação) visíveis e os
+  // marcados entre eles: alimentam "Selecionar todos os visíveis" e a barra de
+  // revisar/aprovar em massa (Filipe 06/10). Aprovado e faturado ficam de fora:
+  // não há ação em massa para eles.
+  const reaisVisiveis = useMemo(() => visibleItems.filter((item) => isEmMassa(item)), [visibleItems])
+  const reaisSelecionados = useMemo(
+    () => reaisVisiveis.filter((item) => selectedItemIds.includes(item.id)),
+    [reaisVisiveis, selectedItemIds],
+  )
+  const reaisSelecionadosResumo = useMemo(() => {
+    const resumo = { horas: 0, valor: 0, emRevisao: 0, emAprovacao: 0 }
+    for (const item of reaisSelecionados) {
+      resumo.horas += getEffectiveItemHours(item)
+      resumo.valor += getEffectiveItemValue(item)
+      if (item.status === 'em_revisao') resumo.emRevisao += 1
+      else resumo.emAprovacao += 1
+    }
+    return resumo
+  }, [reaisSelecionados])
+
   const clienteFilterOptions = useMemo<CommandSelectOption[]>(() => {
     const names = Array.from(new Set(items.map((item) => item.clienteNome).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     return [{ value: '', label: 'Todos os clientes' }, ...names.map((name) => ({ value: name, label: name }))]
@@ -1934,28 +1972,94 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     })
   }
 
-  const updateItemCase = async (itemId: string, casoId: string) => {
-    const accessToken = await getSessionToken()
-    if (!accessToken) return false
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-faturamento-item`, {
+  // Chamadas unitárias às edges, sem toast nem estado de tela: são o único
+  // caminho tanto para as ações caso a caso quanto para a execução em massa
+  // (Filipe 06/10). O payload é o mesmo; quem chama decide como avisar.
+  const postEdge = async (accessToken: string, fn: string, body: Record<string, unknown>, erroPadrao: string): Promise<UnitResult> => {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${fn}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        id: itemId,
-        caso_id: casoId,
-      }),
+      body: JSON.stringify(body),
     })
-
     const payload = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      toastError(payload.error || 'Erro ao atualizar caso do item')
+    if (!response.ok) return { ok: false, motivo: typeof payload.error === 'string' && payload.error ? payload.error : erroPadrao }
+    return { ok: true }
+  }
+  const postSetRevisaoStatus = (accessToken: string, itemId: string, action: 'avancar' | 'retornar', erroPadrao: string) =>
+    postEdge(accessToken, 'set-revisao-fatura-status', { billing_item_id: itemId, action }, erroPadrao)
+  const postUpdateItemCase = (accessToken: string, itemId: string, casoId: string) =>
+    postEdge(accessToken, 'update-faturamento-item', { id: itemId, caso_id: casoId }, 'Erro ao atualizar caso do item')
+  const postUpdateRevisaoItem = (accessToken: string, body: Record<string, unknown>) =>
+    postEdge(accessToken, 'update-revisao-fatura-item', body, 'Erro ao salvar item da revisão')
+
+  const updateItemCase = async (itemId: string, casoId: string) => {
+    const accessToken = await getSessionToken()
+    if (!accessToken) return false
+
+    const r = await postUpdateItemCase(accessToken, itemId, casoId)
+    if (!r.ok) {
+      toastError(r.motivo)
       return false
     }
     return true
+  }
+
+  // Monta o corpo de update-revisao-fatura-item a partir do rascunho do item.
+  // Null quando o rascunho ainda não carregou (não há o que salvar).
+  const buildReviewSaveBody = (item: RevisaoItem, mode: ReviewMode): Record<string, unknown> | null => {
+    const draft = drafts[item.id]
+    if (!draft) return null
+
+    const body: Record<string, unknown> = {
+      billing_item_id: item.id,
+      observacao: draft.observacao || null,
+      snapshot_patch:
+        mode === 'timesheet'
+          ? {
+              timesheet_itens_revisao: draft.timesheetRows.map((row) => ({
+                id: row.id,
+                caso_id: draft.casoId || item.casoId,
+                contrato_id: item.contratoId,
+                data_lancamento: row.dataLancamento || null,
+                profissional: row.profissional || '',
+                atividade: row.atividade || '',
+                horas_iniciais: parseDecimalInput(row.horasIniciais),
+                horas_revisadas: parseDecimalInput(row.horasRevisadas || row.horasIniciais),
+                valor_hora_inicial: parseDecimalInput(row.valorHoraInicial),
+                valor_hora: parseDecimalInput(row.valorHora),
+              })),
+            }
+          : {
+              valor_itens_revisao: draft.valueRows.map((row) => ({
+                id: row.id,
+                referencia: normalizeDateFromDisplay(row.referencia || '') || null,
+                descricao: row.descricao || '',
+                valor_original: parseDecimalInput(row.valorOriginal),
+                valor_revisado: parseDecimalInput(row.valorRevisado),
+              })),
+              profissional_revisado: draft.profissional || '',
+            },
+    }
+
+    if (draft.etapaResponsavelId) {
+      body.novo_responsavel_colaborador_id = draft.etapaResponsavelId
+    }
+
+    const liveHours = getLiveItemHours(item, mode)
+    const liveValue = getLiveItemValue(item, mode)
+    // 'aprovado' também grava nos campos de aprovação: a edição completa da
+    // etapa final (Jessika) altera o valor aprovado sem mudar de etapa.
+    if (item.status === 'em_aprovacao' || item.status === 'aprovado') {
+      body.horas_aprovadas = liveHours
+      body.valor_aprovado = liveValue
+    } else {
+      body.horas_revisadas = liveHours
+      body.valor_revisado = liveValue
+    }
+    return body
   }
 
   const saveReviewItem = async (item: RevisaoItem, mode: ReviewMode) => {
@@ -1967,65 +2071,12 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       const accessToken = await getSessionToken()
       if (!accessToken) return false
 
-      const body: Record<string, unknown> = {
-        billing_item_id: item.id,
-        observacao: draft.observacao || null,
-        snapshot_patch:
-          mode === 'timesheet'
-            ? {
-                timesheet_itens_revisao: draft.timesheetRows.map((row) => ({
-                  id: row.id,
-                  caso_id: draft.casoId || item.casoId,
-                  contrato_id: item.contratoId,
-                  data_lancamento: row.dataLancamento || null,
-                  profissional: row.profissional || '',
-                  atividade: row.atividade || '',
-                  horas_iniciais: parseDecimalInput(row.horasIniciais),
-                  horas_revisadas: parseDecimalInput(row.horasRevisadas || row.horasIniciais),
-                  valor_hora_inicial: parseDecimalInput(row.valorHoraInicial),
-                  valor_hora: parseDecimalInput(row.valorHora),
-                })),
-              }
-            : {
-                valor_itens_revisao: draft.valueRows.map((row) => ({
-                  id: row.id,
-                  referencia: normalizeDateFromDisplay(row.referencia || '') || null,
-                  descricao: row.descricao || '',
-                  valor_original: parseDecimalInput(row.valorOriginal),
-                  valor_revisado: parseDecimalInput(row.valorRevisado),
-                })),
-                profissional_revisado: draft.profissional || '',
-              },
-      }
+      const body = buildReviewSaveBody(item, mode)
+      if (!body) return false
 
-      if (draft.etapaResponsavelId) {
-        body.novo_responsavel_colaborador_id = draft.etapaResponsavelId
-      }
-
-      const liveHours = getLiveItemHours(item, mode)
-      const liveValue = getLiveItemValue(item, mode)
-      // 'aprovado' também grava nos campos de aprovação: a edição completa da
-      // etapa final (Jessika) altera o valor aprovado sem mudar de etapa.
-      if (item.status === 'em_aprovacao' || item.status === 'aprovado') {
-        body.horas_aprovadas = liveHours
-        body.valor_aprovado = liveValue
-      } else {
-        body.horas_revisadas = liveHours
-        body.valor_revisado = liveValue
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/update-revisao-fatura-item`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      })
-
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao salvar item da revisão')
+      const saved = await postUpdateRevisaoItem(accessToken, body)
+      if (!saved.ok) {
+        toastError(saved.motivo)
         return false
       }
 
@@ -2053,21 +2104,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       const accessToken = await getSessionToken()
       if (!accessToken) return false
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-revisao-fatura-status`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          billing_item_id: item.id,
-          action: 'avancar',
-        }),
-      })
-
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao avançar item')
+      const r = await postSetRevisaoStatus(accessToken, item.id, 'avancar', 'Erro ao avançar item')
+      if (!r.ok) {
+        toastError(r.motivo)
         return false
       }
 
@@ -2097,17 +2136,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       setBusyKey(`return:${item.id}`)
       const accessToken = await getSessionToken()
       if (!accessToken) return false
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/set-revisao-fatura-status`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ billing_item_id: item.id, action: 'retornar' }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        toastError(payload.error || 'Erro ao devolver item')
+      const r = await postSetRevisaoStatus(accessToken, item.id, 'retornar', 'Erro ao devolver item')
+      if (!r.ok) {
+        toastError(r.motivo)
         return false
       }
       success('Item devolvido para a etapa anterior.')
@@ -2453,6 +2484,97 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     }
   }
 
+  // ---- Revisar OK / Aprovar em massa (Filipe 06/10) -------------------------
+  // Mesmo caminho unitário das ações por caso: aprovar = salvar o rascunho
+  // (update-revisao-fatura-item) e avançar (set-revisao-fatura-status);
+  // revisar OK = só avançar. A edge valida permissão e etapa item a item; o
+  // que ela recusar vira "pulado" com o motivo que ela devolveu.
+  const executarUnitarioMassa = async (accessToken: string, item: RevisaoItem, acao: MassaAcao): Promise<UnitResult> => {
+    try {
+      if (acao === 'revisar') {
+        if (item.status !== 'em_revisao') return { ok: false, motivo: 'Não está em revisão' }
+        return await postSetRevisaoStatus(accessToken, item.id, 'avancar', 'Erro ao avançar item')
+      }
+      if (item.status !== 'em_aprovacao') return { ok: false, motivo: 'Não está em aprovação' }
+      const mode: ReviewMode = item.origemTipo === 'timesheet' ? 'timesheet' : 'default'
+      const body = buildReviewSaveBody(item, mode)
+      if (!body) return { ok: false, motivo: 'Rascunho do item ainda não carregou' }
+      const saved = await postUpdateRevisaoItem(accessToken, body)
+      if (!saved.ok) return saved
+      const draft = drafts[item.id]
+      if (draft?.casoId && draft.casoId !== item.casoId) {
+        const moved = await postUpdateItemCase(accessToken, item.id, draft.casoId)
+        if (!moved.ok) return moved
+      }
+      return await postSetRevisaoStatus(accessToken, item.id, 'avancar', 'Erro ao avançar item')
+    } catch (error) {
+      console.error(error)
+      return { ok: false, motivo: error instanceof Error && error.message ? error.message : 'Falha de rede' }
+    }
+  }
+
+  const rotuloItemMassa = (item: RevisaoItem) => {
+    const caso = `${item.casoNumero ? `${item.casoNumero} - ` : ''}${item.casoNome || ''}`.trim()
+    const quem = item.enviadoPorNome || item.timesheetProfissional || ''
+    return [item.clienteNome, caso, quem].filter(Boolean).join(' · ')
+  }
+
+  const abrirMassa = (acao: MassaAcao) => {
+    const alvo = reaisSelecionados.filter((item) => (acao === 'revisar' ? item.status === 'em_revisao' : item.status === 'em_aprovacao'))
+    if (alvo.length === 0) {
+      toastError(acao === 'revisar' ? 'Nenhum item em revisão selecionado.' : 'Nenhum item em aprovação selecionado.')
+      return
+    }
+    setMassa({ fase: 'confirmar', acao, itens: alvo })
+  }
+
+  const executarMassa = async (acao: MassaAcao, itens: RevisaoItem[]) => {
+    const total = itens.length
+    pararMassaRef.current = false
+    setMassa({ fase: 'executando', acao, total, feitos: 0, ok: 0 })
+    setBusyKey('massa')
+    const pulados: MassaPulado[] = []
+    const okIds: string[] = []
+    let feitos = 0
+    let interrompido = false
+    try {
+      const accessToken = await getSessionToken()
+      if (!accessToken) {
+        toastError('Sessão expirada — faça login novamente.')
+        setMassa(null)
+        return
+      }
+      for (let i = 0; i < itens.length; i += MASSA_BLOCO) {
+        if (pararMassaRef.current) { interrompido = true; break }
+        const bloco = itens.slice(i, i + MASSA_BLOCO)
+        const resultados = await Promise.all(bloco.map((item) => executarUnitarioMassa(accessToken, item, acao)))
+        resultados.forEach((r, idx) => {
+          const item = bloco[idx]
+          if (r.ok) okIds.push(item.id)
+          else pulados.push({ itemId: item.id, rotulo: rotuloItemMassa(item), motivo: r.motivo })
+        })
+        feitos += bloco.length
+        setMassa({ fase: 'executando', acao, total, feitos, ok: okIds.length })
+      }
+    } finally {
+      setBusyKey(null)
+    }
+    // Mesmo avanço otimista das ações por caso, e recarga silenciosa por trás.
+    if (okIds.length > 0) {
+      setItems((prev) =>
+        prev.map((entry) =>
+          okIds.includes(entry.id)
+            ? { ...entry, status: entry.status === 'em_revisao' ? 'em_aprovacao' : 'aprovado' }
+            : entry,
+        ),
+      )
+    }
+    const processados = itens.slice(0, feitos).map((item) => item.id)
+    setSelectedItemIds((prev) => prev.filter((id) => !processados.includes(id)))
+    setMassa({ fase: 'resumo', acao, total, feitos, ok: okIds.length, pulados, interrompido })
+    void loadItems({ silent: true })
+  }
+
   const postergarItem = async (item: RevisaoItem, targetDateIso?: string) => {
     try {
       setBusyKey(`postergar:${item.id}`)
@@ -2785,6 +2907,25 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
               {filaSelecionada.length === filaVisivel.length ? 'Desmarcar fila' : `Selecionar todos da fila (${filaVisivel.length})`}
             </Button>
           ) : null}
+          {/* Filipe 06/10: aprovadores/revisores marcam tudo que está na tela
+              (em revisão ou em aprovação, respeita filtros) para revisar OK /
+              aprovar em massa pela barra. */}
+          {reaisVisiveis.length > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              disabled={busyKey === 'massa'}
+              title={
+                reaisSelecionados.length === reaisVisiveis.length
+                  ? 'Desmarca todos os itens em revisão/aprovação que estão na tela'
+                  : `Marca os ${reaisVisiveis.length} item(ns) em revisão ou em aprovação que estão na tela (respeita os filtros)`
+              }
+              onClick={() => marcarItens(reaisVisiveis.map((item) => item.id), reaisSelecionados.length !== reaisVisiveis.length)}
+            >
+              {reaisSelecionados.length === reaisVisiveis.length ? 'Desmarcar visíveis' : `Selecionar todos os visíveis (${reaisVisiveis.length})`}
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" onClick={toggleAllExpanded}>
             {allExpanded ? 'Recolher tudo' : 'Expandir tudo'}
           </Button>
@@ -3106,8 +3247,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       {/* Barra de seleção global (Filipe 28/09): aparece com item da fila marcado
           em qualquer caso e libera tudo numa chamada só (lotes de 200). Sticky
           para continuar à mão enquanto a pessoa desce marcando. */}
+      {filaSelecionada.length > 0 || reaisSelecionados.length > 0 || massa?.fase === 'executando' ? (
+      <div className="sticky top-0 z-20 space-y-2">
       {filaSelecionada.length > 0 ? (
-        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink/20 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink/20 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur">
           <p className="text-sm text-ink">
             <strong>{filaSelecionada.length}</strong> item(ns) da fila selecionado(s) ·{' '}
             <span className="font-semibold font-tabular">{formatMoney(filaSelecionadaValor)}</span>
@@ -3133,6 +3276,70 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             </Button>
           </div>
         </div>
+      ) : null}
+
+      {/* Barra de revisar/aprovar em massa (Filipe 06/10): aparece com item em
+          revisão ou em aprovação marcado em qualquer caso. Cada botão só habilita
+          se houver item naquela etapa; a edge valida permissão item a item. Em
+          execução, mostra o progresso e o "Parar" (interrompe entre blocos). */}
+      {massa?.fase === 'executando' ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink/20 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur">
+          <p className="flex items-center gap-2 text-sm text-ink">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {massa.acao === 'revisar' ? 'Revisando' : 'Aprovando'} <strong>{massa.feitos}</strong> de <strong>{massa.total}</strong>…
+            {massa.ok < massa.feitos ? <span className="text-ink-mute">({massa.feitos - massa.ok} pulado(s) até agora)</span> : null}
+          </p>
+          <Button size="sm" variant="outline" disabled={pararMassaRef.current} onClick={() => { pararMassaRef.current = true }}>
+            <Ban className="mr-1 h-3.5 w-3.5" />
+            Parar
+          </Button>
+        </div>
+      ) : reaisSelecionados.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink/20 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur">
+          <p className="text-sm text-ink">
+            <strong>{reaisSelecionados.length}</strong> item(ns) selecionado(s) ·{' '}
+            <span className="font-tabular">{formatHours(reaisSelecionadosResumo.horas)}</span> ·{' '}
+            <span className="font-semibold font-tabular">{formatMoney(reaisSelecionadosResumo.valor)}</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busyKey !== null}
+              onClick={() => marcarItens(reaisSelecionados.map((item) => item.id), false)}
+            >
+              Limpar seleção
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busyKey !== null || reaisSelecionadosResumo.emRevisao === 0}
+              title={
+                reaisSelecionadosResumo.emRevisao === 0
+                  ? 'Nenhum item em revisão selecionado'
+                  : `Conclui a revisão sem alterações dos ${reaisSelecionadosResumo.emRevisao} item(ns) em revisão marcados, de todos os casos`
+              }
+              onClick={() => abrirMassa('revisar')}
+            >
+              Revisar OK ({reaisSelecionadosResumo.emRevisao} em revisão)
+            </Button>
+            <Button
+              size="sm"
+              className="bg-ink text-white hover:bg-ink/90"
+              disabled={busyKey !== null || reaisSelecionadosResumo.emAprovacao === 0}
+              title={
+                reaisSelecionadosResumo.emAprovacao === 0
+                  ? 'Nenhum item em aprovação selecionado'
+                  : `Aprova os ${reaisSelecionadosResumo.emAprovacao} item(ns) em aprovação marcados, de todos os casos`
+              }
+              onClick={() => abrirMassa('aprovar')}
+            >
+              Aprovar ({reaisSelecionadosResumo.emAprovacao} em aprovação)
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      </div>
       ) : null}
 
       {loading ? (
@@ -3205,6 +3412,24 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                             onChange={(event) => marcarItens(filaDoCliente, event.target.checked)}
                           />
                           Selecionar todos da fila ({filaDoCliente.length})
+                        </label>
+                      )
+                    })()}
+                    {/* Filipe 06/10: marca os itens em revisão/aprovação de todos os casos do cliente. */}
+                    {(() => {
+                      const reaisDoCliente = clienteGroup.casos.flatMap((casoGroup) => casoGroup.itens.filter((item) => isEmMassa(item)).map((item) => item.id))
+                      if (reaisDoCliente.length === 0) return null
+                      const todosMarcados = reaisDoCliente.every((id) => selectedItemIds.includes(id))
+                      return (
+                        <label className="mr-2 flex items-center gap-2 text-xs text-ink-mute">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-hairline"
+                            checked={todosMarcados}
+                            disabled={busyKey === 'massa'}
+                            onChange={(event) => marcarItens(reaisDoCliente, event.target.checked)}
+                          />
+                          Selecionar em revisão/aprovação ({reaisDoCliente.length})
                         </label>
                       )
                     })()}
@@ -4381,6 +4606,128 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           })}
         </div>
       )}
+
+      {/* Revisar OK / Aprovar em massa (Filipe 06/10): confirmação com
+          quantidade, horas e valor; durante a execução, progresso e "Parar";
+          ao final, o resumo com os pulados agrupados pelo motivo da edge. */}
+      <Dialog
+        open={massa !== null}
+        onOpenChange={(open) => {
+          if (open || massa?.fase === 'executando') return
+          setMassa(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {massa?.acao === 'revisar' ? 'Revisar OK em massa' : 'Aprovar em massa'}
+            </DialogTitle>
+          </DialogHeader>
+          {massa?.fase === 'confirmar' ? (() => {
+            const horas = massa.itens.reduce((acc, item) => acc + getEffectiveItemHours(item), 0)
+            const valor = massa.itens.reduce((acc, item) => acc + getEffectiveItemValue(item), 0)
+            return (
+              <div className="space-y-3 text-sm text-ink">
+                <p>
+                  {massa.acao === 'revisar'
+                    ? <>Conclui a revisão sem alterações de <strong>{massa.itens.length}</strong> lançamento(s) em revisão. Itens de outra etapa ou de outro revisor são pulados.</>
+                    : <>Aprova <strong>{massa.itens.length}</strong> lançamento(s) em aprovação. Itens de outra etapa ou de outro aprovador são pulados.</>}
+                </p>
+                <div className="grid grid-cols-3 gap-3 rounded-xl border border-hairline bg-canvas-soft p-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ink-mute">Lançamentos</p>
+                    <p className="font-semibold font-tabular">{massa.itens.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ink-mute">Horas</p>
+                    <p className="font-semibold font-tabular">{formatHours(horas)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ink-mute">Valor</p>
+                    <p className="font-semibold font-tabular">{formatMoney(valor)}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-ink-mute">
+                  Roda em blocos de {MASSA_BLOCO}; dá para parar no meio. Cada item passa pela mesma validação de permissão e etapa das ações por caso.
+                </p>
+              </div>
+            )
+          })() : null}
+          {massa?.fase === 'executando' ? (
+            <div className="space-y-3 text-sm text-ink">
+              <p className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {massa.acao === 'revisar' ? 'Revisando' : 'Aprovando'} <strong>{massa.feitos}</strong> de <strong>{massa.total}</strong>…
+              </p>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-canvas-soft">
+                <div className="h-full bg-ink transition-all" style={{ width: `${massa.total > 0 ? Math.round((massa.feitos / massa.total) * 100) : 0}%` }} />
+              </div>
+              <p className="text-xs text-ink-mute">
+                {massa.ok} concluído(s){massa.feitos - massa.ok > 0 ? ` · ${massa.feitos - massa.ok} pulado(s)` : ''}
+                {pararMassaRef.current ? ' · parando após o bloco atual…' : ''}
+              </p>
+            </div>
+          ) : null}
+          {massa?.fase === 'resumo' ? (() => {
+            const grupos = new Map<string, MassaPulado[]>()
+            for (const pulado of massa.pulados) {
+              const lista = grupos.get(pulado.motivo) ?? []
+              lista.push(pulado)
+              grupos.set(pulado.motivo, lista)
+            }
+            const naoProcessados = massa.total - massa.feitos
+            return (
+              <div className="space-y-3 text-sm text-ink">
+                <p>
+                  <strong>{massa.ok}</strong> {massa.acao === 'revisar' ? 'revisado(s)' : 'aprovado(s)'}
+                  {massa.pulados.length > 0 ? <> · <strong>{massa.pulados.length}</strong> pulado(s)</> : null}
+                  {massa.interrompido && naoProcessados > 0 ? <> · <strong>{naoProcessados}</strong> não processado(s) (interrompido)</> : null}
+                  {' '}de {massa.total}.
+                </p>
+                {grupos.size > 0 ? (
+                  <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-hairline bg-canvas-soft p-3">
+                    {Array.from(grupos.entries()).map(([motivo, lista]) => (
+                      <div key={motivo}>
+                        <p className="text-xs font-semibold text-ink">
+                          {motivo} <span className="font-normal text-ink-mute">({lista.length})</span>
+                        </p>
+                        <ul className="ml-4 list-disc text-xs text-ink-mute">
+                          {lista.slice(0, 5).map((pulado) => (
+                            <li key={pulado.itemId}>{pulado.rotulo || pulado.itemId}</li>
+                          ))}
+                          {lista.length > 5 ? <li>+ {lista.length - 5} outro(s)</li> : null}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })() : null}
+          <DialogFooter>
+            {massa?.fase === 'confirmar' ? (
+              <>
+                <Button variant="outline" onClick={() => setMassa(null)}>Cancelar</Button>
+                <Button
+                  className="bg-ink text-white hover:bg-ink/90"
+                  onClick={() => void executarMassa(massa.acao, massa.itens)}
+                >
+                  {massa.acao === 'revisar' ? `Revisar OK (${massa.itens.length})` : `Aprovar (${massa.itens.length})`}
+                </Button>
+              </>
+            ) : null}
+            {massa?.fase === 'executando' ? (
+              <Button variant="outline" disabled={pararMassaRef.current} onClick={() => { pararMassaRef.current = true }}>
+                <Ban className="mr-1 h-3.5 w-3.5" />
+                Parar
+              </Button>
+            ) : null}
+            {massa?.fase === 'resumo' ? (
+              <Button className="bg-ink text-white hover:bg-ink/90" onClick={() => setMassa(null)}>Fechar</Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={postergarConfirmId !== null || postergarIds.length > 0}
