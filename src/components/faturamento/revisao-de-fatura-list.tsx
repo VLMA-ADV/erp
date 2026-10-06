@@ -997,6 +997,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   // selecionada seja de fato revisora". Usa o revisor resolvido do item
   // (responsavel_revisao_nome), não quem lançou.
   const [revisor, setRevisor] = useState('')
+  // Aprovador (Filipe 06/10): hoje só Douglas e Renata aprovam; o filtro deixa
+  // cada um ver o que é seu.
+  const [aprovador, setAprovador] = useState('')
   // Situacao do item: o Filipe pediu (08/09) um filtro de "casos ja aprovados"
   // para a gestao dos proximos dias. Filtra aqui, sem ida ao servidor.
   const [situacao, setSituacao] = useState<'' | 'na_fila' | 'em_revisao' | 'em_aprovacao' | 'aprovado' | 'faturado'>('')
@@ -1515,9 +1518,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
     }
     if (revisor) base = base.filter((item) => item.responsavelRevisaoNome === revisor)
+    if (aprovador) base = base.filter((item) => item.responsavelAprovacaoNome === aprovador)
     if (situacao) base = base.filter((item) => item.status === situacao)
     return base
-  }, [items, ruleFilter, centroCusto, usuario, revisor, situacao])
+  }, [items, ruleFilter, centroCusto, usuario, revisor, aprovador, situacao])
 
   const statusSummary = useMemo(() => {
     const counts = { naFila: 0, revisao: 0, aprovacao: 0, aprovado: 0, faturado: 0 }
@@ -1571,6 +1575,12 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     const nomes = Array.from(new Set(items.map((item) => item.responsavelRevisaoNome).filter(Boolean) as string[]))
       .sort((a, b) => a.localeCompare(b, 'pt-BR'))
     return [{ value: '', label: 'Todos os revisores' }, ...nomes.map((n) => ({ value: n, label: n }))]
+  }, [items])
+
+  const aprovadorFilterOptions = useMemo<CommandSelectOption[]>(() => {
+    const nomes = Array.from(new Set(items.map((item) => item.responsavelAprovacaoNome).filter(Boolean) as string[]))
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return [{ value: '', label: 'Todos os aprovadores' }, ...nomes.map((n) => ({ value: n, label: n }))]
   }, [items])
 
   const casoFilterOptions = useMemo<CommandSelectOption[]>(() => {
@@ -1720,8 +1730,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       base = base.filter((item) => (item.enviadoPorNome || item.timesheetProfissional) === usuario)
     }
     if (revisor) base = base.filter((item) => item.responsavelRevisaoNome === revisor)
+    if (aprovador) base = base.filter((item) => item.responsavelAprovacaoNome === aprovador)
     return base
-  }, [items, centroCusto, usuario, revisor])
+  }, [items, centroCusto, usuario, revisor, aprovador])
 
   // Andamento por regra de cobranca. Mesma conta dos totais do cabecalho
   // (rascunho vivo, grupo contado uma vez so), sobre itensParaPainel.
@@ -2861,7 +2872,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-7">
         <div className="space-y-1">
           <label className="text-sm font-medium">Cliente</label>
           <CommandSelect
@@ -2907,6 +2918,17 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             placeholder="Selecione o revisor"
             searchPlaceholder="Buscar revisor..."
             emptyText="Nenhum revisor encontrado."
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Aprovador</label>
+          <CommandSelect
+            value={aprovador}
+            onValueChange={setAprovador}
+            options={aprovadorFilterOptions}
+            placeholder="Selecione o aprovador"
+            searchPlaceholder="Buscar aprovador..."
+            emptyText="Nenhum aprovador encontrado."
           />
         </div>
         <div className="space-y-1">
