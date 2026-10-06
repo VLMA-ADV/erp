@@ -115,24 +115,29 @@ async function baixarFotoPadrao(url: string): Promise<FotoBaixada | null> {
   if (!resp.ok) return null
   const bytes = new Uint8Array(await resp.arrayBuffer())
   const contentType = resp.headers.get('content-type')
-  // Metade das fotos do escritório é WebP (23 de 48 em 28/09), e o pdf-lib só
-  // embute PNG/JPEG. No navegador, redesenha num canvas e sai PNG; fora dele
-  // (testes, Node) devolve como veio e a linha cai nas iniciais.
-  const ehWebp = /webp/i.test(contentType || '') || (bytes.length > 12 && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP')
-  if (!ehWebp || typeof document === 'undefined' || typeof createImageBitmap !== 'function') return { bytes, contentType }
+  // No navegador, toda foto passa pelo canvas: vira um quadrado CENTRAL com o
+  // maior lado possível (a foto inteira, não um pedaço), reduzido a 160 px e
+  // em PNG. Resolve duas coisas de uma vez: WebP (metade das fotos; pdf-lib
+  // não embute) e foto retangular, que esticava no círculo. A versão de 28/09
+  // recortava 160 px do centro da imagem ORIGINAL — em foto grande virava zoom
+  // na orelha (Filipe, 06/10). Fora do navegador (testes), vai como veio.
+  if (typeof document === 'undefined' || typeof createImageBitmap !== 'function') return { bytes, contentType }
   try {
-    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/webp' }))
-    const lado = Math.min(160, bmp.width, bmp.height)
+    const bmp = await createImageBitmap(new Blob([bytes], { type: contentType || 'image/*' }))
+    const lado = Math.min(bmp.width, bmp.height)
+    const sx = Math.floor((bmp.width - lado) / 2)
+    const sy = Math.floor((bmp.height - lado) / 2)
+    const destino = 160
     const canvas = document.createElement('canvas')
-    canvas.width = lado; canvas.height = lado
+    canvas.width = destino; canvas.height = destino
     const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    ctx.drawImage(bmp, (bmp.width - lado) / 2, (bmp.height - lado) / 2, lado, lado, 0, 0, lado, lado)
+    if (!ctx) return { bytes, contentType }
+    ctx.drawImage(bmp, sx, sy, lado, lado, 0, 0, destino, destino)
     const png = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
-    if (!png) return null
+    if (!png) return { bytes, contentType }
     return { bytes: new Uint8Array(await png.arrayBuffer()), contentType: 'image/png' }
   } catch {
-    return null
+    return { bytes, contentType }
   }
 }
 
