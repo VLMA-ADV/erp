@@ -34,6 +34,14 @@ export interface DocumentoKitRegistrado {
   id: string
   /** Caminho no bucket — é o que fica em billing_notes.arquivo_url. */
   path: string
+  /**
+   * Conta a receber criada junto (07/10, kit só de despesas: a nota de débito
+   * vira a base do boleto). Null/ausente quando a RPC não criou — kit com
+   * serviço, ou RPC antiga.
+   */
+  lancamento_id?: string | null
+  /** Aviso da RPC (ex.: a nota anterior tinha boleto vivo e nada foi cancelado). */
+  aviso?: string | null
 }
 
 function mensagemDoErro(err: unknown, padrao: string): string {
@@ -95,9 +103,10 @@ export async function gerarERegistrarDocumento(input: GerarERegistrarDocumentoIn
     throw new Error(mensagemDoErro(error, 'O PDF foi gerado mas não foi possível registrá-lo'))
   }
 
-  const id = (data as { id?: string } | null)?.id
+  const resposta = (data ?? null) as { id?: string; lancamento_id?: string | null; aviso?: string | null } | null
+  const id = resposta?.id
   if (!id) throw new Error('O registro do documento não devolveu um id.')
-  return { id, path }
+  return { id, path, lancamento_id: resposta?.lancamento_id ?? null, aviso: resposta?.aviso ?? null }
 }
 
 /**
