@@ -146,9 +146,9 @@ Deno.serve(async (req) => {
 
     // Regime tributario desta nota: troca o grupo de impostos so nesta emissao.
     if (ajustes?.grupo_imposto_id) {
+      // Por RPC: a service role não tem GRANT nessa tabela (Filipe, 07/10).
       const { data: outroGrupo, error: erroGrupo } = await supabase
-        .schema("contracts").from("grupos_impostos")
-        .select("*").eq("id", ajustes.grupo_imposto_id).maybeSingle()
+        .rpc("nfse_grupo_imposto", { p_tenant_id: tenantId, p_grupo_id: ajustes.grupo_imposto_id })
       if (erroGrupo || !outroGrupo) return json({ error: "Grupo de impostos escolhido não foi encontrado." }, 422)
       grupo = outroGrupo as Record<string, any>
     }
@@ -174,8 +174,9 @@ Deno.serve(async (req) => {
         return json({ error: `Os percentuais dos pagadores somam ${soma.toFixed(2)}%. Ajuste para 100%.` }, 422)
       }
       const ids = ajustes.pagadores.map((p) => p.cliente_id)
+      // Por RPC: o schema crm não é exposto no PostgREST (Filipe, 07/10).
       const { data: clientes, error: erroClientes } = await supabase
-        .schema("crm").from("clientes").select("*").in("id", ids)
+        .rpc("nfse_clientes_por_ids", { p_tenant_id: tenantId, p_ids: ids })
       if (erroClientes) return json({ error: erroClientes.message }, 500)
       const clientePorId = new Map((clientes ?? []).map((c: Record<string, any>) => [c.id, c]))
       const todosItens = itens.map((i) => i.id)
