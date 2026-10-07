@@ -11,6 +11,7 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  FileStack,
   FileText,
   Loader2,
   Mail,
@@ -29,15 +30,19 @@ import { formatarLinhaDigitavel } from '@/lib/utils/boleto-ficha'
 import {
   SITUACAO_INFO,
   STATUS_KIT_INFO,
+  baseDoBoleto,
   boletoEmitido,
   dataBR,
   dataHoraBR,
   formatMoney,
+  gruposParaNotaUnica,
   iniciaisCliente,
+  kitSoDespesas,
   labelCaso,
   labelCompetencia,
   labelOrigem,
   labelRegra,
+  nfseConjuntaViva,
   nfseEmitida,
   progressoDoKit,
   situacaoDosKits,
@@ -53,6 +58,12 @@ export interface AcoesKit {
   /** Chave da ação em andamento ("<chave do kit>:<acao>") — trava o botão certo. */
   ocupado: string | null
   onEmitirNfse: (kit: KitCaso) => void
+  /**
+   * Nota única do contrato (Filipe 07/10, Charles Sturmer casos 1873 e 1877):
+   * uma NFS-e para todos os kits do mesmo contrato+competência. Recebe os
+   * kits que ela vai cobrir; quem orquestra abre a prévia sem caso_id.
+   */
+  onEmitirNotaUnica: (kits: KitCaso[]) => void
   onAbrirUrl: (url: string) => void
   onEmitirBoleto: (kit: KitCaso) => void
   onVerBoleto: (boletoId: string) => void
@@ -80,6 +91,10 @@ export const acaoKey = (kit: KitCaso, acao: string) => `${kit.chave}:${acao}`
 export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; acoes: AcoesKit }) {
   const progresso = somarProgresso(cliente.casos)
   const situacao = SITUACAO_INFO[situacaoDosKits(cliente.casos)]
+  // Contratos deste cliente com ≥ 2 casos a faturar no mesmo mês: oferece a
+  // nota única (Filipe 07/10). Cada grupo vira um botão; a competência é a da
+  // aba, então normalmente é um por contrato.
+  const gruposNotaUnica = gruposParaNotaUnica(cliente.casos)
   return (
     <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-white shadow-lift-1">
       <header className="border-b border-hairline bg-canvas-soft px-5 py-4">
@@ -105,6 +120,30 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
             {progresso.emitidos}/{progresso.necessarios} · {progresso.pct}%
           </span>
         </div>
+        {gruposNotaUnica.length ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {gruposNotaUnica.map((grupo) => {
+              const primeiro = grupo[0]
+              const chave = `${primeiro.contrato_id}|${primeiro.competencia}`
+              const total = grupo.reduce((a, k) => a + Number(k.valor_servico || 0), 0)
+              const ocupadoGrupo = acoes.ocupado === `nota-unica:${chave}`
+              return (
+                <Button
+                  key={chave}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => acoes.onEmitirNotaUnica(grupo)}
+                  disabled={!!acoes.ocupado}
+                  title={`Uma NFS-e só para ${grupo.map((k) => labelCaso(k)).join(', ')} (${labelCompetencia(primeiro.competencia)}). O boleto sai sobre ela, um para todos os casos.`}
+                >
+                  {ocupadoGrupo ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileStack className="mr-1.5 h-3.5 w-3.5" />}
+                  Emitir nota única · {formatContratoDisplay(primeiro.contrato_numero, primeiro.contrato_nome).full}
+                  <span className="ml-1 font-normal text-ink-mute">({grupo.length} casos · {formatMoney(total)})</span>
+                </Button>
+              )
+            })}
+          </div>
+        ) : null}
       </header>
       <div className="divide-y divide-hairline">
         {cliente.casos.map((kit) => (
@@ -206,6 +245,22 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   const temDespesa = kit.valor_despesa > 0 || kit.itens.some((i) => i.origem_tipo === 'despesa')
   const nfseViva = !!nfse && nfse.status === 'gerado'
   const nfseAutorizada = nfseViva && nfse.focus_status === 'autorizado'
+  // NFS-e conjunta do contrato (07/10): este kit não emite outra nem sai
+  // sozinho da composição; o boleto é o da nota conjunta, um para todos.
+  const nfConjunta = nfseConjuntaViva(kit)
+  // Kit só de despesas (07/10, Elizir caso 360): o boleto sai sobre a conta a
+  // receber que a nota de débito cria — sem NFS-e. Com a RPC antiga
+  // (boleto_base ausente) o kit continua preso à NFS-e, como antes.
+  const soDespesas = kitSoDespesas(kit)
+  const baseBoleto = baseDoBoleto(kit)
+  const boletoPelaNotaDebito = baseBoleto === 'nota_debito' && !!docs.nota_debito
+  const podeEmitirBoleto = baseBoleto === 'nfse' ? nfseAutorizada : boletoPelaNotaDebito
+  const contaDaNotaDebito = boletoPelaNotaDebito && docs.nota_debito?.lancamento_id ? kit.conta_receber : null
+  const bloqueioDevolver = !kit.pode_excluir
+    ? (kit.motivo_bloqueio ?? 'Kit bloqueado')
+    : nfConjunta
+      ? 'NFS-e conjunta com outros casos'
+      : null
   const contratoLabel = formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full
   const ocupado = (acao: string) => acoes.ocupado === acaoKey(kit, acao)
   const enviadoOk = !!kit.envio && !kit.envio.erro
@@ -231,8 +286,8 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             type="checkbox"
             className="mt-0.5 h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed"
             checked={selecionado}
-            disabled={!kit.pode_excluir}
-            title={kit.pode_excluir ? 'Selecionar este kit' : (kit.motivo_bloqueio ?? 'Kit bloqueado')}
+            disabled={!!bloqueioDevolver}
+            title={bloqueioDevolver ?? 'Selecionar este kit'}
             aria-label={`Selecionar o kit de ${labelCaso(kit)}`}
             onChange={(e) => acoes.onSelecionar(kit, e.target.checked)}
           />
@@ -325,12 +380,24 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             !nfse || nfse.status !== 'gerado'
               ? nfse
                 ? { tipo: 'pendente', badge: 'Cancelada', explicacao: 'A nota anterior foi cancelada — emita de novo.' }
-                : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal na prefeitura — o boleto é gerado sobre ela.' }
+                : soDespesas
+                  ? { tipo: 'pendente', badge: 'Não se aplica', explicacao: 'Kit só de despesas — não há serviço a faturar; o boleto sai sobre a nota de débito.' }
+                  : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal na prefeitura — o boleto é gerado sobre ela.' }
               : nfse.focus_status === 'autorizado'
-                ? { tipo: 'ok', badge: nfse.nfse_numero ? `NFS-e nº ${nfse.nfse_numero}` : 'Emitida', explicacao: `Autorizada em ${dataHoraBR(nfse.created_at)}` }
+                ? { tipo: 'ok', badge: nfse.nfse_numero ? `NFS-e nº ${nfse.nfse_numero}` : 'Emitida', explicacao: `Autorizada em ${dataHoraBR(nfse.created_at)}${nfConjunta ? ' · uma nota para os casos do contrato' : ''}` }
                 : nfse.focus_status === 'processando'
                   ? { tipo: 'andamento', badge: 'Processando', explicacao: 'Em processamento na prefeitura — o PDF aparece quando autorizar.' }
                   : { tipo: 'erro', badge: 'Erro', explicacao: `Erro na emissão (${nfse.focus_status ?? 'sem status'}) — emita de novo.` }
+          }
+          extra={
+            nfConjunta ? (
+              <Badge
+                className="border-indigo-200 bg-indigo-50 text-indigo-800"
+                title="Esta NFS-e cobre mais de um caso do contrato. O boleto é um só, sobre ela; para devolver este kit, cancele a nota em Notas geradas."
+              >
+                NF conjunta
+              </Badge>
+            ) : null
           }
           valor={nfse?.valor_total ?? kit.valor_servico}
           acoes={
@@ -342,6 +409,9 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
               ) : (
                 <span className="text-xs text-ink-mute">Aguardando PDF</span>
               )
+            ) : nfConjunta ? (
+              // Nota conjunta com erro/sem status: quem resolve é a nota, em Notas geradas.
+              <span className="text-xs text-ink-mute">Nota conjunta do contrato</span>
             ) : (
               <Button size="sm" onClick={() => acoes.onEmitirNfse(kit)} disabled={ocupado('nfse') || kit.valor_servico <= 0}>
                 {ocupado('nfse') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
@@ -351,7 +421,8 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           }
         />
 
-        {/* 2. Boleto — sai em cima da conta a receber, que só existe com a NF autorizada. */}
+        {/* 2. Boleto — sai em cima da conta a receber: a da NFS-e autorizada ou,
+            num kit só de despesas, a que a nota de débito criou (07/10). */}
         <DocumentoLinha
           icon={<Banknote className="h-4 w-4" />}
           titulo="Boleto"
@@ -363,10 +434,14 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
                   ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${docs.boleto.status} — emita de novo.` }
                   : ['pago', 'liquidado'].includes(docs.boleto.status)
                     ? { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
-                    : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}` }
-              : nfseAutorizada
-                ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Registra o título no Itaú sobre a conta a receber da nota.' }
-                : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
+                    : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}${nfConjunta ? ' · um boleto para os casos da nota conjunta' : boletoPelaNotaDebito ? ' · sobre a nota de débito' : ''}` }
+              : boletoPelaNotaDebito
+                ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Boleto das despesas, sem nota fiscal — registra o título no Itaú sobre a conta da nota de débito.' }
+                : nfseAutorizada
+                  ? { tipo: 'pendente', badge: 'Pendente', explicacao: nfConjunta ? 'Registra o título no Itaú sobre a nota conjunta — um boleto para todos os casos dela.' : 'Registra o título no Itaú sobre a conta a receber da nota.' }
+                  : soDespesas && kit.boleto_base !== undefined
+                    ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Gere a nota de débito primeiro — o boleto das despesas é gerado sobre ela.' }
+                    : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
           }
           valor={docs.boleto?.valor ?? kit.conta_receber?.valor ?? null}
           acoes={
@@ -387,7 +462,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
                 ) : null}
               </>
             ) : (
-              <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit)} disabled={!nfseAutorizada || ocupado('boleto')}>
+              <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit)} disabled={!podeEmitirBoleto || ocupado('boleto')}>
                 {ocupado('boleto') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
                 Emitir
               </Button>
@@ -453,8 +528,23 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             titulo="Despesas"
             status={
               docs.nota_debito
-                ? statusDocGerado(docs.nota_debito, 'Nota de débito')
-                : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Despesas reembolsáveis do período (nota de débito).' }
+                ? statusDocGerado(
+                    docs.nota_debito,
+                    'Nota de débito',
+                    // Kit só de despesas (07/10): a nota de débito criou a conta a receber do boleto.
+                    contaDaNotaDebito
+                      ? `conta a receber criada · vence ${dataBR(contaDaNotaDebito.vencimento)}`
+                      : docs.nota_debito.lancamento_id
+                        ? 'conta a receber criada'
+                        : null,
+                  )
+                : {
+                    tipo: 'pendente',
+                    badge: 'Pendente',
+                    explicacao: soDespesas && kit.boleto_base !== undefined
+                      ? 'Despesas reembolsáveis do período (nota de débito) — ao gerar, cria a conta a receber do boleto.'
+                      : 'Despesas reembolsáveis do período (nota de débito).',
+                  }
             }
             valor={kit.valor_despesa}
             acoes={
@@ -550,8 +640,8 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             variant="ghost"
             size="sm"
             onClick={() => acoes.onExcluir(kit)}
-            disabled={!kit.pode_excluir || ocupado('excluir')}
-            title={kit.pode_excluir ? 'Devolve os itens para a revisão (nada é apagado)' : (kit.motivo_bloqueio ?? 'Kit bloqueado')}
+            disabled={!!bloqueioDevolver || ocupado('excluir')}
+            title={bloqueioDevolver ?? 'Devolve os itens para a revisão (nada é apagado)'}
             className="text-ink-mute hover:text-destructive"
           >
             {ocupado('excluir') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Undo2 className="mr-1.5 h-3.5 w-3.5" />}
@@ -563,12 +653,12 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   )
 }
 
-function statusDocGerado(doc: DocGerado | null, resumo: string): StatusDoc {
+function statusDocGerado(doc: DocGerado | null, resumo: string, complemento: string | null = null): StatusDoc {
   if (!doc) return { tipo: 'pendente', badge: 'Pendente', explicacao: resumo }
   return {
     tipo: 'ok',
     badge: 'Emitido',
-    explicacao: `${resumo} · gerado em ${dataHoraBR(doc.gerado_em)}${doc.gerado_por ? ` por ${doc.gerado_por}` : ''}`,
+    explicacao: `${resumo} · gerado em ${dataHoraBR(doc.gerado_em)}${doc.gerado_por ? ` por ${doc.gerado_por}` : ''}${complemento ? ` · ${complemento}` : ''}`,
   }
 }
 

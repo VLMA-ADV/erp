@@ -27,12 +27,15 @@ import {
   FILTROS_VAZIOS,
   competenciaPadraoComposicao,
   contarKitsPorMes,
+  documentoBaseDoBoleto,
   formatMoney,
   isoHoje,
+  kitSoDespesas,
   labelCaso,
   labelCompetencia,
   labelCompetenciaCurta,
   montarAbasCompetencia,
+  nfseConjuntaViva,
   temFiltroAlemDaCompetencia,
   situacaoDoKit,
   type ComposicaoPayload,
@@ -59,6 +62,13 @@ import {
 // acompanhando outubro. Os badges das abas (kits e valor do mês) saem de UMA
 // chamada da RPC sem filtro nenhum (contarKitsPorMes), feita na abertura e
 // depois de cada ação/Atualizar; a lista continua vindo da chamada filtrada.
+//
+// 07/10 (Filipe): (a) kit só de despesas (Elizir, caso 360) emite boleto
+// sobre a conta a receber que a nota de débito cria — a RPC diz por
+// `boleto_base` qual documento sustenta o boleto; (b) "Emitir nota única"
+// no cabeçalho do cliente (Charles Sturmer, casos 1873 e 1877): uma NFS-e
+// por contrato+competência, pelo mesmo emit-nfse sem caso_id. A Composição
+// já casava a nota pelos item_ids, então ela aparece em todos os kits.
 
 const FUNCTIONS = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
 
@@ -73,6 +83,33 @@ function ajustesDoKitParaNota(kit: KitCaso | null): AjustesDaNota | null {
   if (a.grupo_imposto_id) ajustes.grupo_imposto_id = a.grupo_imposto_id
   if (a.pagadores?.length) ajustes.pagadores = a.pagadores.map((p) => ({ cliente_id: p.cliente_id, percentual: Number(p.percentual || 0) }))
   return Object.keys(ajustes).length ? ajustes : null
+}
+
+/**
+ * O que a prévia/emissão de NFS-e cobre: um kit (caso + mês, como sempre) ou,
+ * desde 07/10, todos os kits de um contrato no mês (nota única, casoId null).
+ * `kits` são os kits da tela que a nota vai cobrir; `chaveOcupado` trava o
+ * botão certo enquanto emite.
+ */
+interface AlvoNfse {
+  contratoId: string
+  casoId: string | null
+  competencia: string
+  kits: KitCaso[]
+  ajustes: AjustesDaNota | null
+  label: string
+  chaveOcupado: string
+}
+
+/**
+ * Ajustes para a nota única: os do primeiro kit se todos os kits coincidem;
+ * se divergem, nenhum (vale o cadastro) e a tela avisa. Comparar o JSON
+ * normalizado basta — são só grupo e pagadores.
+ */
+function ajustesComunsDosKits(kits: KitCaso[]): { ajustes: AjustesDaNota | null; divergem: boolean } {
+  const lista = kits.map((k) => JSON.stringify(ajustesDoKitParaNota(k)))
+  const divergem = new Set(lista).size > 1
+  return { ajustes: divergem ? null : ajustesDoKitParaNota(kits[0] ?? null), divergem }
 }
 
 interface CertificadoItau {
@@ -96,7 +133,7 @@ export default function ComposicaoDaFaturaList() {
 
   // Diálogos
   const [ajustesKit, setAjustesKit] = useState<KitCaso | null>(null)
-  const [nfseKit, setNfseKit] = useState<KitCaso | null>(null)
+  const [nfseAlvo, setNfseAlvo] = useState<AlvoNfse | null>(null)
   const [notaKit, setNotaKit] = useState<KitCaso | null>(null)
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
   const [emailKit, setEmailKit] = useState<KitCaso | null>(null)
@@ -253,8 +290,7 @@ export default function ComposicaoDaFaturaList() {
       .filter((c): c is NonNullable<typeof c> => c !== null)
   }, [payload, busca, situacao])
 
-  const executar = async (kit: KitCaso, acao: string, fn: () => Promise<void>) => {
-    const key = acaoKey(kit, acao)
+  const executarComChave = async (key: string, fn: () => Promise<void>) => {
     if (ocupado) return
     setOcupado(key)
     try {
@@ -263,6 +299,8 @@ export default function ComposicaoDaFaturaList() {
       setOcupado(null)
     }
   }
+
+  const executar = (kit: KitCaso, acao: string, fn: () => Promise<void>) => executarComChave(acaoKey(kit, acao), fn)
 
   /** Mesmo trava, para as ações em massa (a chave é "massa:<acao>"). */
   const executarEmMassa = async (acao: string, fn: () => Promise<void>) => {
@@ -292,27 +330,78 @@ export default function ComposicaoDaFaturaList() {
     return { supabase, session, userId: session.user.id }
   }
 
+  // Um caso com mais de uma competência aberta: a NFS-e cobre todos os itens
+  // aprovados do caso, não só este kit — aviso na prévia.
+  const casosComVariosKits = useMemo(() => {
+    const contagem = new Map<string, number>()
+    for (const c of payload?.clientes ?? []) for (const k of c.casos) if (k.caso_id) contagem.set(k.caso_id, (contagem.get(k.caso_id) ?? 0) + 1)
+    return contagem
+  }, [payload])
+
   // ── NFS-e ──────────────────────────────────────────────────────────────
   // A prévia é a mesma do Fluxo de faturamento (NfsePreviewDialog com
   // caso_id) e a emissão é a mesma edge (emit-nfse). A edge não recebe
-  // item_ids: cobre todos os itens aprovados do caso — o que, para um caso
-  // com duas competências abertas, é mais do que este kit. O aviso fica na
-  // confirmação.
+  // item_ids: cobre todos os itens aprovados do escopo no mês. Sem caso_id
+  // (nota única, 07/10) o escopo é o contrato inteiro na competência — a
+  // própria edge grava a nota com caso_id null e a Composição a casa pelos
+  // item_ids em cada kit coberto.
+  const abrirNfseDoKit = (kit: KitCaso) => {
+    setNfseAlvo({
+      contratoId: kit.contrato_id,
+      casoId: kit.caso_id,
+      competencia: kit.competencia,
+      kits: [kit],
+      ajustes: ajustesDoKitParaNota(kit),
+      label:
+        `${formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full}${kit.caso_id ? ` · ${labelCaso(kit)}` : ''}` +
+        (kit.caso_id && (casosComVariosKits.get(kit.caso_id) ?? 0) > 1
+          ? ' — atenção: a nota cobre todos os itens aprovados do caso, de todas as competências'
+          : ''),
+      chaveOcupado: acaoKey(kit, 'nfse'),
+    })
+  }
+
+  // Nota única do contrato (Filipe 07/10): sem ajustesIniciais quando os kits
+  // divergem — a nota sai com o cadastro do contrato e a pessoa é avisada
+  // antes de confirmar.
+  const abrirNotaUnica = (kits: KitCaso[]) => {
+    const primeiro = kits[0]
+    if (!primeiro) return
+    if (kits.some((k) => k.contrato_id !== primeiro.contrato_id || k.competencia !== primeiro.competencia)) {
+      toastError('A nota única só cobre casos do mesmo contrato e da mesma competência.')
+      return
+    }
+    const { ajustes, divergem } = ajustesComunsDosKits(kits)
+    if (divergem) {
+      notify('Os casos têm impostos/pagadores ajustados de forma diferente. A nota única sai com o cadastro do contrato — confira na prévia.')
+    }
+    setNfseAlvo({
+      contratoId: primeiro.contrato_id,
+      casoId: null,
+      competencia: primeiro.competencia,
+      kits,
+      ajustes,
+      label: `${formatContratoDisplay(primeiro.contrato_numero, primeiro.contrato_nome).full} · nota única (${kits.length} casos: ${kits.map((k) => (k.caso_numero ? `#${k.caso_numero}` : k.caso_nome)).join(', ')})`,
+      chaveOcupado: `nota-unica:${primeiro.contrato_id}|${primeiro.competencia}`,
+    })
+  }
+
   const emitirNfse = async (descricaoServico: string, ajustes?: AjustesDaNota) => {
-    const kit = nfseKit
-    if (!kit) return
-    setNfseKit(null)
-    await executar(kit, 'nfse', async () => {
+    const alvo = nfseAlvo
+    if (!alvo) return
+    setNfseAlvo(null)
+    await executarComChave(alvo.chaveOcupado, async () => {
       try {
         const { session } = await sessao()
         const resp = await fetch(`${FUNCTIONS()}/emit-nfse`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contrato_id: kit.contrato_id,
-            ...(kit.caso_id ? { caso_id: kit.caso_id } : {}),
+            contrato_id: alvo.contratoId,
+            // Sem caso_id = contrato inteiro na competência (nota única).
+            ...(alvo.casoId ? { caso_id: alvo.casoId } : {}),
             // A nota cobre só o mês deste kit (Filipe, 05/10).
-            competencia: kit.competencia,
+            competencia: alvo.competencia,
             ...(ajustes ? { ajustes } : {}),
             ...(descricaoServico.trim() ? { descricao_servico: descricaoServico } : {}),
           }),
@@ -323,7 +412,8 @@ export default function ComposicaoDaFaturaList() {
           toastError(corpo.message || 'Emissão parcial — alguns pagadores foram recusados.')
         } else {
           const n = Number(corpo.n_notas ?? 1)
-          success(n > 1 ? `${n} NFS-e enviadas (rateio). Status: ${corpo.focus_status}` : `NFS-e enviada. Status: ${corpo.focus_status}`)
+          const sufixo = alvo.casoId ? '' : ` — nota única para ${alvo.kits.length} casos`
+          success(n > 1 ? `${n} NFS-e enviadas (rateio)${sufixo}. Status: ${corpo.focus_status}` : `NFS-e enviada${sufixo}. Status: ${corpo.focus_status}`)
         }
         await recarregar()
         // A prefeitura leva alguns segundos a minutos para autorizar, e só
@@ -347,25 +437,44 @@ export default function ComposicaoDaFaturaList() {
 
   // ── Boleto ─────────────────────────────────────────────────────────────
   // A tela trabalha por kit/nota; a emissão trabalha por conta a receber —
-  // bol_lancamento_da_nota faz a ponte. Confirmação explícita: registra o
-  // título no banco de verdade e o cliente pode pagar.
+  // bol_lancamento_da_nota faz a ponte (acha o lançamento por origem_ref_id,
+  // seja a NFS-e ou, desde 07/10, a nota de débito de um kit só de despesas;
+  // `boleto_base` da RPC diz qual). Confirmação explícita: registra o título
+  // no banco de verdade e o cliente pode pagar.
   const emitirBoleto = (kit: KitCaso) => executar(kit, 'boleto', async () => {
-    const nfse = kit.documentos.nfse
-    if (!nfse) { notify('Emita a NFS-e primeiro — o boleto é gerado sobre ela.'); return }
+    const base = documentoBaseDoBoleto(kit)
+    if (!base) {
+      if (kitSoDespesas(kit) && kit.boleto_base !== undefined) {
+        notify(kit.documentos.nota_debito
+          ? 'A nota de débito deste kit ainda não tem conta a receber — gere a nota de novo.'
+          : 'Gere a nota de débito primeiro — o boleto das despesas é gerado sobre ela.')
+      } else {
+        notify('Emita a NFS-e primeiro — o boleto é gerado sobre ela.')
+      }
+      return
+    }
     try {
       const { supabase, userId } = await sessao()
-      const { data, error: e } = await supabase.rpc('bol_lancamento_da_nota', { p_user_id: userId, p_nota_id: nfse.id })
+      const { data, error: e } = await supabase.rpc('bol_lancamento_da_nota', { p_user_id: userId, p_nota_id: base.notaId })
       if (e) { toastError(e.message); return }
       const info = data as {
         encontrado: boolean; motivo?: string; lancamento_id?: string
         descricao?: string; valor?: number; vencimento?: string; ja_baixado?: boolean
       }
-      if (!info?.encontrado) { toastError(info?.motivo || 'Conta a receber não encontrada.'); return }
+      if (!info?.encontrado) {
+        toastError(info?.motivo || (base.base === 'nota_debito'
+          ? 'Conta a receber da nota de débito não encontrada — gere a nota de novo.'
+          : 'Conta a receber não encontrada.'))
+        return
+      }
       if (info.ja_baixado) { notify('Esta fatura já foi recebida — não há o que cobrar.'); return }
 
       const venc = (info.vencimento || '').split('-').reverse().join('/')
+      const conjunta = nfseConjuntaViva(kit) && base.base === 'nfse'
       const ok = window.confirm(
         `Registrar boleto no Itaú?\n\n${info.descricao}\n${formatMoney(info.valor || 0)} — vence ${venc}\n\n` +
+        (base.base === 'nota_debito' ? 'Boleto só das despesas (kit sem nota fiscal), sobre a conta da nota de débito.\n' : '') +
+        (conjunta ? 'A nota é conjunta: este boleto cobre todos os casos dela — não emita outro nos demais kits.\n' : '') +
         'O título passa a existir no banco e o cliente pode pagar.',
       )
       if (!ok) return
@@ -516,7 +625,7 @@ export default function ComposicaoDaFaturaList() {
   const registrarNotaDebito = async (bytes: Uint8Array, nomeArquivo: string) => {
     const kit = notaKit
     if (!kit) return
-    await gerarERegistrarDocumento({
+    const registro = await gerarERegistrarDocumento({
       tipo: 'nota_debito',
       bytes,
       nomeArquivo: `Nota-de-debito-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
@@ -526,7 +635,13 @@ export default function ComposicaoDaFaturaList() {
       itemIds: kit.itens.filter((i) => i.origem_tipo === 'despesa').map((i) => i.id),
       metadata: { valor_total: kit.valor_despesa, arquivo_baixado: nomeArquivo },
     })
-    success('Nota de débito registrada no kit.')
+    // 07/10: num kit só de despesas a RPC cria a conta a receber junto
+    // (lancamento_id) — é sobre ela que o boleto sai. `aviso` vem quando a
+    // nota anterior já tinha boleto vivo e nada foi cancelado.
+    success(registro.lancamento_id
+      ? 'Nota de débito registrada no kit e conta a receber criada — o boleto já pode ser emitido.'
+      : 'Nota de débito registrada no kit.')
+    if (registro.aviso) notify(registro.aviso)
     await recarregar()
   }
 
@@ -772,7 +887,7 @@ export default function ComposicaoDaFaturaList() {
     if (!kit.pode_excluir) { toastError(kit.motivo_bloqueio || 'Este kit não pode ser excluído.'); return }
     const docs = [
       kit.documentos.relatorio_timesheet ? 'o relatório de timesheet' : null,
-      kit.documentos.nota_debito ? 'a nota de débito' : null,
+      kit.documentos.nota_debito ? (kit.documentos.nota_debito.lancamento_id ? 'a nota de débito e a conta a receber dela' : 'a nota de débito') : null,
       kit.documentos.nfse && kit.documentos.nfse.status === 'gerado' ? 'a NFS-e com erro' : null,
     ].filter(Boolean)
     // Filipe 28/09: devolver reinicia a partir da APROVAÇÃO, nunca do lançamento
@@ -808,8 +923,13 @@ export default function ComposicaoDaFaturaList() {
         notify('Este kit já tem NFS-e emitida.')
         return
       }
-      setNfseKit(kit)
+      if (nfseConjuntaViva(kit)) {
+        notify('Este kit está coberto por uma NFS-e conjunta do contrato. Para emitir outra, cancele a conjunta em Notas geradas.')
+        return
+      }
+      abrirNfseDoKit(kit)
     },
+    onEmitirNotaUnica: (kits) => abrirNotaUnica(kits),
     onAbrirUrl: (url) => void abrirUrl(url),
     onEmitirBoleto: (kit) => void emitirBoleto(kit),
     onVerBoleto: (id) => void verBoleto(id),
@@ -834,14 +954,6 @@ export default function ComposicaoDaFaturaList() {
   const toggleTodos = (marcar: boolean) => {
     setSelecionados(marcar ? new Set(kitsSelecionaveis.map((k) => k.chave)) : new Set())
   }
-
-  // Um caso com mais de uma competência aberta: a NFS-e cobre todos os itens
-  // aprovados do caso, não só este kit — aviso na prévia.
-  const casosComVariosKits = useMemo(() => {
-    const contagem = new Map<string, number>()
-    for (const c of payload?.clientes ?? []) for (const k of c.casos) if (k.caso_id) contagem.set(k.caso_id, (contagem.get(k.caso_id) ?? 0) + 1)
-    return contagem
-  }, [payload])
 
   return (
     <div className="space-y-5">
@@ -1005,20 +1117,17 @@ export default function ComposicaoDaFaturaList() {
       />
 
       {/* A nota sai com o pagador/grupo do kit (ajustes_kit) quando ele existe —
-          o mesmo formato de `ajustes` que emit-nfse aceita no body. */}
+          o mesmo formato de `ajustes` que emit-nfse aceita no body. Na nota
+          única (casoId null) a prévia é do contrato no mês e já lista os casos
+          na discriminação. */}
       <NfsePreviewDialog
-        open={nfseKit !== null}
-        contratoId={nfseKit?.contrato_id ?? null}
-        casoId={nfseKit?.caso_id ?? null}
-        competenciaKit={nfseKit?.competencia ?? null}
-        ajustesIniciais={ajustesDoKitParaNota(nfseKit)}
-        contratoLabel={nfseKit
-          ? `${formatContratoDisplay(nfseKit.contrato_numero, nfseKit.contrato_nome).full}${nfseKit.caso_id ? ` · ${labelCaso(nfseKit)}` : ''}` +
-            (nfseKit.caso_id && (casosComVariosKits.get(nfseKit.caso_id) ?? 0) > 1
-              ? ' — atenção: a nota cobre todos os itens aprovados do caso, de todas as competências'
-              : '')
-          : null}
-        onClose={() => setNfseKit(null)}
+        open={nfseAlvo !== null}
+        contratoId={nfseAlvo?.contratoId ?? null}
+        casoId={nfseAlvo?.casoId ?? null}
+        competenciaKit={nfseAlvo?.competencia ?? null}
+        ajustesIniciais={nfseAlvo?.ajustes ?? null}
+        contratoLabel={nfseAlvo?.label ?? null}
+        onClose={() => setNfseAlvo(null)}
         onConfirmEmit={(descricao, ajustes) => void emitirNfse(descricao, ajustes)}
       />
 

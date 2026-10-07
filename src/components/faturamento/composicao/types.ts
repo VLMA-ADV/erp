@@ -134,6 +134,20 @@ export interface DocGerado {
   arquivo_url: string | null
 }
 
+/**
+ * Nota de débito do kit. Desde 07/10 (Filipe, Elizir caso 360: kit só de
+ * despesas não tinha como emitir boleto) um kit SEM serviço ganha conta a
+ * receber própria ao registrar a nota de débito — `lancamento_id` aponta
+ * para ela. Kit com serviço continua sem (as despesas vão no boleto da NFS-e).
+ * Opcional: RPC antiga não devolve e a tela se comporta como antes.
+ */
+export interface DocNotaDebito extends DocGerado {
+  lancamento_id?: string | null
+}
+
+/** Sobre qual documento o boleto do kit é emitido (RPC, 07/10). */
+export type BoletoBase = 'nfse' | 'nota_debito'
+
 export interface EnvioKit {
   enviado_em: string
   destinatario: string
@@ -200,9 +214,10 @@ export interface KitCaso {
     nfse: DocNfse | null
     boleto: DocBoleto | null
     relatorio_timesheet: DocGerado | null
-    nota_debito: DocGerado | null
+    nota_debito: DocNotaDebito | null
   }
   envio: EnvioKit | null
+  /** Lançamento a receber do kit: o da NFS-e ou, sem NFS-e, o da nota de débito (ver boleto_base). */
   conta_receber: ContaReceberKit | null
   status_kit: StatusKit
   finalizado: FinalizadoKit | null
@@ -210,6 +225,21 @@ export interface KitCaso {
   ajustes_do_kit?: boolean
   pode_excluir: boolean
   motivo_bloqueio: string | null
+  /**
+   * Documento que sustenta o boleto: 'nfse' quando há conta a receber da
+   * NFS-e, 'nota_debito' quando o kit é só de despesas e a nota de débito
+   * criou a conta própria, null quando ainda não há sobre o que emitir.
+   * Ausente (RPC antiga) = comportamento anterior, só pela NFS-e.
+   */
+  boleto_base?: BoletoBase | null
+  /**
+   * Quantos kits do mesmo contrato+competência ainda têm serviço a faturar e
+   * nenhuma NFS-e viva (este incluído). ≥ 2 habilita "Emitir nota única" no
+   * cabeçalho do cliente (Filipe 07/10, Charles Sturmer casos 1873 e 1877).
+   */
+  irmaos_no_contrato?: number
+  /** A NFS-e deste kit é do contrato inteiro ou cobre itens de mais de um kit. */
+  nota_compartilhada?: boolean
 }
 
 export interface ClienteKits {
@@ -478,10 +508,61 @@ export function boletoEmitido(boleto: DocBoleto | null) {
   return !!boleto && !['cancelado', 'erro', 'baixado'].includes(boleto.status)
 }
 
+/** Kit sem serviço a faturar: só despesas reembolsáveis (não há NFS-e a emitir). */
+export function kitSoDespesas(kit: Pick<KitCaso, 'valor_servico' | 'valor_despesa'>) {
+  return Number(kit.valor_servico || 0) <= 0 && Number(kit.valor_despesa || 0) > 0
+}
+
+/**
+ * Base do boleto quando a RPC não manda `boleto_base`: NFS-e autorizada →
+ * 'nfse'; senão nada (a conta da nota de débito só existe com a RPC nova, que
+ * manda o campo). Com o campo presente, vale o que a RPC decidiu.
+ */
+export function baseDoBoleto(kit: KitCaso): BoletoBase | null {
+  if (kit.boleto_base !== undefined) return kit.boleto_base
+  const nfse = kit.documentos.nfse
+  return !!nfse && nfse.status === 'gerado' && nfse.focus_status === 'autorizado' ? 'nfse' : null
+}
+
+/** Id do documento sobre o qual o boleto é emitido (bol_lancamento_da_nota acha o lançamento por ele). */
+export function documentoBaseDoBoleto(kit: KitCaso): { base: BoletoBase; notaId: string } | null {
+  const base = baseDoBoleto(kit)
+  if (base === 'nfse' && kit.documentos.nfse) return { base, notaId: kit.documentos.nfse.id }
+  if (base === 'nota_debito' && kit.documentos.nota_debito) return { base, notaId: kit.documentos.nota_debito.id }
+  return null
+}
+
+/** NFS-e conjunta (de contrato) viva neste kit: não se emite outra nem se devolve o kit sozinho. */
+export function nfseConjuntaViva(kit: KitCaso) {
+  return kit.nota_compartilhada === true && !!kit.documentos.nfse && kit.documentos.nfse.status === 'gerado'
+}
+
+/**
+ * Grupos (contrato + competência) com ≥ 2 kits candidatos à nota única: têm
+ * serviço, não têm NFS-e viva e a RPC diz que têm irmãos. Só conta kits
+ * presentes na lista — se o filtro escondeu um irmão, o botão não aparece
+ * para não emitir uma nota que cobre o que não está na tela.
+ */
+export function gruposParaNotaUnica(kits: KitCaso[]): KitCaso[][] {
+  const grupos = new Map<string, KitCaso[]>()
+  for (const k of kits) {
+    if ((k.irmaos_no_contrato ?? 0) < 2) continue
+    if (Number(k.valor_servico || 0) <= 0) continue
+    if (k.documentos.nfse && k.documentos.nfse.status === 'gerado') continue
+    const chave = `${k.contrato_id}|${k.competencia}`
+    const lista = grupos.get(chave) ?? []
+    lista.push(k)
+    grupos.set(chave, lista)
+  }
+  return Array.from(grupos.values()).filter((g) => g.length >= 2)
+}
+
 export function etapasDoKit(kit: KitCaso): EtapaKit[] {
   const docs = kit.documentos
   return [
-    { rotulo: 'NF', necessaria: true, emitida: nfseEmitida(docs.nfse) },
+    // Kit só de despesas não tem NFS-e a emitir (07/10): a etapa fica
+    // "não se aplica" em vez de pendente para sempre.
+    { rotulo: 'NF', necessaria: Number(kit.valor_servico || 0) > 0 || nfseEmitida(docs.nfse), emitida: nfseEmitida(docs.nfse) },
     { rotulo: 'Boleto', necessaria: true, emitida: boletoEmitido(docs.boleto) },
     { rotulo: 'Timesheet', necessaria: kit.horas > 0, emitida: !!docs.relatorio_timesheet },
     { rotulo: 'Despesas', necessaria: kit.valor_despesa > 0, emitida: !!docs.nota_debito },
