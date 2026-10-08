@@ -125,6 +125,25 @@ export interface DocBoleto {
   pix_emv: string | null
 }
 
+/**
+ * Uma NFS-e viva do kit com a conta a receber e o boleto DELA. Com rateio de
+ * pagadores (Filipe 08/10, caso 318 Coneglian) emit-nfse emite uma nota por
+ * pagador e cada uma tem sua conta e seu boleto; `documentos.nfse`/`boleto`
+ * continuam mostrando uma só (a "do kit").
+ */
+export interface DocNfsePagador {
+  id: string
+  numero: number | null
+  nfse_numero: string | null
+  status: string
+  focus_status: string | null
+  arquivo_url: string | null
+  valor_total: number | null
+  pagador: { cliente_id: string | null; nome: string | null }
+  conta_receber: ContaReceberKit | null
+  boleto: DocBoleto | null
+}
+
 export interface DocGerado {
   id: string
   gerado_em: string
@@ -215,6 +234,11 @@ export interface KitCaso {
     boleto: DocBoleto | null
     relatorio_timesheet: DocGerado | null
     nota_debito: DocNotaDebito | null
+    /**
+     * Todas as NFS-e vivas do kit, ordenadas por pagador (RPC de 08/10).
+     * Ausente na RPC antiga; `[]` sem nota. Só muda a tela com mais de uma.
+     */
+    nfses?: DocNfsePagador[]
   }
   envio: EnvioKit | null
   /** Lançamento a receber do kit: o da NFS-e ou, sem NFS-e, o da nota de débito (ver boleto_base). */
@@ -557,13 +581,27 @@ export function gruposParaNotaUnica(kits: KitCaso[]): KitCaso[][] {
   return Array.from(grupos.values()).filter((g) => g.length >= 2)
 }
 
+/** NFS-e vivas do kit (vazio com RPC antiga ou sem nota). */
+export function nfsesDoKit(kit: KitCaso): DocNfsePagador[] {
+  return kit.documentos.nfses ?? []
+}
+
+/** Kit com rateio já emitido: mais de uma NFS-e viva, uma por pagador. */
+export function kitComVariasNotas(kit: KitCaso) {
+  return nfsesDoKit(kit).length > 1
+}
+
 export function etapasDoKit(kit: KitCaso): EtapaKit[] {
   const docs = kit.documentos
+  // Várias notas (rateio): o boleto só está feito quando TODAS têm o seu.
+  const boletoOk = kitComVariasNotas(kit)
+    ? nfsesDoKit(kit).every((n) => boletoEmitido(n.boleto))
+    : boletoEmitido(docs.boleto)
   return [
     // Kit só de despesas não tem NFS-e a emitir (07/10): a etapa fica
     // "não se aplica" em vez de pendente para sempre.
     { rotulo: 'NF', necessaria: Number(kit.valor_servico || 0) > 0 || nfseEmitida(docs.nfse), emitida: nfseEmitida(docs.nfse) },
-    { rotulo: 'Boleto', necessaria: true, emitida: boletoEmitido(docs.boleto) },
+    { rotulo: 'Boleto', necessaria: true, emitida: boletoOk },
     { rotulo: 'Timesheet', necessaria: kit.horas > 0, emitida: !!docs.relatorio_timesheet },
     { rotulo: 'Despesas', necessaria: kit.valor_despesa > 0, emitida: !!docs.nota_debito },
   ]

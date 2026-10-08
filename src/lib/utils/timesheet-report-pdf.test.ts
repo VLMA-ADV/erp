@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
-import { formatarHoras, gerarRelatorioTimesheetPdf, type FotoBaixada, type TimesheetPdfRow } from './timesheet-report-pdf'
+import { divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, type FotoBaixada, type TimesheetPdfRow } from './timesheet-report-pdf'
 import { LOGO_VLMA } from './documento-vlma'
 
 // Conteúdo bruto (descomprimido) de todas as páginas: serve para procurar
@@ -204,6 +204,80 @@ describe('logo e foto no relatório', () => {
       ({ bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]), contentType: 'application/octet-stream' })
     const bytes = await gerarRelatorioTimesheetPdf({ ...base, rows: [linha(1, { profissional: 'Ana Souza', fotoUrl: 'https://x/a' })], baixarFoto })
     expect((await textosDoPdf(bytes)).split('\n')).toContain('AS')
+  })
+})
+
+describe('divisão por pagador', () => {
+  const base = { titulo: 'Relatório de Timesheet', cliente: 'Thiago Coneglian', mostrarValor: true }
+
+  it('divide o total pelo percentual; o último absorve a diferença de centavos', () => {
+    expect(divisaoPorPagador(100, 'X', [
+      { nome: 'A', percentual: 33.33 },
+      { nome: 'B', percentual: 33.33 },
+      { nome: 'C', percentual: 33.34 },
+    ])).toEqual([
+      { nome: 'A', percentual: 33.33, valor: 33.33 },
+      { nome: 'B', percentual: 33.33, valor: 33.33 },
+      { nome: 'C', percentual: 33.34, valor: 33.34 },
+    ])
+    // 1.100,01 × 50% = 550,005 → 550,01 no primeiro; o segundo fica com 550,00.
+    const d = divisaoPorPagador(1100.01, 'X', [{ nome: 'A', percentual: 50 }, { nome: 'B', percentual: 50 }])!
+    expect(d.map((l) => l.valor)).toEqual([550.01, 550])
+    expect(d.reduce((a, l) => a + Math.round(l.valor * 100), 0)).toBe(110001)
+  })
+
+  it('não se aplica sem pagador ou com um só igual ao cliente', () => {
+    expect(divisaoPorPagador(100, 'Cliente', null)).toBeNull()
+    expect(divisaoPorPagador(100, 'Cliente', [])).toBeNull()
+    expect(divisaoPorPagador(100, 'Cliente', [{ nome: ' cliente ', percentual: 100 }])).toBeNull()
+    expect(divisaoPorPagador(100, 'Cliente', [{ nome: 'Outro', percentual: 100 }])).toEqual([
+      { nome: 'Outro', percentual: 100, valor: 100 },
+    ])
+  })
+
+  it('com rateio, fecha o relatório com o quadro depois do total', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({
+      ...base,
+      pagadores: [
+        { nome: 'Felipe Coneglian Della Bianca', percentual: 50 },
+        { nome: 'Thiago Coneglian', percentual: 50 },
+      ],
+      rows: [linha(1), linha(2, { horas: 0.5, valor: 275.01 })],
+    })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    expect(textos).not.toContain('Faturado a')
+    const iTotal = textos.indexOf('Total')
+    const iQuadro = textos.indexOf('Divisão por pagador')
+    expect(iTotal).toBeGreaterThan(-1)
+    expect(iQuadro).toBeGreaterThan(iTotal)
+    // 1.100,01 → 550,01 + 550,00
+    const depois = textos.slice(iQuadro)
+    expect(depois).toEqual(expect.arrayContaining([
+      'Felipe Coneglian Della Bianca', 'Thiago Coneglian', '50%', 'R$ 550,01', 'R$ 550,00',
+    ]))
+  })
+
+  it('pagador único diferente do cliente também ganha o quadro', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({
+      ...base,
+      cliente: 'Strobel',
+      pagadores: [{ nome: 'Mendocino Participações', percentual: 100 }],
+      rows: [linha(1)],
+    })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    expect(textos).toContain('Divisão por pagador')
+    expect(textos).toContain('Mendocino Participações')
+    expect(textos).toContain('100%')
+  })
+
+  it('pagador igual ao cliente: relatório idêntico ao sem pagadores', async () => {
+    const emissao = '08/10/2026'
+    const sem = await gerarRelatorioTimesheetPdf({ ...base, emissao, rows: [linha(1)] })
+    const com = await gerarRelatorioTimesheetPdf({
+      ...base, emissao, pagadores: [{ nome: 'Thiago Coneglian', percentual: 100 }], rows: [linha(1)],
+    })
+    expect(await conteudoDoPdf(com)).toBe(await conteudoDoPdf(sem))
+    expect(await textosDoPdf(com)).not.toContain('Divisão por pagador')
   })
 })
 

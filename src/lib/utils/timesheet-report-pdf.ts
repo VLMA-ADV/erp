@@ -36,6 +36,49 @@ export interface TimesheetPdfRow {
   fotoUrl?: string | null
 }
 
+export interface PagadorRelatorio {
+  nome: string | null
+  percentual: number
+}
+
+export interface LinhaDivisaoPagador {
+  nome: string
+  percentual: number
+  valor: number
+}
+
+const mesmoNome = (a: string | null | undefined, b: string | null | undefined) =>
+  String(a ?? '').trim().toLocaleLowerCase('pt-BR') === String(b ?? '').trim().toLocaleLowerCase('pt-BR')
+
+/**
+ * Linhas do quadro "Divisão por pagador": valor = total × percentual,
+ * arredondado a centavos, com o ÚLTIMO pagador absorvendo a diferença para a
+ * soma bater com o total. Devolve null quando o quadro não se aplica (nenhum
+ * pagador, ou um só e igual ao cliente).
+ */
+export function divisaoPorPagador(
+  total: number,
+  cliente: string,
+  pagadores: PagadorRelatorio[] | null | undefined,
+): LinhaDivisaoPagador[] | null {
+  const lista = (pagadores ?? []).filter(Boolean)
+  if (lista.length === 0) return null
+  if (lista.length === 1 && mesmoNome(lista[0].nome, cliente)) return null
+  const totalCentavos = Math.round(Number(total || 0) * 100)
+  let acumulado = 0
+  return lista.map((p, i) => {
+    const percentual = Number(p.percentual || 0)
+    const centavos = i === lista.length - 1
+      ? totalCentavos - acumulado
+      : Math.round((totalCentavos * percentual) / 100)
+    acumulado += centavos
+    return { nome: p.nome?.trim() || 'Pagador', percentual, valor: centavos / 100 }
+  })
+}
+
+const percentualBR = (v: number) =>
+  `${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+
 /** Bytes de uma foto já baixada e o content-type que veio na resposta. */
 export interface FotoBaixada {
   bytes: Uint8Array
@@ -45,8 +88,13 @@ export interface FotoBaixada {
 export interface TimesheetPdfInput {
   titulo: string
   cliente: string
-  /** Quem paga, quando difere do cliente do caso (pagador ajustado na nota). */
-  pagadorLabel?: string | null
+  /**
+   * Pagadores do kit (nome e percentual do rateio). Com mais de um, ou com um
+   * só diferente do cliente, o relatório fecha com o quadro "Divisão por
+   * pagador" depois do total (Filipe, 08/10). Um pagador igual ao cliente (ou
+   * nenhum) = relatório de sempre.
+   */
+  pagadores?: PagadorRelatorio[] | null
   casoLabel?: string | null
   contratoLabel?: string | null
   /** "setembro/2026" — sai na faixa do documento. */
@@ -333,13 +381,6 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   // Destinatário
   texto(input.cliente || '—', MARGEM, y, 9.4, negrito)
   y -= 20
-  // Pagador diferente do cliente (Filipe, 08/10: Strobel x Mendocino): o
-  // relatório continua sendo do caso, mas diz a quem a cobrança foi dirigida.
-  if (input.pagadorLabel) {
-    texto('Faturado a', MARGEM, y, 8.4, normal, CINZA)
-    texto(input.pagadorLabel, MARGEM + 52, y, 8.4, negrito)
-    y -= 16
-  }
 
   // Contrato / caso
   if (input.contratoLabel) {
@@ -408,6 +449,28 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9.6, negrito)
   if (mostrarValor) textoDireita(money(totalValor), colunas.valor, y, 9.6, negrito)
   y -= 10
+
+  // Divisão por pagador (Filipe, 08/10: caso 318 Coneglian, rateio 50/50;
+  // Strobel x Mendocino, pagador diferente do cliente). Fecha o relatório,
+  // depois do total: nome · percentual · valor (total × percentual).
+  const divisao = divisaoPorPagador(totalValor, input.cliente, input.pagadores)
+  if (divisao) {
+    const ALTURA_PAGADOR = 12
+    if (y - (28 + divisao.length * ALTURA_PAGADOR) < limiteInferior) {
+      novaPagina()
+    }
+    y -= 14
+    texto('Divisão por pagador', colunas.descricao, y, 9, negrito)
+    y -= 5
+    pagina.drawLine({ start: { x: colunas.descricao, y }, end: { x: direita, y }, thickness: 0.4, color: CINZA })
+    y -= 11
+    for (const d of divisao) {
+      texto(d.nome, colunas.descricao, y, 8.4)
+      textoDireita(percentualBR(d.percentual), colunas.horas, y, 8.4)
+      if (mostrarValor) textoDireita(money(d.valor), colunas.valor, y, 8.4)
+      y -= ALTURA_PAGADOR
+    }
+  }
 
   const paginas = pdf.getPages()
   paginas.forEach((pg, i) => {
