@@ -45,6 +45,8 @@ export interface FotoBaixada {
 export interface TimesheetPdfInput {
   titulo: string
   cliente: string
+  /** Quem paga, quando difere do cliente do caso (pagador ajustado na nota). */
+  pagadorLabel?: string | null
   casoLabel?: string | null
   contratoLabel?: string | null
   /** "setembro/2026" — sai na faixa do documento. */
@@ -331,6 +333,13 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   // Destinatário
   texto(input.cliente || '—', MARGEM, y, 9.4, negrito)
   y -= 20
+  // Pagador diferente do cliente (Filipe, 08/10: Strobel x Mendocino): o
+  // relatório continua sendo do caso, mas diz a quem a cobrança foi dirigida.
+  if (input.pagadorLabel) {
+    texto('Faturado a', MARGEM, y, 8.4, normal, CINZA)
+    texto(input.pagadorLabel, MARGEM + 52, y, 8.4, negrito)
+    y -= 16
+  }
 
   // Contrato / caso
   if (input.contratoLabel) {

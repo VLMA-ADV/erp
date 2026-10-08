@@ -543,9 +543,16 @@ export default function ComposicaoDaFaturaList() {
         }))
         .sort((a, b) => a.data.localeCompare(b.data))
       const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
+      // Pagador(es) do kit quando não é o próprio cliente: vai no cabeçalho
+      // como "Faturado a" (Filipe, 08/10).
+      const pagadoresOutros = (kit.pagadores ?? []).filter((pg) => pg.nome && pg.nome.trim() !== clienteNome.trim())
+      const pagadorLabel = pagadoresOutros.length
+        ? pagadoresOutros.map((pg) => (pagadoresOutros.length > 1 || (kit.pagadores ?? []).length > 1 ? `${pg.nome} (${pg.percentual}%)` : pg.nome)).join(', ')
+        : null
       const bytes = await gerarRelatorioTimesheetPdf({
         titulo: 'Relatório de timesheet',
         cliente: clienteNome,
+        pagadorLabel,
         casoLabel: kit.caso_id ? labelCaso(kit) : null,
         contratoLabel: formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full,
         competenciaLabel: labelCompetenciaCurta(kit.competencia),
