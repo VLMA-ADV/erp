@@ -37,6 +37,7 @@ import {
   formatMoney,
   gruposParaNotaUnica,
   iniciaisCliente,
+  kitComVariasNotas,
   kitSoDespesas,
   labelCaso,
   labelCompetencia,
@@ -44,11 +45,13 @@ import {
   labelRegra,
   nfseConjuntaViva,
   nfseEmitida,
+  nfsesDoKit,
   progressoDoKit,
   situacaoDosKits,
   somarProgresso,
   type ClienteKits,
   type DocGerado,
+  type DocNfsePagador,
   type KitCaso,
   type ProgressoKit,
 } from './types'
@@ -65,7 +68,11 @@ export interface AcoesKit {
    */
   onEmitirNotaUnica: (kits: KitCaso[]) => void
   onAbrirUrl: (url: string) => void
-  onEmitirBoleto: (kit: KitCaso) => void
+  /**
+   * Sem `notaId`, o boleto do kit (como sempre). Com `notaId`, o boleto da
+   * NFS-e daquele pagador — kit com rateio, uma nota por pagador (08/10).
+   */
+  onEmitirBoleto: (kit: KitCaso, notaId?: string) => void
   onVerBoleto: (boletoId: string) => void
   onCopiar: (texto: string, rotulo: string) => void
   onGerarRelatorio: (kit: KitCaso) => void
@@ -269,6 +276,9 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   const lancamentosTs = kit.lancamentos_timesheet ?? kit.itens.filter((i) => i.origem_tipo === 'timesheet').length
   const finalizado = kit.finalizado
   const selecionado = acoes.selecionados.has(kit.chave)
+  // Rateio já emitido (Filipe 08/10, caso 318): uma NFS-e e um boleto por
+  // pagador no lugar das linhas únicas. Com 0 ou 1 nota, tudo como antes.
+  const variasNotas = kitComVariasNotas(kit)
 
   return (
     <div
@@ -372,110 +382,118 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
 
       {/* Documentos do kit */}
       <div className="mt-3 divide-y divide-hairline rounded-lg border border-hairline">
-        {/* 1. NFS-e */}
-        <DocumentoLinha
-          icon={<FileText className="h-4 w-4" />}
-          titulo="NFS-e"
-          status={
-            !nfse || nfse.status !== 'gerado'
-              ? nfse
-                ? { tipo: 'pendente', badge: 'Cancelada', explicacao: 'A nota anterior foi cancelada — emita de novo.' }
-                : soDespesas
-                  ? { tipo: 'pendente', badge: 'Não se aplica', explicacao: 'Kit só de despesas — não há serviço a faturar; o boleto sai sobre a nota de débito.' }
-                  : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal na prefeitura — o boleto é gerado sobre ela.' }
-              : nfse.focus_status === 'autorizado'
-                ? { tipo: 'ok', badge: nfse.nfse_numero ? `NFS-e nº ${nfse.nfse_numero}` : 'Emitida', explicacao: `Autorizada em ${dataHoraBR(nfse.created_at)}${nfConjunta ? ' · uma nota para os casos do contrato' : ''}` }
-                : nfse.focus_status === 'processando'
-                  ? { tipo: 'andamento', badge: 'Processando', explicacao: 'Em processamento na prefeitura — o PDF aparece quando autorizar.' }
-                  : { tipo: 'erro', badge: 'Erro', explicacao: `Erro na emissão (${nfse.focus_status ?? 'sem status'}) — emita de novo.` }
-          }
-          extra={
-            nfConjunta ? (
-              <Badge
-                className="border-indigo-200 bg-indigo-50 text-indigo-800"
-                title="Esta NFS-e cobre mais de um caso do contrato. O boleto é um só, sobre ela; para devolver este kit, cancele a nota em Notas geradas."
-              >
-                NF conjunta
-              </Badge>
-            ) : null
-          }
-          valor={nfse?.valor_total ?? kit.valor_servico}
-          acoes={
-            nfseEmitida(nfse) ? (
-              nfse?.arquivo_url ? (
-                <Button variant="outline" size="sm" onClick={() => acoes.onAbrirUrl(nfse.arquivo_url!)}>
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir
-                </Button>
-              ) : (
-                <span className="text-xs text-ink-mute">Aguardando PDF</span>
-              )
-            ) : nfConjunta ? (
-              // Nota conjunta com erro/sem status: quem resolve é a nota, em Notas geradas.
-              <span className="text-xs text-ink-mute">Nota conjunta do contrato</span>
-            ) : (
-              <Button size="sm" onClick={() => acoes.onEmitirNfse(kit)} disabled={ocupado('nfse') || kit.valor_servico <= 0}>
-                {ocupado('nfse') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                Emitir
-              </Button>
-            )
-          }
-        />
+        {variasNotas ? (
+          nfsesDoKit(kit).map((nota) => (
+            <DocumentosDoPagador key={nota.id} kit={kit} nota={nota} acoes={acoes} />
+          ))
+        ) : (
+          <>
+            {/* 1. NFS-e */}
+            <DocumentoLinha
+              icon={<FileText className="h-4 w-4" />}
+              titulo="NFS-e"
+              status={
+                !nfse || nfse.status !== 'gerado'
+                  ? nfse
+                    ? { tipo: 'pendente', badge: 'Cancelada', explicacao: 'A nota anterior foi cancelada — emita de novo.' }
+                    : soDespesas
+                      ? { tipo: 'pendente', badge: 'Não se aplica', explicacao: 'Kit só de despesas — não há serviço a faturar; o boleto sai sobre a nota de débito.' }
+                      : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal na prefeitura — o boleto é gerado sobre ela.' }
+                  : nfse.focus_status === 'autorizado'
+                    ? { tipo: 'ok', badge: nfse.nfse_numero ? `NFS-e nº ${nfse.nfse_numero}` : 'Emitida', explicacao: `Autorizada em ${dataHoraBR(nfse.created_at)}${nfConjunta ? ' · uma nota para os casos do contrato' : ''}` }
+                    : nfse.focus_status === 'processando'
+                      ? { tipo: 'andamento', badge: 'Processando', explicacao: 'Em processamento na prefeitura — o PDF aparece quando autorizar.' }
+                      : { tipo: 'erro', badge: 'Erro', explicacao: `Erro na emissão (${nfse.focus_status ?? 'sem status'}) — emita de novo.` }
+              }
+              extra={
+                nfConjunta ? (
+                  <Badge
+                    className="border-indigo-200 bg-indigo-50 text-indigo-800"
+                    title="Esta NFS-e cobre mais de um caso do contrato. O boleto é um só, sobre ela; para devolver este kit, cancele a nota em Notas geradas."
+                  >
+                    NF conjunta
+                  </Badge>
+                ) : null
+              }
+              valor={nfse?.valor_total ?? kit.valor_servico}
+              acoes={
+                nfseEmitida(nfse) ? (
+                  nfse?.arquivo_url ? (
+                    <Button variant="outline" size="sm" onClick={() => acoes.onAbrirUrl(nfse.arquivo_url!)}>
+                      <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-ink-mute">Aguardando PDF</span>
+                  )
+                ) : nfConjunta ? (
+                  // Nota conjunta com erro/sem status: quem resolve é a nota, em Notas geradas.
+                  <span className="text-xs text-ink-mute">Nota conjunta do contrato</span>
+                ) : (
+                  <Button size="sm" onClick={() => acoes.onEmitirNfse(kit)} disabled={ocupado('nfse') || kit.valor_servico <= 0}>
+                    {ocupado('nfse') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                    Emitir
+                  </Button>
+                )
+              }
+            />
 
-        {/* 2. Boleto — sai em cima da conta a receber: a da NFS-e autorizada ou,
-            num kit só de despesas, a que a nota de débito criou (07/10). */}
-        <DocumentoLinha
-          icon={<Banknote className="h-4 w-4" />}
-          titulo="Boleto"
-          status={
-            docs.boleto
-              ? docs.boleto.status === 'erro'
-                ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
-                : ['cancelado', 'baixado'].includes(docs.boleto.status)
-                  ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${docs.boleto.status} — emita de novo.` }
-                  : ['pago', 'liquidado'].includes(docs.boleto.status)
-                    ? { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
-                    : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}${nfConjunta ? ' · um boleto para os casos da nota conjunta' : boletoPelaNotaDebito ? ' · sobre a nota de débito' : ''}` }
-              : boletoPelaNotaDebito
-                ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Boleto das despesas, sem nota fiscal — registra o título no Itaú sobre a conta da nota de débito.' }
-                : nfseAutorizada
-                  ? { tipo: 'pendente', badge: 'Pendente', explicacao: nfConjunta ? 'Registra o título no Itaú sobre a nota conjunta — um boleto para todos os casos dela.' : 'Registra o título no Itaú sobre a conta a receber da nota.' }
-                  : soDespesas && kit.boleto_base !== undefined
-                    ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Gere a nota de débito primeiro — o boleto das despesas é gerado sobre ela.' }
-                    : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
-          }
-          valor={docs.boleto?.valor ?? kit.conta_receber?.valor ?? null}
-          acoes={
-            boletoEmitido(docs.boleto) ? (
-              <>
-                <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(docs.boleto!.id)}>
-                  <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
-                </Button>
-                {docs.boleto!.linha_digitavel ? (
-                  <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.linha_digitavel!, 'Linha digitável')}>
-                    <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
+            {/* 2. Boleto — sai em cima da conta a receber: a da NFS-e autorizada ou,
+                num kit só de despesas, a que a nota de débito criou (07/10). */}
+            <DocumentoLinha
+              icon={<Banknote className="h-4 w-4" />}
+              titulo="Boleto"
+              status={
+                docs.boleto
+                  ? docs.boleto.status === 'erro'
+                    ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
+                    : ['cancelado', 'baixado'].includes(docs.boleto.status)
+                      ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${docs.boleto.status} — emita de novo.` }
+                      : ['pago', 'liquidado'].includes(docs.boleto.status)
+                        ? { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
+                        : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}${nfConjunta ? ' · um boleto para os casos da nota conjunta' : boletoPelaNotaDebito ? ' · sobre a nota de débito' : ''}` }
+                  : boletoPelaNotaDebito
+                    ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Boleto das despesas, sem nota fiscal — registra o título no Itaú sobre a conta da nota de débito.' }
+                    : nfseAutorizada
+                      ? { tipo: 'pendente', badge: 'Pendente', explicacao: nfConjunta ? 'Registra o título no Itaú sobre a nota conjunta — um boleto para todos os casos dela.' : 'Registra o título no Itaú sobre a conta a receber da nota.' }
+                      : soDespesas && kit.boleto_base !== undefined
+                        ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Gere a nota de débito primeiro — o boleto das despesas é gerado sobre ela.' }
+                        : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
+              }
+              valor={docs.boleto?.valor ?? kit.conta_receber?.valor ?? null}
+              acoes={
+                boletoEmitido(docs.boleto) ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(docs.boleto!.id)}>
+                      <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
+                    </Button>
+                    {docs.boleto!.linha_digitavel ? (
+                      <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.linha_digitavel!, 'Linha digitável')}>
+                        <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
+                      </Button>
+                    ) : null}
+                    {docs.boleto!.pix_emv ? (
+                      <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.pix_emv!, 'Pix copia e cola')}>
+                        <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit)} disabled={!podeEmitirBoleto || ocupado('boleto')}>
+                    {ocupado('boleto') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                    Emitir
                   </Button>
-                ) : null}
-                {docs.boleto!.pix_emv ? (
-                  <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.pix_emv!, 'Pix copia e cola')}>
-                    <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
-                  </Button>
-                ) : null}
-              </>
-            ) : (
-              <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit)} disabled={!podeEmitirBoleto || ocupado('boleto')}>
-                {ocupado('boleto') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                Emitir
-              </Button>
-            )
-          }
-          rodape={
-            docs.boleto?.linha_digitavel && boletoEmitido(docs.boleto) ? (
-              <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
-                {formatarLinhaDigitavel(docs.boleto.linha_digitavel)}
-              </code>
-            ) : null
-          }
-        />
+                )
+              }
+              rodape={
+                docs.boleto?.linha_digitavel && boletoEmitido(docs.boleto) ? (
+                  <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
+                    {formatarLinhaDigitavel(docs.boleto.linha_digitavel)}
+                  </code>
+                ) : null
+              }
+            />
+          </>
+        )}
 
         {/* 3. Relatório de timesheet — só quando há horas. */}
         {temHoras ? (
@@ -650,6 +668,93 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * NFS-e e boleto de UM pagador num kit com rateio (uma nota por pagador).
+ * Mesmo comportamento das linhas únicas: abrir a nota; emitir, ver ficha,
+ * copiar linha e Pix do boleto daquela nota.
+ */
+function DocumentosDoPagador({ kit, nota, acoes }: { kit: KitCaso; nota: DocNfsePagador; acoes: AcoesKit }) {
+  const pagador = nota.pagador?.nome?.trim() || 'Pagador'
+  const autorizada = nota.status === 'gerado' && nota.focus_status === 'autorizado'
+  const boleto = nota.boleto
+  const ocupadoBoleto = acoes.ocupado === acaoKey(kit, `boleto:${nota.id}`)
+  const numero = nota.nfse_numero ?? (nota.numero != null ? String(nota.numero) : null)
+  return (
+    <>
+      <DocumentoLinha
+        icon={<FileText className="h-4 w-4" />}
+        titulo={`NFS-e${numero ? ` nº ${numero}` : ''} · ${pagador}`}
+        status={
+          autorizada
+            ? { tipo: 'ok', badge: 'Autorizada', explicacao: `Nota de ${pagador} · uma NFS-e por pagador (rateio)` }
+            : nota.focus_status === 'processando'
+              ? { tipo: 'andamento', badge: 'Processando', explicacao: 'Em processamento na prefeitura — o PDF aparece quando autorizar.' }
+              : { tipo: 'erro', badge: 'Erro', explicacao: `Situação na prefeitura: ${nota.focus_status ?? 'sem status'}.` }
+        }
+        valor={nota.valor_total}
+        acoes={
+          nota.arquivo_url ? (
+            <Button variant="outline" size="sm" onClick={() => acoes.onAbrirUrl(nota.arquivo_url!)}>
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir
+            </Button>
+          ) : (
+            <span className="text-xs text-ink-mute">Aguardando PDF</span>
+          )
+        }
+      />
+      <DocumentoLinha
+        icon={<Banknote className="h-4 w-4" />}
+        titulo={`Boleto · ${pagador}`}
+        status={
+          boleto
+            ? boleto.status === 'erro'
+              ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
+              : ['cancelado', 'baixado'].includes(boleto.status)
+                ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${boleto.status} — emita de novo.` }
+                : ['pago', 'liquidado'].includes(boleto.status)
+                  ? { tipo: 'ok', badge: boleto.nosso_numero ? `Boleto nº ${boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(boleto.vencimento)}` }
+                  : { tipo: 'ok', badge: boleto.nosso_numero ? `Boleto nº ${boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(boleto.vencimento)} · em nome de ${pagador}` }
+            : autorizada
+              ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Registra o título no Itaú sobre a conta a receber da nota de ${pagador}.` }
+              : { tipo: 'pendente', badge: 'Pendente', explicacao: 'A nota ainda não foi autorizada — o boleto é gerado sobre ela.' }
+        }
+        valor={boleto?.valor ?? nota.conta_receber?.valor ?? null}
+        acoes={
+          boletoEmitido(boleto) ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(boleto!.id)}>
+                <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
+              </Button>
+              {boleto!.linha_digitavel ? (
+                <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(boleto!.linha_digitavel!, 'Linha digitável')}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
+                </Button>
+              ) : null}
+              {boleto!.pix_emv ? (
+                <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(boleto!.pix_emv!, 'Pix copia e cola')}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit, nota.id)} disabled={!autorizada || ocupadoBoleto}>
+              {ocupadoBoleto ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+              Emitir
+            </Button>
+          )
+        }
+        rodape={
+          boleto?.linha_digitavel && boletoEmitido(boleto) ? (
+            <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
+              {formatarLinhaDigitavel(boleto.linha_digitavel)}
+            </code>
+          ) : null
+        }
+      />
+    </>
   )
 }
 

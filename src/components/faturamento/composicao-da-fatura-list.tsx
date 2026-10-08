@@ -441,8 +441,17 @@ export default function ComposicaoDaFaturaList() {
   // seja a NFS-e ou, desde 07/10, a nota de débito de um kit só de despesas;
   // `boleto_base` da RPC diz qual). Confirmação explícita: registra o título
   // no banco de verdade e o cliente pode pagar.
-  const emitirBoleto = (kit: KitCaso) => executar(kit, 'boleto', async () => {
-    const base = documentoBaseDoBoleto(kit)
+  //
+  // Kit com rateio (Filipe 08/10, caso 318): uma NFS-e por pagador, cada uma
+  // com sua conta a receber. `notaId` é a nota daquele pagador; o fluxo é o
+  // mesmo (bol_lancamento_da_nota → /api/boletos/emitir). Sem `notaId`, o de
+  // sempre.
+  const emitirBoleto = (kit: KitCaso, notaId?: string) => executar(kit, notaId ? `boleto:${notaId}` : 'boleto', async () => {
+    const notaAlvo = notaId ? (kit.documentos.nfses ?? []).find((n) => n.id === notaId) ?? null : null
+    if (notaId && !notaAlvo) { toastError('Nota não encontrada neste kit — atualize a tela.'); return }
+    const base: ReturnType<typeof documentoBaseDoBoleto> = notaAlvo
+      ? { base: 'nfse', notaId: notaAlvo.id }
+      : documentoBaseDoBoleto(kit)
     if (!base) {
       if (kitSoDespesas(kit) && kit.boleto_base !== undefined) {
         notify(kit.documentos.nota_debito
@@ -473,6 +482,7 @@ export default function ComposicaoDaFaturaList() {
       const conjunta = nfseConjuntaViva(kit) && base.base === 'nfse'
       const ok = window.confirm(
         `Registrar boleto no Itaú?\n\n${info.descricao}\n${formatMoney(info.valor || 0)} — vence ${venc}\n\n` +
+        (notaAlvo ? `Boleto de ${notaAlvo.pagador?.nome || 'pagador'}, sobre a NFS-e dele (rateio: uma nota e um boleto por pagador).\n` : '') +
         (base.base === 'nota_debito' ? 'Boleto só das despesas (kit sem nota fiscal), sobre a conta da nota de débito.\n' : '') +
         (conjunta ? 'A nota é conjunta: este boleto cobre todos os casos dela — não emita outro nos demais kits.\n' : '') +
         'O título passa a existir no banco e o cliente pode pagar.',
@@ -543,16 +553,12 @@ export default function ComposicaoDaFaturaList() {
         }))
         .sort((a, b) => a.data.localeCompare(b.data))
       const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
-      // Pagador(es) do kit quando não é o próprio cliente: vai no cabeçalho
-      // como "Faturado a" (Filipe, 08/10).
-      const pagadoresOutros = (kit.pagadores ?? []).filter((pg) => pg.nome && pg.nome.trim() !== clienteNome.trim())
-      const pagadorLabel = pagadoresOutros.length
-        ? pagadoresOutros.map((pg) => (pagadoresOutros.length > 1 || (kit.pagadores ?? []).length > 1 ? `${pg.nome} (${pg.percentual}%)` : pg.nome)).join(', ')
-        : null
+      // Pagadores do kit: o PDF fecha com "Divisão por pagador" quando há
+      // rateio ou o pagador não é o cliente (Filipe, 08/10); senão, nada muda.
       const bytes = await gerarRelatorioTimesheetPdf({
         titulo: 'Relatório de timesheet',
         cliente: clienteNome,
-        pagadorLabel,
+        pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
         casoLabel: kit.caso_id ? labelCaso(kit) : null,
         contratoLabel: formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full,
         competenciaLabel: labelCompetenciaCurta(kit.competencia),
@@ -938,7 +944,7 @@ export default function ComposicaoDaFaturaList() {
     },
     onEmitirNotaUnica: (kits) => abrirNotaUnica(kits),
     onAbrirUrl: (url) => void abrirUrl(url),
-    onEmitirBoleto: (kit) => void emitirBoleto(kit),
+    onEmitirBoleto: (kit, notaId) => void emitirBoleto(kit, notaId),
     onVerBoleto: (id) => void verBoleto(id),
     onCopiar: (texto, rotulo) => void copiar(texto, rotulo),
     onGerarRelatorio: (kit) => void gerarRelatorio(kit),
