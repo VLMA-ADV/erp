@@ -85,63 +85,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: targetCaso, error: casoError } = await supabase
-      .schema("contracts")
-      .from("casos")
-      .select("id, contrato_id, contratos:contrato_id(cliente_id)")
-      .eq("id", casoId)
-      .eq("tenant_id", tenantUser.tenant_id)
-      .single();
+    // A transferência inteira (item + lançamento de origem + snapshot +
+    // auditoria) roda numa transação só, na RPC. Antes esta edge só trocava
+    // caso/contrato/cliente do billing_item: o lançamento ficava no caso
+    // antigo e a revisão seguinte, sem achá-lo no caso do item, criava um
+    // lançamento gêmeo — o mesmo trabalho cobrado duas vezes (caso 1935,
+    // Caminhos do Paraná, 09/10). cliente_id continua acompanhando o caso
+    // (bug de 11/08, Campo Rico x 7 Holding).
+    const { data: moved, error: moveError } = await supabase.rpc("transferir_billing_item_caso", {
+      p_user_id: user.id,
+      p_item_id: itemId,
+      p_caso_id: casoId,
+    });
 
-    if (casoError || !targetCaso) {
-      return new Response(JSON.stringify({ error: "Caso de destino não encontrado" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // targetCaso.contratos vem como array ou objeto dependendo da versão do
-    // client — cobre os dois formatos.
-    const contratoRel = targetCaso.contratos as { cliente_id?: string } | { cliente_id?: string }[] | null;
-    const targetClienteId = Array.isArray(contratoRel) ? contratoRel[0]?.cliente_id : contratoRel?.cliente_id;
-
-    if (!targetClienteId) {
-      return new Response(JSON.stringify({ error: "Não foi possível determinar o cliente do caso de destino" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // cliente_id é denormalizado em billing_items e não segue automaticamente
-    // o contrato/caso: sem essa linha, o item passava a apontar para o
-    // contrato e caso corretos mas continuava listado sob o cliente antigo,
-    // porque get_revisao_fatura junta o cliente por bi.cliente_id, não pelo
-    // contrato. Foi exatamente o bug relatado (11/08): transferir um lançamento
-    // da Campo Rico para a 7 Holding fazia o caso da 7 Holding aparecer dentro
-    // do card da Campo Rico.
-    const { data: updatedRows, error: updateError } = await supabase
-      .schema("finance")
-      .from("billing_items")
-      .update({
-        caso_id: casoId,
-        contrato_id: targetCaso.contrato_id,
-        cliente_id: targetClienteId,
-        updated_by: user.id,
-      })
-      .eq("id", itemId)
-      .eq("tenant_id", tenantUser.tenant_id)
-      .select("id");
-
-    if (updateError) {
-      return new Response(JSON.stringify({ error: updateError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!updatedRows?.length) {
-      return new Response(JSON.stringify({ error: "Item de faturamento não encontrado" }), {
-        status: 404,
+    if (moveError) {
+      const msg = moveError.message ?? "Erro ao transferir item";
+      const status = /não encontrado/i.test(msg) ? 404 : /permissão/i.test(msg) ? 403 : 400;
+      return new Response(JSON.stringify({ error: msg }), {
+        status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -151,7 +112,8 @@ Deno.serve(async (req) => {
         data: {
           billing_item_id: itemId,
           caso_id: casoId,
-          contrato_id: targetCaso.contrato_id,
+          contrato_id: moved?.contrato_id ?? null,
+          timesheet_movido: moved?.timesheet_movido ?? false,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
