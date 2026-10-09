@@ -53,6 +53,15 @@ const IBS_CBS_REFORMA = {
   cbs_percentual_reducao: "30.00",
 }
 
+// Código de serviço permitido na NFS-e: advocacia, item 17.14 da LC 116
+// (17.14.01 / NBS 1.1301.20.00). Em 08/10/2026 dois grupos de impostos
+// estavam com 130501 / NBS 121012200 (composição gráfica) e 9 notas saíram
+// erradas. O cadastro foi corrigido e o Filipe pediu uma trava para não
+// acontecer de novo: grupo com outro código é recusado antes de emitir,
+// inclusive em dry_run e quando o grupo vem do ajuste do kit.
+const CODIGO_TRIBUTACAO_ISS_PERMITIDO = "171401"
+const CODIGO_NBS_PERMITIDO = "113012000"
+
 type Pagador = {
   cliente_id: string
   cliente: Record<string, any> | null
@@ -215,6 +224,16 @@ Deno.serve(async (req) => {
     if (faltando.length > 0) {
       return json({
         error: `Grupo de impostos do contrato incompleto para NFS-e. Falta: ${faltando.join(", ")}. Ajuste em Configuração > Grupos de impostos.`,
+      }, 422)
+    }
+
+    // Trava do código de serviço (ver CODIGO_TRIBUTACAO_ISS_PERMITIDO no topo).
+    // Roda depois de trocar o grupo pelo ajuste do kit e antes do dry_run.
+    const codigoIss = String(grupo!.codigo_tributacao_nacional_iss).replace(/[.\s]/g, "")
+    const codigoNbs = String(grupo!.codigo_nbs).replace(/[.\s]/g, "")
+    if (codigoIss !== CODIGO_TRIBUTACAO_ISS_PERMITIDO || codigoNbs !== CODIGO_NBS_PERMITIDO) {
+      return json({
+        error: `O grupo de impostos '${grupo!.nome ?? "sem nome"}' está com código de serviço ${grupo!.codigo_tributacao_nacional_iss}/${grupo!.codigo_nbs}, diferente do da advocacia (17.14.01 / NBS 1.1301.20.00). A nota não foi emitida. Corrija o grupo antes de emitir.`,
       }, 422)
     }
 
