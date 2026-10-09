@@ -24,15 +24,16 @@ type CasoLike = {
   processos_carteira_count?: number | null
 }
 
+// A matriz de carteira só some quando os processos dela estão na lista — eles
+// a representam. Matriz sem processo nenhum (carteira cadastrada como caso
+// comum, caso de 09/10 no Contrato 314 da Caminhos) é o próprio caso: sumir
+// com ela escondia o caso e baixava a contagem.
 function getVisibleCasos<T extends CasoLike>(casos: T[] | null | undefined): T[] {
   if (!casos || casos.length === 0) return []
   const matrizIds = new Set(
     casos
-      .filter((c) =>
-        !c.parte_de_carteira_id &&
-        (c.regra_cobranca === 'mensalidade_carteira' || (c.processos_carteira_count ?? 0) > 0),
-      )
-      .map((c) => c.id),
+      .map((c) => c.parte_de_carteira_id)
+      .filter((id): id is string => !!id),
   )
   return matrizIds.size > 0 ? casos.filter((c) => !matrizIds.has(c.id)) : casos
 }
