@@ -75,6 +75,8 @@ interface RevisaoItem {
   clienteNome: string
   contratoNome: string
   contratoNumero: number | null
+  /** Número canônico para exibição (numero_sequencial; fallback ao interno). */
+  contratoNumeroExibicao: number | null
   casoNome: string
   casoNumero: number | null
   regraNome: string
@@ -821,6 +823,7 @@ function normalizeItem(raw: unknown): RevisaoItem | null {
     clienteNome: asString(data.cliente_nome, 'Cliente sem nome'),
     contratoNome: asString(data.contrato_nome, 'Contrato sem nome'),
     contratoNumero: asOptionalNumber(data.contrato_numero),
+    contratoNumeroExibicao: asOptionalNumber(pickFirstDefined(data.contrato_numero_sequencial, data.contrato_numero)),
     casoNome: asString(data.caso_nome, 'Caso sem nome'),
     casoNumero: asOptionalNumber(data.caso_numero),
     regraNome: asString(pickFirstDefined(data.regra_nome, data.descricao, data.origem_tipo), 'Regra financeira'),
@@ -1633,7 +1636,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       options.push({
         value: item.casoNome,
         label: item.casoNumero ? `${item.casoNumero} - ${item.casoNome}` : item.casoNome,
-        group: item.contratoNumero ? `${item.contratoNumero} - ${item.contratoNome}` : item.contratoNome,
+        group: item.contratoNumeroExibicao ? `${item.contratoNumeroExibicao} - ${item.contratoNome}` : item.contratoNome,
       })
     }
     return options
@@ -1667,7 +1670,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       options.push({
         value: item.casoId,
         label: item.casoNumero ? `${item.casoNumero} - ${item.casoNome}` : item.casoNome,
-        group: item.contratoNumero ? `${item.contratoNumero} - ${item.contratoNome}` : item.contratoNome,
+        group: item.contratoNumeroExibicao ? `${item.contratoNumeroExibicao} - ${item.contratoNome}` : item.contratoNome,
       })
     }
 
@@ -3439,7 +3442,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                           if (!item.contratoId) continue
                           if (!mapa.has(item.contratoId)) {
                             mapa.set(item.contratoId, {
-                              label: formatContratoDisplay(item.contratoNumero, item.contratoNome).full,
+                              label: formatContratoDisplay(item.contratoNumeroExibicao, item.contratoNome).full,
                               casos: new Set<string>(),
                             })
                           }
@@ -3529,7 +3532,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                       const casoContratoId = casoGroup.itens[0]?.contratoId || ''
                       // Mesmo formato de contrato usado no resto do sistema.
                       const casoLabelNfse = formatContratoDisplay(
-                        casoGroup.itens[0]?.contratoNumero,
+                        casoGroup.itens[0]?.contratoNumeroExibicao,
                         casoGroup.itens[0]?.contratoNome,
                       ).full
                       // Despesas do caso alimentam a nota de despesa (não geram NFS-e).

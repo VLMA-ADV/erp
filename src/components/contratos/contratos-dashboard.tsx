@@ -636,7 +636,7 @@ const DRILL_TITULOS: Record<string, string> = {
   por_mes: 'Contratos criados em',
 }
 
-interface DrillRow { contrato_id: string | null; numero: number | null; nome: string; cliente: string; caso: string | null }
+interface DrillRow { contrato_id: string | null; numero: number | null; numero_sequencial?: number | null; nome: string; cliente: string; caso: string | null }
 
 export default function ContratosDashboard() {
   const { hasPermission } = usePermissionsContext()
@@ -820,10 +820,10 @@ export default function ContratosDashboard() {
                         rel="noopener noreferrer"
                         className="font-medium text-primary hover:underline"
                       >
-                        {row.numero ? `Contrato ${row.numero}` : row.nome}
+                        {(row.numero_sequencial ?? row.numero) ? `Contrato ${row.numero_sequencial ?? row.numero}` : row.nome}
                       </a>
                     ) : (
-                      <span className="font-medium text-ink">{row.numero ? `Contrato ${row.numero}` : row.nome}</span>
+                      <span className="font-medium text-ink">{(row.numero_sequencial ?? row.numero) ? `Contrato ${row.numero_sequencial ?? row.numero}` : row.nome}</span>
                     )}
                     <span className="text-ink-mute"> · {row.cliente}</span>
                     {row.caso ? <p className="text-xs text-ink-mute">{row.caso}</p> : null}

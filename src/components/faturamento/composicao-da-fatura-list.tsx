@@ -27,6 +27,7 @@ import {
   FILTROS_VAZIOS,
   competenciaPadraoComposicao,
   contarKitsPorMes,
+  contratoNumeroExibicao,
   documentoBaseDoBoleto,
   formatMoney,
   isoHoje,
@@ -353,7 +354,7 @@ export default function ComposicaoDaFaturaList() {
       kits: [kit],
       ajustes: ajustesDoKitParaNota(kit),
       label:
-        `${formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full}${kit.caso_id ? ` · ${labelCaso(kit)}` : ''}` +
+        `${formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full}${kit.caso_id ? ` · ${labelCaso(kit)}` : ''}` +
         (kit.caso_id && (casosComVariosKits.get(kit.caso_id) ?? 0) > 1
           ? ' — atenção: a nota cobre todos os itens aprovados do caso, de todas as competências'
           : ''),
@@ -381,7 +382,7 @@ export default function ComposicaoDaFaturaList() {
       competencia: primeiro.competencia,
       kits,
       ajustes,
-      label: `${formatContratoDisplay(primeiro.contrato_numero, primeiro.contrato_nome).full} · nota única (${kits.length} casos: ${kits.map((k) => (k.caso_numero ? `#${k.caso_numero}` : k.caso_nome)).join(', ')})`,
+      label: `${formatContratoDisplay(contratoNumeroExibicao(primeiro), primeiro.contrato_nome).full} · nota única (${kits.length} casos: ${kits.map((k) => (k.caso_numero ? `#${k.caso_numero}` : k.caso_nome)).join(', ')})`,
       chaveOcupado: `nota-unica:${primeiro.contrato_id}|${primeiro.competencia}`,
     })
   }
@@ -560,7 +561,7 @@ export default function ComposicaoDaFaturaList() {
         cliente: clienteNome,
         pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
         casoLabel: kit.caso_id ? labelCaso(kit) : null,
-        contratoLabel: formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full,
+        contratoLabel: formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full,
         competenciaLabel: labelCompetenciaCurta(kit.competencia),
         mostrarValor: true,
         rows,
@@ -620,7 +621,7 @@ export default function ComposicaoDaFaturaList() {
     setNotaKit(kit)
     setNotaData({
       clienteNome,
-      contratoLabel: formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full,
+      contratoLabel: formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full,
       casoLabel: kit.caso_id ? `${kit.caso_numero ? `${kit.caso_numero} - ` : ''}${kit.caso_nome}` : null,
       documentoNumero: null,
       emissao: isoHoje(),
@@ -735,7 +736,7 @@ export default function ComposicaoDaFaturaList() {
       setEmailKit(kit)
       setEmailData({
         clienteNome: dados.cliente_nome || payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome || '',
-        contratoLabel: `${formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full}${kit.caso_id ? ` · ${labelCaso(kit)}` : ''}`,
+        contratoLabel: `${formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full}${kit.caso_id ? ` · ${labelCaso(kit)}` : ''}`,
         destinatarioEmail: (dados.destinatarios ?? []).join(', ') || null,
         nfseNumero: kit.documentos.nfse?.nfse_numero ?? (dados.nota?.numero != null ? String(dados.nota.numero) : null),
         mesReferencia: labelCompetencia(kit.competencia),

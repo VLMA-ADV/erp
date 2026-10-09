@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
+import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
 interface NotaGerada {
   id: string
@@ -24,6 +25,8 @@ interface NotaGerada {
   created_at: string
   batch_numero: number | null
   contrato_numero: number | null
+  /** Número canônico para exibição (RPC get_notas_geradas); fallback ao interno. */
+  contrato_numero_sequencial?: number | null
   contrato_nome: string | null
   caso_numero: number | null
   caso_nome: string | null
@@ -150,8 +153,9 @@ function getNfseStatusBadgeClass(status: string) {
 }
 
 function getContratoLabel(note: NotaGerada) {
-  if (note.contrato_numero) return `Contrato ${note.contrato_numero}${note.contrato_nome ? ` - ${note.contrato_nome}` : ''}`
-  return note.contrato_nome || 'Contrato não informado'
+  return formatContratoDisplay(note.contrato_numero_sequencial ?? note.contrato_numero, note.contrato_nome, {
+    fallback: 'Contrato não informado',
+  }).full
 }
 
 function getCasoLabel(note: NotaGerada) {

@@ -32,6 +32,7 @@ import {
   STATUS_KIT_INFO,
   baseDoBoleto,
   boletoEmitido,
+  contratoNumeroExibicao,
   dataBR,
   dataHoraBR,
   formatMoney,
@@ -144,7 +145,7 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
                   title={`Uma NFS-e só para ${grupo.map((k) => labelCaso(k)).join(', ')} (${labelCompetencia(primeiro.competencia)}). O boleto sai sobre ela, um para todos os casos.`}
                 >
                   {ocupadoGrupo ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileStack className="mr-1.5 h-3.5 w-3.5" />}
-                  Emitir nota única · {formatContratoDisplay(primeiro.contrato_numero, primeiro.contrato_nome).full}
+                  Emitir nota única · {formatContratoDisplay(contratoNumeroExibicao(primeiro), primeiro.contrato_nome).full}
                   <span className="ml-1 font-normal text-ink-mute">({grupo.length} casos · {formatMoney(total)})</span>
                 </Button>
               )
@@ -268,7 +269,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
     : nfConjunta
       ? 'NFS-e conjunta com outros casos'
       : null
-  const contratoLabel = formatContratoDisplay(kit.contrato_numero, kit.contrato_nome).full
+  const contratoLabel = formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full
   const ocupado = (acao: string) => acoes.ocupado === acaoKey(kit, acao)
   const enviadoOk = !!kit.envio && !kit.envio.erro
   const progresso = progressoDoKit(kit)

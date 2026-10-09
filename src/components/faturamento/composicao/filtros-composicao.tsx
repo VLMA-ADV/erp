@@ -74,7 +74,7 @@ export default function FiltrosComposicao({
           >
             <option value="">Todos</option>
             {contratos.map((c) => (
-              <option key={c.id} value={c.id}>{formatContratoDisplay(c.numero, c.nome).full}</option>
+              <option key={c.id} value={c.id}>{formatContratoDisplay(c.numero_sequencial ?? c.numero, c.nome).full}</option>
             ))}
           </NativeSelect>
         </label>

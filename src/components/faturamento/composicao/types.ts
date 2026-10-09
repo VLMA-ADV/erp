@@ -214,7 +214,10 @@ export interface KitCaso {
   caso_nome: string
   regra_cobranca: string | null
   contrato_id: string
+  /** Chave interna antiga do contrato (filtros e buscas usam esta). */
   contrato_numero: number | null
+  /** Número canônico exibido ao usuário (numero_sequencial, com fallback ao interno). */
+  contrato_numero_sequencial?: number | null
   contrato_nome: string | null
   /** 'YYYY-MM-01' */
   competencia: string
@@ -283,7 +286,7 @@ export interface ComposicaoPayload {
   opcoes: {
     competencias: string[]
     clientes: Array<{ id: string; nome: string }>
-    contratos: Array<{ id: string; numero: number | null; nome: string | null; cliente_id: string | null }>
+    contratos: Array<{ id: string; numero: number | null; numero_sequencial?: number | null; nome: string | null; cliente_id: string | null }>
     casos: Array<{ id: string; numero: number | null; nome: string | null; contrato_id: string }>
     regras: string[]
   }
@@ -448,6 +451,11 @@ export function piorStatus(casos: KitCaso[]): StatusKit {
     if (i >= 0 && i < pior) pior = i
   }
   return STATUS_KIT_ORDEM[pior] ?? 'pendente'
+}
+
+/** Número do contrato para EXIBIÇÃO: o sequencial canônico; o interno só como fallback. */
+export function contratoNumeroExibicao(kit: Pick<KitCaso, 'contrato_numero' | 'contrato_numero_sequencial'>) {
+  return kit.contrato_numero_sequencial ?? kit.contrato_numero
 }
 
 export function labelCaso(kit: Pick<KitCaso, 'caso_numero' | 'caso_nome'>) {
