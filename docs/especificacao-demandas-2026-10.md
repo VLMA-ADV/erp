@@ -319,3 +319,63 @@ Total a Pagar         R$ 6.078,20
    1. Ajustes rápidos e de alto impacto: **C1, C2, T2, F2, R2, R4**.
    2. Relatório: **R1, R3, R5, R6**.
    3. Funcionalidades novas: **F3, T1, F1**.
+
+---
+
+## Decisões do cliente (respostas de 14/10/2026)
+
+Estas decisões **prevalecem** sobre as sugestões e perguntas acima.
+
+**C1.** Vale para a etapa Casos do contrato e para a tela do caso. O "Voltar" do caso deve ir para o contrato por rota fixa (`/contratos/{id}/editar?step=casos`), não `router.back()`, porque o caso também é aberto em nova aba a partir do faturamento (F2), sem histórico.
+
+**C2.**
+- Ativar em lote os contratos hoje em `validacao`/`em_analise`, depois de enviar a lista para conferência.
+- Contratos vindos de solicitação também nascem ativos.
+- Qualquer usuário com permissão de cadastrar contrato pode deixá-lo ativo; não há permissão extra.
+
+**T1.**
+- Só os lançamentos do próprio usuário.
+- Janela de 90 dias e 5 sugestões, para começar.
+- "Repetir a semana anterior" fica para a próxima etapa.
+
+**T2.** Somente lançamentos novos. Históricos não são arredondados.
+- Para não travar a edição de lançamentos antigos, a validação no servidor vale para criação e para edições que alterem a duração.
+- *Ponto a decidir internamente:* se a edição de um lançamento antigo, sem mudar a duração, exige ajustar para múltiplo de 5.
+
+**F1.**
+- Escopo da etapa 1: só os itens excluídos da fila (`timesheets.excluido_faturamento`).
+- **Ignorados não entram** na lixeira.
+- Restaurar exige uma permissão nova, por exemplo `finance.faturamento.lixeira.restore`, concedida a: sócios, Bruna Fedatto, Cines, Larissa Quadros, Jessika e a pessoa que respondeu (confirmar o nome).
+- Retenção de 12 meses: após esse prazo o item some da lixeira e não pode mais ser restaurado.
+- Timesheets e despesas apagados nas telas de lançamento (hoje hard delete) ficam para a etapa 2.
+
+**F2.** Só o atalho para o caso, não para o contrato. Da tela do caso, o Voltar leva ao contrato (C1).
+
+**F3.**
+- Aprovação automática **somente para projeto** (`projeto`, incluindo parcelado). Pró-labore e mensalidades ficam de fora.
+- As **horas de casos de projeto** também são autoaprovadas.
+- Item com valor alterado manualmente volta a passar pela revisão.
+
+**R1.**
+- Uma sequência **por tipo de documento**, com prefixo legível: "Timesheet 1837", "Despesas 214", "Nota de débito 58".
+- NFS-e mantém o número da própria nota.
+- Numeração contínua, sem reinício anual.
+- Regerar o documento mantém o número.
+
+**R2.**
+- Nos documentos (relatório, NFS-e e nota de débito), a competência é o mês do serviço.
+- **A regra do ERP não muda:** horas e despesas do mês M continuam sendo faturadas no ciclo M+1, e as demais regras de cobrança seguem o próprio mês.
+- Para horas e despesas, a competência exibida no documento é o mês do `data_lancamento`, ou seja, o ciclo − 1.
+- *Interpretação a confirmar:* a resposta sobre mensalidades ("mês anterior também, mas é só para controle do cliente") sugere que a competência exibida também seja o mês anterior para mensalidades. Validar com o cliente na entrega.
+
+**R3.** Um relatório único com todos os pagadores e percentuais no cabeçalho.
+
+**R4.** Ocultar linhas com 0h, linhas excluídas e linhas **ignoradas**.
+
+**R5.** Em casos de valor fixo:
+- As linhas não mostram valor (sem a coluna e sem R$ 0,00), mas continuam com data, profissional, descrição e tempo.
+- O relatório mostra o valor fixo do mês com a origem (ex.: "Mensalidade setembro/2026"), e o total soma o valor fixo com o excedente, se houver.
+
+**R6.**
+- Um quadro de impostos por pagador.
+- O quadro aparece também na prévia, antes da emissão da NFS-e, com valores estimados, usando o mesmo cálculo da `nfse-preview-dialog`.
