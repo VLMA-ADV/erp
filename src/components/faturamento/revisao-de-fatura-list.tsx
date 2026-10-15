@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, FileText, Layers, Loader2, Receipt, Send, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Ban, ChevronDown, ChevronRight, Clock, DollarSign, Eye, EyeOff, ExternalLink, FileText, Layers, Loader2, Receipt, Send, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -3543,33 +3543,51 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                         <div key={casoGroup.key} className="rounded-xl border border-hairline">
                           <div className="border-b bg-white px-4 py-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                              <button
-                                type="button"
-                                className="flex items-center gap-2 text-left"
-                                onClick={() => setExpandedCasos((prev) => ({ ...prev, [casoGroup.key]: !casoExpanded }))}
-                              >
-                                {casoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
-                                <div>
-                                  <p className="text-sm font-semibold text-ink">
-                                    {casoGroup.numero ? `${casoGroup.numero} - ` : ''}
-                                    {casoGroup.nome}
-                                  </p>
-                                  <p className="text-xs text-ink-mute">
-                                    {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)}
-                                    {caseMetrics.itensNaFila > 0 ? ` · ${caseMetrics.itensNaFila} na fila` : ''}
-                                    {/* Valor/hora dos lançamentos do caso (D9=c): faixa quando há
-                                        tabela por cargo; caso mensal (tudo zero) não mostra nada. */}
-                                    {(() => {
-                                      const resumo = resumoValorHora(
-                                        casoGroup.itens
-                                          .filter((i) => i.origemTipo === 'timesheet')
-                                          .map((i) => ({ valor_hora: i.timesheetValorHora })),
-                                      )
-                                      return resumo ? <> · <span className="font-medium text-ink-secondary">{resumo}</span></> : null
-                                    })()}
-                                  </p>
-                                </div>
-                              </button>
+                              <div className="flex items-start gap-2">
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-2 text-left"
+                                  onClick={() => setExpandedCasos((prev) => ({ ...prev, [casoGroup.key]: !casoExpanded }))}
+                                >
+                                  {casoExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
+                                  <div>
+                                    <p className="text-sm font-semibold text-ink">
+                                      {casoGroup.numero ? `${casoGroup.numero} - ` : ''}
+                                      {casoGroup.nome}
+                                    </p>
+                                    <p className="text-xs text-ink-mute">
+                                      {caseMetrics.itemCount} item(ns) · {formatHours(caseMetrics.totalHoras)}
+                                      {caseMetrics.itensNaFila > 0 ? ` · ${caseMetrics.itensNaFila} na fila` : ''}
+                                      {/* Valor/hora dos lançamentos do caso (D9=c): faixa quando há
+                                          tabela por cargo; caso mensal (tudo zero) não mostra nada. */}
+                                      {(() => {
+                                        const resumo = resumoValorHora(
+                                          casoGroup.itens
+                                            .filter((i) => i.origemTipo === 'timesheet')
+                                            .map((i) => ({ valor_hora: i.timesheetValorHora })),
+                                        )
+                                        return resumo ? <> · <span className="font-medium text-ink-secondary">{resumo}</span></> : null
+                                      })()}
+                                    </p>
+                                  </div>
+                                </button>
+                                {/* Atalho só para o caso (cliente 15/10); da tela do caso, o Voltar
+                                    leva ao contrato. Fica fora do botão (link dentro de botão é
+                                    HTML inválido) e não expande/recolhe o grupo. */}
+                                {casoContratoId && casoGroup.itens[0]?.casoId ? (
+                                  <a
+                                    href={`/contratos/${casoContratoId}/casos/${casoGroup.itens[0].casoId}/editar?view=1`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Abrir caso"
+                                    aria-label={`Abrir o caso ${casoLabel} em nova aba`}
+                                    className="mt-0.5 text-ink-mute hover:text-ink"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                ) : null}
+                              </div>
 
                               <div className="flex flex-wrap items-center gap-3">
                                 <label className="flex items-center gap-2 text-xs text-ink-mute">

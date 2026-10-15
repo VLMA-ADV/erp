@@ -3795,9 +3795,18 @@ export default function CasoForm({
               Excluir caso
             </Button>
           ) : null}
-          <Button variant="outline" onClick={() => router.back()} disabled={loading}>
-            Cancelar
-          </Button>
+          {/* Caso existente (visualizar ou editar): Voltar leva ao contrato. O atalho
+              da Revisão/Composição abre o caso em aba nova, sem histórico para o
+              router.back(). Criação mantém o Cancelar de antes. */}
+          {isEdit ? (
+            <Button variant="outline" onClick={() => router.push(`/contratos/${contratoId}/editar?view=1`)} disabled={loading}>
+              Voltar
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => router.back()} disabled={loading}>
+              Cancelar
+            </Button>
+          )}
           {!isReadOnly && (
             <Button onClick={submit} disabled={loading}>
               {loading ? 'Salvando...' : isEdit ? 'Atualizar caso' : 'Criar caso'}

@@ -305,6 +305,20 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-ink">{labelCaso(kit)}</h3>
+              {/* Atalho só para o caso (cliente 15/10); da tela do caso, o Voltar leva ao contrato. */}
+              {kit.caso_id ? (
+                <a
+                  href={`/contratos/${kit.contrato_id}/casos/${kit.caso_id}/editar?view=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir caso"
+                  aria-label={`Abrir o caso ${labelCaso(kit)} em nova aba`}
+                  className="text-ink-mute hover:text-ink"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              ) : null}
               <Badge className={info.badge}>
                 {finalizado ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
                 {info.label}
