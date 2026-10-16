@@ -17,6 +17,7 @@ import {
 } from 'pdf-lib'
 import { ESCRITORIO } from './documento-vlma'
 import { desenharLogoVlma, LOGO_LARGURA_TIMBRE } from './logo-vlma-pdf'
+import { colunasComValor, type QuadroImpostosPagador } from '../faturamento/quadro-impostos'
 
 export interface TimesheetPdfRow {
   /** ISO ('2026-08-03') ou já em dd/mm/aaaa. */
@@ -94,6 +95,40 @@ export function pagadoresDoCabecalho(
   return lista.map((p) => ({ nome: p.nome?.trim() || 'Pagador', percentual: percentualBR(p.percentual) }))
 }
 
+export interface ImpostosRelatorio {
+  linhas: QuadroImpostosPagador[]
+  /** Nome do grupo de impostos, citado na nota das estimativas. */
+  grupoNome?: string | null
+}
+
+/**
+ * Colunas e textos do quadro "Impostos". Decisão sobre zeros: só entram as
+ * colunas de imposto com valor em ALGUM pagador — sem retenção nenhuma o
+ * quadro fica Pagador · Valor bruto · Retenções ("sem retenção") · Valor
+ * líquido, em vez de seis colunas de R$ 0,00. Dentro de uma coluna que existe,
+ * o pagador sem aquele imposto sai com "—".
+ */
+export function layoutQuadroImpostos(imp: ImpostosRelatorio | null | undefined) {
+  const linhas = (imp?.linhas ?? []).filter((l) => l.bruto > 0)
+  if (linhas.length === 0) return null
+  const colunas = colunasComValor(linhas)
+  const situacao = (l: QuadroImpostosPagador) =>
+    l.origem === 'emitida'
+      ? (l.nfseNumero ? `NFS-e ${l.nfseNumero}` : 'NFS-e emitida')
+      : l.origem === 'estimado' ? 'estimado' : 'sem grupo de impostos'
+  const notas: string[] = []
+  if (linhas.some((l) => l.origem === 'estimado')) {
+    notas.push(
+      `Estimado: NFS-e ainda não emitida; valores calculados pelas regras do grupo de impostos${imp?.grupoNome ? ` (${imp.grupoNome})` : ''} ` +
+      'e pelo acumulado do mês do pagador. O valor final é o da NFS-e.',
+    )
+  }
+  if (linhas.some((l) => l.origem === 'sem_grupo')) {
+    notas.push('Sem grupo de impostos no cadastro: retenções não calculadas.')
+  }
+  return { linhas, colunas, situacao, notas }
+}
+
 /** Bytes de uma foto já baixada e o content-type que veio na resposta. */
 export interface FotoBaixada {
   bytes: Uint8Array
@@ -124,6 +159,13 @@ export interface TimesheetPdfInput {
   rows: TimesheetPdfRow[]
   /** Data de emissão; padrão hoje. */
   emissao?: string
+  /**
+   * Quadro "Impostos" por pagador (cliente, out/2026): bruto, retenções e
+   * líquido de cada NFS-e — real quando já emitida, estimado quando não.
+   * Montado por lib/faturamento/quadro-impostos. Sem ele (ou sem valor), o
+   * relatório termina como antes.
+   */
+  impostos?: ImpostosRelatorio | null
   /**
    * Como baixar cada foto (padrão: `fetch` global). Injetável para teste e
    * para quem já tem os bytes. Deve devolver null quando não conseguir.
@@ -502,6 +544,72 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
       textoDireita(percentualBR(d.percentual), colunas.horas, y, 8.4)
       if (mostrarValor) textoDireita(money(d.valor), colunas.valor, y, 8.4)
       y -= ALTURA_PAGADOR
+    }
+  }
+
+  // Impostos por pagador (cliente, out/2026): o que cada NFS-e retém e o
+  // líquido. Uma linha por pagador; sem rateio, uma linha só.
+  const quadro = mostrarValor ? layoutQuadroImpostos(input.impostos) : null
+  if (quadro) {
+    const ALTURA_Q = 12
+    const LARGURA_NUM = 70
+    const numericas = [
+      { rotulo: 'Valor bruto', valor: (l: QuadroImpostosPagador) => money(l.bruto) },
+      ...(quadro.colunas.length > 0
+        ? quadro.colunas.map((c) => ({
+            rotulo: c.rotulo,
+            valor: (l: QuadroImpostosPagador) => (l.retencoes[c.chave] > 0.004 ? `- ${money(l.retencoes[c.chave])}` : '—'),
+          }))
+        : [{ rotulo: 'Retenções', valor: () => 'sem retenção' }]),
+      { rotulo: 'Valor líquido', valor: (l: QuadroImpostosPagador) => money(l.liquido) },
+    ]
+    const xNum = (i: number) => direita - (numericas.length - 1 - i) * LARGURA_NUM
+    const xSituacao = xNum(0) - LARGURA_NUM - 62
+    const larguraNome = xSituacao - MARGEM - 8
+    const linhasNome = quadro.linhas.map((l) => quebrar(
+      l.percentual != null && quadro.linhas.length > 1 ? `${l.nome} (${percentualBR(l.percentual)})` : l.nome,
+      normal, 8, larguraNome,
+    ))
+    const notasQ = quadro.notas.map((t) => quebrar(t, normal, 7, larguraUtil))
+    const comTotal = quadro.linhas.length > 1
+    const alturaQuadro = 34 + linhasNome.reduce((s, ls) => s + ls.length * 10 + 2, 0)
+      + (comTotal ? 16 : 0) + notasQ.reduce((s, ls) => s + ls.length * 9 + 2, 0)
+    if (y - alturaQuadro < limiteInferior) novaPagina()
+
+    y -= 16
+    texto('Impostos', MARGEM, y, 9, negrito)
+    y -= 14
+    texto('Pagador', MARGEM, y, 7.6, normal, CINZA)
+    texto('Situação', xSituacao, y, 7.6, normal, CINZA)
+    numericas.forEach((c, i) => textoDireita(c.rotulo, xNum(i), y, 7.6, normal, CINZA))
+    y -= 4
+    pagina.drawLine({ start: { x: MARGEM, y }, end: { x: direita, y }, thickness: 0.4, color: CINZA })
+    y -= 11
+    quadro.linhas.forEach((l, idx) => {
+      linhasNome[idx].forEach((t, k) => texto(t, MARGEM, y - k * 10, 8))
+      texto(quadro.situacao(l), xSituacao, y, 8, normal, l.origem === 'emitida' ? PRETO : CINZA)
+      numericas.forEach((c, i) => textoDireita(c.valor(l), xNum(i), y, 8, i === numericas.length - 1 ? negrito : normal))
+      y -= linhasNome[idx].length * 10 + 2
+    })
+    if (comTotal) {
+      y -= 2
+      pagina.drawLine({ start: { x: MARGEM, y: y + 8 }, end: { x: direita, y: y + 8 }, thickness: 0.4, color: CINZA })
+      const soma = (f: (l: QuadroImpostosPagador) => number) => quadro.linhas.reduce((s, l) => s + f(l), 0)
+      texto('Total', MARGEM, y - 2, 8.4, negrito)
+      textoDireita(money(soma((l) => l.bruto)), xNum(0), y - 2, 8.4, negrito)
+      if (quadro.colunas.length > 0) {
+        quadro.colunas.forEach((c, i) => {
+          const v = soma((l) => l.retencoes[c.chave])
+          textoDireita(v > 0.004 ? `- ${money(v)}` : '—', xNum(i + 1), y - 2, 8.4, negrito)
+        })
+      }
+      textoDireita(money(soma((l) => l.liquido)), xNum(numericas.length - 1), y - 2, 8.4, negrito)
+      y -= 14
+    }
+    y -= 4
+    for (const ls of notasQ) {
+      ls.forEach((t) => { texto(t, MARGEM, y, 7, normal, CINZA); y -= 9 })
+      y -= 2
     }
   }
 
