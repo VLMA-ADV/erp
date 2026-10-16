@@ -1413,7 +1413,7 @@ export default function ItensAFaturarList() {
             </p>
             <p className="text-xs text-ink-mute">
               O timesheet continua existindo — as horas seguem contando para a pessoa e para os
-              relatórios. Só some da fila de faturamento; pode ser revertido depois se precisar.
+              relatórios. Só some da fila de faturamento e fica na Lixeira por 12 meses, de onde pode ser restaurado.
             </p>
           </div>
           <DialogFooter>
