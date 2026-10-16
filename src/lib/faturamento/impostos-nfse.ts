@@ -262,3 +262,100 @@ export function calcularImpostosNfse({ grupo, valorBruto, acumuladoMes }: Entrad
     valorLiquido,
   }
 }
+
+// ── Por pagador, como a emissão faz ──────────────────────────────────────
+// A emit-nfse emite UMA nota por pagador (rateio) e faz a conta acima para
+// cada uma, com o valor DELE e o acumulado DELE. A prévia fazia uma conta só,
+// sobre o total e com o acumulado do cliente do contrato — com rateio, o
+// mínimo de cálculo era comparado ao total (R$ 1.000 em 50/50 mostrava IRRF de
+// R$ 15,00; as duas notas de R$ 500 saem sem IRRF).
+
+export interface PagadorDaNota {
+  cliente_id: string
+  /** Valor bruto da nota deste pagador. */
+  valor: number
+}
+
+export interface AjustesPagadores {
+  pagadores?: Array<{ cliente_id: string; percentual: number }>
+  valor_total?: number
+}
+
+/**
+ * Pagadores e valores de cada nota, montados como a emit-nfse monta: a lista
+ * do ajuste substitui o rateio do cadastro (valor = total × %); só o valor
+ * ajustado reescala o rateio; sem ajuste, o que veio de
+ * get_billing_items_aprovados_escopo. A ordem é a de emissão.
+ */
+export function pagadoresDaEmissao(
+  doEscopo: Array<{ cliente_id: string; valor_total: number | string | null }>,
+  ajustes?: AjustesPagadores | null,
+): PagadorDaNota[] {
+  const original = doEscopo.reduce((s, p) => s + Number(p.valor_total ?? 0), 0)
+  const valorDaNota = typeof ajustes?.valor_total === 'number' && ajustes.valor_total > 0 ? ajustes.valor_total : original
+  if (ajustes?.pagadores && ajustes.pagadores.length > 0) {
+    return ajustes.pagadores.map((p) => ({
+      cliente_id: p.cliente_id,
+      valor: Math.round(valorDaNota * Number(p.percentual) / 100 * 100) / 100,
+    }))
+  }
+  if (valorDaNota !== original && original > 0) {
+    return doEscopo.map((p) => ({
+      cliente_id: p.cliente_id,
+      valor: Math.round(Number(p.valor_total ?? 0) * (valorDaNota / original) * 100) / 100,
+    }))
+  }
+  return doEscopo.map((p) => ({ cliente_id: p.cliente_id, valor: Number(p.valor_total ?? 0) }))
+}
+
+/**
+ * 'YYYY-MM' que a emit-nfse passa a get_client_month_accumulated_value: a
+ * data de emissão em horário de Brasília (isoBrt(60) → data_competencia). Não
+ * é a competência do kit.
+ */
+export function mesDaEmissao(agora: Date = new Date()): string {
+  return new Date(agora.getTime() - 60_000 - 3 * 60 * 60 * 1000).toISOString().slice(0, 7)
+}
+
+/**
+ * Acumulado que cada pagador terá NO MOMENTO da sua nota. A emit-nfse chama
+ * get_client_month_accumulated_value(pagador) antes de cada nota, e essa
+ * função soma as NFS-e do mês pelo CLIENTE DO CONTRATO da nota (join em
+ * contratos.cliente_id), não pelo pagador. Consequência: as notas que esta
+ * mesma emissão já soltou (todas deste contrato) entram no acumulado do
+ * pagador que for o cliente do contrato, e de nenhum outro. A prévia replica
+ * isso para mostrar o que vai sair.
+ */
+export function acumuladosNaEmissao(
+  pagadores: PagadorDaNota[],
+  acumuladoAtual: Record<string, number>,
+  contratoClienteId: string | null | undefined,
+): number[] {
+  let jaEmitidoNestaEmissao = 0
+  return pagadores.map((p) => {
+    const base = Number(acumuladoAtual[p.cliente_id] ?? 0)
+    const acumulado = contratoClienteId && p.cliente_id === contratoClienteId ? base + jaEmitidoNestaEmissao : base
+    jaEmitidoNestaEmissao += p.valor
+    return acumulado
+  })
+}
+
+export interface ImpostosDoPagador extends PagadorDaNota {
+  acumuladoMes: number
+  impostos: ImpostosNfse
+}
+
+/** Uma conta por nota, cada uma com o seu acumulado. */
+export function calcularImpostosPorPagador(args: {
+  grupo: ConfigGrupoImposto
+  pagadores: PagadorDaNota[]
+  acumuladoAtual: Record<string, number>
+  contratoClienteId: string | null | undefined
+}): ImpostosDoPagador[] {
+  const acumulados = acumuladosNaEmissao(args.pagadores, args.acumuladoAtual, args.contratoClienteId)
+  return args.pagadores.map((p, i) => ({
+    ...p,
+    acumuladoMes: acumulados[i],
+    impostos: calcularImpostosNfse({ grupo: args.grupo, valorBruto: p.valor, acumuladoMes: acumulados[i] }),
+  }))
+}

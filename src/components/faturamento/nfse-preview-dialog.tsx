@@ -8,9 +8,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
-  ALIQUOTAS_VOA_LEGAL,
-  calcularImpostosNfse,
+  calcularImpostosPorPagador,
+  mesDaEmissao,
+  pagadoresDaEmissao,
   resolverGrupoImposto,
+  type GrupoImpostoDb,
   type Retencao,
 } from '@/lib/faturamento/impostos-nfse'
 
@@ -116,7 +118,8 @@ interface PreviewData {
     endereco: string
     municipio: string
   }
-  acumuladoMes: number
+  /** Cliente do contrato — get_client_month_accumulated_value soma por ele. */
+  contratoClienteId: string | null
   pagadorInfo: {
     n_pagadores?: number
     multi?: boolean
@@ -159,10 +162,15 @@ export default function NfsePreviewDialog({
   const [grupos, setGrupos] = useState<Array<{ id: string; nome: string }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nome: string }>>([])
 
-  // Monta os ajustes e, se pedido, grava no cadastro antes de emitir.
-  const confirmar = async () => {
-    if (!onConfirmEmit || salvando) return
-    setAjusteErro(null)
+  // Acumulado do mês por cliente (get_client_month_accumulated_value, o mesmo
+  // que a emit-nfse consulta antes de cada nota) e o grupo escolhido no ajuste.
+  const [tenantId, setTenantId] = useState<string | null>(null)
+  const [acumPorCliente, setAcumPorCliente] = useState<Record<string, number>>({})
+  const [grupoAjustadoDb, setGrupoAjustadoDb] = useState<GrupoImpostoDb | null>(null)
+
+  // Ajustes como vão para a emit-nfse — a prévia calcula com eles e o
+  // confirmar envia exatamente estes.
+  const montarAjustes = (): AjustesDaNota => {
     const num = (v: string) => lerNumero(v)
     const totalAtual = (data?.pagadores || []).reduce((acc, p) => acc + Number(p.valor_total || 0), 0)
     const valor = valorEdit.trim() ? num(valorEdit) : NaN
@@ -183,6 +191,14 @@ export default function NfsePreviewDialog({
         return orig && orig.cliente_id === p.cliente_id && Math.abs(pctOrig - p.percentual) < 0.01
       })
     if (pagadores.length > 0 && !iguaisAoContrato) ajustes.pagadores = pagadores
+    return ajustes
+  }
+
+  // Monta os ajustes e, se pedido, grava no cadastro antes de emitir.
+  const confirmar = async () => {
+    if (!onConfirmEmit || salvando) return
+    setAjusteErro(null)
+    const ajustes = montarAjustes()
 
     if (ajustes.pagadores) {
       const soma = ajustes.pagadores.reduce((acc, p) => acc + p.percentual, 0)
@@ -244,6 +260,46 @@ export default function NfsePreviewDialog({
     setDescricaoEdit([nomes.join('; '), DESCRICAO_FIXA].filter(Boolean).join('\n'))
   }, [data])
 
+  const buscarAcumulados = async (tenant: string, ids: string[]): Promise<Record<string, number>> => {
+    const supabase = createClient()
+    const mes = mesDaEmissao()
+    const pares = await Promise.all(ids.map(async (cid) => {
+      const { data: acum } = await supabase.rpc('get_client_month_accumulated_value', {
+        p_tenant_id: tenant,
+        p_cliente_id: cid,
+        p_competencia: mes,
+      })
+      return [cid, Number(acum ?? 0)] as const
+    }))
+    return Object.fromEntries(pares)
+  }
+
+  // Pagador incluído no ajuste: busca o acumulado dele.
+  useEffect(() => {
+    if (!tenantId) return
+    const faltam = Array.from(new Set(pagadoresEdit.map((p) => p.cliente_id).filter((cid) => cid && !(cid in acumPorCliente))))
+    if (faltam.length === 0) return
+    let vivo = true
+    void buscarAcumulados(tenantId, faltam).then((novos) => {
+      if (vivo) setAcumPorCliente((atual) => ({ ...atual, ...novos }))
+    })
+    return () => { vivo = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, pagadoresEdit])
+
+  // Regime trocado no ajuste: a emissão usa o grupo escolhido, a prévia também.
+  useEffect(() => {
+    if (!tenantId || !grupoImpostoId || grupoImpostoId === (data?.grupoImposto?.id || '')) {
+      setGrupoAjustadoDb(null)
+      return
+    }
+    let vivo = true
+    void createClient()
+      .rpc('nfse_grupo_imposto', { p_tenant_id: tenantId, p_grupo_id: grupoImpostoId })
+      .then(({ data: g }) => { if (vivo) setGrupoAjustadoDb((g as GrupoImpostoDb) || null) })
+    return () => { vivo = false }
+  }, [tenantId, grupoImpostoId, data?.grupoImposto?.id])
+
   const loadPreviewData = async (id: string, caso: string | null) => {
     try {
       setLoading(true)
@@ -277,17 +333,15 @@ export default function NfsePreviewDialog({
 
       const { data: cfg } = await supabase.rpc('get_focus_nfe_config', { p_tenant_id: tenantId })
 
-      const clienteId = dataset.contrato?.cliente_id || dataset.tomador?.id
-      const competencia = new Date().toISOString().slice(0, 7)
-      let acumuladoMes = 0
-      if (clienteId) {
-        const { data: acum } = await supabase.rpc('get_client_month_accumulated_value', {
-          p_tenant_id: tenantId,
-          p_cliente_id: clienteId,
-          p_competencia: competencia,
-        })
-        acumuladoMes = Number(acum ?? 0)
-      }
+      // Acumulado do mês de CADA pagador, como a emit-nfse consulta (pagador da
+      // nota + mês da emissão em Brasília). Antes a prévia usava o cliente do
+      // contrato e o mês em UTC, uma conta só para todos.
+      setTenantId(tenantId)
+      const idsPagadores = Array.from(new Set([
+        ...((dataset.pagadores || []) as Array<{ cliente_id: string }>).map((p) => p.cliente_id),
+        ...(ajustesIniciais?.pagadores || []).map((p) => p.cliente_id),
+      ].filter(Boolean)))
+      setAcumPorCliente(await buscarAcumulados(tenantId, idsPagadores))
 
       // Listas de apoio dos ajustes. Por RPC porque o schema crm nao e exposto
       // ao PostgREST e grupos_impostos tem RLS — ler as tabelas direto daqui
@@ -338,7 +392,7 @@ export default function NfsePreviewDialog({
             : 'Rua Cândido Xavier, 602 — Água Verde · CEP 80240-280',
           municipio: 'Curitiba/PR',
         },
-        acumuladoMes,
+        contratoClienteId: dataset.pagador_info?.contrato_cliente_id || dataset.contrato?.cliente_id || null,
         pagadorInfo: dataset.pagador_info || null,
         pendentes: (dataset.pendentes as PreviewData['pendentes']) || null,
         pagadores: (dataset.pagadores || []) as PreviewData['pagadores'],
@@ -351,24 +405,43 @@ export default function NfsePreviewDialog({
     }
   }
 
-  const valorBruto = data?.itens.reduce((s, i) => s + Number(i.valor ?? 0), 0) ?? 0
-  const acumuladoMes = data?.acumuladoMes ?? 0
   const tipoTomador =
     data?.tomador?.cnpj && String(data.tomador.cnpj).replace(/\D/g, '').length === 14 ? 'PJ' : 'PF'
 
-  // Grupo de impostos do contrato e a conta das retenções: lib/faturamento/impostos-nfse
-  // (a mesma conta da emit-nfse).
-  const grupoFromDb = data?.grupoImposto
+  // A conta é a da emit-nfse (lib/faturamento/impostos-nfse): uma nota por
+  // pagador, cada uma com o valor dela, o acumulado do mês DELE e o grupo que
+  // vai na emissão — o do ajuste quando trocado, senão o do contrato.
+  const ajustesVigentes = data ? montarAjustes() : null
+  const grupoFromDb = (ajustesVigentes?.grupo_imposto_id && grupoAjustadoDb?.id === ajustesVigentes.grupo_imposto_id)
+    ? grupoAjustadoDb
+    : data?.grupoImposto
   const grupoConfig = resolverGrupoImposto(grupoFromDb, tipoTomador)
   const grupoNome = grupoConfig.nome
-  const impostos = calcularImpostosNfse({ grupo: grupoConfig, valorBruto, acumuladoMes })
-  const baseCalculoMinimo = impostos.baseCalculoMinimo
-  const retIrrf = impostos.irrf
-  const retPis = impostos.pis
-  const retCofins = impostos.cofins
-  const retCsll = impostos.csll
-  const totalRetencoes = impostos.totalRetencoes
-  const valorLiquido = impostos.valorLiquido
+  const notasPorPagador = calcularImpostosPorPagador({
+    grupo: grupoConfig,
+    pagadores: pagadoresDaEmissao(data?.pagadores || [], ajustesVigentes),
+    acumuladoAtual: acumPorCliente,
+    contratoClienteId: data?.contratoClienteId,
+  })
+  const valorBruto = Math.round(notasPorPagador.reduce((s, n) => s + n.valor, 0) * 100) / 100
+  const somaRetencao = (imp: 'irrf' | 'pis' | 'cofins' | 'csll'): Retencao => {
+    if (notasPorPagador.length === 1) return notasPorPagador[0].impostos[imp]
+    const lista = notasPorPagador.map((n) => n.impostos[imp])
+    return {
+      valor: Math.round(lista.reduce((s, r) => s + r.valor, 0) * 100) / 100,
+      aplicado: lista.some((r) => r.aplicado),
+      aliquota: lista[0]?.aliquota ?? 0,
+    }
+  }
+  const retIrrf = somaRetencao('irrf')
+  const retPis = somaRetencao('pis')
+  const retCofins = somaRetencao('cofins')
+  const retCsll = somaRetencao('csll')
+  const totalRetencoes = Math.round(notasPorPagador.reduce((s, n) => s + n.impostos.totalRetencoes, 0) * 100) / 100
+  const valorLiquido = Math.round(notasPorPagador.reduce((s, n) => s + n.impostos.valorLiquido, 0) * 100) / 100
+  const comAcumulado = notasPorPagador.filter((n) => n.acumuladoMes > 0)
+  const nomeDoCliente = (cid: string) =>
+    data?.pagadores.find((p) => p.cliente_id === cid)?.cliente?.nome || clientes.find((c) => c.id === cid)?.nome || 'pagador'
 
   // IBPT (Lei 12.741) — defaults da Voa Legal
   const pctFederais = Number(data?.grupoImposto?.pct_trib_federais ?? 10.38)
@@ -532,14 +605,17 @@ export default function NfsePreviewDialog({
               </p>
             </div>
 
-            {/* Acumulação mensal */}
-            {acumuladoMes > 0 && (
+            {/* Acumulação mensal — por pagador, como a emissão consulta */}
+            {comAcumulado.length > 0 && (
               <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
                 <p className="font-medium">Acumulação mensal ativa</p>
-                <p>
-                  {fmtMoney(acumuladoMes)} já emitido para este cliente neste mês.
-                  Base de cálculo para mínimos de retenção: {fmtMoney(baseCalculoMinimo)}
-                </p>
+                {comAcumulado.map((n) => (
+                  <p key={n.cliente_id}>
+                    {notasPorPagador.length > 1 ? `${nomeDoCliente(n.cliente_id)}: ` : ''}
+                    {fmtMoney(n.acumuladoMes)} já emitido para este {notasPorPagador.length > 1 ? 'pagador' : 'cliente'} neste mês.
+                    Base de cálculo para mínimos de retenção: {fmtMoney(n.impostos.baseCalculoMinimo)}
+                  </p>
+                ))}
               </div>
             )}
 
@@ -564,35 +640,35 @@ export default function NfsePreviewDialog({
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">IRRF</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.irrf.aliquota)}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(grupoConfig.aliquota.irrf)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retIrrf.aplicado ? `- ${fmtMoney(retIrrf.valor)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retIrrf) || 'contador'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retIrrf) || (notasPorPagador.length > 1 ? `soma das ${notasPorPagador.length} notas` : 'contador')}</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">PIS</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.pis.aliquota)}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(grupoConfig.aliquota.pis)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retPis.aplicado ? `- ${fmtMoney(retPis.valor)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retPis) || 'contador'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retPis) || (notasPorPagador.length > 1 ? `soma das ${notasPorPagador.length} notas` : 'contador')}</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">COFINS</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.cofins.aliquota)}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(grupoConfig.aliquota.cofins)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retCofins.aplicado ? `- ${fmtMoney(retCofins.valor)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retCofins) || 'contador'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retCofins) || (notasPorPagador.length > 1 ? `soma das ${notasPorPagador.length} notas` : 'contador')}</td>
                   </tr>
                   <tr className="border-t border-hairline">
                     <td className="py-1 text-ink-secondary">CSLL</td>
-                    <td className="py-1 text-right font-tabular">{fmtPct(ALIQUOTAS_VOA_LEGAL.csll.aliquota)}</td>
+                    <td className="py-1 text-right font-tabular">{fmtPct(grupoConfig.aliquota.csll)}</td>
                     <td className="py-1 text-right text-red-600 font-tabular">{retCsll.aplicado ? `- ${fmtMoney(retCsll.valor)}` : '— não aplicado'}</td>
-                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retCsll) || 'contador'}</td>
+                    <td className="py-1 text-right text-xs text-ink-mute">{motivoTexto(retCsll) || (notasPorPagador.length > 1 ? `soma das ${notasPorPagador.length} notas` : 'contador')}</td>
                   </tr>
                 </tbody>
               </table>
               <div className="mt-2 rounded-md bg-canvas-soft border border-hairline p-2 text-xs text-ink-secondary">
                 <p>
                   <strong>Grupo de impostos:</strong> {grupoNome}
-                  {data.grupoImposto?.nome && data.grupoImposto.nome !== grupoNome && (
-                    <span className="text-amber-700"> (contrato configurado como &quot;{data.grupoImposto.nome}&quot; — usando fallback)</span>
+                  {grupoFromDb?.nome && grupoFromDb.nome !== grupoNome && (
+                    <span className="text-amber-700"> (contrato configurado como &quot;{grupoFromDb.nome}&quot; — usando fallback)</span>
                   )}
                 </p>
                 <p className="text-ink-mute">{grupoConfig.observacao}</p>

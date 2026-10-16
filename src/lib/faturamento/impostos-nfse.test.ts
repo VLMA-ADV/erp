@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { calcularImpostosNfse, resolverGrupoImposto, type GrupoImpostoDb } from './impostos-nfse'
+import {
+  acumuladosNaEmissao,
+  calcularImpostosNfse,
+  calcularImpostosPorPagador,
+  mesDaEmissao,
+  pagadoresDaEmissao,
+  resolverGrupoImposto,
+  type GrupoImpostoDb,
+} from './impostos-nfse'
 
 // Grupos como estão em contracts.grupos_impostos (produção, 16/10/2026).
 const BASE: GrupoImpostoDb = {
@@ -130,5 +138,54 @@ describe('calcularImpostosNfse — grupos', () => {
     expect(resolverGrupoImposto({ nome: 'IRRF' }, 'PJ').retem).toEqual({ irrf: true, pis: false, cofins: false, csll: false })
     expect(resolverGrupoImposto(null, 'PF').nome).toBe('PF Nacional')
     expect(resolverGrupoImposto({ nome: 'Advocacia Curitiba (NFSe Nacional)' }, 'PJ').nome).toBe('PJ Nacional')
+  })
+})
+
+describe('por pagador, como a emit-nfse emite', () => {
+  const PJ = resolverGrupoImposto(PJ_NACIONAL, 'PJ')
+
+  it('rateio 50/50 de R$ 1.000: cada nota de R$ 500 fica abaixo do mínimo do IRRF', () => {
+    const pagadores = pagadoresDaEmissao([], { pagadores: [{ cliente_id: 'a', percentual: 50 }, { cliente_id: 'b', percentual: 50 }], valor_total: 1000 })
+    expect(pagadores).toEqual([{ cliente_id: 'a', valor: 500 }, { cliente_id: 'b', valor: 500 }])
+    const notas = calcularImpostosPorPagador({ grupo: PJ, pagadores, acumuladoAtual: {}, contratoClienteId: 'x' })
+    expect(notas.map((n) => n.impostos.irrf.valor)).toEqual([0, 0])
+    expect(notas.map((n) => n.impostos.valorLiquido)).toEqual([476.75, 476.75])
+    // A conta antiga da prévia, sobre o total, mostrava IRRF de R$ 15,00.
+    expect(calcularImpostosNfse({ grupo: PJ, valorBruto: 1000, acumuladoMes: 0 }).irrf.valor).toBe(15)
+  })
+
+  it('NF 2235 + 2236 (FSX e GS, 15/10): a 2ª nota soma a 1ª no acumulado porque GS é o cliente do contrato', () => {
+    const GS = 'gs', FSX = 'fsx'
+    const pagadores = pagadoresDaEmissao([{ cliente_id: FSX, valor_total: 5409.25 }, { cliente_id: GS, valor_total: 5409.25 }])
+    const notas = calcularImpostosPorPagador({ grupo: PJ, pagadores, acumuladoAtual: { [GS]: 0, [FSX]: 0 }, contratoClienteId: GS })
+    expect(notas.map((n) => n.acumuladoMes)).toEqual([0, 5409.25])
+    for (const n of notas) {
+      expect(n.impostos.irrf.valor).toBe(81.14)
+      expect(n.impostos.pis.valor).toBe(35.16)
+      expect(n.impostos.cofins.valor).toBe(162.28)
+      expect(n.impostos.pisCofinsCsll).toBe(251.53)
+      expect(n.impostos.valorLiquido).toBe(5076.58)
+    }
+  })
+
+  it('acumulado do pagador que não é o cliente do contrato não recebe as notas da mesma emissão (Heusy, 14/10)', () => {
+    // get_client_month_accumulated_value(Gerson) = 5000: inclui a nota de Edson
+    // emitida num contrato de Gerson. Edson, que não é cliente de contrato, 0.
+    expect(acumuladosNaEmissao(
+      [{ cliente_id: 'gerson', valor: 416.67 }, { cliente_id: 'edson', valor: 416.67 }],
+      { gerson: 5000, edson: 0 },
+      'gerson',
+    )).toEqual([5000, 0])
+  })
+
+  it('valor ajustado sem trocar pagadores reescala o rateio', () => {
+    expect(pagadoresDaEmissao([{ cliente_id: 'a', valor_total: 600 }, { cliente_id: 'b', valor_total: 400 }], { valor_total: 2000 }))
+      .toEqual([{ cliente_id: 'a', valor: 1200 }, { cliente_id: 'b', valor: 800 }])
+  })
+
+  it('mês do acumulado é o da emissão em Brasília, não em UTC', () => {
+    expect(mesDaEmissao(new Date('2026-10-31T23:30:00Z'))).toBe('2026-10') // 20:30 em Curitiba
+    expect(mesDaEmissao(new Date('2026-11-01T02:30:00Z'))).toBe('2026-10') // 23:30 do dia 31
+    expect(mesDaEmissao(new Date('2026-11-01T03:05:00Z'))).toBe('2026-11')
   })
 })
