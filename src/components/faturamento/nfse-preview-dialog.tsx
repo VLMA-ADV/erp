@@ -15,6 +15,7 @@ import {
   type GrupoImpostoDb,
   type Retencao,
 } from '@/lib/faturamento/impostos-nfse'
+import { colunasComValor, retencoesDaConta, type QuadroImpostosPagador } from '@/lib/faturamento/quadro-impostos'
 
 function fmtMoney(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -442,6 +443,16 @@ export default function NfsePreviewDialog({
   const comAcumulado = notasPorPagador.filter((n) => n.acumuladoMes > 0)
   const nomeDoCliente = (cid: string) =>
     data?.pagadores.find((p) => p.cliente_id === cid)?.cliente?.nome || clientes.find((c) => c.id === cid)?.nome || 'pagador'
+  const quadroPagadores: QuadroImpostosPagador[] = notasPorPagador.map((n) => ({
+    cliente_id: n.cliente_id,
+    nome: nomeDoCliente(n.cliente_id),
+    percentual: valorBruto > 0 ? Math.round((n.valor / valorBruto) * 10000) / 100 : null,
+    bruto: n.valor,
+    retencoes: retencoesDaConta(n.impostos),
+    liquido: n.impostos.valorLiquido,
+    origem: 'estimado',
+  }))
+  const colunasQuadro = colunasComValor(quadroPagadores)
 
   // IBPT (Lei 12.741) — defaults da Voa Legal
   const pctFederais = Number(data?.grupoImposto?.pct_trib_federais ?? 10.38)
@@ -672,6 +683,48 @@ export default function NfsePreviewDialog({
                   )}
                 </p>
                 <p className="text-ink-mute">{grupoConfig.observacao}</p>
+              </div>
+            </div>
+
+            {/* Impostos por pagador — o mesmo quadro do relatório de timesheet.
+                Uma linha por NFS-e que vai sair; só as colunas de imposto com
+                valor em algum pagador. */}
+            <div className="rounded-lg border border-hairline bg-white p-4">
+              <p className="text-xs uppercase tracking-wide text-ink-mute mb-2">
+                IMPOSTOS POR PAGADOR <span className="normal-case tracking-normal">(estimado — a nota ainda não foi emitida)</span>
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-left text-ink-mute">
+                    <tr>
+                      <th className="py-1">Pagador</th>
+                      <th className="py-1 text-right">Valor bruto</th>
+                      {colunasQuadro.length > 0
+                        ? colunasQuadro.map((c) => <th key={c.chave} className="py-1 text-right">{c.rotulo}</th>)
+                        : <th className="py-1 text-right">Retenções</th>}
+                      <th className="py-1 text-right">Valor líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quadroPagadores.map((l) => (
+                      <tr key={l.cliente_id ?? l.nome} className="border-t border-hairline">
+                        <td className="py-1 text-ink-secondary">
+                          {l.nome}
+                          {quadroPagadores.length > 1 && l.percentual != null ? <span className="text-ink-mute"> ({fmtPct(l.percentual)})</span> : null}
+                        </td>
+                        <td className="py-1 text-right font-tabular">{fmtMoney(l.bruto)}</td>
+                        {colunasQuadro.length > 0
+                          ? colunasQuadro.map((c) => (
+                              <td key={c.chave} className="py-1 text-right font-tabular text-red-600">
+                                {l.retencoes[c.chave] > 0.004 ? `- ${fmtMoney(l.retencoes[c.chave])}` : '—'}
+                              </td>
+                            ))
+                          : <td className="py-1 text-right text-ink-mute">sem retenção</td>}
+                        <td className="py-1 text-right font-tabular font-semibold text-ink">{fmtMoney(l.liquido)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
