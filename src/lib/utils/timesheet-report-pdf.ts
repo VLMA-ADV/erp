@@ -107,8 +107,17 @@ export interface ImpostosRelatorio {
  * quadro fica Pagador · Valor bruto · Retenções ("sem retenção") · Valor
  * líquido, em vez de seis colunas de R$ 0,00. Dentro de uma coluna que existe,
  * o pagador sem aquele imposto sai com "—".
+ *
+ * Um valor por pagador: quando o quadro sai, ele SUBSTITUI a "Divisão por
+ * pagador" (que repartia o total das horas). O bruto do quadro é o da NFS-e
+ * — o que o pagador de fato recebe/receberá — e o total das horas pode não
+ * bater com ele: em produção, kits de honorário fixo (NF 2228/2229, V&G e
+ * Pró-Vascular: horas a R$ 0,00, notas de R$ 1.750) e o arredondamento por
+ * pagador da emit-nfse (NF 2223/2224, Heusy: R$ 833,33 em 50/50 virou
+ * 416,67 + 416,67). `totalHoras` é o total impresso no relatório; quando
+ * difere da soma dos brutos, uma linha diz quanto e por quê.
  */
-export function layoutQuadroImpostos(imp: ImpostosRelatorio | null | undefined) {
+export function layoutQuadroImpostos(imp: ImpostosRelatorio | null | undefined, totalHoras?: number) {
   const linhas = (imp?.linhas ?? []).filter((l) => l.bruto > 0)
   if (linhas.length === 0) return null
   const colunas = colunasComValor(linhas)
@@ -125,6 +134,19 @@ export function layoutQuadroImpostos(imp: ImpostosRelatorio | null | undefined) 
   }
   if (linhas.some((l) => l.origem === 'sem_grupo')) {
     notas.push('Sem grupo de impostos no cadastro: retenções não calculadas.')
+  }
+  if (typeof totalHoras === 'number') {
+    const somaBruto = Math.round(linhas.reduce((s, l) => s + l.bruto, 0) * 100)
+    const diferenca = somaBruto - Math.round(totalHoras * 100)
+    if (diferenca !== 0) {
+      const motivo = Math.abs(diferenca) <= linhas.length
+        ? 'cada NFS-e é arredondada a centavos sobre a parte do pagador'
+        : 'a NFS-e é emitida sobre o valor do serviço do kit (honorário fixo, mensalidade ou ajuste), não sobre a soma das horas'
+      notas.push(
+        `O valor bruto das NFS-e (${money(somaBruto / 100)}) difere do total das horas (${money(totalHoras)}) ` +
+        `em ${money(Math.abs(diferenca) / 100)}: ${motivo}.`,
+      )
+    }
   }
   return { linhas, colunas, situacao, notas }
 }
@@ -528,7 +550,11 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   // Divisão por pagador (Filipe, 08/10: caso 318 Coneglian, rateio 50/50;
   // Strobel x Mendocino, pagador diferente do cliente). Fecha o relatório,
   // depois do total: nome · percentual · valor (total × percentual).
-  const divisao = divisaoPorPagador(totalValor, input.cliente, input.pagadores)
+  // Com o quadro "Impostos" (abaixo), a divisão sai: o quadro já traz pagador,
+  // percentual e o bruto da NFS-e, e dois valores para o mesmo pagador no
+  // mesmo PDF confundem (ver layoutQuadroImpostos).
+  const quadro = mostrarValor ? layoutQuadroImpostos(input.impostos, totalValor) : null
+  const divisao = quadro ? null : divisaoPorPagador(totalValor, input.cliente, input.pagadores)
   if (divisao) {
     const ALTURA_PAGADOR = 12
     if (y - (28 + divisao.length * ALTURA_PAGADOR) < limiteInferior) {
@@ -549,7 +575,6 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
 
   // Impostos por pagador (cliente, out/2026): o que cada NFS-e retém e o
   // líquido. Uma linha por pagador; sem rateio, uma linha só.
-  const quadro = mostrarValor ? layoutQuadroImpostos(input.impostos) : null
   if (quadro) {
     const ALTURA_Q = 12
     const LARGURA_NUM = 70

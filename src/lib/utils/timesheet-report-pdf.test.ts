@@ -399,6 +399,34 @@ describe('quadro "Impostos" por pagador', () => {
     expect(depois.some((t) => t.startsWith('Estimado: NFS-e ainda não emitida') && t.includes('(PJ Nacional)'))).toBe(true)
   })
 
+  it('com o quadro, a "Divisão por pagador" sai — um valor só por pagador', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({
+      ...base,
+      pagadores: [{ nome: 'FSX Participações', percentual: 50 }, { nome: 'GS Participações LTDA', percentual: 50 }],
+      rows: [linha(1, { valor: 5409.25 }), linha(2, { valor: 5409.25 })],
+      impostos: { linhas: [fsxEmitida, gsEstimada] },
+    })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    expect(textos).not.toContain('Divisão por pagador')
+    expect(textos).toContain('Impostos')
+    // Total das horas = soma dos brutos (NF 2235/2236): sem nota de diferença.
+    expect(textos.some((t) => t.startsWith('O valor bruto das NFS-e'))).toBe(false)
+  })
+
+  it('arredondamento por pagador (NF 2223/2224, Heusy: R$ 833,33 → 416,67 + 416,67) é explicado', () => {
+    const heusy = (nome: string) => ({ ...gsEstimada, nome, bruto: 416.67, retencoes: ret(0, 0, 0, 0), liquido: 416.67, origem: 'emitida' as const })
+    const l = layoutQuadroImpostos({ linhas: [heusy('Gerson Heusy'), heusy('Edson Heusy')] }, 833.33)
+    expect(l?.notas).toContain(
+      'O valor bruto das NFS-e (R$ 833,34) difere do total das horas (R$ 833,33) em R$ 0,01: cada NFS-e é arredondada a centavos sobre a parte do pagador.',
+    )
+  })
+
+  it('honorário fixo (NF 2228/2229: horas a R$ 0,00, notas de R$ 1.750) é explicado', () => {
+    const vg = { ...fsxEmitida, bruto: 1750, retencoes: ret(26.25, 11.38, 52.5, 17.5), liquido: 1642.37 }
+    const l = layoutQuadroImpostos({ linhas: [vg, { ...vg, cliente_id: 'pv' }] }, 0)
+    expect(l?.notas.at(-1)).toMatch(/^O valor bruto das NFS-e \(R\$ 3\.500,00\) difere do total das horas \(R\$ 0,00\) em R\$ 3\.500,00: a NFS-e é emitida sobre o valor do serviço do kit/)
+  })
+
   it('sem retenção: bruto = líquido, sem colunas zeradas', () => {
     const l = layoutQuadroImpostos({ linhas: [{ ...gsEstimada, retencoes: ret(0, 0, 0, 0), liquido: 5409.25 }] })
     expect(l?.colunas).toEqual([])
