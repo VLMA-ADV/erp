@@ -36,13 +36,32 @@
 -- Agora delega para restaurar_timesheets_lixeira (mesma permissão, mesma
 -- janela de 12 meses, mesmo mês corrente). Nenhuma tela chamava com false.
 --
+-- Quem tem a permissão nominal VÊ E RESTAURA A LIXEIRA INTEIRA, sem o
+-- escopo de área (decisão com o Lucas, 18/10: Bruna Fedatto vê os itens de
+-- todas as áreas). Quem não tem continua vendo pelo escopo da Revisão
+-- (finance.escopo_faturamento), sem poder restaurar.
+--
+-- Restaurado não é postergado: a restauração muda periodo_faturamento, e
+-- get_faturamento_postergados mostra toda hora com periodo_faturamento depois
+-- do mês automático (data + 1 mês). O marcador é a coluna nova
+-- timesheets.restaurado_da_lixeira_em, gravada pela restauração e LIMPA por
+-- trigger em qualquer outra mudança de periodo_faturamento — postergar_timesheet,
+-- a edge update-timesheet ou o que vier. Assim um postergar de verdade depois
+-- da restauração volta a aparecer em Postergados (inclusive se depois voltar
+-- para o mês da restauração: o marcador já foi limpo no primeiro adiamento).
+-- (excluido_faturamento_em não serve de marcador: a restauração o zera, e
+-- uma nova exclusão o regrava.)
+--
 -- Objetos:
 --   1. permissão finance.faturamento.lixeira.restore + concessões por e-mail
 --   2. finance._tem_permissao_nominal(uuid, text)
---   3. public.get_lixeira_faturamento(p_user_id, p_busca, p_mes)
---   4. public.restaurar_timesheets_lixeira(p_user_id, p_ids)
---   5. public.excluir_timesheets_do_faturamento — CREATE OR REPLACE, mesma
+--   3. colunas timesheets.restaurado_da_lixeira_em/_por + trigger que as limpa
+--   4. public.get_lixeira_faturamento(p_user_id, p_busca, p_mes)
+--   5. public.restaurar_timesheets_lixeira(p_user_id, p_ids)
+--   6. public.excluir_timesheets_do_faturamento — CREATE OR REPLACE, mesma
 --      assinatura, a partir da definição de produção de 16/10/2026
+--   7. public.get_faturamento_postergados — CREATE OR REPLACE, mesma
+--      assinatura, a partir da definição de produção de 18/10/2026
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -119,9 +138,41 @@ $function$;
 REVOKE ALL ON FUNCTION finance._tem_permissao_nominal(uuid, text) FROM PUBLIC, anon, authenticated;
 
 -- ---------------------------------------------------------------------
--- 3. Lista da lixeira. Mesma visibilidade da Revisão/fila
---    (finance.escopo_faturamento): vê tudo, ou só a própria área — área do
---    autor do lançamento ou centro de custo (rateio) do caso.
+-- 3. Marcador "voltou da lixeira". Gravado só por restaurar_timesheets_lixeira;
+--    qualquer outra mudança de periodo_faturamento (que não regrave o
+--    marcador) o apaga. Nome do trigger depois de trg_periodo_faturamento_padrao
+--    (ordem alfabética), para ver o periodo_faturamento final da linha.
+-- ---------------------------------------------------------------------
+ALTER TABLE operations.timesheets
+  ADD COLUMN IF NOT EXISTS restaurado_da_lixeira_em timestamptz,
+  ADD COLUMN IF NOT EXISTS restaurado_da_lixeira_por uuid;
+
+COMMENT ON COLUMN operations.timesheets.restaurado_da_lixeira_em IS
+  'Quando o periodo_faturamento atual veio da restauracao da lixeira do faturamento. Some (trigger) se o periodo mudar por outro caminho, ex.: postergar.';
+
+CREATE OR REPLACE FUNCTION operations._restaurado_lixeira_limpa()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF NEW.periodo_faturamento IS DISTINCT FROM OLD.periodo_faturamento
+     AND NEW.restaurado_da_lixeira_em IS NOT DISTINCT FROM OLD.restaurado_da_lixeira_em
+  THEN
+    NEW.restaurado_da_lixeira_em := NULL;
+    NEW.restaurado_da_lixeira_por := NULL;
+  END IF;
+  RETURN NEW;
+END $function$;
+
+DROP TRIGGER IF EXISTS trg_restaurado_lixeira_limpa ON operations.timesheets;
+CREATE TRIGGER trg_restaurado_lixeira_limpa
+  BEFORE UPDATE ON operations.timesheets
+  FOR EACH ROW EXECUTE FUNCTION operations._restaurado_lixeira_limpa();
+
+-- ---------------------------------------------------------------------
+-- 4. Lista da lixeira. Com a permissão de restaurar: tudo. Sem ela: mesma
+--    visibilidade da Revisão/fila (finance.escopo_faturamento) — vê tudo, ou
+--    só a própria área (área do autor ou centro de custo do caso).
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_lixeira_faturamento(
   p_user_id uuid, p_busca text DEFAULT NULL, p_mes date DEFAULT NULL
@@ -164,6 +215,8 @@ BEGIN
   END IF;
 
   v_pode_restaurar := finance._tem_permissao_nominal(p_user_id, 'finance.faturamento.lixeira.restore');
+  -- Quem restaura enxerga a lixeira inteira, independente da área.
+  v_can_view_all := v_can_view_all OR v_pode_restaurar;
 
   SELECT COALESCE(jsonb_agg(x.item ORDER BY x.excluido_em DESC), '[]'::jsonb)
   INTO v_itens
@@ -274,9 +327,9 @@ END;
 $function$;
 
 -- ---------------------------------------------------------------------
--- 4. Restaurar: tira a marca de excluído e põe o lançamento na fila do mês
---    corrente. Só mexe no que o usuário enxerga na lixeira (mesmo escopo e
---    mesma janela de 12 meses); o resto é ignorado e volta em 'ignorados'.
+-- 5. Restaurar: tira a marca de excluído e põe o lançamento na fila do mês
+--    corrente. Quem tem a permissão restaura a lixeira inteira (sem escopo de
+--    área); fora da janela de 12 meses é ignorado e volta em 'ignorados'.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.restaurar_timesheets_lixeira(p_user_id uuid, p_ids uuid[])
  RETURNS jsonb
@@ -286,17 +339,14 @@ CREATE OR REPLACE FUNCTION public.restaurar_timesheets_lixeira(p_user_id uuid, p
 AS $function$
 DECLARE
   v_tenant_id uuid;
-  v_can_view_all boolean := false;
-  v_viewer_area_id uuid;
   v_mes date := date_trunc('month', CURRENT_DATE)::date;
   v_count int := 0;
   v_pedidos int := COALESCE(array_length(p_ids, 1), 0);
 BEGIN
   p_user_id := COALESCE(auth.uid(), p_user_id);
 
-  SELECT e.tenant_id, e.can_view_all, e.viewer_area_id
-  INTO v_tenant_id, v_can_view_all, v_viewer_area_id
-  FROM finance.escopo_faturamento(p_user_id) e;
+  SELECT tenant_id INTO v_tenant_id FROM core.tenant_users
+  WHERE user_id = p_user_id AND status = 'ativo' LIMIT 1;
 
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'Usuário não associado a tenant';
@@ -323,27 +373,15 @@ BEGIN
       -- operations._periodo_faturamento_padrao) -> fica onde estava: restaurar
       -- não pode ADIANTAR a cobrança.
       periodo_faturamento = GREATEST(v_mes, COALESCE(t.periodo_faturamento, t.data_lancamento::date)),
+      -- Marcador para Postergados não confundir restauração com adiamento.
+      restaurado_da_lixeira_em = now(),
+      restaurado_da_lixeira_por = p_user_id,
       updated_at = now(),
       updated_by = p_user_id
-  FROM contracts.casos cs
   WHERE t.tenant_id = v_tenant_id
     AND t.id = ANY(p_ids)
     AND t.excluido_faturamento
     AND t.excluido_faturamento_em >= now() - interval '12 months'
-    AND cs.id = t.caso_id AND cs.tenant_id = v_tenant_id
-    AND (
-      v_can_view_all
-      OR EXISTS (
-        SELECT 1 FROM people.colaboradores aut
-        WHERE aut.user_id = t.created_by AND aut.tenant_id = v_tenant_id
-          AND aut.area_id = v_viewer_area_id
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cs.centro_custo_rateio) = 'array' THEN cs.centro_custo_rateio ELSE '[]'::jsonb END) rr
-        WHERE NULLIF(rr->>'centro_custo_id', '')::uuid = v_viewer_area_id
-      )
-    )
     AND NOT EXISTS (
       SELECT 1 FROM finance.billing_items bi
       WHERE bi.tenant_id = v_tenant_id AND bi.origem_tipo = 'timesheet'
@@ -360,7 +398,7 @@ END;
 $function$;
 
 -- ---------------------------------------------------------------------
--- 5. excluir_timesheets_do_faturamento: excluir continua igual
+-- 6. excluir_timesheets_do_faturamento: excluir continua igual
 --    (finance.faturamento.write); desfazer (p_excluir = false) passa pela
 --    lixeira. Também não re-exclui o que já está na lixeira — senão o
 --    carimbo de quem/quando (e a contagem dos 12 meses) seria sobrescrito.
@@ -421,5 +459,63 @@ BEGIN
   GET DIAGNOSTICS v_count = ROW_COUNT;
 
   RETURN jsonb_build_object('afetados', v_count);
+END;
+$function$;
+
+-- ---------------------------------------------------------------------
+-- 7. Postergados: hora que voltou da lixeira não é adiamento. Definição de
+--    produção de 18/10/2026; só ganha o filtro restaurado_da_lixeira_em.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_faturamento_postergados(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'finance', 'contracts', 'operations', 'crm', 'people', 'core'
+AS $function$
+DECLARE
+  v_tenant_id uuid;
+BEGIN
+  p_user_id := COALESCE(auth.uid(), p_user_id);
+  SELECT tenant_id INTO v_tenant_id FROM core.tenant_users
+  WHERE user_id = p_user_id AND status = 'ativo' LIMIT 1;
+  IF v_tenant_id IS NULL THEN RAISE EXCEPTION 'Usuário não associado a tenant'; END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(x ORDER BY x.periodo_novo, x.cliente_nome)
+    FROM (
+      -- 1. Itens de regra (mensalidade, projeto, parcela)
+      SELECT a.id, 'regra'::text AS fonte, a.item_tipo, a.descricao, a.valor,
+             a.competencia, a.periodo_novo, a.motivo,
+             cs.numero AS caso_numero, cs.nome AS caso_nome,
+             cl.nome AS cliente_nome, a.created_at
+      FROM finance.faturamento_adiamentos a
+      LEFT JOIN contracts.casos cs ON cs.id = a.caso_id
+      LEFT JOIN contracts.contratos ct ON ct.id = cs.contrato_id
+      LEFT JOIN crm.clientes cl ON cl.id = ct.cliente_id
+      WHERE a.tenant_id = v_tenant_id AND a.desfeito_em IS NULL
+
+      UNION ALL
+
+      -- 2. Horas adiadas — moram em outro lugar (periodo_faturamento do
+      --    timesheet), mas para quem olha a tela são a mesma coisa.
+      SELECT t.id, 'hora'::text, 'timesheet',
+             COALESCE(NULLIF(t.descricao, ''), 'Horas') ,
+             (t.horas * COALESCE(public.resolver_valor_hora(t.caso_id, t.cargo_id), 0))::numeric(14,2),
+             (date_trunc('month', t.data_lancamento) + interval '1 month')::date,
+             t.periodo_faturamento,
+             NULL,
+             cs.numero, cs.nome, cl.nome, t.updated_at
+      FROM operations.timesheets t
+      LEFT JOIN contracts.casos cs ON cs.id = t.caso_id
+      LEFT JOIN contracts.contratos ct ON ct.id = cs.contrato_id
+      LEFT JOIN crm.clientes cl ON cl.id = ct.cliente_id
+      WHERE t.tenant_id = v_tenant_id
+        AND t.periodo_faturamento IS NOT NULL
+        AND date_trunc('month', t.periodo_faturamento)::date > (date_trunc('month', t.data_lancamento) + interval '1 month')::date
+        -- periodo_faturamento veio da restauração da lixeira, não de um
+        -- adiamento (o trigger limpa o marcador se alguém postergar depois).
+        AND t.restaurado_da_lixeira_em IS NULL
+    ) x
+  ), '[]'::jsonb);
 END;
 $function$;
