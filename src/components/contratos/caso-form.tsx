@@ -3789,15 +3789,25 @@ export default function CasoForm({
       </Card>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 backdrop-blur-sm md:pl-64">
-        <div className="pointer-events-auto container mx-auto flex flex-wrap justify-end gap-2 px-4 py-4">
+        {/* pr-24: o botão flutuante da Caixa de entrada (fixed, bottom-right) cobria o último botão. */}
+        <div className="pointer-events-auto container mx-auto flex flex-wrap justify-end gap-2 py-4 pl-4 pr-24">
           {isEdit && !isReadOnly ? (
             <Button variant="outline" onClick={() => setDeleteCasoOpen(true)} disabled={loading || deleteCasoLoading}>
               Excluir caso
             </Button>
           ) : null}
-          <Button variant="outline" onClick={() => router.back()} disabled={loading}>
-            Cancelar
-          </Button>
+          {/* Caso existente (visualizar ou editar): Voltar leva ao contrato. O atalho
+              da Revisão/Composição abre o caso em aba nova, sem histórico para o
+              router.back(). Criação mantém o Cancelar de antes. */}
+          {isEdit ? (
+            <Button variant="outline" onClick={() => router.push(`/contratos/${contratoId}/editar?view=1`)} disabled={loading}>
+              Voltar
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => router.back()} disabled={loading}>
+              Cancelar
+            </Button>
+          )}
           {!isReadOnly && (
             <Button onClick={submit} disabled={loading}>
               {loading ? 'Salvando...' : isEdit ? 'Atualizar caso' : 'Criar caso'}

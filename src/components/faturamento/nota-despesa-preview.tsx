@@ -44,6 +44,12 @@ export interface NotaDespesaData {
   contratoLabel: string
   casoLabel?: string | null
   documentoNumero?: string | null
+  /**
+   * "setembro/2026" — mês do SERVIÇO das despesas (competência do kit − 1;
+   * ver lib/faturamento/competencia-do-servico.ts). Sem ele a nota sai sem a
+   * linha de competência, como antes.
+   */
+  competenciaLabel?: string | null
   emissao: string
   vencimento: string
   itens: NotaDespesaItem[]
@@ -116,6 +122,7 @@ function buildNotaHtml(data: NotaDespesaData) {
       titulo: 'Nota de Débito',
       emissao: dataBR(data.emissao),
       vencimento: dataBR(data.vencimento),
+      competencia: data.competenciaLabel || undefined,
       numero: data.documentoNumero || undefined,
     },
     destinatario: {

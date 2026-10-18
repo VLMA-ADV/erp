@@ -23,6 +23,8 @@ import ResumoStatus from './composicao/resumo-status'
 import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
 import AjustesKitDialog from './composicao/ajustes-kit-dialog'
 import { mapearOrigemDasDespesas, parametrosBuscaOrigem } from './composicao/origem-despesas'
+import { linhasDoRelatorio } from './composicao/linhas-relatorio'
+import { competenciaDoServico } from '@/lib/faturamento/competencia-do-servico'
 import {
   FILTROS_VAZIOS,
   competenciaPadraoComposicao,
@@ -534,8 +536,13 @@ export default function ComposicaoDaFaturaList() {
   // revisão), subido ao bucket e registrado (D12-a). Regerar substitui.
   const gerarRelatorio = (kit: KitCaso) => executar(kit, 'relatorio', async () => {
     const itensTs = kit.itens.filter((i) => i.origem_tipo === 'timesheet')
-    const linhas = itensTs.flatMap((item) => item.linhas_timesheet.map((l) => ({ item, l })))
+    // Linhas de 0h e de itens excluídos/ignorados não saem no relatório
+    // (cliente, out/2026). O total do PDF é a soma das linhas impressas.
+    const { visiveis: linhas, ocultas, valorOculto } = linhasDoRelatorio(kit.itens)
     if (linhas.length === 0) { notify('Este kit não tem horas para relatar.'); return }
+    if (valorOculto > 0) {
+      notify(`${ocultas.length} linha(s) fora do relatório (excluídas/ignoradas) somam ${formatMoney(valorOculto)} — esse valor não entra no total do relatório.`)
+    }
     try {
       // Foto do profissional (Filipe, 28/09). A RPC devolve foto_url cru
       // (path no bucket privado); assina em lote e o PDF baixa uma vez por
@@ -562,7 +569,8 @@ export default function ComposicaoDaFaturaList() {
         pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
         casoLabel: kit.caso_id ? labelCaso(kit) : null,
         contratoLabel: formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full,
-        competenciaLabel: labelCompetenciaCurta(kit.competencia),
+        // Mês do serviço das horas (kit − 1), não o ciclo de cobrança.
+        competenciaLabel: labelCompetenciaCurta(competenciaDoServico(kit.competencia, 'timesheet')),
         mostrarValor: true,
         rows,
       })
@@ -574,7 +582,12 @@ export default function ComposicaoDaFaturaList() {
         contratoId: kit.contrato_id,
         competencia: kit.competencia,
         itemIds: itensTs.map((i) => i.id),
-        metadata: { horas: kit.horas, linhas: rows.length },
+        metadata: {
+          horas: rows.reduce((acc, r) => acc + r.horas, 0),
+          linhas: rows.length,
+          linhas_ocultas: ocultas.length,
+          competencia_servico: competenciaDoServico(kit.competencia, 'timesheet'),
+        },
       })
       success('Relatório de timesheet gerado e registrado no kit.')
       await recarregar()
@@ -624,6 +637,8 @@ export default function ComposicaoDaFaturaList() {
       contratoLabel: formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full,
       casoLabel: kit.caso_id ? `${kit.caso_numero ? `${kit.caso_numero} - ` : ''}${kit.caso_nome}` : null,
       documentoNumero: null,
+      // Mês do serviço das despesas (kit − 1), não o ciclo de cobrança.
+      competenciaLabel: labelCompetenciaCurta(competenciaDoServico(kit.competencia, 'despesa')),
       emissao: isoHoje(),
       vencimento: kit.documentos.boleto?.vencimento ?? kit.conta_receber?.vencimento ?? isoHoje(),
       despesaIds: despesas.map((i) => origemPorItem.get(i.id)).filter((v): v is string => !!v),

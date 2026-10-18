@@ -79,6 +79,21 @@ export function divisaoPorPagador(
 const percentualBR = (v: number) =>
   `${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
 
+/**
+ * Pagadores que saem no CABEÇALHO, junto do destinatário (cliente, out/2026:
+ * relatório único com todos os pagadores e percentuais logo no topo). Só com
+ * rateio — mais de um pagador; sem rateio o cabeçalho fica como sempre e o
+ * quadro "Divisão por pagador" do fim continua cuidando do pagador único
+ * diferente do cliente. Devolve null quando não se aplica.
+ */
+export function pagadoresDoCabecalho(
+  pagadores: PagadorRelatorio[] | null | undefined,
+): Array<{ nome: string; percentual: string }> | null {
+  const lista = (pagadores ?? []).filter(Boolean)
+  if (lista.length < 2) return null
+  return lista.map((p) => ({ nome: p.nome?.trim() || 'Pagador', percentual: percentualBR(p.percentual) }))
+}
+
 /** Bytes de uma foto já baixada e o content-type que veio na resposta. */
 export interface FotoBaixada {
   bytes: Uint8Array
@@ -91,13 +106,18 @@ export interface TimesheetPdfInput {
   /**
    * Pagadores do kit (nome e percentual do rateio). Com mais de um, ou com um
    * só diferente do cliente, o relatório fecha com o quadro "Divisão por
-   * pagador" depois do total (Filipe, 08/10). Um pagador igual ao cliente (ou
-   * nenhum) = relatório de sempre.
+   * pagador" depois do total (Filipe, 08/10). Com mais de um (rateio), nomes
+   * e percentuais também saem no cabeçalho, abaixo do destinatário (out/2026).
+   * Um pagador igual ao cliente (ou nenhum) = relatório de sempre.
    */
   pagadores?: PagadorRelatorio[] | null
   casoLabel?: string | null
   contratoLabel?: string | null
-  /** "setembro/2026" — sai na faixa do documento. */
+  /**
+   * "setembro/2026" — sai na faixa do documento. É o MÊS DO SERVIÇO das horas
+   * (competência do kit − 1; ver lib/faturamento/competencia-do-servico.ts),
+   * não o ciclo de cobrança.
+   */
   competenciaLabel?: string | null
   /** Sem valor o relatório mostra só horas (cliente que não vê a tarifa). */
   mostrarValor?: boolean
@@ -380,6 +400,19 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
 
   // Destinatário
   texto(input.cliente || '—', MARGEM, y, 9.4, negrito)
+  // Com rateio, os pagadores e percentuais vêm logo abaixo, um por linha.
+  const pagadoresTopo = pagadoresDoCabecalho(input.pagadores)
+  if (pagadoresTopo) {
+    y -= 13
+    texto('Pagadores', MARGEM, y, 8, normal, CINZA)
+    const xNome = MARGEM + 50
+    const larguraNome = Math.max(...pagadoresTopo.map((p) => normal.widthOfTextAtSize(limpar(p.nome), 8)))
+    for (const [i, p] of pagadoresTopo.entries()) {
+      if (i > 0) y -= 11
+      texto(p.nome, xNome, y, 8)
+      texto(p.percentual, xNome + larguraNome + 12, y, 8)
+    }
+  }
   y -= 20
 
   // Contrato / caso

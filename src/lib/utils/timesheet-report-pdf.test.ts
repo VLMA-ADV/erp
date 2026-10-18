@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
-import { divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, type FotoBaixada, type TimesheetPdfRow } from './timesheet-report-pdf'
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib'
+import {
+  divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, pagadoresDoCabecalho,
+  type FotoBaixada, type TimesheetPdfRow,
+} from './timesheet-report-pdf'
+import { montarPaginasDaNota } from './nota-despesa-pdf'
 import { LOGO_VLMA } from './documento-vlma'
 
 // Conteúdo bruto (descomprimido) de todas as páginas: serve para procurar
@@ -278,6 +282,86 @@ describe('divisão por pagador', () => {
     })
     expect(await conteudoDoPdf(com)).toBe(await conteudoDoPdf(sem))
     expect(await textosDoPdf(com)).not.toContain('Divisão por pagador')
+  })
+})
+
+describe('pagadores no cabeçalho', () => {
+  const base = { titulo: 'Relatório de Timesheet', cliente: 'Thiago Coneglian', mostrarValor: true }
+  const rateio = [
+    { nome: 'Felipe Coneglian Della Bianca', percentual: 60 },
+    { nome: 'Thiago Coneglian', percentual: 40 },
+  ]
+
+  it('pagadoresDoCabecalho só se aplica com mais de um pagador', () => {
+    expect(pagadoresDoCabecalho(null)).toBeNull()
+    expect(pagadoresDoCabecalho([])).toBeNull()
+    expect(pagadoresDoCabecalho([{ nome: 'Mendocino', percentual: 100 }])).toBeNull()
+    expect(pagadoresDoCabecalho([...rateio, { nome: ' ', percentual: 0 }])).toEqual([
+      { nome: 'Felipe Coneglian Della Bianca', percentual: '60%' },
+      { nome: 'Thiago Coneglian', percentual: '40%' },
+      { nome: 'Pagador', percentual: '0%' },
+    ])
+  })
+
+  it('com rateio, lista pagadores e percentuais logo abaixo do destinatário, antes da tabela', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, pagadores: rateio, rows: [linha(1)] })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    const iCliente = textos.indexOf('Thiago Coneglian')
+    const iRotulo = textos.indexOf('Pagadores')
+    const iTabela = textos.indexOf('Data')
+    expect(iCliente).toBeGreaterThan(-1)
+    expect(iRotulo).toBe(iCliente + 1)
+    expect(textos.slice(iRotulo, iTabela)).toEqual([
+      'Pagadores', 'Felipe Coneglian Della Bianca', '60%', 'Thiago Coneglian', '40%',
+    ])
+    // O quadro do rodapé continua, com os valores.
+    expect(textos.indexOf('Divisão por pagador')).toBeGreaterThan(iTabela)
+  })
+
+  it('sem rateio (um pagador, mesmo diferente do cliente), o cabeçalho não muda', async () => {
+    const emissao = '15/10/2026'
+    const sem = await gerarRelatorioTimesheetPdf({ ...base, emissao, rows: [linha(1)] })
+    const unico = await gerarRelatorioTimesheetPdf({
+      ...base, emissao, pagadores: [{ nome: 'Mendocino Participações', percentual: 100 }], rows: [linha(1)],
+    })
+    const textosUnico = (await textosDoPdf(unico)).split('\n')
+    expect(textosUnico).not.toContain('Pagadores')
+    // Até a tabela, idêntico ao relatório sem pagadores.
+    const ateTabela = (t: string[]) => t.slice(0, t.indexOf('Profissional'))
+    expect(ateTabela(textosUnico)).toEqual(ateTabela((await textosDoPdf(sem)).split('\n')))
+  })
+
+  it('competência do serviço sai na faixa', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, competenciaLabel: 'setembro/2026', rows: [linha(1)] })
+    expect(await textosDoPdf(bytes)).toContain('Competência   setembro/2026')
+  })
+})
+
+describe('nota de débito', () => {
+  const dados = {
+    clienteNome: 'Cliente Teste S.A.',
+    contratoLabel: '314 - Contrato',
+    emissao: '2026-10-15',
+    vencimento: '2026-10-25',
+    itens: [{ data_lancamento: '2026-09-10', categoria: 'Custas', descricao: 'Guia', valor: 120 }],
+  }
+  const gerar = async (extra: Record<string, unknown> = {}) => {
+    const pdf = await PDFDocument.create()
+    const normal = await pdf.embedFont(StandardFonts.Helvetica)
+    const negrito = await pdf.embedFont(StandardFonts.HelveticaBold)
+    montarPaginasDaNota(pdf, { ...dados, ...extra }, { normal, negrito })
+    return pdf.save()
+  }
+
+  it('mostra a competência (mês do serviço) na faixa, depois do vencimento', async () => {
+    const textos = (await textosDoPdf(await gerar({ competenciaLabel: 'setembro/2026', documentoNumero: '12' }))).split('\n')
+    const iVenc = textos.findIndex((t) => t.startsWith('Vencimento'))
+    expect(textos[iVenc + 1]).toBe('Competência   setembro/2026')
+    expect(textos[iVenc + 2]).toBe('Documento nº   12')
+  })
+
+  it('sem competência a nota sai como antes', async () => {
+    expect(await textosDoPdf(await gerar())).not.toContain('Competência')
   })
 })
 

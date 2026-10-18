@@ -51,6 +51,8 @@ export interface DadosDocumento {
   titulo: string
   emissao?: string
   vencimento?: string
+  /** "setembro/2026" — mês do serviço (lib/faturamento/competencia-do-servico.ts). */
+  competencia?: string
   numero?: string | number
 }
 
@@ -170,6 +172,7 @@ export function montarDocumento({
   <table class="doc">
     ${linhaDoc('Emissão', doc.emissao)}
     ${linhaDoc('Vencimento', doc.vencimento)}
+    ${linhaDoc('Competência', doc.competencia)}
     ${linhaDoc('Documento nº', doc.numero)}
   </table>
 </div>
