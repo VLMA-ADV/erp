@@ -151,6 +151,44 @@ export function layoutQuadroImpostos(imp: ImpostosRelatorio | null | undefined, 
   return { linhas, colunas, situacao, notas }
 }
 
+/**
+ * Valor fixo do caso (mensalidade) no relatório — cliente, out/2026. Montado
+ * em components/faturamento/composicao/valor-fixo-relatorio.ts.
+ */
+export interface ValorFixoRelatorio {
+  /** "Mensalidade setembro/2026" (mês do serviço). */
+  rotulo: string
+  /** null = a mensalidade não está neste kit; `observacao` diz onde está. */
+  valor: number | null
+  observacao?: string | null
+}
+
+const temValor = (v: number | null | undefined) => Math.round(Number(v || 0) * 100) > 0
+
+/**
+ * Totais do relatório. Sem valor fixo, como sempre: o total é a soma das
+ * linhas. Com valor fixo: total = mensalidade + excedente (as linhas com
+ * valor são as horas acima do teto), e a coluna Valor só existe se alguma
+ * linha tiver valor — linha de caso mensal não imprime "R$ 0,00".
+ */
+export function totaisDoRelatorio(rows: TimesheetPdfRow[], valorFixo?: ValorFixoRelatorio | null, mostrarValor = true) {
+  const horas = rows.reduce((s, r) => s + Number(r.horas || 0), 0)
+  const valorLinhas = Math.round(rows.reduce((s, r) => s + Number(r.valor || 0), 0) * 100) / 100
+  if (!valorFixo) {
+    return { horas, valorLinhas, fixo: null, excedente: 0, total: valorLinhas, colunaValor: mostrarValor }
+  }
+  const fixo = valorFixo.valor != null ? Number(valorFixo.valor) : null
+  const total = Math.round(((fixo ?? 0) + valorLinhas) * 100) / 100
+  return {
+    horas,
+    valorLinhas,
+    fixo,
+    excedente: valorLinhas,
+    total,
+    colunaValor: mostrarValor && rows.some((r) => temValor(r.valor)),
+  }
+}
+
 /** Bytes de uma foto já baixada e o content-type que veio na resposta. */
 export interface FotoBaixada {
   bytes: Uint8Array
@@ -194,6 +232,14 @@ export interface TimesheetPdfInput {
    * relatório termina como antes.
    */
   impostos?: ImpostosRelatorio | null
+  /**
+   * Caso de valor fixo (mensalidade). Com ele, as linhas sem valor saem sem
+   * a coluna Valor, a mensalidade do mês entra depois das horas e o total é
+   * mensalidade + excedente (linhas com valor = horas acima do teto). Quadro
+   * de impostos e divisão por pagador usam esse total. Sem ele (pró-labore,
+   * projeto, hora), o relatório de sempre.
+   */
+  valorFixo?: ValorFixoRelatorio | null
   /**
    * Como baixar cada foto (padrão: `fetch` global). Injetável para teste e
    * para quem já tem os bytes. Deve devolver null quando não conseguir.
@@ -405,6 +451,10 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   const normal = await pdf.embedFont(StandardFonts.Helvetica)
   const negrito = await pdf.embedFont(StandardFonts.HelveticaBold)
   const mostrarValor = input.mostrarValor !== false
+  const valorFixo = mostrarValor ? input.valorFixo ?? null : null
+  const totais = totaisDoRelatorio(input.rows, valorFixo, mostrarValor)
+  // Coluna Valor: sempre no relatório comum; no de valor fixo, só com excedente.
+  const colunaValor = totais.colunaValor
   // Avatar só existe se alguma linha veio com foto; senão o layout é o de
   // sempre (nome encostado na coluna).
   const comAvatar = input.rows.some((r) => !!r.fotoUrl)
@@ -418,7 +468,7 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     data: MARGEM,
     profissional: MARGEM + 62,
     descricao: MARGEM + 62 + 150,
-    horas: direita - (mostrarValor ? 90 : 0),
+    horas: direita - (colunaValor ? 90 : 0),
     valor: direita,
   }
   const larguraDescricao = colunas.horas - 70 - colunas.descricao
@@ -502,7 +552,7 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     texto('Profissional', colunas.profissional, y, 7.6, normal, CINZA)
     texto('Descrição', colunas.descricao, y, 7.6, normal, CINZA)
     textoDireita('Horas', colunas.horas, y, 7.6, normal, CINZA)
-    if (mostrarValor) textoDireita('Valor (R$)', colunas.valor, y, 7.6, normal, CINZA)
+    if (colunaValor) textoDireita('Valor (R$)', colunas.valor, y, 7.6, normal, CINZA)
     y -= 4
     linha(y)
     y -= 12
@@ -512,8 +562,6 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   const limiteInferior = MARGEM + RODAPE_ALTURA
   const ALTURA_LINHA = 10
 
-  let totalHoras = 0
-  let totalValor = 0
   for (const item of input.rows) {
     const linhasDesc = quebrar(item.descricao || '—', normal, 8, larguraDescricao)
     const linhasProf = quebrar(
@@ -535,23 +583,59 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     linhasProf.forEach((l, i) => texto(l, colunas.profissional + recuoNome, y - i * ALTURA_LINHA, 8))
     linhasDesc.forEach((l, i) => texto(l, colunas.descricao, y - i * ALTURA_LINHA, 8))
     textoDireita(formatarHoras(item.horas), colunas.horas, y, 8)
-    if (mostrarValor) textoDireita(item.valor != null ? money(Number(item.valor)) : '—', colunas.valor, y, 8)
-    totalHoras += Number(item.horas || 0)
-    totalValor += Number(item.valor || 0)
+    if (colunaValor) {
+      // Valor fixo: linha dentro da mensalidade fica em branco (nem "R$ 0,00" nem "—").
+      const celula = valorFixo
+        ? (temValor(item.valor) ? money(Number(item.valor)) : '')
+        : (item.valor != null ? money(Number(item.valor)) : '—')
+      if (celula) textoDireita(celula, colunas.valor, y, 8)
+    }
     y -= altura + 4
   }
+  const totalHoras = totais.horas
+  // Total que vale para o quadro de impostos e a divisão por pagador.
+  const totalValor = totais.total
 
   // Totais: nunca sozinhos no topo da página seguinte se couber evitar.
-  if (y - 40 < limiteInferior) {
+  if (y - (valorFixo ? 80 : 40) < limiteInferior) {
     novaPagina()
   }
   y -= 4
   linha(y)
   y -= 14
-  texto('Total', colunas.descricao, y, 9.6, negrito)
-  textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9.6, negrito)
-  if (mostrarValor) textoDireita(money(totalValor), colunas.valor, y, 9.6, negrito)
-  y -= 10
+  if (!valorFixo) {
+    texto('Total', colunas.descricao, y, 9.6, negrito)
+    textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9.6, negrito)
+    if (mostrarValor) textoDireita(money(totalValor), colunas.valor, y, 9.6, negrito)
+    y -= 10
+  } else {
+    // Valor fixo: horas do mês, a mensalidade, o excedente (se houver) e o total.
+    texto('Total de horas', colunas.descricao, y, 9, negrito)
+    textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9, negrito)
+    if (colunaValor) textoDireita(money(totais.excedente), colunas.valor, y, 9, negrito)
+    y -= 15
+    if (valorFixo.valor != null) {
+      texto(valorFixo.rotulo, colunas.descricao, y, 8.6)
+      textoDireita(money(Number(valorFixo.valor)), direita, y, 8.6)
+    } else {
+      texto(`${valorFixo.rotulo} - ${valorFixo.observacao || 'não incluída neste kit'}`, colunas.descricao, y, 8.6, normal, CINZA)
+    }
+    y -= 12
+    if (temValor(totais.excedente)) {
+      texto('Horas excedentes (acima do teto da mensalidade)', colunas.descricao, y, 8.6)
+      textoDireita(money(totais.excedente), direita, y, 8.6)
+      y -= 12
+    }
+    // Sem mensalidade no kit e sem excedente não há o que totalizar: a linha
+    // acima já diz por quê, e um "Total R$ 0,00" leria como serviço gratuito.
+    if (valorFixo.valor != null || temValor(totais.excedente)) {
+      pagina.drawLine({ start: { x: colunas.descricao, y: y + 8 }, end: { x: direita, y: y + 8 }, thickness: 0.4, color: CINZA })
+      y -= 4
+      texto('Total', colunas.descricao, y, 9.6, negrito)
+      textoDireita(money(totalValor), direita, y, 9.6, negrito)
+      y -= 10
+    }
+  }
 
   // Divisão por pagador (Filipe, 08/10: caso 318 Coneglian, rateio 50/50;
   // Strobel x Mendocino, pagador diferente do cliente). Fecha o relatório,
@@ -560,7 +644,9 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   // percentual e o bruto da NFS-e, e dois valores para o mesmo pagador no
   // mesmo PDF confundem (ver layoutQuadroImpostos).
   const quadro = mostrarValor ? layoutQuadroImpostos(input.impostos, totalValor) : null
-  const divisao = quadro ? null : divisaoPorPagador(totalValor, input.cliente, input.pagadores)
+  const divisao = quadro || (valorFixo && !temValor(totalValor))
+    ? null
+    : divisaoPorPagador(totalValor, input.cliente, input.pagadores)
   if (divisao) {
     const ALTURA_PAGADOR = 12
     if (y - (28 + divisao.length * ALTURA_PAGADOR) < limiteInferior) {
@@ -573,7 +659,9 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     y -= 11
     for (const d of divisao) {
       texto(d.nome, colunas.descricao, y, 8.4)
-      textoDireita(percentualBR(d.percentual), colunas.horas, y, 8.4)
+      // Valor fixo sem coluna Valor: a coluna das horas encosta na margem, então
+      // o percentual recua para o valor caber à direita.
+      textoDireita(percentualBR(d.percentual), mostrarValor && !colunaValor ? direita - 90 : colunas.horas, y, 8.4)
       if (mostrarValor) textoDireita(money(d.valor), colunas.valor, y, 8.4)
       y -= ALTURA_PAGADOR
     }

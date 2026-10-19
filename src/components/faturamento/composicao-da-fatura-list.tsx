@@ -26,6 +26,7 @@ import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
 import AjustesKitDialog from './composicao/ajustes-kit-dialog'
 import { mapearOrigemDasDespesas, parametrosBuscaOrigem } from './composicao/origem-despesas'
 import { linhasDoRelatorio } from './composicao/linhas-relatorio'
+import { avisoValorFixo, valorFixoDoKit, valorFixoParaPdf, valoresDasLinhasValorFixo } from './composicao/valor-fixo-relatorio'
 import { competenciaDoServico } from '@/lib/faturamento/competencia-do-servico'
 import {
   FILTROS_VAZIOS,
@@ -555,20 +556,28 @@ export default function ComposicaoDaFaturaList() {
     if (valorOculto > 0) {
       notify(`${ocultas.length} linha(s) fora do relatório (excluídas/ignoradas) somam ${formatMoney(valorOculto)} — esse valor não entra no total do relatório.`)
     }
+    // Caso de valor fixo (mensalidade; cliente, out/2026): linhas sem valor,
+    // a mensalidade do mês do serviço e total = mensalidade + excedente. Sem
+    // a mensalidade no kit, avisa — o PDF diz onde ela está, sem inventar valor.
+    const fixo = valorFixoDoKit(kit, payload?.clientes.flatMap((c) => c.casos) ?? [])
+    const avisoFixo = fixo ? avisoValorFixo(fixo) : null
+    if (avisoFixo) notify(avisoFixo)
+    const valoresFixo = fixo ? valoresDasLinhasValorFixo(linhas) : null
     try {
       // Foto do profissional (Filipe, 28/09). A RPC devolve foto_url cru
       // (path no bucket privado); assina em lote e o PDF baixa uma vez por
       // profissional. Sem foto, o PDF desenha as iniciais.
       const fotos = await assinarFotosColaboradores(linhas.map(({ l }) => l.foto_url))
       const rows: TimesheetPdfRow[] = linhas
-        .map(({ item, l }) => ({
+        .map(({ item, l }, idx) => ({
           data: l.data ?? item.data_referencia ?? '',
           profissional: l.profissional ?? '',
           cargo: l.cargo,
           descricao: l.descricao ?? item.descricao,
           horas: Number(l.horas || 0),
           valorHora: l.valor_hora ?? null,
-          valor: l.valor ?? null,
+          // Valor fixo: o valor do item de cobrança (excedente ou nada), não o da linha.
+          valor: valoresFixo ? valoresFixo[idx] : (l.valor ?? null),
           fotoUrl: (l.foto_url && fotos.get(l.foto_url)) || null,
         }))
         .sort((a, b) => a.data.localeCompare(b.data))
@@ -614,6 +623,7 @@ export default function ComposicaoDaFaturaList() {
         mostrarValor: true,
         rows,
         impostos,
+        valorFixo: fixo ? valorFixoParaPdf(fixo) : null,
       })
       const { path, numero_documento } = await gerarERegistrarDocumento({
         tipo: 'relatorio_timesheet',
@@ -628,6 +638,11 @@ export default function ComposicaoDaFaturaList() {
           linhas: rows.length,
           linhas_ocultas: ocultas.length,
           competencia_servico: competenciaDoServico(kit.competencia, 'timesheet'),
+          ...(fixo ? {
+            valor_fixo: fixo.situacao === 'no_kit' ? fixo.valor : null,
+            valor_fixo_situacao: fixo.situacao,
+            valor_excedente: Math.round(rows.reduce((acc, r) => acc + Number(r.valor || 0), 0) * 100) / 100,
+          } : {}),
         },
       })
       const n = numero_documento ?? numeroDocumento

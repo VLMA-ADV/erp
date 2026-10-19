@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib'
 import {
   divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, layoutQuadroImpostos, pagadoresDoCabecalho,
-  type FotoBaixada, type TimesheetPdfRow,
+  totaisDoRelatorio, type FotoBaixada, type TimesheetPdfRow,
 } from './timesheet-report-pdf'
 import { montarPaginasDaNota } from './nota-despesa-pdf'
 import { LOGO_VLMA } from './documento-vlma'
@@ -470,5 +470,95 @@ describe('quadro "Impostos" por pagador', () => {
     const depois = textos.slice(textos.indexOf('Impostos'))
     expect(depois).not.toContain('Total')
     expect(depois).toContain('FSX Participações')
+  })
+})
+
+describe('caso de valor fixo (mensalidade)', () => {
+  // Caso 63, kit out/2026 (produção): 24 lançamentos, 26,72h, mensalidade
+  // R$ 4.920 e NFS-e 2132 emitida (bruto 4.920, IRRF 73,80, PIS 31,98,
+  // COFINS 147,60, CSLL 49,20, líquido 4.617,42).
+  const HORAS = [0.5, 0.5, 1, 1.5, 0.5, 0.5, 0.5, 0.5, 0.33, 4, 0.5, 1, 1, 3.75, 0.5, 2.32, 1, 0.5, 1, 0.5, 2.42, 0.4, 1, 1]
+  const rows = HORAS.map((h, i) => linha(i, { horas: h, valorHora: 0, valor: null }))
+  const nf2132 = {
+    cliente_id: 'c63', nome: 'Cliente Mensal', percentual: 100, bruto: 4920,
+    retencoes: { irrf: 73.8, pis: 31.98, cofins: 147.6, csll: 49.2, inss: 0, iss: 0 }, liquido: 4617.42,
+    origem: 'emitida' as const, nfseNumero: '2132',
+  }
+  const base = {
+    titulo: 'Relatório de timesheet', cliente: 'Cliente Mensal', competenciaLabel: 'setembro/2026', mostrarValor: true,
+    emissao: '18/10/2026', rows,
+  }
+
+  it('sem excedente: sem coluna Valor nem R$ 0,00; mensalidade e total = mensalidade', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({
+      ...base,
+      valorFixo: { rotulo: 'Mensalidade setembro/2026', valor: 4920 },
+      impostos: { linhas: [nf2132], grupoNome: 'PJ Nacional' },
+    })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    expect(textos).not.toContain('Valor (R$)')
+    expect(textos).not.toContain('R$ 0,00')
+    expect(textos).toEqual(expect.arrayContaining(['Data', 'Profissional', 'Descrição', 'Horas', 'Total de horas', '26h 43min']))
+    const i = textos.indexOf('Mensalidade setembro/2026')
+    expect(i).toBeGreaterThan(textos.indexOf('Total de horas'))
+    expect(textos[i + 1]).toBe('R$ 4.920,00')
+    expect(textos.slice(i)).toEqual(expect.arrayContaining(['Total', 'R$ 4.920,00']))
+    expect(textos).not.toContain('Horas excedentes (acima do teto da mensalidade)')
+    // Quadro de impostos com o mesmo total: sem nota de diferença (hoje, com
+    // total R$ 0,00, saía "difere do total das horas em R$ 4.920,00").
+    expect(textos).toContain('NFS-e 2132')
+    expect(textos.some((t) => t.startsWith('O valor bruto das NFS-e'))).toBe(false)
+  })
+
+  it('com excedente (teto): linhas acima do teto com valor, total = mensalidade + excedente', async () => {
+    // Caso 314 (teto 15h, excedente R$ 343,54/h), mês sintético de 16,5h.
+    const r = [
+      linha(1, { horas: 8, valor: null }), linha(2, { horas: 6, valor: null }), linha(3, { horas: 2.5, valor: 515.31 }),
+    ]
+    const valorFixo = { rotulo: 'Mensalidade setembro/2026', valor: 5366.55 }
+    expect(totaisDoRelatorio(r, valorFixo)).toMatchObject({ fixo: 5366.55, excedente: 515.31, total: 5881.86, colunaValor: true })
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({ ...base, rows: r, valorFixo }))).split('\n')
+    expect(textos).toContain('Valor (R$)')
+    expect(textos).not.toContain('R$ 0,00')
+    expect(textos.filter((t) => t === 'R$ 515,31').length).toBe(3) // linha, total de horas e linha do excedente
+    expect(textos).toEqual(expect.arrayContaining([
+      'Mensalidade setembro/2026', 'R$ 5.366,55', 'Horas excedentes (acima do teto da mensalidade)', 'R$ 5.881,86',
+    ]))
+  })
+
+  it('divisão por pagador sobre mensalidade + excedente', async () => {
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({
+      ...base,
+      pagadores: [{ nome: 'Pagador A', percentual: 50 }, { nome: 'Pagador B', percentual: 50 }],
+      valorFixo: { rotulo: 'Mensalidade setembro/2026', valor: 4920 },
+    }))).split('\n')
+    const i = textos.indexOf('Divisão por pagador')
+    expect(i).toBeGreaterThan(textos.indexOf('Mensalidade setembro/2026'))
+    expect(textos.slice(i).filter((t) => t === 'R$ 2.460,00').length).toBe(2)
+  })
+
+  it('mensalidade fora do kit: diz onde está, sem valor e sem total R$ 0,00', async () => {
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({
+      ...base,
+      pagadores: [{ nome: 'Pagador A', percentual: 50 }, { nome: 'Pagador B', percentual: 50 }],
+      valorFixo: { rotulo: 'Mensalidade agosto/2026', valor: null, observacao: 'não incluída neste kit' },
+    }))).split('\n')
+    expect(textos).toContain('Mensalidade agosto/2026 - não incluída neste kit')
+    expect(textos).not.toContain('R$ 0,00')
+    expect(textos).not.toContain('Total')
+    expect(textos).not.toContain('Divisão por pagador')
+    expect(textos).toContain('Total de horas')
+  })
+
+  it('pró-labore (sem valorFixo) fica como hoje: coluna Valor e total das linhas', async () => {
+    const r = [linha(1, { horas: 3, valor: 0 }), linha(2, { horas: 7.5, valor: 0 })]
+    const sem = await gerarRelatorioTimesheetPdf({ ...base, rows: r })
+    const comNull = await gerarRelatorioTimesheetPdf({ ...base, rows: r, valorFixo: null })
+    expect(await conteudoDoPdf(comNull)).toBe(await conteudoDoPdf(sem))
+    const textos = (await textosDoPdf(sem)).split('\n')
+    expect(textos).toContain('Valor (R$)')
+    expect(textos).toContain('R$ 0,00')
+    expect(textos).not.toContain('Total de horas')
+    expect(totaisDoRelatorio(r)).toMatchObject({ fixo: null, total: 0, colunaValor: true })
   })
 })
