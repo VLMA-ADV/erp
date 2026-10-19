@@ -53,7 +53,17 @@ export interface DadosDocumento {
   vencimento?: string
   /** "setembro/2026" — mês do serviço (lib/faturamento/competencia-do-servico.ts). */
   competencia?: string
+  /**
+   * Nº do documento (contador único do escritório, out/2026). Sai junto do
+   * título — "Nota de Débito nº 16" — e no <title> da página.
+   */
   numero?: string | number
+}
+
+/** "Nota de Débito" + 16 → "Nota de Débito nº 16"; sem número, só o título. */
+export function tituloComNumero(titulo: string, numero?: string | number | null) {
+  const n = numero == null ? '' : String(numero).trim()
+  return n ? `${titulo} nº ${n}` : titulo
 }
 
 export const esc = (s: string) =>
@@ -91,7 +101,7 @@ export function montarDocumento({
     val ? `<tr><td class="rot">${esc(rot)}</td><td class="val">${esc(String(val))}</td></tr>` : ''
 
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8" />
-<title>${esc(doc.titulo)}</title>
+<title>${esc(tituloComNumero(doc.titulo, doc.numero))}</title>
 <style>
   /* Paisagem: pedido do Filipe, e o que faz a coluna de descrição caber. */
   @page { size: A4 landscape; margin: 12mm 14mm 16mm; }
@@ -168,12 +178,11 @@ export function montarDocumento({
 </div>
 
 <div class="faixa">
-  <h1>${esc(doc.titulo)}</h1>
+  <h1>${esc(tituloComNumero(doc.titulo, doc.numero))}</h1>
   <table class="doc">
     ${linhaDoc('Emissão', doc.emissao)}
     ${linhaDoc('Vencimento', doc.vencimento)}
     ${linhaDoc('Competência', doc.competencia)}
-    ${linhaDoc('Documento nº', doc.numero)}
   </table>
 </div>
 

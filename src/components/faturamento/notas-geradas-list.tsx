@@ -16,7 +16,13 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 
 interface NotaGerada {
   id: string
+  /** Contador interno de linhas (o "ND #"/"NF #" das contas a receber). */
   numero: number | null
+  /**
+   * Nº do documento (numeração única do escritório, out/2026) — o que vai
+   * impresso no relatório e na nota de débito. Null nos documentos antigos.
+   */
+  numero_documento?: number | null
   status: 'gerado' | 'cancelado' | string
   tipo_documento: 'boleto_itau' | 'relatorio_honorarios' | 'nota_fiscal_servico' | string
   arquivo_nome: string | null
@@ -50,6 +56,8 @@ const tipoDocumentoOptions = [
   { value: 'boleto_itau', label: 'Boleto Itaú' },
   { value: 'relatorio_honorarios', label: 'Relatório de honorários' },
   { value: 'nota_fiscal_servico', label: 'Nota fiscal de serviço' },
+  { value: 'relatorio_timesheet', label: 'Relatório de timesheet' },
+  { value: 'nota_debito', label: 'Nota de débito' },
 ]
 
 const statusOptions = [
@@ -380,7 +388,7 @@ export default function NotasGeradasList() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cliente, caso, contrato ou nº da nota"
+            placeholder="Cliente, caso, contrato, nº da nota ou do documento"
           />
         </div>
         <div className="md:col-span-2">
@@ -481,7 +489,17 @@ export default function NotasGeradasList() {
               notes.map((note) => (
                 <tr key={note.id} className="border-b last:border-0">
                   <td className="p-2">
-                    <div className="font-medium">#{note.numero || '-'}</div>
+                    {/* Nº do documento (numeração única, out/2026) em destaque; o
+                        contador interno fica embaixo — é ele que aparece como
+                        "ND #"/"NF #" nas contas a receber. Antigos: só o interno. */}
+                    {note.numero_documento ? (
+                      <>
+                        <div className="font-medium">Nº {note.numero_documento}</div>
+                        <div className="text-xs text-ink-mute" title="Registro interno (aparece como ND #/NF # nas contas a receber)">reg. #{note.numero || '-'}</div>
+                      </>
+                    ) : (
+                      <div className="font-medium">#{note.numero || '-'}</div>
+                    )}
                     {getNumeroNfse(note) ? <div className="text-xs text-ink-mute">NFS-e {getNumeroNfse(note)}</div> : null}
                     {note.batch_numero ? <div className="text-xs text-ink-mute">Lote #{note.batch_numero}</div> : null}
                   </td>

@@ -22,6 +22,7 @@ import AndamentoPorRegra, { etapaDoStatus, statusDaEtapa, linhaVazia, type Andam
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import PostergadosList from './postergados-list'
 import LixeiraFaturamentoList from './lixeira-faturamento-list'
+import { AUTO_APROVADO_ATOR, AUTO_APROVADO_LABEL, AUTO_APROVADO_TITLE, isAutoAprovado } from './auto-aprovacao'
 import {
   competenciaAtual,
   lerCompetenciaSalva,
@@ -3947,6 +3948,8 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                 const envioData = item.timesheetDataLancamento || item.dataReferencia
                                 const envioTexto = mode === 'timesheet' ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
                                 const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
+                                // regra projeto aprovada pelo sistema ao liberar (chave do tenant)
+                                const autoAprovado = isAutoAprovado(item)
                                 // trava multi-CC: aprovação só libera quando nenhuma hora do caso
                                 // estiver em revisão (cadeado explicado em vez de erro ao clicar)
                                 const horasPendentesCC =
@@ -3980,6 +3983,14 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                         disabled={(!canAdvance(item.status) && item.status !== 'aprovado' && !naFila) || busy}
                                       />
                                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.cls}`}>{badge.label}</span>
+                                      {autoAprovado ? (
+                                        <span
+                                          className="rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 ring-1 ring-inset ring-purple-200"
+                                          title={AUTO_APROVADO_TITLE}
+                                        >
+                                          {AUTO_APROVADO_LABEL}
+                                        </span>
+                                      ) : null}
                                       {naFila ? (
                                         <span className="text-[11px] text-ink-mute" title="Calculado agora a partir do lançamento; a hora segue editável na origem até ser liberada">
                                           aguardando liberação
@@ -4126,7 +4137,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                           <td className="px-3 py-3">
                                             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700">Revisão</span>
                                           </td>
-                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={item.responsavelRevisaoNome || 'Sem revisor definido'} foto={item.revisorFoto} /></td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={autoAprovado ? AUTO_APROVADO_ATOR : item.responsavelRevisaoNome || 'Sem revisor definido'} foto={autoAprovado ? null : item.revisorFoto} /></td>
                                           <td className="px-3 py-2.5 text-xs text-ink-secondary">{revisado && item.dataRevisao ? formatDate(item.dataRevisao) : '—'}</td>
                                           <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {revisado ? (
@@ -4316,7 +4327,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                           <td className="px-3 py-3">
                                             <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-700">Aprovação</span>
                                           </td>
-                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={item.responsavelAprovacaoNome || 'Renata ou Douglas'} foto={item.aprovadorFoto} /></td>
+                                          <td className="px-3 py-2.5 text-xs text-ink-secondary"><PersonBadge nome={autoAprovado ? AUTO_APROVADO_ATOR : item.responsavelAprovacaoNome || 'Renata ou Douglas'} foto={autoAprovado ? null : item.aprovadorFoto} /></td>
                                           <td className="px-3 py-2.5 text-xs text-ink-secondary">
                                             {item.status === 'aprovado' && item.dataAprovacao ? formatDate(item.dataAprovacao) : '—'}
                                           </td>

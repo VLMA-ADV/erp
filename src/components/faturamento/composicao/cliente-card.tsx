@@ -406,7 +406,9 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             {/* 1. NFS-e */}
             <DocumentoLinha
               icon={<FileText className="h-4 w-4" />}
-              titulo="NFS-e"
+              // Nº do documento (numeração única, out/2026) ao lado; o número
+              // oficial da nota continua sendo o da prefeitura, no badge.
+              titulo={comNumeroDoc('NFS-e', nfse?.status === 'gerado' ? nfse?.numero_documento : null, 'doc. nº')}
               status={
                 !nfse || nfse.status !== 'gerado'
                   ? nfse
@@ -514,7 +516,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         {temHoras ? (
           <DocumentoLinha
             icon={<Clock className="h-4 w-4" />}
-            titulo="Relatório de timesheet"
+            titulo={comNumeroDoc('Relatório de timesheet', docs.relatorio_timesheet?.numero_documento)}
             status={statusDocGerado(docs.relatorio_timesheet, `${formatHorasMin(kit.horas)} em ${lancamentosTs} lançamento(s)`)}
             // Filipe 28/09: "é importante ter a info na tela de que originalmente
             // aquele caso precisa enviar o relatório" — o toggle acima continua
@@ -558,7 +560,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         {temDespesa ? (
           <DocumentoLinha
             icon={<Receipt className="h-4 w-4" />}
-            titulo="Despesas"
+            titulo={docs.nota_debito?.numero_documento ? comNumeroDoc('Despesas · Nota de débito', docs.nota_debito.numero_documento) : 'Despesas'}
             status={
               docs.nota_debito
                 ? statusDocGerado(
@@ -701,7 +703,7 @@ function DocumentosDoPagador({ kit, nota, acoes }: { kit: KitCaso; nota: DocNfse
     <>
       <DocumentoLinha
         icon={<FileText className="h-4 w-4" />}
-        titulo={`NFS-e${numero ? ` nº ${numero}` : ''} · ${pagador}`}
+        titulo={comNumeroDoc(`NFS-e${numero ? ` nº ${numero}` : ''} · ${pagador}`, nota.numero_documento, 'doc. nº')}
         status={
           autorizada
             ? { tipo: 'ok', badge: 'Autorizada', explicacao: `Nota de ${pagador} · uma NFS-e por pagador (rateio)` }
@@ -771,6 +773,16 @@ function DocumentosDoPagador({ kit, nota, acoes }: { kit: KitCaso; nota: DocNfse
       />
     </>
   )
+}
+
+/**
+ * "Relatório de timesheet" + 15 → "Relatório de timesheet nº 15" (numeração
+ * única dos documentos, out/2026). NFS-e usa "doc. nº" para não confundir com
+ * o número da prefeitura. Documento antigo (sem número) fica como estava.
+ */
+function comNumeroDoc(titulo: string, numero: number | null | undefined, rotulo: 'nº' | 'doc. nº' = 'nº') {
+  if (!numero) return titulo
+  return rotulo === 'nº' ? `${titulo} nº ${numero}` : `${titulo} · ${rotulo} ${numero}`
 }
 
 function statusDocGerado(doc: DocGerado | null, resumo: string, complemento: string | null = null): StatusDoc {
