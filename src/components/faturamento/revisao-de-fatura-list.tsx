@@ -21,6 +21,7 @@ import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import AndamentoPorRegra, { etapaDoStatus, statusDaEtapa, linhaVazia, type AndamentoLinha, type EtapaKey, type FaturadoMes } from './andamento-por-regra'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import PostergadosList from './postergados-list'
+import LixeiraFaturamentoList from './lixeira-faturamento-list'
 import {
   competenciaAtual,
   lerCompetenciaSalva,
@@ -1034,6 +1035,8 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   // "Postergados" era uma aba da tela antiga; aqui é um painel inline.
   const [postergadosAberto, setPostergadosAberto] = useState(false)
   const [postergadosCount, setPostergadosCount] = useState<number | null>(null)
+  const [lixeiraAberta, setLixeiraAberta] = useState(false)
+  const [lixeiraCount, setLixeiraCount] = useState<number | null>(null)
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
   const [ruleFilter, setRuleFilter] = useState<RuleFilterKey>('all')
@@ -1333,6 +1336,22 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       })
   }, [competencias, competencia])
 
+  // Conta a lixeira para o botão "Lixeira (N)"; a lista em si é o
+  // LixeiraFaturamentoList, que se carrega sozinho quando aberto.
+  const loadLixeiraCount = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: rpcError } = await supabase.rpc('get_lixeira_faturamento', { p_user_id: user.id })
+      if (rpcError) { setLixeiraCount(null); return }
+      const itens = (data as { itens?: unknown[] } | null)?.itens
+      setLixeiraCount(Array.isArray(itens) ? itens.length : 0)
+    } catch {
+      setLixeiraCount(null)
+    }
+  }
+
   // Conta os postergados para o botão "Postergados (N)"; a lista em si é o
   // PostergadosList, que se carrega sozinho quando aberto.
   const loadPostergadosCount = async () => {
@@ -1482,6 +1501,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     if (!canRead) return
     void loadCompetencias(true)
     void loadPostergadosCount()
+    void loadLixeiraCount()
     void loadAllContratos()
     void loadColaboradores()
     void loadPodeEmitirNfse()
@@ -2648,6 +2668,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   // faturamento do mês" dispara recarrega itens e abas (listener acima).
   const aposMexerNaFila = () => {
     void loadPostergadosCount()
+    void loadLixeiraCount()
     window.dispatchEvent(new Event('faturamento:gerado'))
   }
 
@@ -2761,7 +2782,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     if (!window.confirm(
       'Excluir este lançamento da fila de faturamento?\n\n' +
       'O timesheet continua existindo — as horas seguem contando para a pessoa e para os relatórios. ' +
-      'Só some da fila; pode ser revertido depois se precisar.',
+      'Só some da fila e fica na Lixeira por 12 meses, de onde pode ser restaurado.',
     )) return
     try {
       setBusyKey(`excluir-fila:${item.id}`)
@@ -3001,6 +3022,17 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           >
             Postergados{postergadosCount !== null ? ` (${postergadosCount})` : ''}
           </button>
+          {/* Lixeira: lançamentos de hora excluídos da fila, por 12 meses. */}
+          <button
+            type="button"
+            onClick={() => setLixeiraAberta((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+              lixeiraAberta ? 'bg-ink text-white' : 'text-ink-mute hover:text-ink-secondary'
+            }`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Lixeira{lixeiraCount !== null ? ` (${lixeiraCount})` : ''}
+          </button>
         </TabsList>
       </Tabs>
 
@@ -3013,6 +3045,18 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             </p>
           </div>
           <PostergadosList />
+        </div>
+      ) : null}
+
+      {lixeiraAberta ? (
+        <div className="rounded-xl border bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-ink">Lixeira</p>
+            <p className="text-[11px] text-ink-mute">
+              Lançamentos de hora excluídos da fila de faturar, por 12 meses. Restaurar devolve para a fila do mês corrente.
+            </p>
+          </div>
+          <LixeiraFaturamentoList onRestaurado={aposMexerNaFila} onTotalChange={setLixeiraCount} />
         </div>
       ) : null}
 
