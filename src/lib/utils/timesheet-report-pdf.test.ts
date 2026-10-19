@@ -331,6 +331,13 @@ describe('pagadores no cabeçalho', () => {
     expect(ateTabela(textosUnico)).toEqual(ateTabela((await textosDoPdf(sem)).split('\n')))
   })
 
+  it('nº do documento sai no título da faixa', async () => {
+    const com = await gerarRelatorioTimesheetPdf({ ...base, titulo: 'Relatório de timesheet', numeroDocumento: 15, rows: [linha(1)] })
+    expect((await textosDoPdf(com)).split('\n')).toContain('Relatório de timesheet nº 15')
+    const sem = await gerarRelatorioTimesheetPdf({ ...base, titulo: 'Relatório de timesheet', numeroDocumento: null, rows: [linha(1)] })
+    expect((await textosDoPdf(sem)).split('\n')).toContain('Relatório de timesheet')
+  })
+
   it('competência do serviço sai na faixa', async () => {
     const bytes = await gerarRelatorioTimesheetPdf({ ...base, competenciaLabel: 'setembro/2026', rows: [linha(1)] })
     expect(await textosDoPdf(bytes)).toContain('Competência   setembro/2026')
@@ -357,7 +364,19 @@ describe('nota de débito', () => {
     const textos = (await textosDoPdf(await gerar({ competenciaLabel: 'setembro/2026', documentoNumero: '12' }))).split('\n')
     const iVenc = textos.findIndex((t) => t.startsWith('Vencimento'))
     expect(textos[iVenc + 1]).toBe('Competência   setembro/2026')
-    expect(textos[iVenc + 2]).toBe('Documento nº   12')
+  })
+
+  // Numeração única dos documentos (cliente, out/2026): o nº vai no título.
+  it('mostra o nº do documento no título, não numa linha à parte', async () => {
+    const textos = (await textosDoPdf(await gerar({ documentoNumero: '16' }))).split('\n')
+    expect(textos).toContain('Nota de Débito nº 16')
+    expect(textos.some((t) => t.startsWith('Documento nº'))).toBe(false)
+  })
+
+  it('sem número, o título de sempre', async () => {
+    const textos = (await textosDoPdf(await gerar())).split('\n')
+    expect(textos).toContain('Nota de Débito')
+    expect(textos.some((t) => t.includes(' nº '))).toBe(false)
   })
 
   it('sem competência a nota sai como antes', async () => {

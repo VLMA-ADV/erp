@@ -106,6 +106,11 @@ export interface ItemKit {
 export interface DocNfse {
   id: string
   numero: number | null
+  /**
+   * Nº do documento (numeração única do escritório, out/2026). Null nos
+   * documentos anteriores a ela; opcional porque a RPC antiga não devolve.
+   */
+  numero_documento?: number | null
   nfse_numero: string | null
   status: 'gerado' | 'cancelado' | string
   focus_status: string | null
@@ -134,6 +139,11 @@ export interface DocBoleto {
 export interface DocNfsePagador {
   id: string
   numero: number | null
+  /**
+   * Nº do documento (numeração única do escritório, out/2026). Null nos
+   * documentos anteriores a ela; opcional porque a RPC antiga não devolve.
+   */
+  numero_documento?: number | null
   nfse_numero: string | null
   status: string
   focus_status: string | null
@@ -146,6 +156,11 @@ export interface DocNfsePagador {
 
 export interface DocGerado {
   id: string
+  /**
+   * Nº do documento (numeração única do escritório, out/2026). Null nos
+   * documentos anteriores a ela; opcional porque a RPC antiga não devolve.
+   */
+  numero_documento?: number | null
   gerado_em: string
   gerado_por: string | null
   arquivo_nome: string | null

@@ -42,6 +42,67 @@ export interface DocumentoKitRegistrado {
   lancamento_id?: string | null
   /** Aviso da RPC (ex.: a nota anterior tinha boleto vivo e nada foi cancelado). */
   aviso?: string | null
+  /**
+   * Nº do documento gravado no registro (numeração única, out/2026). É o mesmo
+   * que reservarNumeroDocumento devolveu para o PDF. Null em RPC antiga.
+   */
+  numero_documento?: number | null
+}
+
+export interface IdentidadeDocumento {
+  tipo: 'relatorio_timesheet' | 'nota_debito'
+  casoId: string | null
+  contratoId: string
+  /** 'YYYY-MM-01' (ou 'YYYY-MM…'). */
+  competencia: string
+  pagadorClienteId?: string | null
+}
+
+/** RPC ainda não aplicada no banco: o documento sai sem número, como antes. */
+function rpcAusente(err: unknown) {
+  const e = (err ?? {}) as { code?: string; message?: string }
+  const m = String(e.message ?? '').toLowerCase()
+  return e.code === 'PGRST202' || e.code === '42883' || (m.includes('reservar_numero_documento') && (m.includes('could not find') || m.includes('does not exist')))
+}
+
+/**
+ * Nº do documento (cliente, out/2026: "uma numeração única onde podemos
+ * localizar depois o arquivo"). Um contador por escritório para relatório,
+ * nota de débito e NFS-e; o número pertence ao documento — mesmo tipo, caso,
+ * contrato, competência e pagador —, então regerar devolve o MESMO número.
+ *
+ * O PDF é montado aqui no navegador ANTES do registro, e o número tem de sair
+ * impresso: por isso a reserva vem primeiro. registrar_documento_kit grava o
+ * mesmo número (resolve a mesma identidade no banco).
+ *
+ * `reservar: false` só consulta (prévia): devolve o número se o documento já
+ * foi gerado alguma vez, sem gastar um número com quem abre e fecha a prévia.
+ * Devolve null quando não há número (consulta) ou a RPC ainda não existe.
+ */
+export async function reservarNumeroDocumento(
+  doc: IdentidadeDocumento,
+  opcoes: { reservar?: boolean } = {},
+): Promise<number | null> {
+  const supabase = createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user?.id) throw new Error('Sessão expirada. Entre de novo para continuar.')
+  const competencia = /^\d{4}-\d{2}/.exec(doc.competencia)?.[0]
+  if (!competencia) throw new Error('Competência inválida para numerar o documento.')
+  const { data, error } = await supabase.rpc('reservar_numero_documento', {
+    p_user_id: session.user.id,
+    p_caso_id: doc.casoId,
+    p_contrato_id: doc.contratoId,
+    p_competencia: `${competencia}-01`,
+    p_tipo: doc.tipo,
+    p_pagador_cliente_id: doc.pagadorClienteId ?? null,
+    p_reservar: opcoes.reservar ?? true,
+  })
+  if (error) {
+    if (rpcAusente(error)) return null
+    throw new Error(mensagemDoErro(error, 'Não foi possível numerar o documento'))
+  }
+  const n = Number(data)
+  return data == null || !Number.isFinite(n) || n <= 0 ? null : n
 }
 
 function mensagemDoErro(err: unknown, padrao: string): string {
@@ -103,10 +164,21 @@ export async function gerarERegistrarDocumento(input: GerarERegistrarDocumentoIn
     throw new Error(mensagemDoErro(error, 'O PDF foi gerado mas não foi possível registrá-lo'))
   }
 
-  const resposta = (data ?? null) as { id?: string; lancamento_id?: string | null; aviso?: string | null } | null
+  const resposta = (data ?? null) as {
+    id?: string
+    lancamento_id?: string | null
+    aviso?: string | null
+    numero_documento?: number | null
+  } | null
   const id = resposta?.id
   if (!id) throw new Error('O registro do documento não devolveu um id.')
-  return { id, path, lancamento_id: resposta?.lancamento_id ?? null, aviso: resposta?.aviso ?? null }
+  return {
+    id,
+    path,
+    lancamento_id: resposta?.lancamento_id ?? null,
+    aviso: resposta?.aviso ?? null,
+    numero_documento: resposta?.numero_documento ?? null,
+  }
 }
 
 /**

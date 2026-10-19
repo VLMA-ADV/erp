@@ -84,8 +84,8 @@ export default function ChipsStatusKit({
           <Input
             value={busca}
             onChange={(e) => onBusca(e.target.value)}
-            placeholder="Buscar cliente ou caso"
-            aria-label="Buscar cliente ou caso"
+            placeholder="Buscar cliente, caso ou nº do documento"
+            aria-label="Buscar cliente, caso ou nº do documento"
             className="h-9 pl-8 pr-8"
           />
           {busca ? (

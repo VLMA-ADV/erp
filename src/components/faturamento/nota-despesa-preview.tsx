@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
@@ -43,6 +43,7 @@ export interface NotaDespesaData {
   clienteDocumento?: string | null
   contratoLabel: string
   casoLabel?: string | null
+  /** Nº do documento (numeração única, out/2026) — sai no título: "Nota de Débito nº 16". */
   documentoNumero?: string | null
   /**
    * "setembro/2026" — mês do SERVIÇO das despesas (competência do kit − 1;
@@ -140,6 +141,7 @@ export default function NotaDespesaPreview({
   onClose,
   data,
   onGerado,
+  reservarNumero,
 }: {
   open: boolean
   onClose: () => void
@@ -149,10 +151,21 @@ export default function NotaDespesaPreview({
    * A Composição da fatura usa para REGISTRAR o documento no kit (Filipe,
    * 21/09, D12-a); as outras telas seguem só baixando.
    */
-  onGerado?: (bytes: Uint8Array, nomeArquivo: string) => Promise<void> | void
+  onGerado?: (bytes: Uint8Array, nomeArquivo: string, numeroDocumento?: number | null) => Promise<void> | void
+  /**
+   * Reserva o nº do documento ANTES de montar o PDF (ele sai impresso). Só a
+   * Composição passa — é quem registra. Regerar a mesma nota devolve o mesmo nº.
+   */
+  reservarNumero?: () => Promise<number | null>
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
-  const html = useMemo(() => (data ? buildNotaHtml(data) : ''), [data])
+  // Número reservado ao montar o PDF: a prévia passa a mostrá-lo também.
+  const [numeroReservado, setNumeroReservado] = useState<string | null>(null)
+  useEffect(() => { setNumeroReservado(null) }, [data])
+  const html = useMemo(
+    () => (data ? buildNotaHtml(numeroReservado ? { ...data, documentoNumero: numeroReservado } : data) : ''),
+    [data, numeroReservado],
+  )
   const { error: toastError, success } = useToast()
   const [montando, setMontando] = useState(false)
 
@@ -169,6 +182,21 @@ export default function NotaDespesaPreview({
     if (!data || montando) return
     setMontando(true)
     try {
+      // Nº do documento primeiro: sem ele o PDF registrado sairia sem número.
+      let numeroDocumento: number | null = null
+      let dataPdf = data
+      if (reservarNumero) {
+        try {
+          numeroDocumento = await reservarNumero()
+        } catch (e) {
+          toastError(e instanceof Error ? e.message : 'Não foi possível numerar a nota de débito.')
+          return
+        }
+        if (numeroDocumento) {
+          dataPdf = { ...data, documentoNumero: String(numeroDocumento) }
+          setNumeroReservado(String(numeroDocumento))
+        }
+      }
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { toastError('Sessão expirada.'); return }
@@ -193,8 +221,9 @@ export default function NotaDespesaPreview({
         return { base64: payload.arquivo_base64 as string, mime: (payload.mime_type as string) ?? null }
       }
 
-      const { bytes, anexados, naoAnexados } = await montarNotaComComprovantes({ data, anexos, baixarAnexo })
-      const nomeArquivo = `nota-de-debito-${(data.clienteNome || 'cliente').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
+      const { bytes, anexados, naoAnexados } = await montarNotaComComprovantes({ data: dataPdf, anexos, baixarAnexo })
+      const numeroNoNome = dataPdf.documentoNumero ? `n${dataPdf.documentoNumero}-` : ''
+      const nomeArquivo = `nota-de-debito-${numeroNoNome}${(data.clienteNome || 'cliente').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
       const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
@@ -206,7 +235,7 @@ export default function NotaDespesaPreview({
       // já tem o arquivo na mão e o erro aparece separado.
       if (onGerado) {
         try {
-          await onGerado(bytes, nomeArquivo)
+          await onGerado(bytes, nomeArquivo, numeroDocumento)
         } catch (e) {
           console.error('registrar nota de débito', e)
           toastError(e instanceof Error ? e.message : 'O PDF foi baixado, mas não foi possível registrá-lo no kit.')

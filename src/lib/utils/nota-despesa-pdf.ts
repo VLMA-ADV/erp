@@ -11,7 +11,7 @@
 // topo, faixa com título e datas, destinatário, tabela e dados bancários.
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
-import { ESCRITORIO } from './documento-vlma'
+import { ESCRITORIO, tituloComNumero } from './documento-vlma'
 import { desenharLogoVlma, LOGO_LARGURA_TIMBRE } from './logo-vlma-pdf'
 
 // A nota de debito tem favorecido e banco proprios, que a pre-visualizacao
@@ -99,12 +99,12 @@ export function montarPaginasDaNota(pdf: PDFDocument, data: NotaDespesaData, fon
   // timesheet. A faixa cresce com as linhas: antes o "Documento nº" já caía
   // em cima do fio de baixo.
   linha(y)
-  texto('Nota de Débito', MARGEM, y - 16, 12)
+  // Nº do documento (numeração única, out/2026) vai no título: "Nota de Débito nº 16".
+  texto(tituloComNumero('Nota de Débito', data.documentoNumero), MARGEM, y - 16, 12)
   const dadosFaixa = [
     `Emissão   ${dataBR(data.emissao)}`,
     `Vencimento   ${dataBR(data.vencimento)}`,
     data.competenciaLabel ? `Competência   ${data.competenciaLabel}` : null,
-    data.documentoNumero ? `Documento nº   ${data.documentoNumero}` : null,
   ].filter((t): t is string => !!t)
   dadosFaixa.forEach((t, i) => textoDireita(t, A4_PAISAGEM[0] - MARGEM, y - 10 - i * 10, 7.6))
   y -= Math.max(26, dadosFaixa.length * 10 + 6)

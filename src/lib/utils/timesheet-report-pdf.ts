@@ -15,7 +15,7 @@ import {
   appendBezierCurve, clip, closePath, endPath, moveTo, popGraphicsState, pushGraphicsState,
   type PDFFont, type PDFImage, type PDFPage,
 } from 'pdf-lib'
-import { ESCRITORIO } from './documento-vlma'
+import { ESCRITORIO, tituloComNumero } from './documento-vlma'
 import { desenharLogoVlma, LOGO_LARGURA_TIMBRE } from './logo-vlma-pdf'
 import { colunasComValor, type QuadroImpostosPagador } from '../faturamento/quadro-impostos'
 
@@ -159,6 +159,12 @@ export interface FotoBaixada {
 
 export interface TimesheetPdfInput {
   titulo: string
+  /**
+   * Nº do documento (numeração única do escritório, out/2026 — reservada antes
+   * de montar o PDF por reservar_numero_documento). Sai no título da faixa:
+   * "Relatório de timesheet nº 15". Sem ele, o título de sempre.
+   */
+  numeroDocumento?: number | string | null
   cliente: string
   /**
    * Pagadores do kit (nome e percentual do rateio). Com mais de um, ou com um
@@ -454,7 +460,7 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
 
   // Faixa com título, emissão e competência
   linha(y)
-  texto(input.titulo || 'Relatório de Timesheet', MARGEM, y - 16, 12)
+  texto(tituloComNumero(input.titulo || 'Relatório de Timesheet', input.numeroDocumento), MARGEM, y - 16, 12)
   const emissao = input.emissao || new Date().toLocaleDateString('pt-BR')
   textoDireita(`Emissão   ${emissao}`, direita, y - 10, 7.6)
   if (input.competenciaLabel) textoDireita(`Competência   ${input.competenciaLabel}`, direita, y - 20, 7.6)

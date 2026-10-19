@@ -12,7 +12,8 @@ import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
 import { gerarRelatorioTimesheetPdf, type ImpostosRelatorio, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
 import { parametrosQuadroImpostos, quadroImpostosDoKit, type RespostaQuadroImpostos } from './composicao/quadro-impostos-kit'
 import { assinarFotosColaboradores } from '@/lib/utils/foto-colaborador'
-import { abrirDocumentoDoKit, gerarERegistrarDocumento } from '@/lib/faturamento/documentos-kit'
+import { abrirDocumentoDoKit, gerarERegistrarDocumento, reservarNumeroDocumento } from '@/lib/faturamento/documentos-kit'
+import { kitTemNumeroDocumento } from '@/lib/faturamento/numero-documento'
 import { competenciaAtual, lerCompetenciaSalva, salvarCompetencia, somarMeses } from '@/lib/faturamento/competencia'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
@@ -78,6 +79,14 @@ const FUNCTIONS = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
 
 /** 'YYYY-MM-01' → 'YYYY-MM' (nome de arquivo). */
 const anoMes = (competencia: string) => competencia.slice(0, 7)
+
+/** Identidade da nota de débito do kit para a numeração (sem pagador: uma ND por kit). */
+const identidadeNotaDebito = (kit: KitCaso) => ({
+  tipo: 'nota_debito' as const,
+  casoId: kit.caso_id,
+  contratoId: kit.contrato_id,
+  competencia: kit.competencia,
+})
 
 /** finance.kits.ajustes → AjustesDaNota (só o que a nota entende: grupo e pagadores). */
 function ajustesDoKitParaNota(kit: KitCaso | null): AjustesDaNota | null {
@@ -283,8 +292,10 @@ export default function ComposicaoDaFaturaList() {
     return lista
       .map((c) => {
         const bateNome = !termo || c.nome.toLocaleLowerCase('pt-BR').includes(termo)
+        // Nº do documento (numeração única, out/2026): "15", "nº 15" ou "#15"
+        // acha o kit que tem relatório, nota de débito ou NFS-e com esse nº.
         const casos = c.casos.filter((k) =>
-          (bateNome || labelCaso(k).toLocaleLowerCase('pt-BR').includes(termo)) &&
+          (bateNome || labelCaso(k).toLocaleLowerCase('pt-BR').includes(termo) || kitTemNumeroDocumento(k, termo)) &&
           (!situacao || situacaoDoKit(k) === situacao),
         )
         if (!casos.length) return null
@@ -581,10 +592,19 @@ export default function ComposicaoDaFaturaList() {
         console.error('get_quadro_impostos_kit', e)
         notify('Não foi possível montar o quadro de impostos — o relatório sai sem ele.')
       }
+      // Nº do documento (numeração única, out/2026): reservado ANTES de montar
+      // o PDF porque vai impresso. Regerar o mesmo relatório devolve o mesmo nº.
+      const numeroDocumento = await reservarNumeroDocumento({
+        tipo: 'relatorio_timesheet',
+        casoId: kit.caso_id,
+        contratoId: kit.contrato_id,
+        competencia: kit.competencia,
+      })
       // Pagadores do kit: o PDF fecha com "Divisão por pagador" quando há
       // rateio ou o pagador não é o cliente (Filipe, 08/10); senão, nada muda.
       const bytes = await gerarRelatorioTimesheetPdf({
         titulo: 'Relatório de timesheet',
+        numeroDocumento,
         cliente: clienteNome,
         pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
         casoLabel: kit.caso_id ? labelCaso(kit) : null,
@@ -595,10 +615,10 @@ export default function ComposicaoDaFaturaList() {
         rows,
         impostos,
       })
-      const { path } = await gerarERegistrarDocumento({
+      const { path, numero_documento } = await gerarERegistrarDocumento({
         tipo: 'relatorio_timesheet',
         bytes,
-        nomeArquivo: `Relatorio-timesheet-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
+        nomeArquivo: `Relatorio-timesheet${numeroDocumento ? `-n${numeroDocumento}` : ''}-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
         casoId: kit.caso_id,
         contratoId: kit.contrato_id,
         competencia: kit.competencia,
@@ -610,7 +630,8 @@ export default function ComposicaoDaFaturaList() {
           competencia_servico: competenciaDoServico(kit.competencia, 'timesheet'),
         },
       })
-      success('Relatório de timesheet gerado e registrado no kit.')
+      const n = numero_documento ?? numeroDocumento
+      success(`Relatório de timesheet${n ? ` nº ${n}` : ''} gerado e registrado no kit.`)
       await recarregar()
       const abriu = await abrirDocumentoDoKit(path).catch(() => false)
       if (!abriu) notify('O navegador bloqueou a aba — use o botão "Abrir" na linha do relatório.')
@@ -652,12 +673,17 @@ export default function ComposicaoDaFaturaList() {
       )
     }
     const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
+    // Prévia: o nº aparece se esta nota já foi gerada alguma vez (regerar
+    // mantém o número). Sem reservar — quem só abre e fecha não gasta número;
+    // a reserva acontece ao montar o PDF (reservarNumeroNotaDebito).
+    const numeroExistente = await reservarNumeroDocumento(identidadeNotaDebito(kit), { reservar: false })
+      .catch(() => kit.documentos.nota_debito?.numero_documento ?? null)
     setNotaKit(kit)
     setNotaData({
       clienteNome,
       contratoLabel: formatContratoDisplay(contratoNumeroExibicao(kit), kit.contrato_nome).full,
       casoLabel: kit.caso_id ? `${kit.caso_numero ? `${kit.caso_numero} - ` : ''}${kit.caso_nome}` : null,
-      documentoNumero: null,
+      documentoNumero: numeroExistente ? String(numeroExistente) : null,
       // Mês do serviço das despesas (kit − 1), não o ciclo de cobrança.
       competenciaLabel: labelCompetenciaCurta(competenciaDoServico(kit.competencia, 'despesa')),
       emissao: isoHoje(),
@@ -672,13 +698,21 @@ export default function ComposicaoDaFaturaList() {
     })
   })
 
-  const registrarNotaDebito = async (bytes: Uint8Array, nomeArquivo: string) => {
+  // Reserva do nº na hora de montar o PDF da nota (vai impresso). A prévia
+  // chama isto antes de gerar os bytes; o registro abaixo grava o mesmo nº.
+  const reservarNumeroNotaDebito = async () => {
+    const kit = notaKit
+    if (!kit) return null
+    return reservarNumeroDocumento(identidadeNotaDebito(kit))
+  }
+
+  const registrarNotaDebito = async (bytes: Uint8Array, nomeArquivo: string, numeroDocumento?: number | null) => {
     const kit = notaKit
     if (!kit) return
     const registro = await gerarERegistrarDocumento({
       tipo: 'nota_debito',
       bytes,
-      nomeArquivo: `Nota-de-debito-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
+      nomeArquivo: `Nota-de-debito${numeroDocumento ? `-n${numeroDocumento}` : ''}-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
       casoId: kit.caso_id,
       contratoId: kit.contrato_id,
       competencia: kit.competencia,
@@ -688,9 +722,11 @@ export default function ComposicaoDaFaturaList() {
     // 07/10: num kit só de despesas a RPC cria a conta a receber junto
     // (lancamento_id) — é sobre ela que o boleto sai. `aviso` vem quando a
     // nota anterior já tinha boleto vivo e nada foi cancelado.
+    const n = registro.numero_documento ?? numeroDocumento
+    const rotulo = `Nota de débito${n ? ` nº ${n}` : ''}`
     success(registro.lancamento_id
-      ? 'Nota de débito registrada no kit e conta a receber criada — o boleto já pode ser emitido.'
-      : 'Nota de débito registrada no kit.')
+      ? `${rotulo} registrada no kit e conta a receber criada — o boleto já pode ser emitido.`
+      : `${rotulo} registrada no kit.`)
     if (registro.aviso) notify(registro.aviso)
     await recarregar()
   }
@@ -1185,6 +1221,7 @@ export default function ComposicaoDaFaturaList() {
         open={!!notaData}
         onClose={() => { setNotaData(null); setNotaKit(null) }}
         data={notaData}
+        reservarNumero={reservarNumeroNotaDebito}
         onGerado={registrarNotaDebito}
       />
 
