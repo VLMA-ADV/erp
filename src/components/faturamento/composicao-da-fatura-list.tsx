@@ -9,7 +9,8 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils/cn'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
-import { gerarRelatorioTimesheetPdf, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
+import { gerarRelatorioTimesheetPdf, type ImpostosRelatorio, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
+import { parametrosQuadroImpostos, quadroImpostosDoKit, type RespostaQuadroImpostos } from './composicao/quadro-impostos-kit'
 import { assinarFotosColaboradores } from '@/lib/utils/foto-colaborador'
 import { abrirDocumentoDoKit, gerarERegistrarDocumento } from '@/lib/faturamento/documentos-kit'
 import { competenciaAtual, lerCompetenciaSalva, salvarCompetencia, somarMeses } from '@/lib/faturamento/competencia'
@@ -561,6 +562,25 @@ export default function ComposicaoDaFaturaList() {
         }))
         .sort((a, b) => a.data.localeCompare(b.data))
       const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
+      // Quadro "Impostos" por pagador (cliente, out/2026): valores da NFS-e
+      // quando já emitida, estimados quando não. Se a RPC falhar, o relatório
+      // sai sem o quadro — melhor que não sair.
+      let impostos: ImpostosRelatorio | null = null
+      try {
+        const { supabase, userId } = await sessao()
+        const { data: resp, error: errQuadro } = await supabase.rpc('get_quadro_impostos_kit', {
+          p_user_id: userId,
+          ...parametrosQuadroImpostos(kit),
+        })
+        if (errQuadro) throw errQuadro
+        impostos = quadroImpostosDoKit(kit, resp as RespostaQuadroImpostos, {
+          contratoClienteId: payload?.opcoes.contratos.find((c) => c.id === kit.contrato_id)?.cliente_id ?? null,
+          nomePadrao: clienteNome || 'Cliente',
+        })
+      } catch (e) {
+        console.error('get_quadro_impostos_kit', e)
+        notify('Não foi possível montar o quadro de impostos — o relatório sai sem ele.')
+      }
       // Pagadores do kit: o PDF fecha com "Divisão por pagador" quando há
       // rateio ou o pagador não é o cliente (Filipe, 08/10); senão, nada muda.
       const bytes = await gerarRelatorioTimesheetPdf({
@@ -573,6 +593,7 @@ export default function ComposicaoDaFaturaList() {
         competenciaLabel: labelCompetenciaCurta(competenciaDoServico(kit.competencia, 'timesheet')),
         mostrarValor: true,
         rows,
+        impostos,
       })
       const { path } = await gerarERegistrarDocumento({
         tipo: 'relatorio_timesheet',

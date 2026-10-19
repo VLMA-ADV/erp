@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib'
 import {
-  divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, pagadoresDoCabecalho,
+  divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, layoutQuadroImpostos, pagadoresDoCabecalho,
   type FotoBaixada, type TimesheetPdfRow,
 } from './timesheet-report-pdf'
 import { montarPaginasDaNota } from './nota-despesa-pdf'
@@ -371,5 +371,85 @@ describe('formatarHoras', () => {
     expect(formatarHoras(1.5)).toBe('1h 30min')
     expect(formatarHoras(3)).toBe('3h')
     expect(formatarHoras(0.25)).toBe('0h 15min')
+  })
+})
+
+describe('quadro "Impostos" por pagador', () => {
+  const base = { titulo: 'Relatório de Timesheet', cliente: 'GS Participações LTDA', mostrarValor: true, rows: [linha(1)] }
+  const ret = (irrf: number, pis: number, cofins: number, csll: number) => ({ irrf, pis, cofins, csll, inss: 0, iss: 0 })
+  const fsxEmitida = {
+    cliente_id: 'fsx', nome: 'FSX Participações', percentual: 50, bruto: 5409.25,
+    retencoes: ret(81.14, 35.16, 162.28, 54.09), liquido: 5076.58, origem: 'emitida' as const, nfseNumero: '2235',
+  }
+  const gsEstimada = { ...fsxEmitida, cliente_id: 'gs', nome: 'GS Participações LTDA', origem: 'estimado' as const, nfseNumero: null }
+
+  it('rateio: uma linha por pagador, NFS-e real e estimada, total e nota das estimativas', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({ ...base, impostos: { linhas: [fsxEmitida, gsEstimada], grupoNome: 'PJ Nacional' } })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    const i = textos.indexOf('Impostos')
+    expect(i).toBeGreaterThan(textos.indexOf('Total'))
+    const depois = textos.slice(i)
+    expect(depois).toEqual(expect.arrayContaining([
+      'FSX Participações (50%)', 'GS Participações LTDA (50%)', 'NFS-e 2235', 'estimado',
+      'IRRF', 'PIS', 'COFINS', 'CSLL', '- R$ 81,14', '- R$ 54,09', 'R$ 5.076,58',
+      'R$ 10.818,50', '- R$ 162,28', 'R$ 10.153,16',
+    ]))
+    expect(depois).not.toContain('INSS')
+    expect(depois).not.toContain('ISS retido')
+    expect(depois.some((t) => t.startsWith('Estimado: NFS-e ainda não emitida') && t.includes('(PJ Nacional)'))).toBe(true)
+  })
+
+  it('com o quadro, a "Divisão por pagador" sai — um valor só por pagador', async () => {
+    const bytes = await gerarRelatorioTimesheetPdf({
+      ...base,
+      pagadores: [{ nome: 'FSX Participações', percentual: 50 }, { nome: 'GS Participações LTDA', percentual: 50 }],
+      rows: [linha(1, { valor: 5409.25 }), linha(2, { valor: 5409.25 })],
+      impostos: { linhas: [fsxEmitida, gsEstimada] },
+    })
+    const textos = (await textosDoPdf(bytes)).split('\n')
+    expect(textos).not.toContain('Divisão por pagador')
+    expect(textos).toContain('Impostos')
+    // Total das horas = soma dos brutos (NF 2235/2236): sem nota de diferença.
+    expect(textos.some((t) => t.startsWith('O valor bruto das NFS-e'))).toBe(false)
+  })
+
+  it('arredondamento por pagador (NF 2223/2224, Heusy: R$ 833,33 → 416,67 + 416,67) é explicado', () => {
+    const heusy = (nome: string) => ({ ...gsEstimada, nome, bruto: 416.67, retencoes: ret(0, 0, 0, 0), liquido: 416.67, origem: 'emitida' as const })
+    const l = layoutQuadroImpostos({ linhas: [heusy('Gerson Heusy'), heusy('Edson Heusy')] }, 833.33)
+    expect(l?.notas).toContain(
+      'O valor bruto das NFS-e (R$ 833,34) difere do total das horas (R$ 833,33) em R$ 0,01: cada NFS-e é arredondada a centavos sobre a parte do pagador.',
+    )
+  })
+
+  it('honorário fixo (NF 2228/2229: horas a R$ 0,00, notas de R$ 1.750) é explicado', () => {
+    const vg = { ...fsxEmitida, bruto: 1750, retencoes: ret(26.25, 11.38, 52.5, 17.5), liquido: 1642.37 }
+    const l = layoutQuadroImpostos({ linhas: [vg, { ...vg, cliente_id: 'pv' }] }, 0)
+    expect(l?.notas.at(-1)).toMatch(/^O valor bruto das NFS-e \(R\$ 3\.500,00\) difere do total das horas \(R\$ 0,00\) em R\$ 3\.500,00: a NFS-e é emitida sobre o valor do serviço do kit/)
+  })
+
+  it('sem retenção: bruto = líquido, sem colunas zeradas', () => {
+    const l = layoutQuadroImpostos({ linhas: [{ ...gsEstimada, retencoes: ret(0, 0, 0, 0), liquido: 5409.25 }] })
+    expect(l?.colunas).toEqual([])
+  })
+
+  it('só as colunas com valor em algum pagador', () => {
+    const l = layoutQuadroImpostos({ linhas: [{ ...gsEstimada, retencoes: ret(0, 3.25, 15, 5) }] })
+    expect(l?.colunas.map((c) => c.rotulo)).toEqual(['PIS', 'COFINS', 'CSLL'])
+  })
+
+  it('sem quadro (ou sem valor) o relatório termina como antes', async () => {
+    const emissao = '16/10/2026'
+    const sem = await gerarRelatorioTimesheetPdf({ ...base, emissao })
+    const vazio = await gerarRelatorioTimesheetPdf({ ...base, emissao, impostos: { linhas: [] } })
+    const semValor = await gerarRelatorioTimesheetPdf({ ...base, emissao, mostrarValor: false, impostos: { linhas: [fsxEmitida] } })
+    expect(await conteudoDoPdf(vazio)).toBe(await conteudoDoPdf(sem))
+    expect(await textosDoPdf(semValor)).not.toContain('Impostos')
+  })
+
+  it('um pagador só: sem linha de total', async () => {
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({ ...base, impostos: { linhas: [fsxEmitida] } }))).split('\n')
+    const depois = textos.slice(textos.indexOf('Impostos'))
+    expect(depois).not.toContain('Total')
+    expect(depois).toContain('FSX Participações')
   })
 })
