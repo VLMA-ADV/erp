@@ -16,6 +16,14 @@
 --    As duas funções foram recriadas a partir da definição de PRODUÇÃO
 --    (20261021); o resto do corpo está igual.
 --
+-- 1b) Personificação fechada
+--    create_timesheet / update_timesheet recebem p_user_id e têm EXECUTE para
+--    authenticated: qualquer pessoa logada podia chamar a RPC direto e lançar
+--    ou editar como outra. Agora p_user_id := COALESCE(auth.uid(), p_user_id),
+--    como nas RPCs da Lixeira. As edges create-timesheet/update-timesheet
+--    chamam com service role (auth.uid() nulo) passando o user.id do token
+--    validado — fluxo normal inalterado; nenhuma lança em nome de terceiro.
+--
 -- 2) get_sugestoes_timesheet()
 --    Candidatos a sugestão do formulário: combinações caso + descrição dos
 --    lançamentos do PRÓPRIO usuário (auth.uid()) no tenant dele, com
@@ -39,6 +47,11 @@ DECLARE
   v_ia boolean := COALESCE(NULLIF(p_payload->>'ia_auxiliado', '')::boolean, false);
   v_minutos integer;
 BEGIN
+  -- Quem chama direto pelo PostgREST (authenticated) não escolhe em nome de
+  -- quem lança: vale o usuário do JWT. As edges usam service role (auth.uid()
+  -- nulo) e passam o user.id do token já validado, então seguem iguais.
+  p_user_id := COALESCE(auth.uid(), p_user_id);
+
   SELECT tenant_id INTO v_tenant_id
   FROM core.tenant_users tu
   WHERE tu.user_id = p_user_id AND tu.status = 'ativo'
@@ -107,6 +120,11 @@ DECLARE
   v_min_atual integer;
   v_min_novo integer;
 BEGIN
+  -- Quem chama direto pelo PostgREST (authenticated) não escolhe em nome de
+  -- quem lança: vale o usuário do JWT. As edges usam service role (auth.uid()
+  -- nulo) e passam o user.id do token já validado, então seguem iguais.
+  p_user_id := COALESCE(auth.uid(), p_user_id);
+
   SELECT tenant_id INTO v_tenant_id
   FROM core.tenant_users tu
   WHERE tu.user_id = p_user_id AND tu.status = 'ativo'
