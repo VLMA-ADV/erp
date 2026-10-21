@@ -14,22 +14,29 @@ import { formatHorasMin } from '@/lib/utils/format-horas'
 import {
   PERMISSAO_RESTAURAR_LIXEIRA,
   RETENCAO_LIXEIRA_MESES,
+  ROTULO_TIPO_LIXEIRA,
   avisosDeRestauracao,
+  chaveDoItem,
   filtrarLixeira,
   lerPayloadLixeira,
   mesesDaLixeira,
+  parametrosDeRestauracao,
   rotuloDiasRestantes,
   rotuloMesLixeira,
+  tipoDoItem,
   type ItemLixeira,
+  type TipoItemLixeira,
 } from '@/lib/faturamento/lixeira'
 
 /**
- * Lixeira do faturamento (etapa 1): os lançamentos de hora excluídos da fila
- * de faturar (excluir_timesheets_do_faturamento), por 12 meses. Itens
- * ignorados e itens cancelados na revisão não entram — os cancelados já
- * voltam sozinhos para a fila.
+ * Lixeira do faturamento, por 12 meses: lançamentos de hora excluídos da fila
+ * de faturar (etapa 1) e timesheets/despesas apagados nas telas de lançamento
+ * (etapa 2, soft delete). Itens ignorados e itens cancelados na revisão não
+ * entram — os cancelados já voltam sozinhos para a fila.
  *
- * Restaurar devolve o lançamento para a fila do mês corrente e exige a
+ * Restaurar (restaurar_lixeira_faturamento, uma chamada para os três tipos)
+ * devolve o registro como estava e o põe na fila do mês corrente (competência
+ * futura é mantida). Exige a
  * permissão nominal finance.faturamento.lixeira.restore. O botão só aparece
  * quando o hook de permissões tem a chave E a RPC confirma (pode_restaurar):
  * get_user_permissions devolve todas as chaves para sócio e administrativo,
@@ -40,6 +47,17 @@ function fmtData(iso: string | null | undefined) {
   if (!iso) return '—'
   const [a, m, d] = iso.slice(0, 10).split('-')
   return d && m && a ? `${d}/${m}/${a}` : iso
+}
+
+function fmtValor(v: number | string | null | undefined) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
+}
+
+const COR_TIPO: Record<TipoItemLixeira, string> = {
+  excluido_fila: 'bg-canvas-soft text-ink-secondary',
+  timesheet_apagado: 'bg-red-50 text-red-700',
+  despesa_apagada: 'bg-red-50 text-red-700',
 }
 
 function fmtMesCurto(iso: string | null | undefined) {
@@ -64,6 +82,7 @@ export default function LixeiraFaturamentoList({
   const [erro, setErro] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [mes, setMes] = useState('')
+  const [tipo, setTipo] = useState<TipoItemLixeira | ''>('')
   const [selecionados, setSelecionados] = useState<string[]>([])
   const [confirmando, setConfirmando] = useState(false)
   const [restaurando, setRestaurando] = useState(false)
@@ -82,7 +101,7 @@ export default function LixeiraFaturamentoList({
       const payload = lerPayloadLixeira(data)
       setItens(payload.itens)
       setPodeRestaurarRpc(payload.pode_restaurar)
-      setSelecionados((prev) => prev.filter((id) => payload.itens.some((i) => i.timesheet_id === id)))
+      setSelecionados((prev) => prev.filter((chave) => payload.itens.some((i) => chaveDoItem(i) === chave)))
       onTotalChange?.(payload.itens.length)
     } catch (err) {
       console.error(err)
@@ -105,9 +124,9 @@ export default function LixeiraFaturamentoList({
   }, [carregar])
 
   const meses = useMemo(() => mesesDaLixeira(itens), [itens])
-  const visiveis = useMemo(() => filtrarLixeira(itens, { busca, mes }), [itens, busca, mes])
+  const visiveis = useMemo(() => filtrarLixeira(itens, { busca, mes, tipo }), [itens, busca, mes, tipo])
   const selecionadosItens = useMemo(
-    () => itens.filter((i) => selecionados.includes(i.timesheet_id)),
+    () => itens.filter((i) => selecionados.includes(chaveDoItem(i))),
     [itens, selecionados],
   )
   const avisos = useMemo(() => avisosDeRestauracao(selecionadosItens), [selecionadosItens])
@@ -116,7 +135,7 @@ export default function LixeiraFaturamentoList({
     [selecionadosItens],
   )
 
-  const todosVisiveisMarcados = visiveis.length > 0 && visiveis.every((i) => selecionados.includes(i.timesheet_id))
+  const todosVisiveisMarcados = visiveis.length > 0 && visiveis.every((i) => selecionados.includes(chaveDoItem(i)))
 
   const marcar = (ids: string[], marcado: boolean) => {
     setSelecionados((prev) => (marcado ? Array.from(new Set([...prev, ...ids])) : prev.filter((id) => !ids.includes(id))))
@@ -129,15 +148,15 @@ export default function LixeiraFaturamentoList({
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const { data, error } = await supabase.rpc('restaurar_timesheets_lixeira', {
+      const { data, error } = await supabase.rpc('restaurar_lixeira_faturamento', {
         p_user_id: user.id,
-        p_ids: selecionados,
+        ...parametrosDeRestauracao(selecionadosItens),
       })
       if (error) throw error
       const afetados = Number((data as { afetados?: number })?.afetados || 0)
       const ignorados = Number((data as { ignorados?: number })?.ignorados || 0)
-      if (afetados > 0) success(`${afetados} lançamento(s) restaurado(s) para a fila de faturamento.`)
-      if (ignorados > 0) toastError(`${ignorados} lançamento(s) não puderam ser restaurados (fora do prazo ou já liberados).`)
+      if (afetados > 0) success(`${afetados} lançamento(s) restaurado(s).`)
+      if (ignorados > 0) toastError(`${ignorados} lançamento(s) não puderam ser restaurados (fora do prazo, já liberados ou despesa de lote já fechado).`)
       setSelecionados([])
       setConfirmando(false)
       await carregar()
@@ -156,7 +175,7 @@ export default function LixeiraFaturamentoList({
   if (itens.length === 0) {
     return (
       <p className="rounded-lg border border-hairline bg-white p-6 text-sm text-ink-mute">
-        Lixeira vazia. O que for excluído da fila de faturar fica aqui por {RETENCAO_LIXEIRA_MESES} meses.
+        Lixeira vazia. O que for excluído da fila de faturar, e os timesheets e despesas apagados, ficam aqui por {RETENCAO_LIXEIRA_MESES} meses.
       </p>
     )
   }
@@ -172,6 +191,15 @@ export default function LixeiraFaturamentoList({
             onChange={(event) => setBusca(event.target.value)}
             placeholder="Cliente, contrato, caso, profissional, descrição…"
           />
+        </div>
+        <div className="w-48 space-y-1">
+          <label className="text-sm font-medium" htmlFor="lixeira-tipo">Tipo</label>
+          <NativeSelect id="lixeira-tipo" value={tipo} onChange={(event) => setTipo(event.target.value as TipoItemLixeira | '')}>
+            <option value="">Todos</option>
+            {(Object.keys(ROTULO_TIPO_LIXEIRA) as TipoItemLixeira[]).map((t) => (
+              <option key={t} value={t}>{ROTULO_TIPO_LIXEIRA[t]}</option>
+            ))}
+          </NativeSelect>
         </div>
         <div className="w-48 space-y-1">
           <label className="text-sm font-medium" htmlFor="lixeira-mes">Mês de origem</label>
@@ -195,7 +223,7 @@ export default function LixeiraFaturamentoList({
 
       <p className="text-sm text-ink-mute">
         {visiveis.length} de {itens.length} lançamento(s). Cada um fica aqui por {RETENCAO_LIXEIRA_MESES} meses
-        depois de excluído; passado o prazo, só sai da lixeira — o timesheet não é apagado.
+        depois de excluído ou apagado; passado o prazo, só sai da lixeira — nada é apagado de verdade.
       </p>
 
       <div className="overflow-x-auto rounded-lg border border-hairline bg-white">
@@ -209,14 +237,15 @@ export default function LixeiraFaturamentoList({
                     className="h-4 w-4 rounded border-hairline"
                     aria-label="Selecionar todos"
                     checked={todosVisiveisMarcados}
-                    onChange={(event) => marcar(visiveis.map((i) => i.timesheet_id), event.target.checked)}
+                    onChange={(event) => marcar(visiveis.map(chaveDoItem), event.target.checked)}
                   />
                 </th>
               ) : null}
+              <th className="p-3">Tipo</th>
               <th className="p-3">Cliente / contrato / caso</th>
               <th className="p-3">Lançamento</th>
-              <th className="p-3 text-right">Horas</th>
-              <th className="p-3">Excluído</th>
+              <th className="p-3 text-right">Horas / valor</th>
+              <th className="p-3">Por / quando</th>
               <th className="p-3">Mês de origem</th>
               <th className="p-3 text-right">Sai em</th>
             </tr>
@@ -224,9 +253,11 @@ export default function LixeiraFaturamentoList({
           <tbody className="divide-y divide-hairline">
             {visiveis.map((i) => {
               const contrato = formatContratoDisplay(i.contrato_numero_sequencial ?? i.contrato_numero, i.contrato_nome)
-              const marcado = selecionados.includes(i.timesheet_id)
+              const chave = chaveDoItem(i)
+              const t = tipoDoItem(i)
+              const marcado = selecionados.includes(chave)
               return (
-                <tr key={i.timesheet_id} className={marcado ? 'bg-canvas-soft' : undefined}>
+                <tr key={chave} className={marcado ? 'bg-canvas-soft' : undefined}>
                   {podeRestaurar ? (
                     <td className="p-3 align-top">
                       <input
@@ -234,10 +265,15 @@ export default function LixeiraFaturamentoList({
                         className="h-4 w-4 rounded border-hairline"
                         aria-label="Selecionar lançamento"
                         checked={marcado}
-                        onChange={(event) => marcar([i.timesheet_id], event.target.checked)}
+                        onChange={(event) => marcar([chave], event.target.checked)}
                       />
                     </td>
                   ) : null}
+                  <td className="p-3 align-top">
+                    <span className={`inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${COR_TIPO[t]}`}>
+                      {ROTULO_TIPO_LIXEIRA[t]}
+                    </span>
+                  </td>
                   <td className="p-3 align-top">
                     <p className="font-medium text-ink">{i.cliente_nome || '—'}</p>
                     <p className="text-xs text-ink-mute">{contrato.full}</p>
@@ -247,9 +283,13 @@ export default function LixeiraFaturamentoList({
                   </td>
                   <td className="p-3 align-top">
                     <p className="text-ink">{i.profissional_nome || '—'} · <span className="font-tabular">{fmtData(i.data_lancamento)}</span></p>
-                    <p className="mt-0.5 max-w-md text-xs text-ink-mute">{i.descricao || '—'}</p>
+                    <p className="mt-0.5 max-w-md text-xs text-ink-mute">
+                      {t === 'despesa_apagada' && i.categoria ? `${i.categoria} · ` : ''}{i.descricao || '—'}
+                    </p>
                   </td>
-                  <td className="p-3 text-right align-top font-tabular">{formatHorasMin(i.horas)}</td>
+                  <td className="p-3 text-right align-top font-tabular">
+                    {t === 'despesa_apagada' ? fmtValor(i.valor) : formatHorasMin(i.horas)}
+                  </td>
                   <td className="p-3 align-top">
                     <p className="text-ink">{i.excluido_por_nome || '—'}</p>
                     <p className="text-xs text-ink-mute font-tabular">{fmtData(i.excluido_em)}</p>
@@ -269,7 +309,7 @@ export default function LixeiraFaturamentoList({
             })}
             {visiveis.length === 0 ? (
               <tr>
-                <td colSpan={podeRestaurar ? 7 : 6} className="p-6 text-center text-sm text-ink-mute">
+                <td colSpan={podeRestaurar ? 8 : 7} className="p-6 text-center text-sm text-ink-mute">
                   Nada encontrado com esses filtros.
                 </td>
               </tr>
@@ -283,8 +323,9 @@ export default function LixeiraFaturamentoList({
           <DialogHeader>
             <DialogTitle>Restaurar {selecionados.length} lançamento(s)</DialogTitle>
             <DialogDescription>
-              Voltam para a fila de faturamento de{' '}
-              {destinos.length > 0 ? destinos.map(rotuloMesLixeira).join(', ') : 'este mês'} e saem da lixeira.
+              Voltam como estavam e entram na fila de faturamento de{' '}
+              {destinos.length > 0 ? destinos.map(rotuloMesLixeira).join(', ') : 'este mês'}; saem da lixeira.
+              Apagados voltam também para as telas de Timesheet e Despesas.
             </DialogDescription>
           </DialogHeader>
           {avisos.length > 0 ? (

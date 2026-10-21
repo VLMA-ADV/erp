@@ -3023,7 +3023,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           >
             Postergados{postergadosCount !== null ? ` (${postergadosCount})` : ''}
           </button>
-          {/* Lixeira: lançamentos de hora excluídos da fila, por 12 meses. */}
+          {/* Lixeira: horas excluídas da fila e timesheets/despesas apagados, por 12 meses. */}
           <button
             type="button"
             onClick={() => setLixeiraAberta((prev) => !prev)}
@@ -3054,7 +3054,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-ink">Lixeira</p>
             <p className="text-[11px] text-ink-mute">
-              Lançamentos de hora excluídos da fila de faturar, por 12 meses. Restaurar devolve para a fila do mês corrente.
+              Horas excluídas da fila de faturar e timesheets/despesas apagados, por 12 meses. Restaurar devolve para a fila do mês corrente.
             </p>
           </div>
           <LixeiraFaturamentoList onRestaurado={aposMexerNaFila} onTotalChange={setLixeiraCount} />
