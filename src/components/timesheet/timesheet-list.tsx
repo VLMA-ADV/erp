@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Edit, FileText, Plus, Trash2 } from 'lucide-react'
+import { Edit, FileText, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -20,6 +20,8 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { openTimesheetReport } from '@/lib/utils/timesheet-report'
 import { useFotosColaboradores, iniciaisDe } from '@/lib/hooks/use-fotos-colaboradores'
 import { TIMESHEET_TEMPLATES } from './timesheet-templates'
+import { FRACAO_MINUTOS, TEXTO_FRACAO, validarDuracao } from '@/lib/timesheet/duracao'
+import { escolherSugestoes, type CandidatoSugestao } from '@/lib/timesheet/sugestoes'
 
 type TimesheetStatus = 'em_lancamento' | 'revisao' | 'aprovado'
 
@@ -72,6 +74,9 @@ interface FormState {
   ia_auxiliado: boolean
   ia_horas_componente: string
   ia_minutos_componente: string
+  // Duração gravada do lançamento em edição: se não mudar, a regra dos 5 min
+  // não se aplica (lançamentos antigos podem ter 12 min, 328 min...).
+  duracao_original: number | null
 }
 
 const emptyForm: FormState = {
@@ -85,6 +90,7 @@ const emptyForm: FormState = {
   ia_auxiliado: false,
   ia_horas_componente: '0',
   ia_minutos_componente: '0',
+  duracao_original: null,
 }
 
 function toMinutes(horas: string | number | null | undefined) {
@@ -174,6 +180,9 @@ export default function TimesheetList() {
   const [form, setForm] = useState<FormState>(emptyForm)
   const [templateCategoria, setTemplateCategoria] = useState('')
   const [templateSelecionadoId, setTemplateSelecionadoId] = useState('')
+  // Sugestões do formulário (só no lançamento novo): o que a própria pessoa
+  // mais lançou nos últimos 3 meses. Ver src/lib/timesheet/sugestoes.ts.
+  const [candidatosSugestao, setCandidatosSugestao] = useState<CandidatoSugestao[]>([])
 
   const getSession = async () => {
     const supabase = createClient()
@@ -249,6 +258,36 @@ export default function TimesheetList() {
       })),
     [casosFromCliente],
   )
+
+  // caso -> contrato/cliente, só dos contratos ativos que o formulário oferece.
+  const casoNoFormulario = useMemo(() => {
+    const m = new Map<string, { contrato_id: string; cliente_id: string }>()
+    for (const c of contratos) {
+      if (!c.cliente_id) continue
+      for (const caso of c.casos || []) m.set(caso.id, { contrato_id: c.id, cliente_id: c.cliente_id })
+    }
+    return m
+  }, [contratos])
+
+  const sugestoes = useMemo(
+    () => escolherSugestoes(candidatosSugestao, (casoId) => casoNoFormulario.has(casoId)),
+    [candidatosSugestao, casoNoFormulario],
+  )
+
+  const aplicarSugestao = (s: CandidatoSugestao) => {
+    const destino = casoNoFormulario.get(s.caso_id)
+    if (!destino) return
+    // Preenche cliente, caso e descrição; a duração continua a cargo da pessoa.
+    setForm((prev) => ({
+      ...prev,
+      cliente_id: destino.cliente_id,
+      contrato_id: destino.contrato_id,
+      caso_id: s.caso_id,
+      descricao: s.descricao,
+    }))
+    setTemplateCategoria('')
+    setTemplateSelecionadoId('')
+  }
 
   const templateCategoriaOptions = useMemo(() => {
     const categorias = Array.from(new Set(TIMESHEET_TEMPLATES.map((item) => item.categoria)))
@@ -532,7 +571,18 @@ export default function TimesheetList() {
     return () => { cancelled = true }
   }, [dialogOpen, form.caso_id])
 
+  const fetchSugestoes = async () => {
+    try {
+      const supabase = createClient()
+      const { data, error: e } = await supabase.rpc('get_sugestoes_timesheet')
+      setCandidatosSugestao(e || !Array.isArray(data) ? [] : (data as CandidatoSugestao[]))
+    } catch {
+      setCandidatosSugestao([])
+    }
+  }
+
   const openCreate = () => {
+    void fetchSugestoes()
     setForm({ ...emptyForm, data_lancamento: new Date().toISOString().slice(0, 10) })
     setTemplateCategoria('')
     setTemplateSelecionadoId('')
@@ -565,6 +615,7 @@ export default function TimesheetList() {
       ia_auxiliado: Boolean(item.ia_auxiliado),
       ia_horas_componente: iaSplit.horas,
       ia_minutos_componente: iaSplit.minutos,
+      duracao_original: totalMinutos,
     })
     setTemplateCategoria('')
     setTemplateSelecionadoId('')
@@ -611,8 +662,9 @@ export default function TimesheetList() {
     }
 
     const minutos = computeMinutosTotal(form.horas_componente, form.minutos_componente)
-    if (minutos <= 0) {
-      toastError('Informe a duração do lançamento (horas e/ou minutos)')
+    const duracaoOk = validarDuracao(minutos, form.id ? form.duracao_original : null)
+    if (!duracaoOk.ok) {
+      toastError(duracaoOk.mensagem)
       return
     }
 
@@ -668,6 +720,14 @@ export default function TimesheetList() {
       setSubmitting(false)
     }
   }
+
+  // Aviso inline da fração de 5 min (o bloqueio de fato é no Salvar e no servidor).
+  const duracaoForm = (() => {
+    const total = computeMinutosTotal(form.horas_componente, form.minutos_componente)
+    if (total <= 0) return { erro: null as string | null }
+    const r = validarDuracao(total, form.id ? form.duracao_original : null)
+    return { erro: r.ok ? null : r.mensagem }
+  })()
 
   if (!canRead) {
     return (
@@ -885,6 +945,38 @@ export default function TimesheetList() {
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-2">
+            {!form.id && sugestoes.length > 0 ? (
+              <div className="space-y-2 md:col-span-2">
+                <Label className="flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-[#E8871E]" />
+                  Sugestões
+                </Label>
+                <p className="text-xs text-ink-mute">
+                  Seus lançamentos mais frequentes dos últimos 3 meses. Clique para preencher caso e descrição.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {sugestoes.map((s) => {
+                    const ativa = form.caso_id === s.caso_id && form.descricao === s.descricao
+                    return (
+                      <button
+                        key={`${s.caso_id}|${s.descricao}`}
+                        type="button"
+                        onClick={() => aplicarSugestao(s)}
+                        title={s.descricao}
+                        className={`w-full rounded-lg border px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-2 ${ativa ? 'border-[#E8871E] bg-surface-2' : 'border-line'}`}
+                      >
+                        <span className="font-semibold text-ink">
+                          {s.caso_numero ?? '-'} - {s.caso_nome || 'Caso'}
+                        </span>
+                        <span className="ml-1 text-ink-mute">· {s.vezes}x</span>
+                        <span className="block truncate text-ink-secondary">{s.descricao}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <div className="space-y-2 md:col-span-2">
               <Label>Cliente</Label>
               <CommandSelect
@@ -974,7 +1066,7 @@ export default function TimesheetList() {
                 <div>
                   <Input
                     type="number"
-                    step="1"
+                    step={FRACAO_MINUTOS}
                     min="0"
                     max="60"
                     value={form.minutos_componente}
@@ -989,10 +1081,13 @@ export default function TimesheetList() {
                     }}
                     placeholder="Minutos"
                     aria-label="Minutos"
+                    aria-describedby="timesheet-fracao-5min"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">Minutos (0 a 60)</p>
                 </div>
               </div>
+              <p id="timesheet-fracao-5min" className="text-xs font-medium text-ink-secondary">{TEXTO_FRACAO}</p>
+              {duracaoForm.erro ? <p className="text-xs font-medium text-red-600">{duracaoForm.erro}</p> : null}
             </div>
 
             <div className="space-y-2 md:col-span-2 rounded-lg border border-hairline bg-canvas-soft/60 p-3">
