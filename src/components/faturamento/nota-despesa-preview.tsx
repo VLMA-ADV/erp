@@ -5,7 +5,8 @@ import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
-import { montarNotaComComprovantes, type AnexoDespesa } from '@/lib/utils/nota-despesa-pdf'
+import { divisaoDaNota, montarNotaComComprovantes, percentualBR, totalDaNota, type AnexoDespesa } from '@/lib/utils/nota-despesa-pdf'
+import type { PagadorRelatorio } from '@/lib/utils/timesheet-report-pdf'
 import { montarDocumento } from '@/lib/utils/documento-vlma'
 import {
   Dialog,
@@ -56,6 +57,13 @@ export interface NotaDespesaData {
   itens: NotaDespesaItem[]
   /** Ids das despesas de origem, para juntar os comprovantes no PDF. */
   despesaIds?: string[]
+  /**
+   * Pagadores do kit (nome e percentual do rateio). Com rateio — ou pagador
+   * único diferente do cliente — a nota ganha a "Divisão por pagador" depois
+   * do total (cliente, out/2026). Um pagador igual ao cliente (ou nenhum) =
+   * nota de sempre. Ver divisaoDaNota em lib/utils/nota-despesa-pdf.ts.
+   */
+  pagadores?: PagadorRelatorio[] | null
 }
 
 function money(v: number) {
@@ -76,10 +84,31 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
 }
 
+// "Divisão por pagador" (mesmos números do PDF — divisaoDaNota): vazio sem rateio.
+function divisaoHtml(data: NotaDespesaData) {
+  const divisao = divisaoDaNota(data)
+  if (!divisao) return ''
+  const linhas = divisao
+    .map((d) => `<tr>
+      <td class="item">${escapeHtml(d.nome)}</td>
+      <td class="item num" style="width:26mm">${percentualBR(d.percentual)}</td>
+      <td class="item num" style="width:26mm">${money(d.valor)}</td>
+    </tr>`)
+    .join('')
+  return `<table class="itens divisao" style="margin-top:5mm;width:auto;min-width:55%;margin-left:auto">
+    <thead class="cab"><tr>
+      <th>Divisão por pagador</th>
+      <th class="num">Percentual</th>
+      <th class="num">Valor (R$)</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>`
+}
+
 // HTML completo da nota — papel timbrado compartilhado (documento-vlma.ts),
 // A4 paisagem com logo, a pedido do Filipe em 27/08.
 function buildNotaHtml(data: NotaDespesaData) {
-  const total = data.itens.reduce((acc, item) => acc + Number(item.valor || 0), 0)
+  const total = totalDaNota(data)
   const linhas = data.itens
     .map(
       (item) => `
@@ -115,7 +144,7 @@ function buildNotaHtml(data: NotaDespesaData) {
     <tbody>${linhas || '<tr><td class="item" colspan="4">Sem despesas reembolsáveis aprovadas.</td></tr>'}</tbody>
     <tr class="total"><td class="lbl" colspan="3">Total</td><td class="num">${money(total)}</td></tr>
     <tr class="totalgeral"><td class="lbl" colspan="3">Valor a pagar&nbsp;&nbsp;R$</td><td class="num">${money(total)}</td></tr>
-  </table>`
+  </table>${divisaoHtml(data)}`
 
   // Mesma moldura do relatório de horas: logo, timbre, paisagem e rodapé.
   return montarDocumento({

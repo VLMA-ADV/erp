@@ -704,6 +704,10 @@ export default function ComposicaoDaFaturaList() {
       emissao: isoHoje(),
       vencimento: kit.documentos.boleto?.vencimento ?? kit.conta_receber?.vencimento ?? isoHoje(),
       despesaIds: despesas.map((i) => origemPorItem.get(i.id)).filter((v): v is string => !!v),
+      // Pagadores do kit: com rateio a nota (uma só) mostra a "Divisão por
+      // pagador" depois do total, como o relatório de timesheet. Sem rateio,
+      // nada muda. A conta a receber/boleto da ND continuam um só.
+      pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
       itens: despesas.map((i) => ({
         data_lancamento: i.despesa?.data ?? i.data_referencia ?? '',
         categoria: i.despesa?.categoria ?? '',

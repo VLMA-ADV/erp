@@ -13,6 +13,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { ESCRITORIO, tituloComNumero } from './documento-vlma'
 import { desenharLogoVlma, LOGO_LARGURA_TIMBRE } from './logo-vlma-pdf'
+import { divisaoPorPagador, type LinhaDivisaoPagador } from './timesheet-report-pdf'
 
 // A nota de debito tem favorecido e banco proprios, que a pre-visualizacao
 // mantem numa copia local do timbre. Mesmos valores, para os dois documentos
@@ -69,6 +70,26 @@ function quebrar(texto: string, fonte: PDFFont, tamanho: number, largura: number
   if (atual) linhas.push(atual)
   return linhas.length ? linhas : ['—']
 }
+
+/** Total da nota: soma dos itens (o "Valor a pagar"). */
+export const totalDaNota = (data: NotaDespesaData) =>
+  data.itens.reduce((acc, i) => acc + Number(i.valor || 0), 0)
+
+/**
+ * "Divisão por pagador" da nota de débito (cliente, out/2026): a nota continua
+ * UMA por kit, mas com rateio mostra quanto cabe a cada pagador, como o
+ * relatório de timesheet. Mesma regra de lá (divisaoPorPagador): parte =
+ * total × percentual arredondado a centavos e o ÚLTIMO pagador absorve a
+ * diferença, para a soma das partes fechar o "Valor a pagar" — R$ 100,01 em
+ * 50/50 sai 50,01 + 50,00. null = nada muda (sem pagador, ou um só igual ao
+ * cliente). Só informativo: a conta a receber/boleto da ND seguem um só.
+ */
+export function divisaoDaNota(data: NotaDespesaData): LinhaDivisaoPagador[] | null {
+  return divisaoPorPagador(totalDaNota(data), data.clienteNome, data.pagadores)
+}
+
+export const percentualBR = (v: number) =>
+  `${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
 
 export function montarPaginasDaNota(pdf: PDFDocument, data: NotaDespesaData, fontes: { normal: PDFFont; negrito: PDFFont }) {
   const { normal, negrito } = fontes
@@ -151,13 +172,36 @@ export function montarPaginasDaNota(pdf: PDFDocument, data: NotaDespesaData, fon
     y -= altura + 4
   }
 
-  const total = data.itens.reduce((acc, i) => acc + Number(i.valor || 0), 0)
+  const total = totalDaNota(data)
   y -= 4
   linha(y)
   y -= 14
   texto('Valor a pagar', colunas.descricao, y, 9.6, negrito)
   textoDireita(money(total), colunas.valor, y, 9.6, negrito)
   y -= 24
+
+  // Divisão por pagador (só com rateio / pagador diferente do cliente), logo
+  // depois do total, no mesmo desenho do relatório de timesheet.
+  const divisao = divisaoDaNota(data)
+  if (divisao) {
+    const ALTURA_PAGADOR = 12
+    // Bloco + instruções bancárias (≈ 45pt) têm de caber; senão, página nova.
+    if (y - (28 + divisao.length * ALTURA_PAGADOR + 45) < MARGEM) {
+      pagina = pdf.addPage(A4_PAISAGEM)
+      y = A4_PAISAGEM[1] - MARGEM
+    }
+    texto('Divisão por pagador', colunas.descricao, y, 9, negrito)
+    y -= 5
+    pagina.drawLine({ start: { x: colunas.descricao, y }, end: { x: colunas.valor, y }, thickness: 0.4, color: CINZA })
+    y -= 11
+    for (const d of divisao) {
+      texto(d.nome, colunas.descricao, y, 8.4)
+      textoDireita(percentualBR(d.percentual), colunas.valor - 110, y, 8.4)
+      textoDireita(money(d.valor), colunas.valor, y, 8.4)
+      y -= ALTURA_PAGADOR
+    }
+    y -= 12
+  }
 
   texto('Instruções para pagamento bancário:', MARGEM, y, 7.6, negrito); y -= 11
   texto(`Favorecido: ${PAGAMENTO.favorecido}`, MARGEM, y, 7.6); y -= 10
