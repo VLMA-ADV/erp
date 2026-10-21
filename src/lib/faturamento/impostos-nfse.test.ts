@@ -147,35 +147,47 @@ describe('por pagador, como a emit-nfse emite', () => {
   it('rateio 50/50 de R$ 1.000: cada nota de R$ 500 fica abaixo do mínimo do IRRF', () => {
     const pagadores = pagadoresDaEmissao([], { pagadores: [{ cliente_id: 'a', percentual: 50 }, { cliente_id: 'b', percentual: 50 }], valor_total: 1000 })
     expect(pagadores).toEqual([{ cliente_id: 'a', valor: 500 }, { cliente_id: 'b', valor: 500 }])
-    const notas = calcularImpostosPorPagador({ grupo: PJ, pagadores, acumuladoAtual: {}, contratoClienteId: 'x' })
+    const notas = calcularImpostosPorPagador({ grupo: PJ, pagadores, acumuladoAtual: {} })
     expect(notas.map((n) => n.impostos.irrf.valor)).toEqual([0, 0])
     expect(notas.map((n) => n.impostos.valorLiquido)).toEqual([476.75, 476.75])
     // A conta antiga da prévia, sobre o total, mostrava IRRF de R$ 15,00.
     expect(calcularImpostosNfse({ grupo: PJ, valorBruto: 1000, acumuladoMes: 0 }).irrf.valor).toBe(15)
   })
 
-  it('NF 2235 + 2236 (FSX e GS, 15/10): a 2ª nota soma a 1ª no acumulado porque GS é o cliente do contrato', () => {
-    const GS = 'gs', FSX = 'fsx'
-    const pagadores = pagadoresDaEmissao([{ cliente_id: FSX, valor_total: 5409.25 }, { cliente_id: GS, valor_total: 5409.25 }])
-    const notas = calcularImpostosPorPagador({ grupo: PJ, pagadores, acumuladoAtual: { [GS]: 0, [FSX]: 0 }, contratoClienteId: GS })
-    expect(notas.map((n) => n.acumuladoMes)).toEqual([0, 5409.25])
+  it('rateio entre dois pagadores: as notas da mesma emissão não entram no acumulado um do outro', () => {
+    // Acumulado por pagador (20261021110000). Antes, a 2ª nota somava a 1ª
+    // porque o 2º pagador era o cliente do contrato.
+    const A = 'a', B = 'b'
+    const pagadores = pagadoresDaEmissao([{ cliente_id: A, valor_total: 5409.25 }, { cliente_id: B, valor_total: 5409.25 }])
+    const notas = calcularImpostosPorPagador({ grupo: PJ, pagadores, acumuladoAtual: { [A]: 0, [B]: 0 } })
+    expect(notas.map((n) => n.acumuladoMes)).toEqual([0, 0])
     for (const n of notas) {
       expect(n.impostos.irrf.valor).toBe(81.14)
-      expect(n.impostos.pis.valor).toBe(35.16)
-      expect(n.impostos.cofins.valor).toBe(162.28)
       expect(n.impostos.pisCofinsCsll).toBe(251.53)
       expect(n.impostos.valorLiquido).toBe(5076.58)
     }
   })
 
-  it('acumulado do pagador que não é o cliente do contrato não recebe as notas da mesma emissão (Heusy, 14/10)', () => {
-    // get_client_month_accumulated_value(Gerson) = 5000: inclui a nota de Edson
-    // emitida num contrato de Gerson. Edson, que não é cliente de contrato, 0.
+  it('acumulado é o do próprio pagador: notas emitidas para outro pagador não somam', () => {
+    // get_client_month_accumulated_value devolve o que já foi emitido PARA cada
+    // pagador no mês, qualquer que seja o contrato.
     expect(acumuladosNaEmissao(
-      [{ cliente_id: 'gerson', valor: 416.67 }, { cliente_id: 'edson', valor: 416.67 }],
-      { gerson: 5000, edson: 0 },
-      'gerson',
-    )).toEqual([5000, 0])
+      [{ cliente_id: 'dono', valor: 416.67 }, { cliente_id: 'outro', valor: 416.67 }],
+      { dono: 2500, outro: 2500 },
+    )).toEqual([2500, 2500])
+  })
+
+  it('mesmo pagador duas vezes na emissão: a 2ª nota soma a 1ª', () => {
+    expect(acumuladosNaEmissao(
+      [{ cliente_id: 'a', valor: 300 }, { cliente_id: 'b', valor: 200 }, { cliente_id: 'a', valor: 100 }],
+      { a: 50 },
+    )).toEqual([50, 0, 350])
+  })
+
+  it('pequena nota abaixo do mínimo retém quando o acumulado DO PAGADOR passa o mínimo', () => {
+    const [n] = calcularImpostosPorPagador({ grupo: PJ, pagadores: [{ cliente_id: 'a', valor: 500 }], acumuladoAtual: { a: 1000 } })
+    expect(n.acumuladoMes).toBe(1000)
+    expect(n.impostos.pis.aplicado).toBe(true)
   })
 
   it('valor ajustado sem trocar pagadores reescala o rateio', () => {

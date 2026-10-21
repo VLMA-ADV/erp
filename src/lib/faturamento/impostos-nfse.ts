@@ -320,22 +320,20 @@ export function mesDaEmissao(agora: Date = new Date()): string {
 /**
  * Acumulado que cada pagador terá NO MOMENTO da sua nota. A emit-nfse chama
  * get_client_month_accumulated_value(pagador) antes de cada nota, e essa
- * função soma as NFS-e do mês pelo CLIENTE DO CONTRATO da nota (join em
- * contratos.cliente_id), não pelo pagador. Consequência: as notas que esta
- * mesma emissão já soltou (todas deste contrato) entram no acumulado do
- * pagador que for o cliente do contrato, e de nenhum outro. A prévia replica
- * isso para mostrar o que vai sair.
+ * função soma as NFS-e do mês pelo TOMADOR da nota (metadata.pagador_cliente_id;
+ * nota antiga sem o campo, cliente do contrato) — migration 20261021110000.
+ * Até ela, somava pelo cliente do contrato, e a prévia copiava isso de
+ * propósito. Consequência agora: as notas que esta mesma emissão já soltou
+ * entram só no acumulado do próprio pagador de cada uma.
  */
 export function acumuladosNaEmissao(
   pagadores: PagadorDaNota[],
   acumuladoAtual: Record<string, number>,
-  contratoClienteId: string | null | undefined,
 ): number[] {
-  let jaEmitidoNestaEmissao = 0
+  const jaEmitidoNestaEmissao = new Map<string, number>()
   return pagadores.map((p) => {
-    const base = Number(acumuladoAtual[p.cliente_id] ?? 0)
-    const acumulado = contratoClienteId && p.cliente_id === contratoClienteId ? base + jaEmitidoNestaEmissao : base
-    jaEmitidoNestaEmissao += p.valor
+    const acumulado = Number(acumuladoAtual[p.cliente_id] ?? 0) + (jaEmitidoNestaEmissao.get(p.cliente_id) ?? 0)
+    jaEmitidoNestaEmissao.set(p.cliente_id, (jaEmitidoNestaEmissao.get(p.cliente_id) ?? 0) + p.valor)
     return acumulado
   })
 }
@@ -350,9 +348,8 @@ export function calcularImpostosPorPagador(args: {
   grupo: ConfigGrupoImposto
   pagadores: PagadorDaNota[]
   acumuladoAtual: Record<string, number>
-  contratoClienteId: string | null | undefined
 }): ImpostosDoPagador[] {
-  const acumulados = acumuladosNaEmissao(args.pagadores, args.acumuladoAtual, args.contratoClienteId)
+  const acumulados = acumuladosNaEmissao(args.pagadores, args.acumuladoAtual)
   return args.pagadores.map((p, i) => ({
     ...p,
     acumuladoMes: acumulados[i],

@@ -40,7 +40,10 @@ const COBRADAS_NO_MES_SEGUINTE = new Set<string>(['timesheet', 'despesa', 'mensa
  *   demais regras: o próprio mês da competência.
  *
  * O relatório de timesheet e a nota de débito passam por esta função. A
- * NFS-e não (é montada na edge emit-nfse e segue com a competência do kit).
+ * NFS-e usa a mesma regra só no TEXTO (linha "Competência do serviço" da
+ * discriminação, lib/faturamento/discriminacao-nfse.ts); a edge emit-nfse
+ * tem uma cópia em supabase/functions/_shared/discriminacao-nfse.ts — mudou
+ * aqui, muda lá. A data de competência fiscal da nota não muda.
  */
 export function competenciaDoServico(competenciaKit: string, natureza: NaturezaCobranca): string {
   const base = normalizarCompetencia(competenciaKit)

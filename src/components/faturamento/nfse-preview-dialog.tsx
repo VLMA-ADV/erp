@@ -16,6 +16,7 @@ import {
   type Retencao,
 } from '@/lib/faturamento/impostos-nfse'
 import { colunasComValor, retencoesDaConta, type QuadroImpostosPagador } from '@/lib/faturamento/quadro-impostos'
+import { LIMITE_DISCRIMINACAO_NFSE, linhaCompetenciaDaNota, montarDiscriminacao } from '@/lib/faturamento/discriminacao-nfse'
 
 function fmtMoney(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -119,8 +120,6 @@ interface PreviewData {
     endereco: string
     municipio: string
   }
-  /** Cliente do contrato — get_client_month_accumulated_value soma por ele. */
-  contratoClienteId: string | null
   pagadorInfo: {
     n_pagadores?: number
     multi?: boolean
@@ -247,7 +246,9 @@ export default function NfsePreviewDialog({
   }, [open, contratoId, casoId, competenciaKit])
 
   // (Re)inicializa a descrição editável quando os dados carregam: nome(s) do(s)
-  // caso(s) na 1ª linha + bloco fixo. O usuário pode editar antes de emitir.
+  // caso(s) na 1ª linha, a competência do serviço (mês em que o serviço foi
+  // prestado — só no texto, a data de competência fiscal não muda) e o bloco
+  // fixo. Mesma montagem da emit-nfse. O usuário pode editar antes de emitir.
   useEffect(() => {
     if (!data) {
       setDescricaoEdit('')
@@ -258,7 +259,9 @@ export default function NfsePreviewDialog({
         .map((it) => String((it.snapshot as any)?.caso_nome || (it.snapshot as any)?.descricao || '').trim())
         .filter(Boolean),
     ))
-    setDescricaoEdit([nomes.join('; '), DESCRICAO_FIXA].filter(Boolean).join('\n'))
+    const linhaCompetencia = linhaCompetenciaDaNota(competenciaKit, (data.itens || []).map((it) => it.snapshot))
+    setDescricaoEdit(montarDiscriminacao({ casoNomes: nomes, linhaCompetencia, descricaoFixa: DESCRICAO_FIXA }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
 
   const buscarAcumulados = async (tenant: string, ids: string[]): Promise<Record<string, number>> => {
@@ -393,7 +396,6 @@ export default function NfsePreviewDialog({
             : 'Rua Cândido Xavier, 602 — Água Verde · CEP 80240-280',
           municipio: 'Curitiba/PR',
         },
-        contratoClienteId: dataset.pagador_info?.contrato_cliente_id || dataset.contrato?.cliente_id || null,
         pagadorInfo: dataset.pagador_info || null,
         pendentes: (dataset.pendentes as PreviewData['pendentes']) || null,
         pagadores: (dataset.pagadores || []) as PreviewData['pagadores'],
@@ -422,7 +424,6 @@ export default function NfsePreviewDialog({
     grupo: grupoConfig,
     pagadores: pagadoresDaEmissao(data?.pagadores || [], ajustesVigentes),
     acumuladoAtual: acumPorCliente,
-    contratoClienteId: data?.contratoClienteId,
   })
   const valorBruto = Math.round(notasPorPagador.reduce((s, n) => s + n.valor, 0) * 100) / 100
   const somaRetencao = (imp: 'irrf' | 'pis' | 'cofins' | 'csll'): Retencao => {
@@ -612,7 +613,11 @@ export default function NfsePreviewDialog({
                 spellCheck={false}
               />
               <p className="mt-1 text-[11px] text-ink-mute">
-                1ª linha = nome do(s) caso(s) (automático). O restante é o texto padrão — edite o que precisar; o que estiver aqui é o que vai pra nota.
+                1ª linha = nome do(s) caso(s) e, em seguida, a competência do serviço (automáticos). O restante é o texto padrão — edite o que precisar; o que estiver aqui é o que vai pra nota.
+              </p>
+              <p className={`mt-0.5 text-[11px] ${descricaoEdit.length > LIMITE_DISCRIMINACAO_NFSE ? 'font-semibold text-red-700' : 'text-ink-mute'}`}>
+                {descricaoEdit.length.toLocaleString('pt-BR')} / {LIMITE_DISCRIMINACAO_NFSE.toLocaleString('pt-BR')} caracteres
+                {descricaoEdit.length > LIMITE_DISCRIMINACAO_NFSE ? ' — acima do limite da NFS-e; encurte antes de emitir.' : ''}
               </p>
             </div>
 
@@ -873,7 +878,7 @@ export default function NfsePreviewDialog({
               <Button
                 className="bg-green-700 hover:bg-green-800 text-white"
                 onClick={() => void confirmar()}
-                disabled={loading || !!error || !data || !descricaoEdit.trim() || salvando}
+                disabled={loading || !!error || !data || !descricaoEdit.trim() || descricaoEdit.length > LIMITE_DISCRIMINACAO_NFSE || salvando}
               >
                 <FileText className="mr-2 h-4 w-4" /> {salvando ? 'Emitindo...' : 'Confirmar e emitir'}
               </Button>
