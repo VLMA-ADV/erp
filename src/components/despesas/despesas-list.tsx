@@ -523,7 +523,7 @@ export default function DespesasList() {
 
   const deleteDespesa = async (item: DespesaItem) => {
     const ok = window.confirm(
-      `Excluir esta despesa?\n\n${item.descricao || ''}\nValor: ${formatMoney(item.valor)}\n\nEsta ação não pode ser desfeita.`,
+      `Excluir esta despesa?\n\n${item.descricao || ''}\nValor: ${formatMoney(item.valor)}\n\nA despesa sai da lista e do faturamento e fica na Lixeira do faturamento por 12 meses, de onde o financeiro pode restaurar.`,
     )
     if (!ok) return
 
@@ -543,7 +543,7 @@ export default function DespesasList() {
         return
       }
 
-      success('Despesa excluída')
+      success('Despesa excluída — está na Lixeira do faturamento')
       await fetchDespesas()
       setRecarregarLotes((n) => n + 1)
     } catch (err) {

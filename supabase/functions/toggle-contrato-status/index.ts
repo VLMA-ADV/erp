@@ -21,7 +21,12 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    if (!body.id || !body.status) {
+    // Ativação em massa (questionário out/2026): a lista manda `ids`. Um id só
+    // continua chegando em `id`, como sempre.
+    const ids: string[] = Array.isArray(body.ids)
+      ? body.ids.filter((x: unknown): x is string => typeof x === "string" && x.length > 0)
+      : [];
+    if ((!body.id && ids.length === 0) || !body.status) {
       return new Response(JSON.stringify({ error: "ID e status são obrigatórios" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -49,15 +54,74 @@ Deno.serve(async (req) => {
     const tenantUser = tenantUserData?.[0];
 
     const { data: permissionsData } = await supabase.rpc("get_user_permissions", { p_user_id: user.id });
-    const hasPermission = permissionsData?.some((p: any) =>
-      p.permission_key === "contracts.contratos.write" ||
-      p.permission_key === "contracts.contratos.*" ||
-      p.permission_key === "contracts.*" ||
-      p.permission_key === "*"
+    const keys: string[] = (permissionsData ?? []).map((p: any) => p.permission_key);
+    const hasWrite = keys.some((k) =>
+      k === "contracts.contratos.write" ||
+      k === "contracts.contratos.*" ||
+      k === "contracts.*" ||
+      k === "*"
     );
-    if (!hasPermission) {
+    // Ativar (unitário ou em lote) segue exigindo escrita: "qualquer pessoa que
+    // pode cadastrar contrato" (questionário out/2026) = contracts.contratos.write.
+    if (!hasWrite) {
       return new Response(JSON.stringify({ error: "Você não tem permissão para alterar status do contrato" }), {
         status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const writeAudit = async (contratoId: string, status: string) => {
+      if (!tenantUser?.tenant_id) return;
+      await createAuditLog({
+        supabase,
+        tenantId: tenantUser.tenant_id,
+        tipoEntidade: "contracts.contratos",
+        entidadeId: contratoId,
+        acao: "update",
+        userId: user.id,
+        dadosNovos: { status },
+        ipAddress: getIpAddress(req),
+        userAgent: getUserAgent(req),
+      });
+    };
+
+    // Em validação -> ativo: ativar_contratos (mesmo UPDATE de
+    // toggle_contrato_status, só para quem está em validação; checa a
+    // permissão de escrita no banco também).
+    if (requestedStatus === "ativo") {
+      const alvo = ids.length > 0 ? ids : [body.id as string];
+      const { data: ativacao, error: ativacaoError } = await supabase.rpc("ativar_contratos", {
+        p_user_id: user.id,
+        p_contrato_ids: alvo,
+      });
+      if (ativacaoError) {
+        return new Response(JSON.stringify({ error: ativacaoError.message, details: ativacaoError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const ativados: string[] = ativacao?.ativados ?? [];
+      const ignorados: string[] = ativacao?.ignorados ?? [];
+      for (const contratoId of ativados) await writeAudit(contratoId, "ativo");
+
+      if (ids.length > 0) {
+        return new Response(JSON.stringify({ data: { ativados, ignorados } }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (ativados.length > 0) {
+        return new Response(JSON.stringify({ data: { id: body.id, status: "ativo" } }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Não estava em validação (rascunho, encerrado): cai no caminho de sempre.
+    }
+
+    if (ids.length > 0) {
+      return new Response(JSON.stringify({ error: "Em lote, só é possível ativar contratos em validação" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -75,19 +139,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (tenantUser?.tenant_id) {
-      await createAuditLog({
-        supabase,
-        tenantId: tenantUser.tenant_id,
-        tipoEntidade: "contracts.contratos",
-        entidadeId: body.id,
-        acao: "update",
-        userId: user.id,
-        dadosNovos: { status: requestedStatus },
-        ipAddress: getIpAddress(req),
-        userAgent: getUserAgent(req),
-      });
-    }
+    await writeAudit(body.id, requestedStatus);
 
     return new Response(JSON.stringify({ data }), {
       status: 200,

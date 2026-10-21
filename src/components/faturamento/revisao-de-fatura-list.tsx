@@ -22,6 +22,13 @@ import AndamentoPorRegra, { etapaDoStatus, statusDaEtapa, linhaVazia, type Andam
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import PostergadosList from './postergados-list'
 import LixeiraFaturamentoList from './lixeira-faturamento-list'
+import {
+  ABAS_DE_REGRA,
+  LINHAS_DO_PAINEL,
+  getRuleFilterKey as regraFiltroKey,
+  getRuleFilterLabel,
+  type RuleFilterKey,
+} from './regra-filtro'
 import { AUTO_APROVADO_ATOR, AUTO_APROVADO_LABEL, AUTO_APROVADO_TITLE, isAutoAprovado } from './auto-aprovacao'
 import {
   competenciaAtual,
@@ -198,17 +205,6 @@ type MassaState =
   | { fase: 'executando'; acao: MassaAcao; total: number; feitos: number; ok: number }
   | { fase: 'resumo'; acao: MassaAcao; total: number; feitos: number; ok: number; pulados: MassaPulado[]; interrompido: boolean }
 const MASSA_BLOCO = 20
-type RuleFilterKey =
-  | 'all'
-  | 'hora'
-  | 'mensalidade_processo'
-  | 'mensalidade'
-  | 'projeto'
-  | 'projeto_parcelado'
-  | 'exito'
-  | 'despesa'
-  // "Sem regra": só filtro interno (clique no painel), não vira aba.
-  | 'outros'
 type HistoricoRole = 'USUARIO' | 'REVISOR' | 'APROVADOR'
 
 
@@ -615,59 +611,13 @@ function getRuleTitle(item: RevisaoItem) {
   return item.regraNome || 'Regra financeira'
 }
 
-// Aba pela regra do caso: hora lançada em caso que não é hora pura
-// cai na aba da regra (mensalidade de processo, projeto, êxito...).
-function ruleKeyFromKind(kind: string): RuleFilterKey | null {
-  if (kind === 'mensalidade_processo' || kind === 'salario_minimo') return 'mensalidade_processo'
-  if (kind === 'mensal') return 'mensalidade'
-  if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
-  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
-  if (kind === 'exito') return 'exito'
-  return null
-}
-
-// Item sem regra reconhecida cai em 'outros' ("Sem regra" no painel): aparece
-// em Todas e pode ser filtrado pelo clique no painel, mas não tem aba.
+// Aba/linha do painel: regra do item e do caso (ver regra-filtro.ts).
 function getRuleFilterKey(item: RevisaoItem): RuleFilterKey {
-  if (item.origemTipo === 'despesa') return 'despesa'
-  const kind = getRuleKind(item)
-  const casoKind = (item.casoRegraCobranca || '').trim().toLowerCase()
-  if (item.origemTipo === 'timesheet') {
-    const mapped = ruleKeyFromKind(casoKind)
-    if (mapped) return mapped
-    // aba Horas é exclusiva de casos que cobram por hora; sem regra => só em Todas
-    return casoKind === 'hora' || casoKind === 'hora_com_cap' ? 'hora' : 'outros'
-  }
-  if (kind === 'hora' || kind === 'hora_com_cap') return 'hora'
-  if (kind === 'mensalidade_processo') return 'mensalidade_processo'
-  if (kind === 'mensal') return 'mensalidade'
-  if (kind === 'projeto' || kind === 'pro_labore') return 'projeto'
-  if (kind === 'projeto_parcela' || kind === 'projeto_parcelado' || kind === 'pro_labore_parcelado') return 'projeto_parcelado'
-  if (kind === 'exito') return 'exito'
-  return 'outros'
-}
-
-function getRuleFilterLabel(key: RuleFilterKey) {
-  switch (key) {
-    case 'all':
-      return 'Todas'
-    case 'hora':
-      return 'Horas'
-    case 'mensalidade_processo':
-      return 'Mensalidade de processo'
-    case 'mensalidade':
-      return 'Mensalidade'
-    case 'projeto':
-      return 'Projeto'
-    case 'projeto_parcelado':
-      return 'Projeto parcelado'
-    case 'exito':
-      return 'Êxito'
-    case 'despesa':
-      return 'Despesas'
-    case 'outros':
-      return 'Sem regra'
-  }
+  return regraFiltroKey({
+    origemTipo: item.origemTipo,
+    regraItem: getRuleKind(item),
+    casoRegraCobranca: item.casoRegraCobranca,
+  })
 }
 
 function createDraftRowId() {
@@ -1799,11 +1749,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   // Andamento por regra de cobranca. Mesma conta dos totais do cabecalho
   // (rascunho vivo, grupo contado uma vez so), sobre itensParaPainel.
   const andamentoPorRegra = useMemo<AndamentoLinha[]>(() => {
-    const ordem: Array<[string, string]> = [
-      ['hora', 'Horas'], ['mensalidade_processo', 'Mensalidade de processo'], ['mensalidade', 'Mensalidade'],
-      ['projeto', 'Projeto'], ['projeto_parcelado', 'Projeto parcelado'], ['exito', 'Êxito'], ['despesa', 'Despesas'],
-      ['outros', 'Sem regra'],
-    ]
+    const ordem: Array<[string, string]> = LINHAS_DO_PAINEL.map((k) => [k, getRuleFilterLabel(k)])
     const linhas = new Map(ordem.map(([k, l]) => [k, linhaVazia(k, l)]))
     const gruposContados = new Set<string>()
     for (const item of itensParaPainel) {
@@ -1897,15 +1843,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       counts.set(key, (counts.get(key) || 0) + 1)
     }
 
-    const orderedKeys: RuleFilterKey[] = [
-      'hora',
-      'mensalidade_processo',
-      'mensalidade',
-      'projeto',
-      'projeto_parcelado',
-      'exito',
-      'despesa',
-    ]
+    const orderedKeys: RuleFilterKey[] = ABAS_DE_REGRA
     return [
       { key: 'all' as RuleFilterKey, label: getRuleFilterLabel('all'), count: allRows.length },
       ...orderedKeys.map((key) => ({ key, label: getRuleFilterLabel(key), count: counts.get(key) || 0 })),
@@ -3023,7 +2961,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           >
             Postergados{postergadosCount !== null ? ` (${postergadosCount})` : ''}
           </button>
-          {/* Lixeira: lançamentos de hora excluídos da fila, por 12 meses. */}
+          {/* Lixeira: horas excluídas da fila e timesheets/despesas apagados, por 12 meses. */}
           <button
             type="button"
             onClick={() => setLixeiraAberta((prev) => !prev)}
@@ -3054,7 +2992,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-ink">Lixeira</p>
             <p className="text-[11px] text-ink-mute">
-              Lançamentos de hora excluídos da fila de faturar, por 12 meses. Restaurar devolve para a fila do mês corrente.
+              Horas excluídas da fila de faturar e timesheets/despesas apagados, por 12 meses. Restaurar devolve para a fila do mês corrente.
             </p>
           </div>
           <LixeiraFaturamentoList onRestaurado={aposMexerNaFila} onTotalChange={setLixeiraCount} />

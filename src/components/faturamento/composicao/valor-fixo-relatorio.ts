@@ -1,7 +1,8 @@
 // Relatório de timesheet de caso de VALOR FIXO (cliente, out/2026).
 //
 // Valor fixo = SÓ mensalidade: regra 'mensal' e 'mensalidade_carteira' (esta
-// por suposição, a confirmar com o cliente). Pró-labore, projeto parcelado,
+// confirmada pelo cliente em 20/10/2026: "nessa regra pode usar como valor
+// fixo no relatório"). Pró-labore, projeto parcelado,
 // mensalidade de processo e salário mínimo são outras categorias e o
 // relatório deles fica como sempre.
 //

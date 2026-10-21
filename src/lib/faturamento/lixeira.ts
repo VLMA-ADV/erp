@@ -1,7 +1,10 @@
-// Lixeira do faturamento (etapa 1): lançamentos de hora excluídos da fila de
-// faturar, por até 12 meses. Os dados vêm de get_lixeira_faturamento; aqui só
-// o que a tela decide sozinha — filtro, avisos antes de restaurar, rótulos —
-// para poder ser testado sem banco.
+// Lixeira do faturamento, por até 12 meses:
+//  - etapa 1: lançamentos de hora excluídos da fila de faturar;
+//  - etapa 2: timesheets e despesas apagados nas telas de lançamento (soft
+//    delete — o registro fica no banco, marcado com apagado_em).
+// Os dados vêm de get_lixeira_faturamento; aqui só o que a tela decide
+// sozinha — filtro, avisos antes de restaurar, rótulos, montagem da chamada de
+// restauração — para poder ser testado sem banco.
 
 import { mesPorExtenso, normalizarCompetencia } from './competencia'
 
@@ -11,8 +14,21 @@ export const PERMISSAO_RESTAURAR_LIXEIRA = 'finance.faturamento.lixeira.restore'
 /** Mesmo número da RPC: passou disso, o item só some da lixeira (nada é apagado). */
 export const RETENCAO_LIXEIRA_MESES = 12
 
+export type TipoItemLixeira = 'excluido_fila' | 'timesheet_apagado' | 'despesa_apagada'
+
 export interface ItemLixeira {
-  timesheet_id: string
+  /** Itens da etapa 1 (antes do campo existir) são sempre 'excluido_fila'. */
+  tipo?: TipoItemLixeira
+  /** id do timesheet ou da despesa. */
+  id?: string
+  /** `${tipo}:${id}` — única na lista (use esta para seleção/chave do React). */
+  chave?: string
+  /** Preenchido para os dois tipos de timesheet. */
+  timesheet_id: string | null
+  despesa_id?: string | null
+  /** Só despesa. */
+  valor?: number | string | null
+  categoria?: string | null
   cliente_id: string
   cliente_nome: string
   contrato_id: string
@@ -28,9 +44,11 @@ export interface ItemLixeira {
   data_lancamento: string
   horas: number | string
   descricao: string
+  /** Quem/quando saiu da fila ou foi apagado (qualquer tipo). */
   excluido_por_id: string | null
   excluido_por_nome: string
   excluido_em: string
+  /** Só exclusão da fila tem motivo. */
   motivo: string | null
   /** 'YYYY-MM-01' — competência em que estava quando foi excluído. */
   mes_original: string
@@ -48,6 +66,27 @@ export interface LixeiraPayload {
   itens: ItemLixeira[]
 }
 
+/** Tipo do item; o que veio sem tipo é da etapa 1 (excluído da fila). */
+export function tipoDoItem(item: ItemLixeira): TipoItemLixeira {
+  return item.tipo === 'timesheet_apagado' || item.tipo === 'despesa_apagada' ? item.tipo : 'excluido_fila'
+}
+
+/** id do registro (timesheet ou despesa). */
+export function idDoItem(item: ItemLixeira): string {
+  return item.id || item.despesa_id || item.timesheet_id || ''
+}
+
+/** Chave única na lista: o mesmo timesheet não aparece em dois tipos, mas a chave não depende disso. */
+export function chaveDoItem(item: ItemLixeira): string {
+  return item.chave || `${tipoDoItem(item)}:${idDoItem(item)}`
+}
+
+export const ROTULO_TIPO_LIXEIRA: Record<TipoItemLixeira, string> = {
+  excluido_fila: 'Excluído da fila',
+  timesheet_apagado: 'Timesheet apagado',
+  despesa_apagada: 'Despesa apagada',
+}
+
 /** Aceita o jsonb da RPC e devolve sempre um payload utilizável. */
 export function lerPayloadLixeira(data: unknown): LixeiraPayload {
   const obj = (data && typeof data === 'object' ? data : {}) as Partial<LixeiraPayload>
@@ -58,6 +97,26 @@ export function lerPayloadLixeira(data: unknown): LixeiraPayload {
   }
 }
 
+export interface ParametrosRestauracao {
+  p_excluidos: string[]
+  p_timesheets: string[]
+  p_despesas: string[]
+}
+
+/** Separa a seleção por tipo para restaurar_lixeira_faturamento (uma chamada, atômica). */
+export function parametrosDeRestauracao(itens: ItemLixeira[]): ParametrosRestauracao {
+  const p: ParametrosRestauracao = { p_excluidos: [], p_timesheets: [], p_despesas: [] }
+  for (const item of itens) {
+    const id = idDoItem(item)
+    if (!id) continue
+    const tipo = tipoDoItem(item)
+    if (tipo === 'despesa_apagada') p.p_despesas.push(id)
+    else if (tipo === 'timesheet_apagado') p.p_timesheets.push(id)
+    else p.p_excluidos.push(id)
+  }
+  return p
+}
+
 function semAcento(texto: string): string {
   return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
@@ -66,13 +125,16 @@ export interface FiltroLixeira {
   busca?: string
   /** 'YYYY-MM' ou 'YYYY-MM-01'; vazio = todos. Compara com o mês original. */
   mes?: string
+  /** vazio = todos os tipos. */
+  tipo?: TipoItemLixeira | ''
 }
 
-/** Busca livre (cliente, contrato, caso, profissional, descrição, motivo, quem excluiu) + mês original. */
+/** Busca livre (cliente, contrato, caso, profissional, descrição, categoria, motivo, quem excluiu) + mês original + tipo. */
 export function filtrarLixeira(itens: ItemLixeira[], filtro: FiltroLixeira): ItemLixeira[] {
   const termo = semAcento((filtro.busca || '').trim())
   const mes = filtro.mes ? normalizarCompetencia(filtro.mes) : null
   return itens.filter((item) => {
+    if (filtro.tipo && tipoDoItem(item) !== filtro.tipo) return false
     if (mes && normalizarCompetencia(item.mes_original) !== mes) return false
     if (!termo) return true
     const campos = [
@@ -83,6 +145,7 @@ export function filtrarLixeira(itens: ItemLixeira[], filtro: FiltroLixeira): Ite
       item.caso_numero != null ? String(item.caso_numero) : '',
       item.profissional_nome,
       item.descricao,
+      item.categoria,
       item.motivo,
       item.excluido_por_nome,
     ]
@@ -112,6 +175,8 @@ export function rotuloDiasRestantes(dias: number | null | undefined): string {
  *  - o mês original já tem kit (item aprovado/faturado do caso) ou NFS-e viva —
  *    o lançamento NÃO entra naquele kit/nota; vai para a fila do mês de destino;
  *  - contrato inativo ou caso inativo — a fila não mostra, então volta "invisível".
+ * Timesheet apagado que também estava excluído da fila volta a ser só
+ * "excluído" (continua fora da fila) — a RPC cuida disso; aqui não há aviso.
  */
 export function avisosDeRestauracao(itens: ItemLixeira[]): string[] {
   const avisos: string[] = []

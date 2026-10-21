@@ -1,5 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
+import {
+  competenciaDoServicoDosItens,
+  incluirCompetenciaNaDiscriminacao,
+  LIMITE_DISCRIMINACAO_NFSE,
+  linhaCompetenciaDoServico,
+  montarDiscriminacao,
+  naturezaDoItem,
+} from "../_shared/discriminacao-nfse.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -255,6 +263,39 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Discriminação de cada nota, montada ANTES de reservar os itens: se a
+    // descrição passar do limite do campo, nada é reservado nem emitido.
+    // Override de descrição só faz sentido para nota única (a prévia é por
+    // contrato). Com rateio (N notas) usa a descrição automática por pagador.
+    const itemById = new Map(itens.map((i) => [i.id, i]))
+    const usarOverride = pagadores.length === 1 && !!(descricaoOverride && descricaoOverride.trim())
+    const descricaoPorPagador = new Map<Pagador, string>()
+    for (const p of pagadores) {
+      const itensDaNota = p.item_ids.map((id) => itemById.get(id)).filter(Boolean) as typeof itens
+      const casoNomes = Array.from(new Set(
+        itensDaNota
+          .map((it) => String((it?.snapshot as any)?.caso_nome || (it?.snapshot as any)?.descricao || "").trim())
+          .filter(Boolean),
+      ))
+      // Competência do serviço SÓ no texto (cliente, out/2026): o mês em que o
+      // serviço foi prestado, pela regra de lib/faturamento/competencia-do-servico
+      // (ver _shared/discriminacao-nfse.ts). data_competencia não muda. Sem a
+      // competência do kit no pedido (tela Fluxo), não há como saber o mês e a
+      // linha não entra.
+      const linhaCompetencia = linhaCompetenciaDoServico(
+        competenciaDoServicoDosItens(escopoCompetencia, itensDaNota.map((it) => naturezaDoItem(it.snapshot))),
+      )
+      const descricao = usarOverride
+        ? incluirCompetenciaNaDiscriminacao((descricaoOverride as string).trim(), linhaCompetencia)
+        : montarDiscriminacao({ casoNomes, linhaCompetencia, descricaoFixa: DESCRICAO_FIXA })
+      if (descricao.length > LIMITE_DISCRIMINACAO_NFSE) {
+        return json({
+          error: `A descrição da nota tem ${descricao.length} caracteres; o limite da NFS-e é ${LIMITE_DISCRIMINACAO_NFSE}. Encurte o texto na prévia antes de emitir.`,
+        }, 422)
+      }
+      descricaoPorPagador.set(p, descricao)
+    }
+
     // ── Idempotência: reserva atômica de TODOS os itens (aprovado -> faturado)
     // antes de qualquer emissão. 2º clique não acha item 'aprovado' e é barrado.
     const allItemIds = itens.map((i) => i.id)
@@ -269,7 +310,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    const itemById = new Map(itens.map((i) => [i.id, i]))
     // Focus usa tokens distintos por ambiente; em homologacao, cai no token
     // de homologacao (e nunca no de producao, para o teste nao virar nota real).
     const focusToken = cfg?.focus_env === "production"
@@ -281,9 +321,6 @@ Deno.serve(async (req) => {
     const gi = grupo as Record<string, any>
     const regimeEsp = Number(cfg.regime_especial_tributacao ?? 6)
     const respeitaMin = gi.respeita_minimo ?? true
-    // Override de descrição só faz sentido para nota única (a prévia é por
-    // contrato). Com rateio (N notas) usa a descrição automática por pagador.
-    const usarOverride = pagadores.length === 1 && !!(descricaoOverride && descricaoOverride.trim())
 
     // Emite UMA NFS-e para um pagador com o seu valor proporcional.
     const emitirNota = async (p: Pagador) => {
@@ -292,16 +329,11 @@ Deno.serve(async (req) => {
       const valorIssRounded = Math.round((valorTotal * Number(grupo.aliquota_iss)) * 100) / 10000
       const valorIss = Math.round(valorIssRounded * 100) / 100
 
-      const casoNomes = Array.from(new Set(
-        p.item_ids
-          .map((id) => itemById.get(id))
-          .map((it) => String((it?.snapshot as any)?.caso_nome || (it?.snapshot as any)?.descricao || "").trim())
-          .filter(Boolean),
-      ))
-      const discriminacao = [casoNomes.join("; "), DESCRICAO_FIXA].filter(Boolean).join("\n")
-      const descricaoFinal = usarOverride ? (descricaoOverride as string).trim() : discriminacao
+      const descricaoFinal = descricaoPorPagador.get(p) as string
 
-      // Acumulado mensal por TOMADOR (o pagador que recebe a nota) — mínimos de retenção.
+      // Acumulado mensal por TOMADOR (o pagador que recebe a nota) — mínimos de
+      // retenção. Desde 20261021110000 a função também SOMA por tomador
+      // (metadata.pagador_cliente_id), não pelo cliente do contrato.
       let acumuladoMes = 0
       if (tomador?.id) {
         const { data: acum } = await supabase.rpc("get_client_month_accumulated_value", {
