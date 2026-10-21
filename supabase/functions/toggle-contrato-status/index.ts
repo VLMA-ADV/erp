@@ -61,10 +61,14 @@ Deno.serve(async (req) => {
       k === "contracts.*" ||
       k === "*"
     );
-    // "Qualquer pessoa pode ativar" (cliente, out/2026): quem tem acesso a
-    // Contratos ativa o que está em validação. Encerrar, reativar encerrado e
-    // os demais movimentos seguem exigindo escrita.
-    const hasRead = hasWrite || keys.includes("contracts.contratos.read");
+    // Ativar (unitário ou em lote) segue exigindo escrita: "qualquer pessoa que
+    // pode cadastrar contrato" (questionário out/2026) = contracts.contratos.write.
+    if (!hasWrite) {
+      return new Response(JSON.stringify({ error: "Você não tem permissão para alterar status do contrato" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const writeAudit = async (contratoId: string, status: string) => {
       if (!tenantUser?.tenant_id) return;
@@ -83,8 +87,8 @@ Deno.serve(async (req) => {
 
     // Em validação -> ativo: ativar_contratos (mesmo UPDATE de
     // toggle_contrato_status, só para quem está em validação; checa a
-    // permissão de leitura no banco também).
-    if (requestedStatus === "ativo" && hasRead) {
+    // permissão de escrita no banco também).
+    if (requestedStatus === "ativo") {
       const alvo = ids.length > 0 ? ids : [body.id as string];
       const { data: ativacao, error: ativacaoError } = await supabase.rpc("ativar_contratos", {
         p_user_id: user.id,
@@ -112,20 +116,12 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Não estava em validação (rascunho, encerrado): cai no caminho de sempre,
-      // que exige escrita.
+      // Não estava em validação (rascunho, encerrado): cai no caminho de sempre.
     }
 
     if (ids.length > 0) {
       return new Response(JSON.stringify({ error: "Em lote, só é possível ativar contratos em validação" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!hasWrite) {
-      return new Response(JSON.stringify({ error: "Você não tem permissão para alterar status do contrato" }), {
-        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

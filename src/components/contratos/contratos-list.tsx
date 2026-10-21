@@ -81,7 +81,7 @@ export default function ContratosList() {
   const [filtroSituacao, setFiltroSituacao] = useState('')
   const [focusedContratoId, setFocusedContratoId] = useState('')
   // Ativação em massa (questionário out/2026): "em validação" vira um filtro
-  // com seleção; quem tem acesso a Contratos ativa depois de revisar a lista.
+  // com seleção; quem pode cadastrar contrato ativa depois de revisar a lista.
   const [soEmValidacao, setSoEmValidacao] = useState(false)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [confirmarAtivacao, setConfirmarAtivacao] = useState(false)
@@ -373,7 +373,8 @@ export default function ContratosList() {
         )}
       </div>
 
-      {soEmValidacao && visiveisEmValidacao.length > 0 && (
+      {/* Ativar exige escrita (quem pode cadastrar contrato), como o botão de cada linha. */}
+      {canWrite && soEmValidacao && visiveisEmValidacao.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-canvas-soft px-4 py-3">
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
@@ -472,7 +473,7 @@ export default function ContratosList() {
                             <tr className="hover:bg-canvas-soft">
                               <td className="px-3 py-4 pl-8">
                                 <div className="flex items-center gap-1">
-                                {soEmValidacao && estaEmValidacao(item.status) && (
+                                {canWrite && soEmValidacao && estaEmValidacao(item.status) && (
                                   <input
                                     type="checkbox"
                                     className="h-4 w-4"
@@ -514,7 +515,6 @@ export default function ContratosList() {
                                   contratoId={item.id}
                                   status={item.status}
                                   canWrite={canWrite}
-                                  canActivate={canRead}
                                   onRefresh={fetchItems}
                                 />
                               </td>

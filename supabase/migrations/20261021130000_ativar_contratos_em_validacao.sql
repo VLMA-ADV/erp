@@ -4,7 +4,8 @@
 -- O cliente respondeu:
 --   * os contratos parados em validação podem ser ativados todos de uma vez,
 --     depois de revisar a lista;
---   * qualquer pessoa pode ativar.
+--   * qualquer pessoa que pode cadastrar contrato pode ativar — ou seja, quem
+--     tem contracts.contratos.write, como já é hoje. A permissão não muda.
 --
 -- Até aqui ativar era só pela edge toggle-contrato-status, que exige
 -- contracts.contratos.write e chama toggle_contrato_status um contrato por vez.
@@ -13,11 +14,9 @@
 -- updated_at, updated_by — nada além disso), para uma lista de contratos, e só
 -- na transição em validação -> ativo:
 --   * em validação no banco é 'em_analise' (a tela mostra "validação");
---   * basta ter acesso de leitura a Contratos (contracts.contratos.read) — quem
---     enxerga a lista pode ativar o que está em validação;
---   * encerrar, reativar um encerrado e mover rascunho continuam exigindo
---     contracts.contratos.write, pela edge, como antes. Esta função não mexe em
---     contrato que não esteja em validação: devolve-o em "ignorados".
+--   * exige a mesma permissão da edge: contracts.contratos.write (ou curingas);
+--   * contrato que não esteja em validação não é tocado: volta em "ignorados"
+--     (encerrar, reativar encerrado e mover rascunho seguem pela edge, como antes).
 --
 -- O audit log continua sendo gravado pela edge, por contrato ativado, como já
 -- acontece no ativar individual.
@@ -49,8 +48,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.get_user_permissions(p_user_id) p
     WHERE p.permission_key IN (
-      'contracts.contratos.read', 'contracts.contratos.write',
-      'contracts.contratos.*', 'contracts.*', '*'
+      'contracts.contratos.write', 'contracts.contratos.*', 'contracts.*', '*'
     )
   ) THEN
     RAISE EXCEPTION 'Você não tem permissão para ativar contratos';
