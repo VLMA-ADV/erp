@@ -139,7 +139,9 @@ BEGIN
   SELECT * INTO v_current
   FROM operations.timesheets t
   WHERE t.id = p_timesheet_id
-    AND t.tenant_id = v_tenant_id;
+    AND t.tenant_id = v_tenant_id
+    -- Lixeira etapa 2 (20261021140000): lançamento apagado não se edita.
+    AND t.apagado_em IS NULL;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Lançamento não encontrado.';
