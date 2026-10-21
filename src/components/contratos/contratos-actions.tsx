@@ -14,11 +14,14 @@ export default function ContratosActions({
   contratoId,
   status,
   canWrite,
+  canActivate = false,
   onRefresh,
 }: {
   contratoId: string
   status: 'rascunho' | 'solicitacao' | 'validacao' | 'ativo' | 'encerrado' | 'em_analise'
   canWrite: boolean
+  /** Quem só tem leitura em Contratos também ativa o que está em validação (cliente, out/2026). */
+  canActivate?: boolean
   onRefresh: () => void
 }) {
   const [anexoOpen, setAnexoOpen] = useState(false)
@@ -28,6 +31,8 @@ export default function ContratosActions({
   const { success, error: toastError } = useToast()
   const isPreActiveStatus = status === 'solicitacao' || status === 'validacao' || status === 'em_analise'
   const next = status === 'encerrado' ? 'ativo' : status === 'ativo' ? 'encerrado' : 'ativo'
+  // Sem escrita, o único movimento é validação -> ativo.
+  const podeSoAtivar = !canWrite && canActivate && (status === 'validacao' || status === 'em_analise')
 
   const toggleStatus = async () => {
     try {
@@ -104,6 +109,26 @@ export default function ContratosActions({
           </Button>
         </Link>
       </Tooltip>
+
+      {podeSoAtivar && (
+        <>
+          <Tooltip content="Ativar contrato">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(true)} disabled={loading}>
+              <Power className="h-4 w-4 text-green-600" />
+            </Button>
+          </Tooltip>
+          <AlertDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title="Ativar contrato?"
+            description="Confirme para alterar o status para ativo."
+            confirmLabel="Confirmar"
+            cancelLabel="Cancelar"
+            onConfirm={toggleStatus}
+            loading={loading}
+          />
+        </>
+      )}
 
       {canWrite && (
         <>

@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight, Power } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
@@ -12,6 +12,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect } from '@/components/ui/native-select'
+import { AlertDialog } from '@/components/ui/alert-dialog'
+import { useToast } from '@/components/ui/toast'
+import { estaEmValidacao, idsParaAtivar, rotuloQuantidadeContratos } from '@/lib/utils/contrato-ativacao'
 import ContratosActions from './contratos-actions'
 import CasosActions from './casos-actions'
 import type { ContratoListItem } from './types'
@@ -77,6 +80,13 @@ export default function ContratosList() {
   const [filtroRegra, setFiltroRegra] = useState('')
   const [filtroSituacao, setFiltroSituacao] = useState('')
   const [focusedContratoId, setFocusedContratoId] = useState('')
+  // Ativação em massa (questionário out/2026): "em validação" vira um filtro
+  // com seleção; quem tem acesso a Contratos ativa depois de revisar a lista.
+  const [soEmValidacao, setSoEmValidacao] = useState(false)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [confirmarAtivacao, setConfirmarAtivacao] = useState(false)
+  const [ativando, setAtivando] = useState(false)
+  const { success, error: toastError } = useToast()
 
   useEffect(() => {
     const searchFromQuery = searchParams.get('search') || ''
@@ -144,6 +154,7 @@ export default function ContratosList() {
   const items = useMemo(() => {
     let list = rawItems
     if (focusedContratoId) list = list.filter((c) => c.id === focusedContratoId)
+    if (soEmValidacao) list = list.filter((c) => estaEmValidacao(c.status))
 
     const s = search.trim().toLowerCase()
     if (s) {
@@ -184,7 +195,64 @@ export default function ContratosList() {
 
     return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawItems, search, focusedContratoId, filtroRegra, filtroSituacao])
+  }, [rawItems, search, focusedContratoId, filtroRegra, filtroSituacao, soEmValidacao])
+
+  const totalEmValidacao = useMemo(() => rawItems.filter((c) => estaEmValidacao(c.status)).length, [rawItems])
+  // Só conta o que está visível e em validação: filtro trocado não ativa o que sumiu da tela.
+  const paraAtivar = useMemo(() => idsParaAtivar(items, selecionados), [items, selecionados])
+  const visiveisEmValidacao = useMemo(() => items.filter((c) => estaEmValidacao(c.status)).map((c) => c.id), [items])
+  const todosSelecionados = visiveisEmValidacao.length > 0 && visiveisEmValidacao.every((id) => selecionados.has(id))
+
+  const alternarSelecao = (id: string) =>
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const alternarTodos = () =>
+    setSelecionados(todosSelecionados ? new Set() : new Set(visiveisEmValidacao))
+
+  // Mesmo caminho do botão Ativar de cada linha (edge toggle-contrato-status),
+  // agora com a lista de ids.
+  const ativarSelecionados = async () => {
+    if (paraAtivar.length === 0) return
+    try {
+      setAtivando(true)
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/toggle-contrato-status`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: paraAtivar, status: 'ativo' }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) {
+        toastError(data.error || 'Erro ao ativar contratos')
+        return
+      }
+      const ativados: string[] = data?.data?.ativados ?? []
+      const ignorados: string[] = data?.data?.ignorados ?? []
+      success(
+        ignorados.length > 0
+          ? `${rotuloQuantidadeContratos(ativados.length)} ativado(s). ${rotuloQuantidadeContratos(ignorados.length)} já não estava(m) em validação.`
+          : `${rotuloQuantidadeContratos(ativados.length)} ativado(s).`,
+      )
+      setSelecionados(new Set())
+      await fetchItems()
+    } catch (e) {
+      console.error(e)
+      toastError('Erro ao ativar contratos')
+    } finally {
+      setAtivando(false)
+      setConfirmarAtivacao(false)
+    }
+  }
 
   // Abrir o caminho ate o que bateu exato e efeito colateral, entao mora fora do
   // memo — memo que chama setState re-renderiza em loop.
@@ -269,6 +337,19 @@ export default function ContratosList() {
             <option value="encerrado">Só encerradas</option>
           </NativeSelect>
 
+          {(totalEmValidacao > 0 || soEmValidacao) && (
+            <Button
+              variant={soEmValidacao ? 'default' : 'outline'}
+              className="h-10"
+              onClick={() => {
+                setSoEmValidacao((v) => !v)
+                setSelecionados(new Set())
+              }}
+            >
+              Em validação ({totalEmValidacao})
+            </Button>
+          )}
+
           {(filtroRegra || filtroSituacao) && (
             <Button
               variant="ghost"
@@ -291,6 +372,36 @@ export default function ContratosList() {
           </div>
         )}
       </div>
+
+      {soEmValidacao && visiveisEmValidacao.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-canvas-soft px-4 py-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={todosSelecionados}
+              onChange={alternarTodos}
+              aria-label="Selecionar todos os contratos em validação"
+            />
+            Selecionar todos ({visiveisEmValidacao.length})
+          </label>
+          <Button onClick={() => setConfirmarAtivacao(true)} disabled={paraAtivar.length === 0 || ativando}>
+            <Power className="mr-2 h-4 w-4" />
+            Ativar selecionados{paraAtivar.length > 0 ? ` (${paraAtivar.length})` : ''}
+          </Button>
+        </div>
+      )}
+
+      <AlertDialog
+        open={confirmarAtivacao}
+        onOpenChange={setConfirmarAtivacao}
+        title={`Ativar ${rotuloQuantidadeContratos(paraAtivar.length)}?`}
+        description={`${rotuloQuantidadeContratos(paraAtivar.length)} em validação ${paraAtivar.length === 1 ? 'passa' : 'passam'} para ativo.`}
+        confirmLabel="Ativar"
+        cancelLabel="Cancelar"
+        onConfirm={ativarSelecionados}
+        loading={ativando}
+      />
 
       {loading ? (
         <div className="rounded-md border p-4">
@@ -333,7 +444,8 @@ export default function ContratosList() {
               <tbody className="bg-white divide-y divide-hairline">
                 {clienteKeys.map((clienteKey) => {
                   const group = groups[clienteKey]
-                  const isClientOpen = !!expandedClients[clienteKey]
+                  // No filtro "Em validação" os clientes já vêm abertos: é para revisar a lista.
+                  const isClientOpen = expandedClients[clienteKey] ?? soEmValidacao
                   return (
                     <Fragment key={clienteKey}>
                       {/* Client header row */}
@@ -359,12 +471,23 @@ export default function ContratosList() {
                           <Fragment key={item.id}>
                             <tr className="hover:bg-canvas-soft">
                               <td className="px-3 py-4 pl-8">
+                                <div className="flex items-center gap-1">
+                                {soEmValidacao && estaEmValidacao(item.status) && (
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={selecionados.has(item.id)}
+                                    onChange={() => alternarSelecao(item.id)}
+                                    aria-label="Selecionar contrato para ativar"
+                                  />
+                                )}
                                 <button
                                   className="rounded p-1 hover:bg-canvas-soft"
                                   onClick={() => setExpanded((prev) => ({ ...prev, [item.id]: !isOpen }))}
                                 >
                                   {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                 </button>
+                                </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink">
                                 {(() => {
@@ -391,6 +514,7 @@ export default function ContratosList() {
                                   contratoId={item.id}
                                   status={item.status}
                                   canWrite={canWrite}
+                                  canActivate={canRead}
                                   onRefresh={fetchItems}
                                 />
                               </td>
