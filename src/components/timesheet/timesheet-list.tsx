@@ -624,7 +624,7 @@ export default function TimesheetList() {
 
   const deleteTimesheet = async (item: TimesheetItem) => {
     const ok = window.confirm(
-      `Excluir este lançamento de timesheet?\n\n${item.contrato_nome || ''} — ${item.caso_nome || ''}\n${item.descricao || ''}\n\nEsta ação não pode ser desfeita.`,
+      `Excluir este lançamento de timesheet?\n\n${item.contrato_nome || ''} — ${item.caso_nome || ''}\n${item.descricao || ''}\n\nO lançamento sai do timesheet e do faturamento e fica na Lixeira do faturamento por 12 meses, de onde o financeiro pode restaurar.`,
     )
     if (!ok) return
 
@@ -644,7 +644,7 @@ export default function TimesheetList() {
         return
       }
 
-      success('Lançamento excluído')
+      success('Lançamento excluído — está na Lixeira do faturamento')
       window.dispatchEvent(new Event('vlma:timesheet-changed'))
       await fetchTimesheets()
     } catch (err) {

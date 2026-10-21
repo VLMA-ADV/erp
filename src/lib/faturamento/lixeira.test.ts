@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ROTULO_TIPO_LIXEIRA,
   avisosDeRestauracao,
+  chaveDoItem,
   filtrarLixeira,
+  idDoItem,
   lerPayloadLixeira,
   mesesDaLixeira,
+  parametrosDeRestauracao,
   rotuloDiasRestantes,
+  tipoDoItem,
   type ItemLixeira,
 } from './lixeira'
 
@@ -137,5 +142,55 @@ describe('avisosDeRestauracao', () => {
       item({ timesheet_id: 't2', caso_id: 'cs2', caso_numero: 10, kit_no_mes_original: true }),
     ])
     expect(avisos).toHaveLength(2)
+  })
+})
+
+describe('etapa 2: tipos (excluído da fila, timesheet apagado, despesa apagada)', () => {
+  const despesa = item({
+    tipo: 'despesa_apagada',
+    id: 'd1',
+    chave: 'despesa_apagada:d1',
+    timesheet_id: null,
+    despesa_id: 'd1',
+    horas: 0,
+    valor: 150.5,
+    categoria: 'Custas',
+    descricao: 'Guia de recolhimento',
+    motivo: null,
+  })
+  const apagado = item({ tipo: 'timesheet_apagado', id: 't9', chave: 'timesheet_apagado:t9', timesheet_id: 't9', motivo: null })
+
+  it('item sem tipo (payload da etapa 1) é excluído da fila', () => {
+    expect(tipoDoItem(item())).toBe('excluido_fila')
+    expect(chaveDoItem(item())).toBe('excluido_fila:t1')
+    expect(idDoItem(item())).toBe('t1')
+  })
+
+  it('usa a chave e o id que vêm da RPC', () => {
+    expect(tipoDoItem(despesa)).toBe('despesa_apagada')
+    expect(chaveDoItem(despesa)).toBe('despesa_apagada:d1')
+    expect(idDoItem(despesa)).toBe('d1')
+    expect(chaveDoItem(apagado)).toBe('timesheet_apagado:t9')
+  })
+
+  it('separa a seleção por tipo para a restauração', () => {
+    expect(parametrosDeRestauracao([item(), apagado, despesa])).toEqual({
+      p_excluidos: ['t1'],
+      p_timesheets: ['t9'],
+      p_despesas: ['d1'],
+    })
+    expect(parametrosDeRestauracao([])).toEqual({ p_excluidos: [], p_timesheets: [], p_despesas: [] })
+  })
+
+  it('filtra por tipo e busca pela categoria da despesa', () => {
+    const itens = [item(), apagado, despesa]
+    expect(filtrarLixeira(itens, { tipo: 'despesa_apagada' }).map(idDoItem)).toEqual(['d1'])
+    expect(filtrarLixeira(itens, { tipo: 'excluido_fila' }).map(idDoItem)).toEqual(['t1'])
+    expect(filtrarLixeira(itens, { tipo: '' })).toHaveLength(3)
+    expect(filtrarLixeira(itens, { busca: 'custas' }).map(idDoItem)).toEqual(['d1'])
+  })
+
+  it('tem rótulo para cada tipo', () => {
+    expect(Object.keys(ROTULO_TIPO_LIXEIRA).sort()).toEqual(['despesa_apagada', 'excluido_fila', 'timesheet_apagado'])
   })
 })
