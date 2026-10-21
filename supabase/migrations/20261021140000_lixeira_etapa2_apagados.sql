@@ -4290,6 +4290,8 @@ BEGIN
       'public.get_composicao_fatura',
       'public.update_revisao_fatura_item',
       'public.transferir_billing_item_caso',
+      -- transferir_caso (20261021100000) move TODOS os lançamentos do caso, apagados inclusive.
+      'public.transferir_caso',
       'public.excluir_kit',
       'public.bol_devolver_itens_da_nota',
       'finance.recalcular_valores_hora_do_caso',

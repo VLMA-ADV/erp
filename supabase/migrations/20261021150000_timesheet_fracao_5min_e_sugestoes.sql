@@ -246,7 +246,8 @@ BEGIN
   FROM operations.timesheets t
   JOIN contracts.casos cs ON cs.id = t.caso_id AND cs.tenant_id = v_tenant
   JOIN contracts.contratos ct ON ct.id = t.contrato_id AND ct.tenant_id = v_tenant
-  WHERE t.tenant_id = v_tenant
+  WHERE t.apagado_em IS NULL  -- Lixeira etapa 2
+      AND t.tenant_id = v_tenant
     AND t.created_by = v_uid
     AND t.data_lancamento >= (current_date - interval '3 months')::date
     AND ct.status = 'ativo'
