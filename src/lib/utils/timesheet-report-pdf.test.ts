@@ -4,7 +4,7 @@ import {
   divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, layoutQuadroImpostos, pagadoresDoCabecalho,
   totaisDoRelatorio, type FotoBaixada, type TimesheetPdfRow,
 } from './timesheet-report-pdf'
-import { montarPaginasDaNota } from './nota-despesa-pdf'
+import { divisaoDaNota, montarPaginasDaNota } from './nota-despesa-pdf'
 import { LOGO_VLMA } from './documento-vlma'
 
 // Conteúdo bruto (descomprimido) de todas as páginas: serve para procurar
@@ -381,6 +381,68 @@ describe('nota de débito', () => {
 
   it('sem competência a nota sai como antes', async () => {
     expect(await textosDoPdf(await gerar())).not.toContain('Competência')
+  })
+  // Divisão por pagador (cliente, out/2026): nota única por kit, mas com
+  // rateio mostra a parte de cada pagador. Regra do centavo = a do relatório
+  // de timesheet: o ÚLTIMO pagador absorve a diferença e a soma fecha o total.
+  describe('divisão por pagador', () => {
+    const itens = [
+      { data_lancamento: '2026-09-10', categoria: 'Custas', descricao: 'Guia', valor: 120 },
+      { data_lancamento: '2026-09-12', categoria: 'Cópias', descricao: 'Xerox', valor: 0.01 },
+    ]
+    const centavos = (d: { valor: number }[]) => d.reduce((a, l) => a + Math.round(l.valor * 100), 0)
+
+    it('2 pagadores 50/50 com centavo ímpar: o primeiro arredonda, o último fecha', async () => {
+      const pagadores = [{ nome: 'Pagador A', percentual: 50 }, { nome: 'Pagador B', percentual: 50 }]
+      const d = divisaoDaNota({ ...dados, itens, pagadores })!
+      // 120,01 × 50% = 60,005 → 60,01; o último fica com 60,00.
+      expect(d).toEqual([
+        { nome: 'Pagador A', percentual: 50, valor: 60.01 },
+        { nome: 'Pagador B', percentual: 50, valor: 60 },
+      ])
+      expect(centavos(d)).toBe(12001)
+      const textos = (await textosDoPdf(await gerar({ itens, pagadores, documentoNumero: '16', competenciaLabel: 'setembro/2026' }))).split('\n')
+      const iTotal = textos.indexOf('Valor a pagar')
+      const iQuadro = textos.indexOf('Divisão por pagador')
+      expect(iQuadro).toBeGreaterThan(iTotal)
+      expect(textos.slice(iQuadro)).toEqual(expect.arrayContaining(['Pagador A', 'Pagador B', '50%', 'R$ 60,01', 'R$ 60,00']))
+      // Quadro antes das instruções bancárias; nº e competência intactos.
+      expect(textos.indexOf('Instruções para pagamento bancário:')).toBeGreaterThan(iQuadro)
+      expect(textos).toContain('Nota de Débito nº 16')
+      expect(textos).toContain('Competência   setembro/2026')
+    })
+
+    it('3 pagadores: soma das partes = total', async () => {
+      const pagadores = [
+        { nome: 'A', percentual: 33.33 },
+        { nome: 'B', percentual: 33.33 },
+        { nome: 'C', percentual: 33.34 },
+      ]
+      const d = divisaoDaNota({ ...dados, itens: [{ ...itens[0], valor: 1000 }], pagadores })!
+      expect(d.map((l) => l.valor)).toEqual([333.3, 333.3, 333.4])
+      expect(centavos(d)).toBe(100000)
+      const d2 = divisaoDaNota({ ...dados, itens: [{ ...itens[0], valor: 100.01 }], pagadores })!
+      expect(d2.map((l) => l.valor)).toEqual([33.33, 33.33, 33.35])
+      expect(centavos(d2)).toBe(10001)
+      // No PDF: 100,01 → 33,33 + 33,33 + 33,35.
+      const textos = (await textosDoPdf(await gerar({ itens: [{ ...itens[0], valor: 100.01 }], pagadores }))).split('\n')
+      const iQuadro = textos.indexOf('Divisão por pagador')
+      expect(iQuadro).toBeGreaterThan(-1)
+      expect(textos.slice(iQuadro, iQuadro + 9)).toEqual([
+        'Divisão por pagador', 'A', '33,33%', 'R$ 33,33', 'B', '33,33%', 'R$ 33,33', 'C', '33,34%',
+      ])
+      expect(textos[iQuadro + 9]).toBe('R$ 33,35')
+    })
+
+    it('sem rateio (nenhum pagador ou um só igual ao cliente): nota idêntica à de sempre', async () => {
+      expect(divisaoDaNota({ ...dados })).toBeNull()
+      expect(divisaoDaNota({ ...dados, pagadores: [] })).toBeNull()
+      expect(divisaoDaNota({ ...dados, pagadores: [{ nome: 'cliente teste s.a. ', percentual: 100 }] })).toBeNull()
+      const sem = await conteudoDoPdf(await gerar())
+      const com = await conteudoDoPdf(await gerar({ pagadores: [{ nome: 'Cliente Teste S.A.', percentual: 100 }] }))
+      expect(com).toBe(sem)
+      expect(await textosDoPdf(await gerar())).not.toContain('Divisão por pagador')
+    })
   })
 })
 
