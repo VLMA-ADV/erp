@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
+import { mensagemTransferenciaCaso, type ResultadoTransferenciaCaso } from './transferir-caso-mensagem'
 
 interface ContratoOpt { id: string; numero: string | number | null; cliente_nome: string; status: string }
 
@@ -56,13 +57,13 @@ export default function TransferirCasoDialog({
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { toastError('Sessão expirada.'); return }
-      const { error } = await supabase.rpc('transferir_caso', {
+      const { data, error } = await supabase.rpc('transferir_caso', {
         p_user_id: session.user.id,
         p_caso_id: casoId,
         p_novo_contrato_id: sel,
       })
       if (error) { toastError(error.message || 'Erro ao transferir'); return }
-      success('Caso transferido')
+      success(mensagemTransferenciaCaso(data as ResultadoTransferenciaCaso | null))
       onOpenChange(false)
       onDone()
     } catch (e) {
@@ -76,6 +77,10 @@ export default function TransferirCasoDialog({
         <DialogHeader>
           <DialogTitle>Transferir caso para outro contrato</DialogTitle>
         </DialogHeader>
+        <p className="text-xs text-ink-mute">
+          Lançamentos, despesas e itens de faturamento ainda não faturados vão junto para o contrato de destino.
+          Itens já faturados ficam no contrato atual.
+        </p>
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
