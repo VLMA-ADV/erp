@@ -125,8 +125,8 @@ export interface EntradaQuadro {
 
 /**
  * Uma linha por pagador. Quem já tem NFS-e sai com os valores da nota; os
- * demais, estimados com a conta da emissão (cada um com o seu acumulado, e o
- * cliente do contrato somando as notas que saem antes dele na mesma emissão).
+ * demais, estimados com a conta da emissão (cada um com o seu acumulado do
+ * mês, que soma as notas emitidas para ele — por pagador, 20261021110000).
  * Nota emitida para alguém fora do rateio do kit (pagador trocado na hora de
  * emitir) entra também — é o que o cliente vai receber.
  */
@@ -148,7 +148,6 @@ export function montarQuadroImpostos(e: EntradaQuadro): QuadroImpostosPagador[] 
           valor: Math.round(e.valorServico * Number(p.percentual || 0) / 100 * 100) / 100,
         })),
         acumuladoAtual: e.acumuladoAtual,
-        contratoClienteId: e.contratoClienteId,
       })
     : null
 
