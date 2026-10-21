@@ -1093,6 +1093,10 @@ export default function ContratoForm({
   // Rateio e timesheet_config já vêm no formato de contracts.casos.
   const solicitacaoPrefillId = searchParams.get('solicitacao')
   const prefillAplicado = useRef(false)
+  // Contrato aberto a partir de uma solicitação nasce ATIVO, sem passar por
+  // validação (cliente, questionário out/2026). Só marca quando a solicitação
+  // foi encontrada e o formulário nasceu dela.
+  const veioDeSolicitacao = useRef(false)
   useEffect(() => {
     if (!solicitacaoPrefillId || isEdit || prefillAplicado.current) return
     prefillAplicado.current = true
@@ -1108,6 +1112,7 @@ export default function ContratoForm({
         if (rpcError || !Array.isArray(data)) return
         const s = (data as Array<Record<string, unknown>>).find((item) => String(item.id) === solicitacaoPrefillId)
         if (!s) return
+        veioDeSolicitacao.current = true
 
         const rateioSolicitacao = (Array.isArray(s.centro_custo_rateio) ? s.centro_custo_rateio : [])
           .map((item) => {
@@ -2594,6 +2599,9 @@ export default function ContratoForm({
       }
 
       if (hasPersistedCase && form.status === 'rascunho') {
+        // Novo contrato vindo de solicitação: direto para ativo. Os demais
+        // seguem para validação, como antes.
+        const statusInicial = !isEdit && veioDeSolicitacao.current ? 'ativo' : 'em_analise'
         const statusResp = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/toggle-contrato-status`, {
           method: 'POST',
           headers: {
@@ -2602,15 +2610,18 @@ export default function ContratoForm({
           },
           body: JSON.stringify({
             id: draftMeta.id,
-            status: normalizeContratoStatusForToggle('em_analise') ?? 'em_analise',
+            status: normalizeContratoStatusForToggle(statusInicial) ?? statusInicial,
           }),
         })
         const statusData = await statusResp.json()
         if (!statusResp.ok) {
-          setError(statusData.error || 'Erro ao mover contrato para validação')
+          setError(
+            statusData.error ||
+              (statusInicial === 'ativo' ? 'Erro ao ativar contrato' : 'Erro ao mover contrato para validação'),
+          )
           return
         }
-        setForm((prev) => ({ ...prev, status: 'em_analise' }))
+        setForm((prev) => ({ ...prev, status: statusInicial }))
       }
 
       const successMessage =
