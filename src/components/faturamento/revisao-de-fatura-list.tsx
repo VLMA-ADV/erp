@@ -22,6 +22,7 @@ import AndamentoPorRegra, { etapaDoStatus, statusDaEtapa, linhaVazia, type Andam
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
 import PostergadosList from './postergados-list'
 import LixeiraFaturamentoList from './lixeira-faturamento-list'
+import RateioHorasPanel from './rateio-horas-panel'
 import {
   ABAS_DE_REGRA,
   LINHAS_DO_PAINEL,
@@ -988,6 +989,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   const [postergadosCount, setPostergadosCount] = useState<number | null>(null)
   const [lixeiraAberta, setLixeiraAberta] = useState(false)
   const [lixeiraCount, setLixeiraCount] = useState<number | null>(null)
+  // Rateio / horas: só sócios e financeiro. pode_ver_rateio_horas só esconde
+  // o botão; get_rateio_horas confere de novo no servidor.
+  const [rateioAberto, setRateioAberto] = useState(false)
+  const [podeVerRateio, setPodeVerRateio] = useState(false)
   const [items, setItems] = useState<RevisaoItem[]>([])
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
   const [ruleFilter, setRuleFilter] = useState<RuleFilterKey>('all')
@@ -1303,6 +1308,18 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     }
   }
 
+  const loadPodeVerRateio = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data, error: rpcError } = await supabase.rpc('pode_ver_rateio_horas', { p_user_id: user.id })
+      setPodeVerRateio(!rpcError && data === true)
+    } catch {
+      setPodeVerRateio(false)
+    }
+  }
+
   // Conta os postergados para o botão "Postergados (N)"; a lista em si é o
   // PostergadosList, que se carrega sozinho quando aberto.
   const loadPostergadosCount = async () => {
@@ -1453,6 +1470,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     void loadCompetencias(true)
     void loadPostergadosCount()
     void loadLixeiraCount()
+    void loadPodeVerRateio()
     void loadAllContratos()
     void loadColaboradores()
     void loadPodeEmitirNfse()
@@ -2950,6 +2968,19 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           >
             Indicadores
           </button>
+          {/* Rateio / horas (sócios e financeiro): lançadas x cobradas e o
+              rateio das cobradas por centro de custo, com abas por mês próprias. */}
+          {podeVerRateio ? (
+            <button
+              type="button"
+              onClick={() => setRateioAberto((prev) => !prev)}
+              className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm transition-colors ${
+                rateioAberto ? 'bg-ink text-white' : 'text-ink-mute hover:text-ink-secondary'
+              }`}
+            >
+              Rateio / horas
+            </button>
+          ) : null}
           {/* "Postergados" era aba da tela antiga de itens a faturar; aqui abre
               o mesmo painel inline. O contador vem da mesma RPC da lista. */}
           <button
@@ -2974,6 +3005,18 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           </button>
         </TabsList>
       </Tabs>
+
+      {rateioAberto && podeVerRateio ? (
+        <div className="rounded-xl border bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-ink">Rateio / horas</p>
+            <p className="text-[11px] text-ink-mute">
+              Horas lançadas x cobradas e a divisão das cobradas por centro de custo. Abas de mês e filtros próprios, independentes da lista de faturamento.
+            </p>
+          </div>
+          <RateioHorasPanel competenciaInicial={competencia} />
+        </div>
+      ) : null}
 
       {postergadosAberto ? (
         <div className="rounded-xl border bg-white p-4">
