@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Inbox, LifeBuoy, MessageSquare, X } from 'lucide-react'
+import { Inbox, LifeBuoy, MessageSquare, Target, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry'
@@ -10,6 +10,8 @@ import { QK_CHAMADOS_PENDENTES, contarChamadosPendentes } from '@/lib/chamados/a
 import SolicitacoesInbox from './solicitacoes-inbox'
 import MensagensInbox from './mensagens-inbox'
 import ChamadosInbox from '@/components/chamados/chamados-inbox'
+import PdiInbox from '@/components/pdi/pdi-inbox'
+import { QK_CAIXA_PDI_PENDENTES, contarCaixaPdiPendentes } from '@/lib/pdi/api'
 
 /**
  * Caixa de entrada como ícone, não como aba (pedido Filipe 07/08): ele quer ver
@@ -47,7 +49,7 @@ async function contarPendentes({ signal }: { signal?: AbortSignal } = {}): Promi
     item?.status === 'aberta' && !item?.lido_at).length
 }
 
-type Aba = 'solicitacoes' | 'mensagens' | 'chamados'
+type Aba = 'solicitacoes' | 'mensagens' | 'chamados' | 'pdi'
 
 /**
  * Desde 22/09 (Central de chamados, decisão 2.6c) o painel tem a aba
@@ -56,6 +58,10 @@ type Aba = 'solicitacoes' | 'mensagens' | 'chamados'
  * condicionadas a contracts.solicitacoes.read; quem não tem cai direto em
  * Chamados. O badge do botão soma solicitações pendentes + chamados com
  * novidade, para o Filipe ver de longe que chegou coisa de qualquer um dos dois.
+ *
+ * Desde 26/10 há também a aba "PDI" (para todo logado): o envio da
+ * autoavaliação de metas de um período avisa o coordenador da área aqui, e a
+ * reabertura avisa o colaborador. O badge soma esses avisos não lidos.
  */
 export default function InboxFlutuante() {
   const { hasPermission } = usePermissionsContext()
@@ -65,7 +71,7 @@ export default function InboxFlutuante() {
 
   // Se as permissões chegarem depois do primeiro render, a aba padrão acompanha.
   useEffect(() => {
-    if (!canRead && aba !== 'chamados') setAba('chamados')
+    if (!canRead && (aba === 'solicitacoes' || aba === 'mensagens')) setAba('chamados')
   }, [canRead, aba])
 
   const { data: pendentesSolicitacoes = 0 } = useQuery({
@@ -81,7 +87,20 @@ export default function InboxFlutuante() {
     refetchInterval: INTERVALO_ATUALIZACAO_MS,
   })
 
-  const pendentes = (canRead ? pendentesSolicitacoes : 0) + pendentesChamados
+  const { data: pendentesPdi = 0 } = useQuery({
+    queryKey: [QK_CAIXA_PDI_PENDENTES],
+    queryFn: () => contarCaixaPdiPendentes(),
+    refetchInterval: INTERVALO_ATUALIZACAO_MS,
+  })
+
+  // Aviso do PDI pendente e nada de solicitação: abre direto na aba PDI.
+  useEffect(() => {
+    if (aberto && pendentesPdi > 0 && aba !== 'pdi' && (!canRead || pendentesSolicitacoes === 0) && pendentesChamados === 0) setAba('pdi')
+    // só no momento em que o painel abre
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto])
+
+  const pendentes = (canRead ? pendentesSolicitacoes : 0) + pendentesChamados + pendentesPdi
 
   // Esc fecha o painel — é meia janela, não uma página.
   useEffect(() => {
@@ -185,6 +204,24 @@ export default function InboxFlutuante() {
                   </span>
                 ) : null}
               </button>
+              <button
+                type="button"
+                onClick={() => setAba('pdi')}
+                className={`flex items-center gap-1.5 border-b-2 px-1 py-3 text-sm transition ${
+                  aba === 'pdi'
+                    ? 'border-[#E8871E] font-semibold text-ink'
+                    : 'border-transparent text-ink-mute hover:text-ink-secondary'
+                }`}
+                data-testid="inbox-aba-pdi"
+              >
+                <Target className="h-4 w-4" />
+                PDI
+                {pendentesPdi > 0 ? (
+                  <span className="rounded-full bg-[#FFF7ED] px-1.5 py-0.5 text-[11px] font-semibold text-[#B45309]">
+                    {pendentesPdi}
+                  </span>
+                ) : null}
+              </button>
             </nav>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -192,6 +229,8 @@ export default function InboxFlutuante() {
                 <SolicitacoesInbox embutido />
               ) : aba === 'mensagens' && canRead ? (
                 <MensagensInbox embutido />
+              ) : aba === 'pdi' ? (
+                <PdiInbox onFechar={() => setAberto(false)} />
               ) : (
                 <ChamadosInbox onFechar={() => setAberto(false)} />
               )}

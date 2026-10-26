@@ -45,6 +45,12 @@ export default function EquipeCard() {
             Abrir avaliações da equipe
           </Link>
           <Link
+            href="/avaliacoes-pdi/painel-metas"
+            className="inline-flex items-center rounded-md border border-brand-purple/40 px-4 py-2 text-sm font-medium text-brand-purple-fg hover:bg-brand-purple-soft"
+          >
+            Painel de metas da equipe
+          </Link>
+          <Link
             href="/avaliacoes-pdi/consolidado"
             className="inline-flex items-center rounded-md border border-brand-purple/40 px-4 py-2 text-sm font-medium text-brand-purple-fg hover:bg-brand-purple-soft"
           >

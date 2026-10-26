@@ -29,14 +29,23 @@ export default async function AvaliacoesPDIPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-ink-mute">
-            Faça sua autoavaliação do ciclo: skills da carreira e DNA por faixa, metas semestrais e feedbacks mensais.
+            Cadastre suas metas por período (semestre ou trimestre), faça a autoavaliação e envie ao seu coordenador.
+            Também ficam aqui as skills da carreira, o DNA e os feedbacks mensais.
           </p>
-          <Link
-            href="/avaliacoes-pdi/meu"
-            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-deep"
-          >
-            Abrir meu PDI
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/avaliacoes-pdi/meu"
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-deep"
+            >
+              Abrir meu PDI
+            </Link>
+            <Link
+              href="/avaliacoes-pdi/painel-metas"
+              className="inline-flex items-center rounded-md border border-hairline bg-card px-4 py-2 text-sm font-medium text-ink hover:bg-canvas-soft"
+            >
+              Ver meu progresso
+            </Link>
+          </div>
         </CardContent>
       </Card>
 

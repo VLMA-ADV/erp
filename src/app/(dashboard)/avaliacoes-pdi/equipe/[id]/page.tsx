@@ -3,15 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Save, Send, CheckCircle2, TrendingUp } from 'lucide-react'
+import { Save, Send, CheckCircle2, TrendingUp, FileText, Lock, RotateCcw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { BarraProgresso } from '@/components/pdi/faixa'
+import { ordemPeriodo, rotuloPeriodo, type AnexoMeta, type EnvioPeriodo, type PeriodoCodigo } from '@/lib/pdi/metas'
+import { abrirAnexoMeta, marcarCaixaPdiLida, reabrirPeriodo } from '@/lib/pdi/api'
 
 interface Faixa { codigo: string; rotulo: string; ordem: number }
 interface Skill { id: string; trilha: string; pilar_numero: number; pilar_nome: string; item_codigo: string; titulo: string | null; nome: string; descricao: string | null; faixa_auto: string | null; texto_auto: string | null; faixa_final: string | null; texto_final: string | null }
 interface Dna { id: string; numero: number; nome: string; texto_auto: string | null }
-interface Meta { id: string; nome: string | null; descricao: string | null; indicadores: string | null; semestre: number | null; progresso_pct: number | null; faixa_auto: string | null; faixa_final: string | null; validada: boolean }
+interface Meta { id: string; nome: string | null; descricao: string | null; indicadores: string | null; semestre: number | null; periodo: PeriodoCodigo; comentario: string | null; progresso_pct: number | null; faixa_auto: string | null; faixa_final: string | null; validada: boolean; anexos?: AnexoMeta[] }
 interface Cargo { id: string; nome: string; codigo: string; nivel: number | null; salario_sugerido: number | null }
 interface Avaliacao {
   id: string; ano: number; status: string; faixa_final_geral: string | null; resultado: string | null; parecer_gestor: string | null
@@ -20,6 +23,7 @@ interface Avaliacao {
   bonus_pdi: boolean | null; bonus_13o: number | null; bonus_performance_plus: number | null; bonus_comercial: number | null
   cargo_nome_snapshot: string | null; nivel_codigo_snapshot: string | null; carreira_codigo: string | null; adicional_snapshot: string | null; area_nome_snapshot: string | null
   colaborador_nome: string | null; salario_atual: number | null; cargo_atual_id: string | null
+  pode_reabrir_metas?: boolean
 }
 
 const TRILHA_LABEL: Record<string, string> = { base: 'Skills da carreira', lideranca: 'Adicional — Liderança', estrategico: 'Adicional — Estratégico' }
@@ -53,6 +57,9 @@ export default function ReviewPdiPage() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [dna, setDna] = useState<Dna[]>([])
   const [metas, setMetas] = useState<Meta[]>([])
+  const [metasPeriodos, setMetasPeriodos] = useState<EnvioPeriodo[]>([])
+  const [reabrindo, setReabrindo] = useState<string | null>(null)
+  const [aba, setAba] = useState('competencias')
   const [cargos, setCargos] = useState<Cargo[]>([])
   const [faixaGeral, setFaixaGeral] = useState<string>('')
   const [resultado, setResultado] = useState<string>('')
@@ -76,8 +83,8 @@ export default function ReviewPdiPage() {
       const supabase = createClient()
       const { data, error: err } = await supabase.rpc('get_avaliacao_pdi_gestor', { p_avaliacao_id: id })
       if (err) { setError(err.message); return }
-      const d = data as { avaliacao: Avaliacao; regua: Faixa[]; skills: Skill[]; dna: Dna[]; metas: Meta[]; cargos: Cargo[] }
-      setAval(d.avaliacao); setRegua(d.regua || []); setSkills(d.skills || []); setDna(d.dna || []); setMetas(d.metas || []); setCargos(d.cargos || [])
+      const d = data as { avaliacao: Avaliacao; regua: Faixa[]; skills: Skill[]; dna: Dna[]; metas: Meta[]; metas_periodos?: EnvioPeriodo[]; cargos: Cargo[] }
+      setAval(d.avaliacao); setRegua(d.regua || []); setSkills(d.skills || []); setDna(d.dna || []); setMetas(d.metas || []); setMetasPeriodos(d.metas_periodos || []); setCargos(d.cargos || [])
       setFaixaGeral(d.avaliacao?.faixa_final_geral || '')
       setResultado(d.avaliacao?.resultado || '')
       setParecer(d.avaliacao?.parecer_gestor || '')
@@ -91,6 +98,32 @@ export default function ReviewPdiPage() {
   }, [id])
 
   useEffect(() => { void load() }, [load])
+
+  // Vindo da caixa de entrada (?aba=metas) abre direto nas metas.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('aba')
+    if (q) setAba(q)
+  }, [])
+
+  // Abriu a avaliação = leu o aviso da caixa de entrada sobre ela.
+  useEffect(() => { if (id) void marcarCaixaPdiLida({ avaliacaoId: id }).catch(() => null) }, [id])
+
+  const metasPorPeriodo = useMemo(() => {
+    const g = new Map<PeriodoCodigo, Meta[]>()
+    for (const m of metas) { const l = g.get(m.periodo) ?? []; l.push(m); g.set(m.periodo, l) }
+    return Array.from(g.entries()).sort((a, b) => ordemPeriodo(a[0]) - ordemPeriodo(b[0]))
+  }, [metas])
+
+  const reabrir = async (periodo: PeriodoCodigo) => {
+    if (!id) return
+    if (!window.confirm(`Reabrir o ${rotuloPeriodo(periodo)} para o colaborador editar? Ele é avisado na caixa de entrada e precisará enviar de novo.`)) return
+    try {
+      setReabrindo(periodo); setError(null); setMsg(null)
+      await reabrirPeriodo(id, periodo)
+      setMsg(`${rotuloPeriodo(periodo)} reaberto para o colaborador.`)
+      await load()
+    } catch (e) { setError((e as Error).message) } finally { setReabrindo(null) }
+  }
 
   const setSkill = (sid: string, patch: Partial<Skill>) => setSkills((prev) => prev.map((s) => s.id === sid ? { ...s, ...patch } : s))
   const setMeta = (mid: string, patch: Partial<Meta>) => setMetas((prev) => prev.map((m) => m.id === mid ? { ...m, ...patch } : m))
@@ -185,7 +218,7 @@ export default function ReviewPdiPage() {
 
       {!aval?.autoavaliacao_enviada_at ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">O colaborador ainda não enviou a autoavaliação. Você pode registrar a sua mesmo assim.</p> : null}
 
-      <Tabs defaultValue="competencias">
+      <Tabs defaultValue="competencias" value={aba} onValueChange={setAba}>
         <TabsList className="mb-2 flex-wrap">
           <TabsTrigger value="competencias">Competências</TabsTrigger>
           <TabsTrigger value="metas">Metas</TabsTrigger>
@@ -238,31 +271,82 @@ export default function ReviewPdiPage() {
         </TabsContent>
 
         <TabsContent value="metas">
-      {/* METAS */}
+      {/* METAS por período */}
       <section className="mb-8">
         <h2 className="display-md mb-1 text-ink">Metas do PDI</h2>
-        <p className="mb-3 text-sm text-ink-mute">Valide cada meta (alinhamento com a estratégia) e atribua a faixa de entrega.</p>
+        <p className="mb-3 text-sm text-ink-mute">Autoavaliação do colaborador por período, com progresso, comentários e anexos. Valide cada meta e atribua a faixa de entrega (avaliação do sócio).</p>
         {metas.length === 0 ? <p className="rounded-xl border border-dashed border-hairline bg-canvas-soft p-4 text-sm text-ink-mute">Nenhuma meta cadastrada pelo colaborador.</p> : null}
-        <div className="space-y-3">
-          {metas.map((m) => (
-            <div key={m.id} className="rounded-xl border border-hairline bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-ink">{m.semestre ? `${m.semestre}º sem · ` : ''}{m.nome || 'Meta'}</p>
-                  {m.descricao ? <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-secondary">{m.descricao}</p> : null}
-                  {m.indicadores ? <p className="mt-1 whitespace-pre-wrap text-xs text-ink-mute">Indicadores: {m.indicadores}</p> : null}
-                  <p className="mt-1 text-xs text-ink-mute">Progresso informado: <span className="font-tabular">{m.progresso_pct ?? 0}%</span></p>
+        <div className="space-y-5">
+          {metasPorPeriodo.map(([periodo, lista]) => {
+            const envio = metasPeriodos.find((e) => e.periodo === periodo)
+            const enviado = Boolean(envio?.enviado_em)
+            return (
+              <div key={periodo} className="overflow-hidden rounded-xl border border-hairline bg-card" data-testid={`gestor-periodo-${periodo}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline bg-canvas-soft px-4 py-2.5">
+                  <p className="text-sm font-semibold text-ink">{rotuloPeriodo(periodo)} · {lista.length} meta(s)</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {enviado ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+                        <Lock className="h-3 w-3" /> Autoavaliação enviada em {new Date(envio!.enviado_em!).toLocaleDateString('pt-BR')}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                        {envio?.reaberto_em ? 'Reaberta — aguardando novo envio' : 'Colaborador ainda não enviou'}
+                      </span>
+                    )}
+                    {enviado && aval?.pode_reabrir_metas ? (
+                      <button type="button" onClick={() => void reabrir(periodo)} disabled={reabrindo !== null}
+                        className="inline-flex items-center gap-1 rounded-md border border-hairline px-2 py-1 text-xs text-ink-secondary hover:border-primary disabled:opacity-60">
+                        <RotateCcw className="h-3.5 w-3.5" /> {reabrindo === periodo ? 'Reabrindo…' : 'Reabrir para o colaborador'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-                <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-secondary">
-                  <input type="checkbox" checked={m.validada} onChange={(e) => setMeta(m.id, { validada: e.target.checked })} /> Validada
-                </label>
+                <div className="divide-y divide-hairline">
+                  {lista.map((m) => (
+                    <div key={m.id} className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-ink">{m.nome || 'Meta'}</p>
+                          {m.descricao ? <p className="mt-0.5 whitespace-pre-wrap text-xs text-ink-secondary">{m.descricao}</p> : null}
+                          {m.indicadores ? <p className="mt-1 whitespace-pre-wrap text-xs text-ink-mute">Indicadores: {m.indicadores}</p> : null}
+                        </div>
+                        <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-secondary">
+                          <input type="checkbox" checked={m.validada} onChange={(e) => setMeta(m.id, { validada: e.target.checked })} /> Validada
+                        </label>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-xs text-ink-mute">Progresso</span>
+                        <BarraProgresso valor={m.progresso_pct ?? 0} className="flex-1" />
+                        <span className="w-10 text-right font-tabular text-xs text-ink">{m.progresso_pct ?? 0}%</span>
+                      </div>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-hairline bg-canvas-soft/50 p-3">
+                          <p className="text-eyebrow mb-1.5">Autoavaliação</p>
+                          <AutoBadge codigo={m.faixa_auto} />
+                          {m.comentario ? <p className="mt-1.5 whitespace-pre-wrap text-xs text-ink-secondary">{m.comentario}</p> : null}
+                          {(m.anexos ?? []).length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {(m.anexos ?? []).map((a) => (
+                                <button key={a.id} type="button" onClick={() => void abrirAnexoMeta(a.storage_path).catch((e: Error) => setError(e.message))}
+                                  className="inline-flex items-center gap-1 rounded-full border border-hairline bg-card px-2 py-0.5 text-[11px] text-ink-secondary hover:text-primary">
+                                  <FileText className="h-3 w-3" /> <span className="max-w-[10rem] truncate">{a.arquivo_nome}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="rounded-lg border border-brand-purple/25 bg-brand-purple-soft/40 p-3">
+                          <p className="text-eyebrow mb-1.5">Faixa de entrega (sócio)</p>
+                          <GestorPicker value={m.faixa_final} onChange={(v) => setMeta(m.id, { faixa_final: v })} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="mt-2 rounded-lg border border-brand-purple/25 bg-brand-purple-soft/40 p-2">
-                <p className="text-eyebrow mb-1.5">Faixa de entrega</p>
-                <GestorPicker value={m.faixa_final} onChange={(v) => setMeta(m.id, { faixa_final: v })} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
 
