@@ -6,7 +6,9 @@ import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import { DonutBreakdown } from '@/components/ui/donut-breakdown'
 import { BarraProgresso, FAIXA_HEX, FaixaBadge, progressoHex } from '@/components/pdi/faixa'
 import { PERIODOS, agregarPainel, curtoPeriodo, rotuloPeriodo, type PeriodoCodigo, type PessoaResumo } from '@/lib/pdi/metas'
-import { carregarPainelMetas, type PainelResposta } from '@/lib/pdi/api'
+import { carregarAvaliacaoPrevia, carregarPainelMetas, type PainelResposta } from '@/lib/pdi/api'
+import { previaPorColaborador, type PreviaPessoa } from '@/lib/pdi/previa'
+import AvaliacaoPrevia from '@/components/pdi/avaliacao-previa'
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <div className={`rounded-xl border border-hairline bg-card p-4 ${className}`}>{children}</div>
@@ -26,9 +28,13 @@ export default function PainelMetas({ ano }: { ano: number }) {
   const [busca, setBusca] = useState('')
   const [abertaArea, setAbertaArea] = useState<string | null>(null)
   const [abertaPessoa, setAbertaPessoa] = useState<string | null>(null)
+  const [previa, setPrevia] = useState<Map<string, PreviaPessoa> | null>(null)
+  const [erroPrevia, setErroPrevia] = useState<string | null>(null)
 
   useEffect(() => {
     carregarPainelMetas(ano).then(setDados).catch((e: Error) => setErro(e.message))
+    // A avaliação prévia é um bloco à parte: se falhar, o painel continua.
+    carregarAvaliacaoPrevia(ano).then((r) => setPrevia(previaPorColaborador(r))).catch((e: Error) => setErroPrevia(e.message))
   }, [ano])
 
   const resumo = useMemo(() => {
@@ -140,6 +146,14 @@ export default function PainelMetas({ ano }: { ano: number }) {
           {resumo.pessoas[0] ? <MetasDaPessoa r={resumo.pessoas[0]} regua={dados.regua} /> : null}
           <Link href="/avaliacoes-pdi/meu" className="mt-3 inline-block text-sm text-primary underline underline-offset-2">Editar no Meu PDI →</Link>
         </Card>
+      ) : null}
+
+      {proprio ? (
+        <Card>
+          <p className="text-eyebrow mb-1">Avaliação prévia</p>
+          <p className="mb-3 text-xs text-ink-mute">Resumo do que ficou gravado da avaliação anterior — skills da carreira e DNA VLMA. Só leitura.</p>
+          <BlocoPrevia previa={previa} erro={erroPrevia} colaboradorId={resumo.pessoas[0]?.pessoa.colaborador_id} regua={dados.regua} />
+        </Card>
       ) : (
         <Card>
           <p className="text-eyebrow mb-3">Por área</p>
@@ -187,6 +201,10 @@ export default function PainelMetas({ ano }: { ano: number }) {
                             {pOpen ? (
                               <div className="border-t border-hairline px-3 py-2">
                                 <MetasDaPessoa r={r} regua={dados.regua} />
+                                <div className="mt-3 rounded-lg border border-dashed border-hairline p-3">
+                                  <p className="text-eyebrow mb-2">Avaliação prévia</p>
+                                  <BlocoPrevia previa={previa} erro={erroPrevia} colaboradorId={r.pessoa.colaborador_id} regua={dados.regua} />
+                                </div>
                                 {r.pessoa.avaliacao_id ? (
                                   <Link href={`/avaliacoes-pdi/equipe/${r.pessoa.avaliacao_id}?aba=metas`} className="mt-2 inline-block text-xs text-primary underline underline-offset-2">Abrir avaliação →</Link>
                                 ) : null}
@@ -205,6 +223,17 @@ export default function PainelMetas({ ano }: { ano: number }) {
       )}
     </div>
   )
+}
+
+function BlocoPrevia({ previa, erro, colaboradorId, regua }: {
+  previa: Map<string, PreviaPessoa> | null
+  erro: string | null
+  colaboradorId: string | undefined
+  regua: { codigo: string; rotulo: string }[]
+}) {
+  if (erro) return <p className="text-xs text-red-700">{erro}</p>
+  if (!previa) return <p className="text-xs text-ink-mute">Carregando avaliação prévia…</p>
+  return <AvaliacaoPrevia pessoa={colaboradorId ? previa.get(colaboradorId) : undefined} regua={regua} />
 }
 
 function MetasDaPessoa({ r, regua }: { r: PessoaResumo; regua: { codigo: string; rotulo: string }[] }) {

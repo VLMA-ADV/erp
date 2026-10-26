@@ -60,6 +60,54 @@ export interface EnvioPeriodo {
   enviado_em: string | null
   envios?: number
   reaberto_em?: string | null
+  /** Quem reabriu foi o próprio colaborador ("Voltar para edição"). */
+  reaberto_pelo_colaborador?: boolean
+  /** Registro histórico (1º semestre de 2026): só leitura. */
+  historico?: boolean
+  /** O sócio/coordenador já começou a avaliar este período. */
+  avaliado_socio?: boolean
+}
+
+/**
+ * Registro histórico — mesma regra de public.pdi_periodo_historico: tudo antes
+ * de 2026 e o 1º semestre de 2026 (a autoavaliação de maio, inclusive as que
+ * vieram do modelo antigo). Fica só leitura: não edita, não anexa, não reabre.
+ */
+export function ehPeriodoHistorico(ano: number, periodo: string): boolean {
+  return ano < 2026 || (ano === 2026 && (periodo === 'S1' || periodo === 'T1' || periodo === 'T2'))
+}
+
+/** Título das seções do Meu PDI: são duas autoavaliações por ano. */
+export function tituloAutoavaliacao(periodo: PeriodoCodigo): string {
+  if (periodo === 'S1') return 'Autoavaliação de maio (1º semestre)'
+  if (periodo === 'S2') return 'Autoavaliação de outubro (2º semestre)'
+  return `Autoavaliação do ${rotuloPeriodo(periodo)}`
+}
+
+/** Período corrente pelo calendário: até junho = 1º semestre. */
+export function periodoCorrente(hoje: Date = new Date()): PeriodoCodigo {
+  return hoje.getMonth() < 6 ? 'S1' : 'S2'
+}
+
+export type SituacaoDevolver = 'pode' | 'nao_enviado' | 'historico' | 'avaliado_socio'
+
+/**
+ * O colaborador pode "Voltar para edição" o próprio período? Espelha
+ * devolver_minhas_metas_pdi: só enviado, fora do registro histórico e enquanto
+ * o sócio não começou a avaliar.
+ */
+export function situacaoDevolver(ano: number, envio: EnvioPeriodo | undefined): SituacaoDevolver {
+  if (!envio?.enviado_em) return 'nao_enviado'
+  if (envio.historico || ehPeriodoHistorico(ano, envio.periodo)) return 'historico'
+  if (envio.avaliado_socio) return 'avaliado_socio'
+  return 'pode'
+}
+
+/** A meta já está no período de destino (mesmo nome normalizado)? */
+export function metaJaNoPeriodo(meta: Pick<MetaPeriodo, 'nome'>, destino: Array<Pick<MetaPeriodo, 'nome'>>): boolean {
+  const chave = normalizarNomeMeta(meta.nome)
+  if (!chave) return false
+  return destino.some((d) => normalizarNomeMeta(d.nome) === chave)
 }
 
 export function normalizarNomeMeta(nome: string | null | undefined): string {
@@ -130,9 +178,14 @@ export function payloadMetas(metas: MetaPeriodo[]) {
   }))
 }
 
-/** Períodos para onde dá para copiar: os outros, que não estão enviados. */
-export function destinosDeCopia(origem: PeriodoCodigo, enviados: Set<string>): PeriodoCodigo[] {
-  return PERIODOS.map((p) => p.codigo).filter((c) => c !== origem && !enviados.has(c))
+/**
+ * Períodos para onde dá para copiar: os outros, que não estão enviados e (se
+ * o ano for informado) não são registro histórico.
+ */
+export function destinosDeCopia(origem: PeriodoCodigo, enviados: Set<string>, ano?: number): PeriodoCodigo[] {
+  return PERIODOS.map((p) => p.codigo).filter(
+    (c) => c !== origem && !enviados.has(c) && (ano == null || !ehPeriodoHistorico(ano, c)),
+  )
 }
 
 // ---------------------------------------------------------------------------
