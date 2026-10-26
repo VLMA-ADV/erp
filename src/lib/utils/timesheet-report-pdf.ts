@@ -161,14 +161,24 @@ export interface ValorFixoRelatorio {
   /** null = a mensalidade não está neste kit; `observacao` diz onde está. */
   valor: number | null
   observacao?: string | null
+  /**
+   * Rótulo da linha que soma as horas com valor, abaixo da mensalidade.
+   * Padrão: o excedente do teto da mensalidade. Na carteira com "Valor da
+   * hora" (out/2026) toda hora é cobrada — "Horas cobradas (valor da hora da
+   * carteira)".
+   */
+  rotuloHoras?: string | null
 }
+
+export const ROTULO_HORAS_EXCEDENTES = 'Horas excedentes (acima do teto da mensalidade)'
 
 const temValor = (v: number | null | undefined) => Math.round(Number(v || 0) * 100) > 0
 
 /**
  * Totais do relatório. Sem valor fixo, como sempre: o total é a soma das
  * linhas. Com valor fixo: total = mensalidade + excedente (as linhas com
- * valor são as horas acima do teto), e a coluna Valor só existe se alguma
+ * valor são as horas acima do teto, ou todas as horas na carteira com valor
+ * da hora), e a coluna Valor só existe se alguma
  * linha tiver valor — linha de caso mensal não imprime "R$ 0,00".
  */
 export function totaisDoRelatorio(rows: TimesheetPdfRow[], valorFixo?: ValorFixoRelatorio | null, mostrarValor = true) {
@@ -622,7 +632,7 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     }
     y -= 12
     if (temValor(totais.excedente)) {
-      texto('Horas excedentes (acima do teto da mensalidade)', colunas.descricao, y, 8.6)
+      texto(valorFixo.rotuloHoras || ROTULO_HORAS_EXCEDENTES, colunas.descricao, y, 8.6)
       textoDireita(money(totais.excedente), direita, y, 8.6)
       y -= 12
     }

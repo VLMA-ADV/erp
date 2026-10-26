@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { linhasDoRelatorio } from './linhas-relatorio'
 import type { ItemKit, KitCaso, LinhaTimesheet } from './types'
 import {
-  avisoValorFixo, ehItemDeMensalidade, rotuloMensalidade, valorFixoDoKit, valorFixoParaPdf, valoresDasLinhasValorFixo,
+  avisoValorFixo, ehItemDeMensalidade, ROTULO_HORAS_CARTEIRA, rotuloMensalidade, valorFixoDoKit, valorFixoParaPdf,
+  valoresDasLinhasValorFixo,
 } from './valor-fixo-relatorio'
 
 // Números reais de produção (SELECT em get_composicao_fatura, 18/10/2026);
@@ -83,7 +84,7 @@ describe('valorFixoDoKit', () => {
   it('mensal sem o item de mensalidade no kit (caso 63, set/2026): não inventa valor, avisa', () => {
     const k = kit({ caso_numero: 63, competencia: '2026-09-01', itens: HORAS_63_SET.map((h) => itemTs(h)) })
     const fixo = valorFixoDoKit(k)
-    expect(fixo).toEqual({ situacao: 'fora_do_kit', regra: 'mensal', rotulo: 'Mensalidade agosto/2026' })
+    expect(fixo).toEqual({ situacao: 'fora_do_kit', regra: 'mensal', rotulo: 'Mensalidade agosto/2026', valorHoras: 0 })
     expect(valorFixoParaPdf(fixo!)).toEqual({ rotulo: 'Mensalidade agosto/2026', valor: null, observacao: 'não incluída neste kit' })
     expect(avisoValorFixo(fixo!)).toMatch(/^Mensalidade agosto\/2026 não está neste kit/)
   })
@@ -122,5 +123,63 @@ describe('valorFixoDoKit', () => {
   it('rótulo usa o mês do serviço (kit − 1) e vira o ano', () => {
     expect(rotuloMensalidade('2026-10-01', 'mensal')).toBe('Mensalidade setembro/2026')
     expect(rotuloMensalidade('2027-01-01', 'mensalidade_carteira')).toBe('Mensalidade dezembro/2026')
+  })
+})
+
+// Carteira cobrando por hora (out/2026): "Valor da hora" na regra da matriz.
+// Itens como o gerador grava: valor = horas × valor da hora; a linha da RPC
+// traz o mesmo valor_hora do snapshot. Carteira de 1261 (mensalidade 6.500),
+// valor da hora sintético de R$ 350,00.
+describe('valorFixoDoKit — carteira com valor da hora', () => {
+  const VH = 350
+  const horaCobrada = (h: number) => itemTs(h, Math.round(h * VH * 100) / 100, { valor_hora: VH, valor: Math.round(h * VH * 100) / 100 })
+
+  it('sem valor da hora: igual a hoje — linhas sem valor, total = mensalidade, sem rótulo de horas', () => {
+    const k = kit({ caso_numero: 1261, regra_cobranca: 'mensalidade_carteira', itens: [mensalidade('mensalidade_carteira', 6500), itemTs(3)] })
+    const fixo = valorFixoDoKit(k)!
+    expect(fixo).toMatchObject({ situacao: 'no_kit', valor: 6500, valorHoras: 0 })
+    expect(valorFixoParaPdf(fixo)).toEqual({ rotulo: 'Mensalidade setembro/2026', valor: 6500 })
+    expect(valoresDasLinhasValorFixo(linhasDoRelatorio(k.itens).visiveis)).toEqual([null])
+  })
+
+  it('com valor da hora, no kit da matriz: linhas com valor e rótulo das horas cobradas; total = mensalidade + horas', () => {
+    const k = kit({
+      caso_numero: 1261, regra_cobranca: 'mensalidade_carteira', valor_servico: 7550,
+      itens: [mensalidade('mensalidade_carteira', 6500), horaCobrada(2), horaCobrada(1)],
+    })
+    const fixo = valorFixoDoKit(k)!
+    expect(fixo).toMatchObject({ situacao: 'no_kit', valor: 6500, valorHoras: 1050 })
+    expect(valorFixoParaPdf(fixo)).toEqual({ rotulo: 'Mensalidade setembro/2026', valor: 6500, rotuloHoras: ROTULO_HORAS_CARTEIRA })
+    const valores = valoresDasLinhasValorFixo(linhasDoRelatorio(k.itens).visiveis)
+    expect(valores).toEqual([700, 350])
+    const somaLinhas = valores.reduce<number>((s, v) => s + (v ?? 0), 0)
+    expect(6500 + somaLinhas).toBe(k.valor_servico)
+    expect(avisoValorFixo(fixo)).toBeNull()
+  })
+
+  it('com valor da hora, kit de um processo da carteira: horas com valor, mensalidade citada no caso da matriz', () => {
+    const matriz = kit({ chave: 'km', caso_numero: 1993, regra_cobranca: 'mensalidade_carteira', itens: [mensalidade('mensalidade_carteira', 6500)] })
+    const processo = kit({ chave: 'kp', caso_numero: 2005, regra_cobranca: 'mensalidade_carteira', itens: [horaCobrada(4.25), horaCobrada(0.5)] })
+    const fixo = valorFixoDoKit(processo, [matriz, processo])!
+    expect(fixo).toMatchObject({ situacao: 'outro_caso', casoNumero: 1993, valorHoras: 1662.5 })
+    expect(valorFixoParaPdf(fixo)).toEqual({
+      rotulo: 'Mensalidade setembro/2026', valor: null, observacao: 'mensalidade da carteira, cobrada no caso #1993',
+      rotuloHoras: ROTULO_HORAS_CARTEIRA,
+    })
+    expect(valoresDasLinhasValorFixo(linhasDoRelatorio(processo.itens).visiveis)).toEqual([1487.5, 175])
+    expect(avisoValorFixo(fixo)).toMatch(/valor da hora da carteira/)
+  })
+
+  it('item de hora cancelado não conta nas horas cobradas', () => {
+    const k = kit({
+      regra_cobranca: 'mensalidade_carteira',
+      itens: [mensalidade('mensalidade_carteira', 6500), horaCobrada(1), { ...horaCobrada(2), status: 'cancelado' }],
+    })
+    expect(valorFixoDoKit(k)).toMatchObject({ valorHoras: 350 })
+  })
+
+  it('mensal com teto continua com o rótulo de excedente (sem rotuloHoras)', () => {
+    const k = kit({ itens: [mensalidade('mensal', 5366.55), itemTs(2.5, 515.31)] })
+    expect(valorFixoParaPdf(valorFixoDoKit(k)!)).toEqual({ rotulo: 'Mensalidade setembro/2026', valor: 5366.55 })
   })
 })

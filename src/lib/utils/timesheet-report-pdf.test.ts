@@ -588,6 +588,30 @@ describe('caso de valor fixo (mensalidade)', () => {
     ]))
   })
 
+  it('carteira com valor da hora: todas as linhas com valor, rótulo das horas cobradas, total = mensalidade + horas', async () => {
+    // Carteira de 1261 (mensalidade R$ 6.500), 3h a R$ 350,00 (sintético).
+    const r = [linha(1, { horas: 2, valorHora: 350, valor: 700 }), linha(2, { horas: 1, valorHora: 350, valor: 350 })]
+    const valorFixo = { rotulo: 'Mensalidade setembro/2026', valor: 6500, rotuloHoras: 'Horas cobradas (valor da hora da carteira)' }
+    expect(totaisDoRelatorio(r, valorFixo)).toMatchObject({ fixo: 6500, excedente: 1050, total: 7550, colunaValor: true })
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({ ...base, rows: r, valorFixo }))).split('\n')
+    expect(textos).toContain('Valor (R$)')
+    expect(textos).toEqual(expect.arrayContaining([
+      'R$ 700,00', 'Mensalidade setembro/2026', 'R$ 6.500,00', 'Horas cobradas (valor da hora da carteira)', 'R$ 7.550,00',
+    ]))
+    expect(textos.filter((t) => t === 'R$ 1.050,00').length).toBe(2) // total de horas e linha das horas cobradas
+    expect(textos).not.toContain('Horas excedentes (acima do teto da mensalidade)')
+  })
+
+  it('carteira sem valor da hora: como hoje, sem coluna Valor e total = mensalidade', async () => {
+    const r = [linha(1, { horas: 3, valorHora: 0, valor: null })]
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({
+      ...base, rows: r, valorFixo: { rotulo: 'Mensalidade setembro/2026', valor: 6500 },
+    }))).split('\n')
+    expect(textos).not.toContain('Valor (R$)')
+    expect(textos).not.toContain('Horas cobradas (valor da hora da carteira)')
+    expect(textos.slice(textos.indexOf('Total'))).toContain('R$ 6.500,00')
+  })
+
   it('divisão por pagador sobre mensalidade + excedente', async () => {
     const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({
       ...base,

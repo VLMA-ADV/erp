@@ -51,6 +51,8 @@ import { Tooltip } from '@/components/ui/tooltip'
 import type { CasoPayload, ContratoFormOptions } from './types'
 import { TIPOS_ANEXO_CONTRATO, labelTipoAnexo } from './types'
 import CapEncontroSimple from './cap-encontro-simple'
+import { CampoValorHoraCarteira } from './campo-valor-hora-carteira'
+import { CHAVE_VALOR_HORA_CARTEIRA } from '@/lib/contracts/valor-hora-carteira'
 import RateioSlider from './rateio-slider'
 
 interface PendingAnexo {
@@ -3832,6 +3834,7 @@ export default function ContratoForm({
                         if (nextRule !== 'salario_minimo') baseConfig.quantidade_sm = null
                         if (nextRule !== 'mensalidade_carteira') {
                           baseConfig.valor_mensal_carteira = null
+                          baseConfig[CHAVE_VALOR_HORA_CARTEIRA] = null
                           baseConfig.processos_carteira = null
                           setCarteiraInvalidasByCase((prev) => {
                             const next = { ...prev }
@@ -4466,6 +4469,13 @@ export default function ContratoForm({
                               </div>
                             </>
                           )}
+
+                          <CampoValorHoraCarteira
+                            value={regras[CHAVE_VALOR_HORA_CARTEIRA]}
+                            valorMensal={regras.valor_mensal_carteira}
+                            onChange={(value) => updateCurrentRegra(CHAVE_VALOR_HORA_CARTEIRA, value)}
+                            disabled={isReadOnly}
+                          />
                         </>
                       )}
                     </div>
