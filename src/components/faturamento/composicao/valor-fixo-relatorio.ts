@@ -43,6 +43,16 @@
 //  - senão (item ainda em revisão, ignorado ou em outra competência — caso
 //    63, kit de set/2026: 20 lançamentos aprovados e a mensalidade em
 //    revisão): "não incluída neste kit".
+//
+// Carteira cobrando por hora (cliente, out/2026): com "Valor da hora" na regra
+// da matriz, toda hora da carteira (matriz e processos) vale horas × esse
+// valor e SOMA com a mensalidade. O layout é o mesmo do valor fixo — nada
+// novo para o cliente aprender: as linhas saem com o valor (do item, como no
+// excedente), "Total de horas" traz a soma delas, depois a mensalidade, a
+// linha "Horas cobradas (valor da hora da carteira)" e o Total = mensalidade
+// + horas. Kit de processo (a mensalidade está no kit da matriz): a linha da
+// mensalidade diz onde ela é cobrada e o Total é só o das horas — o PDF
+// continua batendo com o que o kit cobra. Sem valor da hora, nada muda.
 
 import { competenciaDoServico } from '@/lib/faturamento/competencia-do-servico'
 import type { ValorFixoRelatorio } from '@/lib/utils/timesheet-report-pdf'
@@ -64,10 +74,18 @@ export function ehItemDeMensalidade(item: ItemKit): boolean {
     && !STATUS_FORA_DA_COBRANCA.has(norm(item.status))
 }
 
+/** Rótulo da soma das horas na carteira com "Valor da hora". */
+export const ROTULO_HORAS_CARTEIRA = 'Horas cobradas (valor da hora da carteira)'
+
+/**
+ * `valorHoras` = soma dos itens de hora vivos do kit (o que o kit cobra pelas
+ * horas): excedente do teto no mensal, todas as horas na carteira com valor
+ * da hora, 0 quando a hora é só registro.
+ */
 export type ValorFixoDoKit =
-  | { situacao: 'no_kit'; regra: string; rotulo: string; valor: number; itens: ItemKit[] }
-  | { situacao: 'outro_caso'; regra: string; rotulo: string; casoNumero: number | null; casoNome: string }
-  | { situacao: 'fora_do_kit'; regra: string; rotulo: string }
+  | { situacao: 'no_kit'; regra: string; rotulo: string; valor: number; itens: ItemKit[]; valorHoras: number }
+  | { situacao: 'outro_caso'; regra: string; rotulo: string; casoNumero: number | null; casoNome: string; valorHoras: number }
+  | { situacao: 'fora_do_kit'; regra: string; rotulo: string; valorHoras: number }
 
 /** "Mensalidade setembro/2026" — mês do serviço (kit − 1). */
 export function rotuloMensalidade(competenciaKit: string, regra: string): string {
@@ -86,34 +104,43 @@ export function valorFixoDoKit(kit: KitCaso, outrosKits: KitCaso[] = []): ValorF
   const regra = REGRAS_VALOR_FIXO.has(regraCaso) ? regraCaso : itens.length > 0 ? norm(itens[0].descricao) : null
   if (!regra) return null
   const rotulo = rotuloMensalidade(kit.competencia, regra)
+  const valorHoras = kit.itens
+    .filter((i) => i.origem_tipo === 'timesheet' && !STATUS_FORA_DA_COBRANCA.has(norm(i.status)))
+    .reduce((s, i) => s + Math.max(0, centavos(i.valor)), 0) / 100
   if (itens.length > 0) {
-    return { situacao: 'no_kit', regra, rotulo, valor: itens.reduce((s, i) => s + centavos(i.valor), 0) / 100, itens }
+    return { situacao: 'no_kit', regra, rotulo, valor: itens.reduce((s, i) => s + centavos(i.valor), 0) / 100, itens, valorHoras }
   }
   const irmao = outrosKits.find((k) =>
     k.chave !== kit.chave
     && k.contrato_id === kit.contrato_id
     && k.competencia === kit.competencia
     && k.itens.some((i) => ehItemDeMensalidade(i) && norm(i.descricao) === regra))
-  if (irmao) return { situacao: 'outro_caso', regra, rotulo, casoNumero: irmao.caso_numero, casoNome: irmao.caso_nome }
-  return { situacao: 'fora_do_kit', regra, rotulo }
+  if (irmao) return { situacao: 'outro_caso', regra, rotulo, casoNumero: irmao.caso_numero, casoNome: irmao.caso_nome, valorHoras }
+  return { situacao: 'fora_do_kit', regra, rotulo, valorHoras }
 }
 
 /** O que o PDF imprime na linha da mensalidade. */
 export function valorFixoParaPdf(fixo: ValorFixoDoKit): ValorFixoRelatorio {
-  if (fixo.situacao === 'no_kit') return { rotulo: fixo.rotulo, valor: fixo.valor }
+  // Carteira: hora com valor só existe com "Valor da hora" na matriz (não há
+  // carteira com teto em produção, out/2026) — o rótulo diz que é a hora cobrada.
+  const extra = fixo.regra === 'mensalidade_carteira' && fixo.valorHoras > 0 ? { rotuloHoras: ROTULO_HORAS_CARTEIRA } : {}
+  if (fixo.situacao === 'no_kit') return { rotulo: fixo.rotulo, valor: fixo.valor, ...extra }
   if (fixo.situacao === 'outro_caso') {
     const caso = fixo.casoNumero ? `no caso #${fixo.casoNumero}` : `no caso ${fixo.casoNome}`
-    return { rotulo: fixo.rotulo, valor: null, observacao: `mensalidade da carteira, cobrada ${caso}` }
+    return { rotulo: fixo.rotulo, valor: null, observacao: `mensalidade da carteira, cobrada ${caso}`, ...extra }
   }
-  return { rotulo: fixo.rotulo, valor: null, observacao: 'não incluída neste kit' }
+  return { rotulo: fixo.rotulo, valor: null, observacao: 'não incluída neste kit', ...extra }
 }
 
 /** Aviso para a tela quando a mensalidade não está no kit; null quando está. */
 export function avisoValorFixo(fixo: ValorFixoDoKit): string | null {
   if (fixo.situacao === 'no_kit') return null
   if (fixo.situacao === 'outro_caso') {
-    return `A mensalidade da carteira está no kit do caso ${fixo.casoNumero ? `#${fixo.casoNumero}` : fixo.casoNome}; ` +
-      'este relatório lista as horas e diz onde ela é cobrada, sem somar o valor.'
+    const onde = `A mensalidade da carteira está no kit do caso ${fixo.casoNumero ? `#${fixo.casoNumero}` : fixo.casoNome}; `
+    if (fixo.regra === 'mensalidade_carteira' && fixo.valorHoras > 0) {
+      return onde + 'este relatório lista as horas com o valor da hora da carteira e diz onde a mensalidade é cobrada, sem somá-la.'
+    }
+    return onde + 'este relatório lista as horas e diz onde ela é cobrada, sem somar o valor.'
   }
   return `${fixo.rotulo} não está neste kit (ainda em revisão, ignorada ou em outra competência). ` +
     'O relatório sai sem o valor fixo e diz isso na linha da mensalidade — confira antes de enviar.'

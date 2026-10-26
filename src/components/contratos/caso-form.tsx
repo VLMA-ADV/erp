@@ -23,6 +23,8 @@ import { usePermissionsContext } from '@/lib/contexts/permissions-context'
 import { useToast } from '@/components/ui/toast'
 import AnexoModal from './anexo-modal'
 import CapEncontroSimple from './cap-encontro-simple'
+import { CampoValorHoraCarteira } from './campo-valor-hora-carteira'
+import { CHAVE_VALOR_HORA_CARTEIRA, erroValorHoraCarteira } from '@/lib/contracts/valor-hora-carteira'
 import RateioSlider from './rateio-slider'
 import ParcelasConciliacao from './parcelas-conciliacao'
 import { parseCarteiraCsv, type ProcessoCarteira } from '@/lib/utils/parse-carteira-csv'
@@ -1555,6 +1557,10 @@ export default function CasoForm({
     if (!validateDiaInicioFaturamento(form.dia_inicio_faturamento ?? '')) {
       return 'Dia de início de faturamento deve ser um inteiro entre 1 e 31'
     }
+    if (normalizeRegraCobranca(form.regra_cobranca) === 'mensalidade_carteira' && !form.parte_de_carteira_id) {
+      const erroHora = erroValorHoraCarteira(regras[CHAVE_VALOR_HORA_CARTEIRA])
+      if (erroHora) return erroHora
+    }
     // Diretiva "forms soltos" (Filipe daily 27/04): SM sem quantidade NÃO bloqueia
     // submit. Aviso visual fica no bloco "Configuração por Salário Mínimo".
     return null
@@ -2377,6 +2383,7 @@ export default function CasoForm({
                     if (nextRule !== 'salario_minimo') setRegra('quantidade_sm', null)
                     if (nextRule !== 'mensalidade_carteira') {
                       setRegra('valor_mensal_carteira', null)
+                      setRegra(CHAVE_VALOR_HORA_CARTEIRA, null)
                       setRegra('processos_carteira', null)
                       setCarteiraInvalidasCount(0)
                     }
@@ -2960,6 +2967,16 @@ export default function CasoForm({
                           </div>
                         </>
                       )}
+
+                      <CampoValorHoraCarteira
+                        value={regras[CHAVE_VALOR_HORA_CARTEIRA]}
+                        valorMensal={regras.valor_mensal_carteira}
+                        onChange={(value) => {
+                          setRegra(CHAVE_VALOR_HORA_CARTEIRA, value)
+                          setError(null)
+                        }}
+                        disabled={isReadOnly}
+                      />
                     </>
                   )}
                 </div>
