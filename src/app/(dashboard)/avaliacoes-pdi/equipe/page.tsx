@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { curtoPeriodo } from '@/lib/pdi/metas'
 
 const ANO = 2026
 
@@ -22,6 +23,8 @@ interface Item {
   adicional_snapshot: string | null
   colaborador_nome: string
   categoria: string
+  /** Períodos de metas com autoavaliação já enviada (S1, S2, T1…). */
+  metas_periodos_enviados?: string[] | null
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -86,6 +89,11 @@ export default function EquipePdiPage() {
             {[i.cargo_nome_snapshot, i.area_nome_snapshot, i.adicional_snapshot ? `+${i.adicional_snapshot}` : null].filter(Boolean).join(' · ')}
           </p>
         </div>
+        {(i.metas_periodos_enviados ?? []).length > 0 ? (
+          <span className="hidden shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 md:inline" title="Metas com autoavaliação enviada">
+            Metas: {(i.metas_periodos_enviados ?? []).map(curtoPeriodo).join(', ')}
+          </span>
+        ) : null}
         {i.faixa_final_geral ? <span className="hidden shrink-0 rounded-full border border-hairline bg-card px-2.5 py-1 text-[11px] text-ink-secondary sm:inline">{i.resultado ? RESULTADO_LABEL[i.resultado] : i.faixa_final_geral}</span> : null}
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
       </>
@@ -123,7 +131,10 @@ export default function EquipePdiPage() {
             {totais.total > totais.iniciadas ? ` · ${totais.total - totais.iniciadas} ainda não começaram` : null}
           </p>
         ) : null}
-        <Link href="/avaliacoes-pdi" className="mt-3 inline-block text-sm text-primary underline underline-offset-2">← Avaliações PDI</Link>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <Link href="/avaliacoes-pdi" className="text-primary underline underline-offset-2">← Avaliações PDI</Link>
+          <Link href="/avaliacoes-pdi/painel-metas" className="text-primary underline underline-offset-2">Painel de metas da equipe →</Link>
+        </div>
       </header>
 
       {error ? <p className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
