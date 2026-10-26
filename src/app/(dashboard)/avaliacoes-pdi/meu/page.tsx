@@ -6,6 +6,7 @@ import { Save, Send, ChevronDown, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import MinhasMetas from '@/components/pdi/minhas-metas'
+import { mostraCompetencias } from '@/lib/pdi/etapa'
 
 interface Faixa { codigo: string; rotulo: string; ordem: number; reflexo: string }
 interface Skill { id: string; trilha: string; pilar_numero: number; pilar_nome: string; item_codigo: string; titulo: string | null; nome: string; descricao: string | null; faixa_auto: string | null; texto_auto: string | null }
@@ -16,6 +17,9 @@ interface Avaliacao { id: string; ano: number; status: string; bloqueada: boolea
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const TRILHA_LABEL: Record<string, string> = { base: 'Skills da carreira', lideranca: 'Adicional — Liderança', estrategico: 'Adicional — Estratégico' }
 const ANO = 2026
+// Etapa de autoavaliação de metas (maio/outubro): skills, DNA, feedbacks e o
+// "Enviar competências" só voltam no ciclo de janeiro — ver src/lib/pdi/etapa.ts.
+const COMPETENCIAS = mostraCompetencias()
 
 function faixaColor(codigo: string | null, active: boolean): string {
   const base = active ? 'text-white' : 'bg-card text-ink-secondary'
@@ -145,7 +149,7 @@ export default function MeuPdiPage() {
           <span className="rounded-full border border-hairline bg-card px-2.5 py-1 text-ink-secondary">{aval?.cargo_nome_snapshot}</span>
           {aval?.area_nome_snapshot ? <span className="rounded-full border border-hairline bg-card px-2.5 py-1 text-ink-secondary">{aval.area_nome_snapshot}</span> : null}
           {aval?.adicional_snapshot ? <span className="rounded-full bg-primary-soft-bg px-2.5 py-1 font-medium text-primary-soft-fg">Adicional: {aval.adicional_snapshot}</span> : null}
-          <span className={`rounded-full px-2.5 py-1 font-medium ${bloqueada ? 'bg-emerald-50 text-emerald-700' : 'bg-secondary text-ink-secondary'}`}>{bloqueada ? 'Competências enviadas' : 'Competências em rascunho'}</span>
+          {COMPETENCIAS ? <span className={`rounded-full px-2.5 py-1 font-medium ${bloqueada ? 'bg-emerald-50 text-emerald-700' : 'bg-secondary text-ink-secondary'}`}>{bloqueada ? 'Competências enviadas' : 'Competências em rascunho'}</span> : null}
         </div>
         <Link href="/avaliacoes-pdi" className="mt-3 inline-block text-sm text-primary underline underline-offset-2">← Avaliações PDI</Link>
       </header>
@@ -153,6 +157,8 @@ export default function MeuPdiPage() {
       {/* METAS POR PERÍODO — primeira coisa da tela (pedido 26/10) */}
       <MinhasMetas ano={ANO} />
 
+      {/* Competências (skills, DNA, feedbacks): só na etapa completa (janeiro) */}
+      {COMPETENCIAS ? (<>
       {bloqueada ? <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Autoavaliação de competências enviada — skills, DNA e feedbacks em modo leitura. Fale com seu coordenador para reabrir, se necessário. As metas acima seguem abertas por período.</p> : null}
 
       {/* SKILLS */}
@@ -250,6 +256,7 @@ export default function MeuPdiPage() {
           </div>
         </div>
       ) : null}
+      </>) : null}
     </div>
   )
 }

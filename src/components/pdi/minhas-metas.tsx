@@ -1,15 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, FileText, Lock, Paperclip, Plus, Save, Send, Trash2, X } from 'lucide-react'
+import { Check, Copy, CornerUpLeft, FileText, History, Lock, Paperclip, Plus, Save, Send, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { BarraProgresso, FaixaPicker } from '@/components/pdi/faixa'
+import { BarraProgresso, FaixaBadge, FaixaPicker } from '@/components/pdi/faixa'
 import {
   PERIODOS,
   copiarMetas,
   destinosDeCopia,
+  ehPeriodoHistorico,
+  metaJaNoPeriodo,
   ordemPeriodo,
+  periodoCorrente,
   rotuloPeriodo,
+  situacaoDevolver,
+  tituloAutoavaliacao,
   validarEnvioPeriodo,
   type EnvioPeriodo,
   type MetaPeriodo,
@@ -19,6 +24,8 @@ import {
   abrirAnexoMeta,
   anexarArquivos,
   carregarMinhasMetas,
+  continuarMetas,
+  devolverMeuPeriodo,
   removerAnexo,
   salvarMetasPeriodo,
   validarArquivosMeta,
@@ -40,11 +47,18 @@ function dataCurta(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('pt-BR')
 }
 
+type Aviso = { tipo: 'ok' | 'erro'; texto: string }
+
 /**
- * Metas do PDI por período (pedido do cliente 26/10): cada período é uma
- * seção com as metas, a autoavaliação, o progresso, comentário e anexos.
- * "Enviar autoavaliação" trava o período e manda para a caixa do coordenador
- * da área. A avaliação do sócio aparece desabilitada — é a segunda etapa.
+ * Metas do PDI por período (pedidos do cliente 26/10). São duas
+ * autoavaliações por ano — maio (1º semestre) e outubro (2º semestre):
+ *  - o 1º semestre de 2026 é REGISTRO (só leitura), numa tabela resumo do que
+ *    foi enviado/avaliado, com "Continua valendo" para trazer a meta ao 2º
+ *    semestre (sem duplicar; a entrega começa em branco);
+ *  - os demais períodos são editáveis: metas, autoavaliação, progresso,
+ *    comentário, anexos e "Enviar autoavaliação", que trava o período e vai
+ *    para o coordenador. Enquanto o sócio não avaliou, o colaborador pode
+ *    "Voltar para edição".
  */
 export default function MinhasMetas({ ano }: { ano: number }) {
   const [avaliacaoId, setAvaliacaoId] = useState<string | null>(null)
@@ -55,13 +69,21 @@ export default function MinhasMetas({ ano }: { ano: number }) {
   const [abertos, setAbertos] = useState<Set<PeriodoCodigo>>(new Set())
   const [sujos, setSujos] = useState<Set<PeriodoCodigo>>(new Set())
   const [salvando, setSalvando] = useState<PeriodoCodigo | null>(null)
+  const [continuando, setContinuando] = useState(false)
   const [anexando, setAnexando] = useState<string | null>(null)
-  const [msg, setMsg] = useState<Partial<Record<PeriodoCodigo, { tipo: 'ok' | 'erro'; texto: string }>>>({})
+  const [msg, setMsg] = useState<Partial<Record<PeriodoCodigo, Aviso>>>({})
   const [loading, setLoading] = useState(true)
   const [erroCarga, setErroCarga] = useState<string | null>(null)
   const [novoPeriodo, setNovoPeriodo] = useState<string>('')
   const sujosRef = useRef(sujos)
   sujosRef.current = sujos
+
+  const historico = useCallback((p: PeriodoCodigo) => ehPeriodoHistorico(ano, p), [ano])
+  // Para onde vai o "Continua valendo": o período corrente, se não for histórico.
+  const destinoAtual: PeriodoCodigo = useMemo(() => {
+    const c = periodoCorrente()
+    return historico(c) ? 'S2' : c
+  }, [historico])
 
   const carregar = useCallback(async (manterPeriodosSujos: boolean) => {
     const d = await carregarMinhasMetas(ano)
@@ -107,13 +129,19 @@ export default function MinhasMetas({ ano }: { ano: number }) {
     const s = new Set<PeriodoCodigo>(abertos)
     for (const m of metas) s.add(m.periodo)
     for (const e of envios) if (e.enviado_em) s.add(e.periodo)
-    if (s.size === 0) s.add('S1')
+    if (!historico(destinoAtual)) s.add(destinoAtual)
     return Array.from(s).sort((a, b) => ordemPeriodo(a) - ordemPeriodo(b))
-  }, [abertos, metas, envios])
+  }, [abertos, metas, envios, destinoAtual, historico])
+  const registros = periodosVisiveis.filter((p) => historico(p))
+  const editaveis = periodosVisiveis.filter((p) => !historico(p))
+
+  const avisar = (p: PeriodoCodigo, aviso: Aviso | undefined) => setMsg((prev) => ({ ...prev, [p]: aviso }))
+  const rolarPara = (p: PeriodoCodigo) =>
+    setTimeout(() => document.getElementById(`periodo-${p}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
 
   const marcarSujo = (p: PeriodoCodigo) => {
     setSujos((prev) => (prev.has(p) ? prev : new Set(prev).add(p)))
-    setMsg((prev) => ({ ...prev, [p]: undefined }))
+    avisar(p, undefined)
   }
   const setMeta = (id: string, patch: Partial<MetaPeriodo>) => {
     const alvo = metas.find((m) => m.id === id)
@@ -140,16 +168,57 @@ export default function MinhasMetas({ ano }: { ano: number }) {
     setMetas((prev) => [...prev.filter((m) => m.periodo !== destino), ...novo])
     setAbertos((prev) => new Set(prev).add(destino))
     if (copiadas > 0) marcarSujo(destino)
-    setMsg((prev) => ({
-      ...prev,
-      [destino]: {
+    avisar(destino, {
+      tipo: 'ok',
+      texto: copiadas > 0
+        ? `${copiadas} meta(s) copiada(s) do ${rotuloPeriodo(origem)}. Faça a autoavaliação e salve.`
+        : 'Todas as metas já existiam neste período.',
+    })
+    rolarPara(destino)
+  }
+
+  /**
+   * "Continua valendo": traz metas do registro histórico para o período
+   * corrente. Sem rascunho pendente no destino, grava direto no banco
+   * (continuar_metas_pdi); com rascunho pendente, entra no rascunho para não
+   * atropelar o que ainda não foi salvo.
+   */
+  const continuar = async (lista: MetaPeriodo[]) => {
+    const destino = destinoAtual
+    if (lista.length === 0) return
+    if (enviados.has(destino)) {
+      avisar(destino, { tipo: 'erro', texto: `A autoavaliação do ${rotuloPeriodo(destino)} já foi enviada — use "Voltar para edição" antes de trazer metas.` })
+      rolarPara(destino)
+      return
+    }
+    if (sujos.has(destino)) {
+      const doDestino = metas.filter((m) => m.periodo === destino)
+      const novo = copiarMetas(lista, doDestino, destino, tempId)
+      const copiadas = novo.length - doDestino.length
+      setMetas((prev) => [...prev.filter((m) => m.periodo !== destino), ...novo])
+      avisar(destino, {
         tipo: 'ok',
         texto: copiadas > 0
-          ? `${copiadas} meta(s) copiada(s) do ${rotuloPeriodo(origem)}. Faça a autoavaliação e salve.`
-          : 'Todas as metas já existiam neste período.',
-      },
-    }))
-    setTimeout(() => document.getElementById(`periodo-${destino}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+          ? `${copiadas} meta(s) trazida(s) da autoavaliação de maio para o rascunho. Dê a autoavaliação e salve.`
+          : 'Essa(s) meta(s) já está(ão) no 2º semestre.',
+      })
+      rolarPara(destino)
+      return
+    }
+    try {
+      setContinuando(true)
+      const r = await continuarMetas(lista.filter((m) => !m._new).map((m) => m.id), destino)
+      await carregar(true)
+      avisar(destino, {
+        tipo: 'ok',
+        texto: r.copiadas > 0
+          ? `${r.copiadas} meta(s) trazida(s) da autoavaliação de maio${r.ja_existiam > 0 ? ` (${r.ja_existiam} já estava(m) aqui)` : ''}. Agora dê a autoavaliação, o progresso e envie.`
+          : 'Essa(s) meta(s) já está(ão) no 2º semestre.',
+      })
+      rolarPara(destino)
+    } catch (e) {
+      avisar(destino, { tipo: 'erro', texto: amigavel((e as Error).message) })
+    } finally { setContinuando(false) }
   }
 
   const salvar = async (p: PeriodoCodigo, enviar: boolean) => {
@@ -157,8 +226,8 @@ export default function MinhasMetas({ ano }: { ano: number }) {
     const doPeriodo = metas.filter((m) => m.periodo === p)
     if (enviar) {
       const invalido = validarEnvioPeriodo(doPeriodo)
-      if (invalido) { setMsg((prev) => ({ ...prev, [p]: { tipo: 'erro', texto: invalido } })); return }
-      if (!window.confirm(`Enviar a autoavaliação do ${rotuloPeriodo(p)}? Depois de enviada ela fica travada e vai para o seu coordenador.`)) return
+      if (invalido) { avisar(p, { tipo: 'erro', texto: invalido }); return }
+      if (!window.confirm(`Enviar a autoavaliação do ${rotuloPeriodo(p)}? Ela fica travada e vai para o seu coordenador. Enquanto o sócio não avaliar, você pode voltar para edição.`)) return
     }
     try {
       setSalvando(p)
@@ -166,17 +235,30 @@ export default function MinhasMetas({ ano }: { ano: number }) {
       setSujos((prev) => { const n = new Set(prev); n.delete(p); return n })
       sujosRef.current = new Set(Array.from(sujosRef.current).filter((x) => x !== p))
       await carregar(true)
-      setMsg((prev) => ({
-        ...prev,
-        [p]: {
-          tipo: 'ok',
-          texto: enviar
-            ? `Autoavaliação enviada${notificados > 0 ? ` — ${notificados === 1 ? 'seu coordenador foi avisado' : `${notificados} avaliadores foram avisados`} na caixa de entrada` : ''}.`
-            : 'Rascunho salvo.',
-        },
-      }))
+      avisar(p, {
+        tipo: 'ok',
+        texto: enviar
+          ? `Autoavaliação enviada${notificados > 0 ? ` — ${notificados === 1 ? 'seu coordenador foi avisado' : `${notificados} avaliadores foram avisados`} na caixa de entrada` : ''}.`
+          : 'Rascunho salvo.',
+      })
     } catch (e) {
-      setMsg((prev) => ({ ...prev, [p]: { tipo: 'erro', texto: amigavel((e as Error).message) } }))
+      avisar(p, { tipo: 'erro', texto: amigavel((e as Error).message) })
+    } finally { setSalvando(null) }
+  }
+
+  const devolver = async (p: PeriodoCodigo) => {
+    if (!avaliacaoId) return
+    if (!window.confirm(`Voltar a autoavaliação do ${rotuloPeriodo(p)} para edição?\n\nO envio é retirado e quem recebeu é avisado na caixa de entrada. Depois de ajustar, você precisa enviar de novo.`)) return
+    try {
+      setSalvando(p)
+      const { notificados } = await devolverMeuPeriodo(avaliacaoId, p)
+      await carregar(true)
+      avisar(p, {
+        tipo: 'ok',
+        texto: `Voltou para edição${notificados > 0 ? ` — ${notificados === 1 ? 'quem recebeu o envio foi avisado' : `${notificados} avaliadores foram avisados`} de que o envio foi retirado` : ''}. Ajuste e envie de novo.`,
+      })
+    } catch (e) {
+      avisar(p, { tipo: 'erro', texto: amigavel((e as Error).message) })
     } finally { setSalvando(null) }
   }
 
@@ -184,13 +266,13 @@ export default function MinhasMetas({ ano }: { ano: number }) {
     if (!files || files.length === 0 || !avaliacaoId) return
     const lista = Array.from(files)
     const invalido = validarArquivosMeta(lista, m.anexos?.length ?? 0)
-    if (invalido) { setMsg((prev) => ({ ...prev, [m.periodo]: { tipo: 'erro', texto: invalido } })); return }
+    if (invalido) { avisar(m.periodo, { tipo: 'erro', texto: invalido }); return }
     try {
       setAnexando(m.id)
       const novos = await anexarArquivos(tenantId, avaliacaoId, m.id, lista)
       setMetas((prev) => prev.map((x) => (x.id === m.id ? { ...x, anexos: [...(x.anexos ?? []), ...novos] } : x)))
     } catch (e) {
-      setMsg((prev) => ({ ...prev, [m.periodo]: { tipo: 'erro', texto: amigavel((e as Error).message) } }))
+      avisar(m.periodo, { tipo: 'erro', texto: amigavel((e as Error).message) })
     } finally { setAnexando(null) }
   }
 
@@ -200,7 +282,7 @@ export default function MinhasMetas({ ano }: { ano: number }) {
       await removerAnexo(anexoId)
       setMetas((prev) => prev.map((x) => (x.id === m.id ? { ...x, anexos: (x.anexos ?? []).filter((a) => a.id !== anexoId) } : x)))
     } catch (e) {
-      setMsg((prev) => ({ ...prev, [m.periodo]: { tipo: 'erro', texto: amigavel((e as Error).message) } }))
+      avisar(m.periodo, { tipo: 'erro', texto: amigavel((e as Error).message) })
     }
   }
 
@@ -212,7 +294,9 @@ export default function MinhasMetas({ ano }: { ano: number }) {
   if (erroCarga) return <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroCarga}</p>
   if (!avaliacaoId) return <p className="text-sm text-ink-mute">Sua avaliação do ciclo ainda não foi criada.</p>
 
-  const periodosDisponiveis = PERIODOS.filter((p) => !periodosVisiveis.includes(p.codigo))
+  const periodosDisponiveis = PERIODOS.filter((p) => !periodosVisiveis.includes(p.codigo) && !historico(p.codigo))
+  const metasDestino = metas.filter((m) => m.periodo === destinoAtual)
+  const destinoTravado = enviados.has(destinoAtual)
 
   return (
     <section className="mb-10" data-testid="pdi-minhas-metas">
@@ -220,23 +304,42 @@ export default function MinhasMetas({ ano }: { ano: number }) {
         <h2 className="display-md text-ink">Minhas metas {ano}</h2>
       </div>
       <p className="mb-4 text-sm text-ink-mute">
-        Lance suas metas, dê a sua autoavaliação e envie. Depois de enviada, a autoavaliação do período fica travada
-        e vai para o coordenador da sua área, que faz a segunda etapa (avaliação do sócio e nota final).
+        São duas autoavaliações no ano: maio (1º semestre) e outubro (2º semestre). A de maio fica aqui como registro.
+        Na de outubro, diga se cada meta continua valendo ou crie novas, dê a sua autoavaliação, o progresso, comente,
+        anexe evidências e envie para o coordenador da sua área.
       </p>
 
       <div className="space-y-6">
-        {periodosVisiveis.map((p) => {
+        {registros.map((p) => (
+          <RegistroPeriodo
+            key={p}
+            ano={ano}
+            periodo={p}
+            metas={metas.filter((m) => m.periodo === p)}
+            envio={enviadoEm.get(p)}
+            regua={regua}
+            destino={destinoAtual}
+            metasDestino={metasDestino}
+            destinoTravado={destinoTravado}
+            ocupado={continuando || salvando !== null}
+            onContinuar={(lista) => void continuar(lista)}
+            onAbrirAnexo={(path) => void abrir(path)}
+          />
+        ))}
+
+        {editaveis.map((p) => {
           const lista = metas.filter((m) => m.periodo === p)
           const envio = enviadoEm.get(p)
           const travado = Boolean(envio?.enviado_em)
           const sujo = sujos.has(p)
-          const destinos = destinosDeCopia(p, enviados)
+          const destinos = destinosDeCopia(p, enviados, ano)
           const aviso = msg[p]
+          const devolver_ = situacaoDevolver(ano, envio)
           return (
             <div key={p} id={`periodo-${p}`} className="overflow-hidden rounded-xl border border-hairline bg-card" data-testid={`pdi-periodo-${p}`}>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline bg-canvas-soft px-4 py-3">
                 <div>
-                  <h3 className="text-sm font-semibold text-ink">{rotuloPeriodo(p)} · {ano}</h3>
+                  <h3 className="text-sm font-semibold text-ink">{tituloAutoavaliacao(p)} · {ano}</h3>
                   <p className="text-xs text-ink-mute">
                     {lista.length} meta(s)
                     {lista.length > 0 ? ` · progresso médio ${Math.round(lista.reduce((s, m) => s + (m.progresso_pct ?? 0), 0) / lista.length)}%` : ''}
@@ -247,7 +350,9 @@ export default function MinhasMetas({ ano }: { ano: number }) {
                     <Lock className="h-3 w-3" /> Enviada em {dataCurta(envio?.enviado_em)}
                   </span>
                 ) : envio?.reaberto_em ? (
-                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">Reaberta pelo coordenador em {dataCurta(envio.reaberto_em)}</span>
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                    {envio.reaberto_pelo_colaborador ? 'Você voltou para edição em' : 'Reaberta pelo coordenador em'} {dataCurta(envio.reaberto_em)}
+                  </span>
                 ) : (
                   <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-ink-secondary">{sujo ? 'Alterações não salvas' : 'Rascunho'}</span>
                 )}
@@ -255,7 +360,10 @@ export default function MinhasMetas({ ano }: { ano: number }) {
 
               <div className="divide-y divide-hairline">
                 {lista.length === 0 ? (
-                  <p className="p-4 text-sm text-ink-mute">Nenhuma meta neste período ainda.</p>
+                  <p className="p-4 text-sm text-ink-mute">
+                    Nenhuma meta neste período ainda.
+                    {registros.length > 0 && p === destinoAtual ? ' Use "Continua valendo" na autoavaliação de maio acima ou crie uma nova meta.' : ''}
+                  </p>
                 ) : null}
                 {lista.map((m, idx) => (
                   <div key={m.id} className="space-y-3 p-4" data-testid="pdi-meta">
@@ -346,7 +454,7 @@ export default function MinhasMetas({ ano }: { ano: number }) {
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-hairline bg-canvas-soft/40 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   {!travado ? (
-                    <Button size="sm" variant="outline" onClick={() => addMeta(p)}><Plus className="mr-1 h-3.5 w-3.5" /> Meta</Button>
+                    <Button size="sm" variant="outline" onClick={() => addMeta(p)}><Plus className="mr-1 h-3.5 w-3.5" /> Criar nova meta</Button>
                   ) : null}
                   {lista.length > 0 && destinos.length > 0 ? (
                     <CopiarPara destinos={destinos} onCopiar={(d) => copiar(p, d)} />
@@ -361,8 +469,19 @@ export default function MinhasMetas({ ano }: { ano: number }) {
                       <Send className="mr-1 h-3.5 w-3.5" /> Enviar autoavaliação
                     </Button>
                   </div>
+                ) : devolver_ === 'pode' ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-ink-mute">O sócio ainda não avaliou — dá para ajustar.</span>
+                    <Button size="sm" variant="outline" disabled={salvando !== null} onClick={() => void devolver(p)} data-testid={`pdi-voltar-edicao-${p}`}>
+                      <CornerUpLeft className="mr-1 h-3.5 w-3.5" /> {salvando === p ? 'Voltando…' : 'Voltar para edição'}
+                    </Button>
+                  </div>
                 ) : (
-                  <span className="text-xs text-ink-mute">Para alterar, peça ao seu coordenador para reabrir este período.</span>
+                  <span className="text-xs text-ink-mute">
+                    {devolver_ === 'avaliado_socio'
+                      ? 'O sócio já começou a avaliar este período — para alterar, fale com seu coordenador.'
+                      : 'Para alterar, peça ao seu coordenador para reabrir este período.'}
+                  </span>
                 )}
               </div>
               {aviso ? (
@@ -392,6 +511,131 @@ export default function MinhasMetas({ ano }: { ano: number }) {
         </div>
       ) : null}
     </section>
+  )
+}
+
+/**
+ * Registro histórico de um período (hoje: a autoavaliação de maio). Só
+ * leitura, em tabela resumo: meta, autoavaliação, progresso, comentário,
+ * avaliação do sócio (se houver), anexos e data de envio — com "Continua
+ * valendo" para levar a meta ao período corrente.
+ */
+function RegistroPeriodo({
+  ano, periodo, metas, envio, regua, destino, metasDestino, destinoTravado, ocupado, onContinuar, onAbrirAnexo,
+}: {
+  ano: number
+  periodo: PeriodoCodigo
+  metas: MetaPeriodo[]
+  envio: EnvioPeriodo | undefined
+  regua: Faixa[]
+  destino: PeriodoCodigo
+  metasDestino: MetaPeriodo[]
+  destinoTravado: boolean
+  ocupado: boolean
+  onContinuar: (lista: MetaPeriodo[]) => void
+  onAbrirAnexo: (path: string) => void
+}) {
+  const temSocio = metas.some((m) => m.faixa_final)
+  const pendentes = metas.filter((m) => !metaJaNoPeriodo(m, metasDestino) && (m.nome ?? '').trim())
+  const media = metas.length > 0 ? Math.round(metas.reduce((s, m) => s + (m.progresso_pct ?? 0), 0) / metas.length) : null
+  const rotuloDestino = destino === 'S2' ? '2º semestre' : rotuloPeriodo(destino)
+
+  return (
+    <div id={`periodo-${periodo}`} className="overflow-hidden rounded-xl border border-hairline bg-card" data-testid={`pdi-registro-${periodo}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline bg-canvas-soft px-4 py-3">
+        <div>
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+            <History className="h-4 w-4 text-ink-mute" /> {tituloAutoavaliacao(periodo)} · {ano}
+          </h3>
+          <p className="text-xs text-ink-mute">
+            Registro — só leitura · {metas.length} meta(s){media != null ? ` · progresso médio ${media}%` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {envio?.enviado_em ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+              <Lock className="h-3 w-3" /> Enviada em {dataCurta(envio.enviado_em)}
+            </span>
+          ) : (
+            <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-ink-secondary">Não enviada</span>
+          )}
+          {pendentes.length > 1 && !destinoTravado ? (
+            <Button size="sm" variant="outline" disabled={ocupado} onClick={() => onContinuar(pendentes)}
+              title={`Traz para o ${rotuloDestino} as metas que ainda não estão lá; a entrega começa em branco`}>
+              <Copy className="mr-1 h-3.5 w-3.5" /> Todas continuam valendo
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {metas.length === 0 ? (
+        <p className="p-4 text-sm text-ink-mute">Nenhuma meta registrada neste período.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-hairline text-left text-[11px] uppercase tracking-wide text-ink-mute">
+                <th className="px-4 py-2 font-medium">Meta</th>
+                <th className="px-2 py-2 font-medium">Autoavaliação</th>
+                <th className="px-2 py-2 font-medium">Progresso</th>
+                <th className="px-2 py-2 font-medium">Comentário</th>
+                {temSocio ? <th className="px-2 py-2 font-medium">Avaliação do sócio</th> : null}
+                <th className="px-2 py-2 font-medium">Enviada em</th>
+                <th className="px-4 py-2 text-right font-medium">No {rotuloDestino}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-hairline">
+              {metas.map((m) => {
+                const ja = metaJaNoPeriodo(m, metasDestino)
+                const semNome = !(m.nome ?? '').trim()
+                return (
+                  <tr key={m.id} className="align-top" data-testid="pdi-registro-meta">
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-ink">{m.nome || 'Meta sem nome'}</p>
+                      {(m.anexos ?? []).length > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {(m.anexos ?? []).map((a) => (
+                            <button key={a.id} type="button" onClick={() => onAbrirAnexo(a.storage_path)}
+                              className="inline-flex items-center gap-1 rounded-full border border-hairline px-1.5 py-0.5 text-[11px] text-ink-secondary hover:text-primary" title="Abrir anexo">
+                              <Paperclip className="h-3 w-3" /> <span className="max-w-[9rem] truncate">{a.arquivo_nome}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-2 py-2.5"><FaixaBadge regua={regua} codigo={m.faixa_auto} /></td>
+                    <td className="px-2 py-2.5">
+                      <span className="flex w-28 items-center gap-2">
+                        <BarraProgresso valor={m.progresso_pct ?? 0} className="flex-1" />
+                        <span className="w-9 text-right font-tabular text-xs text-ink">{m.progresso_pct ?? 0}%</span>
+                      </span>
+                    </td>
+                    <td className="max-w-[16rem] px-2 py-2.5 text-xs text-ink-secondary">
+                      {m.comentario ? <p className="line-clamp-3 whitespace-pre-wrap" title={m.comentario}>{m.comentario}</p> : <span className="text-ink-mute">—</span>}
+                    </td>
+                    {temSocio ? <td className="px-2 py-2.5"><FaixaBadge regua={regua} codigo={m.faixa_final ?? null} /></td> : null}
+                    <td className="whitespace-nowrap px-2 py-2.5 font-tabular text-xs text-ink-secondary">{envio?.enviado_em ? dataCurta(envio.enviado_em) : '—'}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      {ja ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5" /> Já no {rotuloDestino}</span>
+                      ) : semNome ? (
+                        <span className="text-xs text-ink-mute">—</span>
+                      ) : (
+                        <Button size="sm" variant="outline" disabled={ocupado || destinoTravado} onClick={() => onContinuar([m])}
+                          title={destinoTravado ? `O ${rotuloDestino} já foi enviado — volte para edição antes` : `Copia a meta para o ${rotuloDestino}; a entrega começa em branco`}
+                          data-testid="pdi-continua-valendo">
+                          <Copy className="mr-1 h-3.5 w-3.5" /> Continua valendo
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 

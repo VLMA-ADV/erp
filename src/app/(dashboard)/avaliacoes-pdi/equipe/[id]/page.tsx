@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { BarraProgresso } from '@/components/pdi/faixa'
-import { ordemPeriodo, rotuloPeriodo, type AnexoMeta, type EnvioPeriodo, type PeriodoCodigo } from '@/lib/pdi/metas'
+import { ehPeriodoHistorico, ordemPeriodo, rotuloPeriodo, type AnexoMeta, type EnvioPeriodo, type PeriodoCodigo } from '@/lib/pdi/metas'
 import { abrirAnexoMeta, marcarCaixaPdiLida, reabrirPeriodo } from '@/lib/pdi/api'
 
 interface Faixa { codigo: string; rotulo: string; ordem: number }
@@ -291,10 +291,15 @@ export default function ReviewPdiPage() {
                       </span>
                     ) : (
                       <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
-                        {envio?.reaberto_em ? 'Reaberta — aguardando novo envio' : 'Colaborador ainda não enviou'}
+                        {envio?.reaberto_em
+                          ? (envio.reaberto_pelo_colaborador ? 'Colaborador voltou para edição — aguardando novo envio' : 'Reaberta — aguardando novo envio')
+                          : 'Colaborador ainda não enviou'}
                       </span>
                     )}
-                    {enviado && aval?.pode_reabrir_metas ? (
+                    {aval && ehPeriodoHistorico(aval.ano, periodo) ? (
+                      <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-ink-secondary">Registro — só leitura</span>
+                    ) : null}
+                    {enviado && aval?.pode_reabrir_metas && !(aval && ehPeriodoHistorico(aval.ano, periodo)) ? (
                       <button type="button" onClick={() => void reabrir(periodo)} disabled={reabrindo !== null}
                         className="inline-flex items-center gap-1 rounded-md border border-hairline px-2 py-1 text-xs text-ink-secondary hover:border-primary disabled:opacity-60">
                         <RotateCcw className="h-3.5 w-3.5" /> {reabrindo === periodo ? 'Reabrindo…' : 'Reabrir para o colaborador'}

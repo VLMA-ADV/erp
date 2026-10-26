@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/client'
 import type { AnexoMeta, EnvioPeriodo, MetaPeriodo, PainelDados, PeriodoCodigo } from './metas'
 import { payloadMetas } from './metas'
+import type { PreviaResposta } from './previa'
 
 export const BUCKET_METAS = 'pdi-metas-anexos'
 export const TAMANHO_MAX_ANEXO_BYTES = 25 * 1024 * 1024
@@ -16,6 +17,7 @@ export interface Faixa { codigo: string; rotulo: string; ordem: number }
 export interface MinhasMetas {
   avaliacao_id: string | null
   tenant_id: string
+  ano?: number
   regua: Faixa[]
   periodos: EnvioPeriodo[]
   metas: MetaPeriodo[]
@@ -125,6 +127,30 @@ export async function reabrirPeriodo(avaliacaoId: string, periodo: PeriodoCodigo
   if (error) throw erro(error, 'Não foi possível reabrir o período')
 }
 
+/** "Voltar para edição": o colaborador retira o próprio envio (antes de o sócio avaliar). */
+export async function devolverMeuPeriodo(avaliacaoId: string, periodo: PeriodoCodigo): Promise<{ notificados: number }> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('devolver_minhas_metas_pdi', { p_avaliacao_id: avaliacaoId, p_periodo: periodo })
+  if (error) throw erro(error, 'Não foi possível voltar o período para edição')
+  return { notificados: Number((data as { notificados?: number } | null)?.notificados ?? 0) }
+}
+
+/** "Continua valendo": copia as metas para o período de destino, sem duplicar. */
+export async function continuarMetas(metaIds: string[], destino: PeriodoCodigo = 'S2'): Promise<{ copiadas: number; ja_existiam: number }> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('continuar_metas_pdi', { p_meta_ids: metaIds, p_periodo_destino: destino })
+  if (error) throw erro(error, 'Não foi possível trazer as metas')
+  const r = (data ?? {}) as { copiadas?: number; ja_existiam?: number }
+  return { copiadas: Number(r.copiadas ?? 0), ja_existiam: Number(r.ja_existiam ?? 0) }
+}
+
+export async function carregarAvaliacaoPrevia(ano: number): Promise<PreviaResposta> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('get_avaliacao_previa_pdi', { p_ano: ano })
+  if (error) throw erro(error, 'Não foi possível carregar a avaliação prévia')
+  return data as PreviaResposta
+}
+
 export interface PainelResposta extends PainelDados {
   ano: number
   escopo: 'proprio' | 'area' | 'todos'
@@ -143,7 +169,7 @@ export async function carregarPainelMetas(ano: number): Promise<PainelResposta> 
 
 export interface NotificacaoPdi {
   id: string
-  tipo: 'autoavaliacao_enviada' | 'periodo_reaberto'
+  tipo: 'autoavaliacao_enviada' | 'periodo_reaberto' | 'envio_retirado'
   periodo: PeriodoCodigo
   titulo: string
   created_at: string

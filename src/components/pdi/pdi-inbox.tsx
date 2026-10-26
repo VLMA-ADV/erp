@@ -24,7 +24,9 @@ function dataRelativa(value: string) {
  * Aba "PDI" da caixa de entrada flutuante (26/10). Quando o colaborador envia a
  * autoavaliação de metas de um período, o aviso cai aqui para o coordenador da
  * área (área sem coordenador → sócios); quando o coordenador reabre, o aviso
- * vai para o colaborador. Clicar marca como lido e abre a tela certa.
+ * vai para o colaborador; quando o colaborador retira o próprio envio ("Voltar
+ * para edição"), quem recebeu o envio é avisado. Clicar marca como lido e abre
+ * a tela certa.
  */
 export default function PdiInbox({ onFechar }: { onFechar?: () => void } = {}) {
   const router = useRouter()
@@ -88,7 +90,11 @@ export default function PdiInbox({ onFechar }: { onFechar?: () => void } = {}) {
                   <span className="shrink-0 text-xs text-ink-mute">{dataRelativa(n.created_at)}</span>
                 </div>
                 <p className="mt-0.5 text-xs text-ink-mute">
-                  {n.tipo === 'periodo_reaberto' ? 'Abra o Meu PDI para editar e reenviar.' : 'Abra para continuar a avaliação (2ª etapa).'}
+                  {n.tipo === 'periodo_reaberto'
+                    ? 'Abra o Meu PDI para editar e reenviar.'
+                    : n.tipo === 'envio_retirado'
+                      ? 'O colaborador voltou o período para edição — aguarde o novo envio.'
+                      : 'Abra para continuar a avaliação (2ª etapa).'}
                 </p>
               </div>
             </button>
