@@ -97,7 +97,7 @@ describe('cut', () => {
       linha({ horas_lancadas: 2, horas_cobradas: 0, situacao: 'cortada', etapa: 'ignorado' }),
       linha({ horas_lancadas: 4, horas_cobradas: 0, situacao: 'em_revisao', etapa: 'em_revisao' }),
     ]))
-    expect(t).toEqual({ lancadas: 10, cobradas: 3, emRevisao: 4, lancamentos: 3 })
+    expect(t).toEqual({ lancadas: 10, cobradas: 3, emRevisao: 4, lancamentos: 3, foraFaturamento: 0, lancamentosForaFaturamento: 0 })
     expect(cut(t)).toBeCloseTo(0.7)
     expect(cutSeCobrarRevisao(t)).toBeCloseTo(0.3)
   })
@@ -128,7 +128,7 @@ describe('montarRelatorio', () => {
 
   it('totais do mês e cut geral', () => {
     const rel = montarRelatorio(dados)
-    expect(rel.totais).toEqual({ lancadas: 11, cobradas: 7, emRevisao: 1, lancamentos: 5 })
+    expect(rel.totais).toEqual({ lancadas: 11, cobradas: 7, emRevisao: 1, lancamentos: 5, foraFaturamento: 0, lancamentosForaFaturamento: 0 })
     expect(cut(rel.totais)).toBeCloseTo(4 / 11)
   })
 
@@ -151,7 +151,7 @@ describe('montarRelatorio', () => {
       ['Cliente A', 3],
     ])
     const c1 = rel.casos.find((c) => c.casoId === 'c1')!
-    expect(c1.totais).toEqual({ lancadas: 6, cobradas: 3, emRevisao: 1, lancamentos: 3 })
+    expect(c1.totais).toEqual({ lancadas: 6, cobradas: 3, emRevisao: 1, lancamentos: 3, foraFaturamento: 0, lancamentosForaFaturamento: 0 })
     expect(c1.porCentroCusto.soc).toMatchObject({ lancadas: 2, cobradas: 2 })
     expect(c1.porCentroCusto.con).toMatchObject({ lancadas: 3, cobradas: 1 })
     expect(c1.porCentroCusto[CHAVE_SEM_CENTRO_CUSTO]).toMatchObject({ lancadas: 1, cobradas: 0, emRevisao: 1 })
@@ -182,6 +182,59 @@ describe('montarRelatorio', () => {
     expect(op.centrosCusto.map((o) => o.label)).toEqual(['Contratos', 'Societário', SEM_CENTRO_CUSTO])
     expect(op.clientes.map((o) => o.value)).toEqual(['cli-b', 'cli-a'])
     expect(opcoesDosFiltros(dados, 'cli-a').casos.map((o) => o.value).sort()).toEqual(['c1', 'c3'])
+  })
+})
+
+describe('fora do faturamento (contrato ou caso inativo)', () => {
+  const fora = (over: Record<string, unknown> = {}) =>
+    linha({ billing_item_id: null, horas_cobradas: 0, etapa: 'fora_da_fila', situacao: 'fora_faturamento', ...over })
+
+  const dados = lerLancamentosRateio([
+    // caso 1: 4h cobradas de 4h + 1,5h fora do faturamento (Contratos)
+    linha({ caso_id: 'c1', caso_numero: 1, horas_lancadas: 4, horas_cobradas: 4 }),
+    fora({ caso_id: 'c1', caso_numero: 1, area_id: 'con', area_nome: 'Contratos', horas_lancadas: 1.5 }),
+    // caso 2: só hora fora do faturamento
+    fora({ caso_id: 'c2', caso_numero: 2, horas_lancadas: 2 }),
+    // caso 3: 1h ignorada (corte de verdade)
+    linha({ caso_id: 'c3', caso_numero: 3, horas_lancadas: 1, horas_cobradas: 0, situacao: 'cortada', etapa: 'ignorado' }),
+  ])
+
+  it('lê a situação nova', () => {
+    expect(dados[1].situacao).toBe('fora_faturamento')
+    expect(dados[1].etapa).toBe('fora_da_fila')
+  })
+
+  it('não entra em lançadas, cobradas nem no cut; soma à parte', () => {
+    const t = totalizar(dados)
+    expect(t).toEqual({ lancadas: 5, cobradas: 4, emRevisao: 0, lancamentos: 2, foraFaturamento: 3.5, lancamentosForaFaturamento: 2 })
+    expect(cut(t)).toBeCloseTo(0.2) // 1 − 4/5; contando as fora seria 1 − 4/8,5
+    expect(cutSeCobrarRevisao(t)).toBeCloseTo(0.2)
+  })
+
+  it('na linha do caso fica só em foraFaturamento; o detalhamento mostra todos', () => {
+    const rel = montarRelatorio(dados)
+    const c1 = rel.casos.find((c) => c.casoId === 'c1')!
+    expect(c1.totais).toMatchObject({ lancadas: 4, cobradas: 4, foraFaturamento: 1.5, lancamentos: 1 })
+    expect(cut(c1.totais)).toBe(0)
+    expect(c1.lancamentos).toHaveLength(2)
+    // não abre coluna nem soma no centro de custo
+    expect(c1.porCentroCusto.con).toBeUndefined()
+    const c2 = rel.casos.find((c) => c.casoId === 'c2')!
+    expect(c2.totais).toMatchObject({ lancadas: 0, cobradas: 0, foraFaturamento: 2 })
+    expect(cut(c2.totais)).toBeNull()
+    expect(c2.porCentroCusto).toEqual({})
+  })
+
+  it('área que só tem hora fora do faturamento não vira coluna', () => {
+    const rel = montarRelatorio(dados)
+    expect(rel.centrosCusto.map((c) => c.nome)).toEqual(['Societário'])
+    expect(rel.centrosCusto[0].totais).toMatchObject({ lancadas: 5, cobradas: 4, foraFaturamento: 0 })
+    expect(rel.totais.foraFaturamento).toBe(3.5)
+  })
+
+  it('filtros também valem para as horas fora do faturamento', () => {
+    expect(totalizar(filtrarRateio(dados, { centroCusto: 'con' }))).toMatchObject({ lancadas: 0, foraFaturamento: 1.5 })
+    expect(totalizar(filtrarRateio(dados, { caso: 'c2' }))).toMatchObject({ lancadas: 0, foraFaturamento: 2 })
   })
 })
 

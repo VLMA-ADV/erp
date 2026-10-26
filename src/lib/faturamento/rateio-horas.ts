@@ -10,10 +10,15 @@
 // a tela mostra ao lado quanto ainda está em revisão e qual seria o cut se
 // tudo isso fosse cobrado (cutSeCobrarRevisao), para o número não parecer
 // pior do que vai ficar.
+//
+// Hora FORA DO FATURAMENTO (sem item e com contrato ou caso inativo: a fila
+// não mostra e o gerador não fatura) não é corte — nunca foi ao faturamento.
+// Fica à parte: não entra em lançadas, cobradas nem no cut; é somada só em
+// foraFaturamento e aparece no detalhamento com essa situação.
 
 import { normalizarCompetencia, somarMeses } from './competencia'
 
-export type SituacaoRateio = 'cobrada' | 'cortada' | 'em_revisao'
+export type SituacaoRateio = 'cobrada' | 'cortada' | 'em_revisao' | 'fora_faturamento'
 
 export type EtapaRateio =
   | 'na_fila'
@@ -57,6 +62,7 @@ export const ROTULO_SITUACAO: Record<SituacaoRateio, string> = {
   cobrada: 'Cobrada',
   cortada: 'Cortada',
   em_revisao: 'Em revisão',
+  fora_faturamento: 'Fora do faturamento',
 }
 
 export const ROTULO_ETAPA: Record<EtapaRateio, string> = {
@@ -67,7 +73,7 @@ export const ROTULO_ETAPA: Record<EtapaRateio, string> = {
   faturado: 'Faturado',
   ignorado: 'Ignorado na revisão',
   excluido_fila: 'Excluído da fila (Lixeira)',
-  fora_da_fila: 'Fora da fila: contrato ou caso inativo',
+  fora_da_fila: 'Contrato ou caso inativo',
 }
 
 const ETAPAS = new Set<string>(Object.keys(ROTULO_ETAPA))
@@ -195,20 +201,40 @@ export function opcoesDosFiltros(lancamentos: LancamentoRateio[], clienteId?: st
 // ---------------------------------------------------------------- totais
 
 export interface TotaisRateio {
+  /** Sem as horas fora do faturamento. */
   lancadas: number
   cobradas: number
   /** Horas LANÇADAS de lançamentos ainda em revisão (podem virar cobradas). */
   emRevisao: number
+  /** Lançamentos que entram em lançadas (sem os fora do faturamento). */
   lancamentos: number
+  /** Horas lançadas fora do faturamento (contrato ou caso inativo): à parte,
+   *  fora de lançadas, cobradas e cut. */
+  foraFaturamento: number
+  lancamentosForaFaturamento: number
 }
 
-export const totaisVazios = (): TotaisRateio => ({ lancadas: 0, cobradas: 0, emRevisao: 0, lancamentos: 0 })
+export const totaisVazios = (): TotaisRateio => ({
+  lancadas: 0,
+  cobradas: 0,
+  emRevisao: 0,
+  lancamentos: 0,
+  foraFaturamento: 0,
+  lancamentosForaFaturamento: 0,
+})
+
+export const estaForaDoFaturamento = (l: Pick<LancamentoRateio, 'situacao'>) => l.situacao === 'fora_faturamento'
 
 // Soma as horas como vêm do banco (mesma conta da Revisão e dos Indicadores)
 // e só limpa o resíduo de ponto flutuante (0,1 + 0,2) ao fechar o total.
 const limpar = (h: number) => Math.round(h * 1e6) / 1e6
 
 function somar(acc: TotaisRateio, l: LancamentoRateio): TotaisRateio {
+  if (estaForaDoFaturamento(l)) {
+    acc.foraFaturamento += l.horasLancadas
+    acc.lancamentosForaFaturamento += 1
+    return acc
+  }
   acc.lancadas += l.horasLancadas
   acc.cobradas += l.horasCobradas
   if (l.situacao === 'em_revisao') acc.emRevisao += l.horasLancadas
@@ -217,7 +243,13 @@ function somar(acc: TotaisRateio, l: LancamentoRateio): TotaisRateio {
 }
 
 function fechar(t: TotaisRateio): TotaisRateio {
-  return { ...t, lancadas: limpar(t.lancadas), cobradas: limpar(t.cobradas), emRevisao: limpar(t.emRevisao) }
+  return {
+    ...t,
+    lancadas: limpar(t.lancadas),
+    cobradas: limpar(t.cobradas),
+    emRevisao: limpar(t.emRevisao),
+    foraFaturamento: limpar(t.foraFaturamento),
+  }
 }
 
 export function totalizar(lancamentos: LancamentoRateio[]): TotaisRateio {
@@ -259,16 +291,21 @@ export interface CasoRateio {
   clienteId: string
   clienteNome: string
   contratoNumero: number | null
+  /** As horas fora do faturamento ficam em totais.foraFaturamento, não em
+   *  lançadas/cobradas. */
   totais: TotaisRateio
-  /** chaveCentroCusto → totais do caso naquele centro de custo. */
+  /** chaveCentroCusto → totais do caso naquele centro de custo (só o que
+   *  entra no faturamento). */
   porCentroCusto: Record<string, TotaisRateio>
+  /** Todos, inclusive os fora do faturamento (o "ver +" mostra todos). */
   lancamentos: LancamentoRateio[]
 }
 
 export interface RelatorioRateio {
   totais: TotaisRateio
   /** Colunas da tabela e fatias da rosca: mais cobradas primeiro, "Sem
-   *  centro de custo" por último. */
+   *  centro de custo" por último. Só do que entra no faturamento: área que
+   *  só tem hora fora do faturamento não vira coluna. */
   centrosCusto: CentroCustoRateio[]
   casos: CasoRateio[]
 }
@@ -287,18 +324,19 @@ export function montarRelatorio(lancamentos: LancamentoRateio[]): RelatorioRatei
 
   for (const l of lancamentos) {
     somar(total, l)
+    const caso: Acumulado = casos.get(l.casoId) ?? { base: l, totais: totaisVazios(), porCentroCusto: new Map(), lancamentos: [] }
+    somar(caso.totais, l)
+    caso.lancamentos.push(l)
+    casos.set(l.casoId, caso)
+    if (estaForaDoFaturamento(l)) continue
+
     const chave = chaveCentroCusto(l)
     const centro = centros.get(chave) ?? { nome: nomeCentroCusto(l), totais: totaisVazios() }
     somar(centro.totais, l)
     centros.set(chave, centro)
-
-    const caso: Acumulado = casos.get(l.casoId) ?? { base: l, totais: totaisVazios(), porCentroCusto: new Map(), lancamentos: [] }
-    somar(caso.totais, l)
     const doCentro = caso.porCentroCusto.get(chave) ?? totaisVazios()
     somar(doCentro, l)
     caso.porCentroCusto.set(chave, doCentro)
-    caso.lancamentos.push(l)
-    casos.set(l.casoId, caso)
   }
 
   const centrosCusto = Array.from(centros.entries())
