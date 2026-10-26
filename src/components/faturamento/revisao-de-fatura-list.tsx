@@ -989,7 +989,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   const [postergadosCount, setPostergadosCount] = useState<number | null>(null)
   const [lixeiraAberta, setLixeiraAberta] = useState(false)
   const [lixeiraCount, setLixeiraCount] = useState<number | null>(null)
-  // Rateio / horas: só sócios e financeiro. pode_ver_rateio_horas só esconde
+  // Rateio / horas: só sócios e liberação nominal. pode_ver_rateio_horas só esconde
   // o botão; get_rateio_horas confere de novo no servidor.
   const [rateioAberto, setRateioAberto] = useState(false)
   const [podeVerRateio, setPodeVerRateio] = useState(false)

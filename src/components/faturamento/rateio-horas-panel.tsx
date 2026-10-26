@@ -29,18 +29,25 @@ import {
 } from '@/lib/faturamento/rateio-horas'
 
 /**
- * Rateio / horas — relatório para sócios e financeiro: horas lançadas x
+ * Rateio / horas — relatório para sócios (e quem tem a liberação nominal
+ * finance.rateio_horas.read): horas lançadas x
  * cobradas no mês de faturamento e a divisão das cobradas por centro de custo
  * (área de quem lançou). Só casos que cobram por hora.
  *
- * Os dados vêm de get_rateio_horas (que barra quem não é sócio/financeiro);
- * toda a conta está em lib/faturamento/rateio-horas.
+ * Os dados vêm de get_rateio_horas (que barra quem não tem acesso); toda a
+ * conta está em lib/faturamento/rateio-horas.
  *
  * Hora "em revisão" (na fila, em revisão, em aprovação) ainda não é cobrada,
  * então entra no cut. Para o número não parecer pior do que vai ficar, o card
  * de cut diz quanto ainda está em revisão e qual seria o cut se tudo isso
  * fosse cobrado; na tabela, as horas em revisão aparecem em âmbar embaixo das
  * cobradas.
+ *
+ * Hora fora do faturamento (contrato ou caso inativo, sem item) fica à parte:
+ * card próprio e situação própria no "ver +"; não soma em lançadas/cobradas/
+ * cut da linha do caso nem nas colunas de centro de custo. Na linha do caso
+ * aparece só uma nota cinza embaixo das lançadas, para quem abrir o "ver +"
+ * entender por que há lançamentos que não fecham com os números da linha.
  */
 
 const h = formatHorasMin
@@ -54,6 +61,7 @@ const COR_SITUACAO: Record<SituacaoRateio, string> = {
   cobrada: 'bg-emerald-50 text-emerald-700',
   cortada: 'bg-red-50 text-red-700',
   em_revisao: 'bg-amber-50 text-amber-800',
+  fora_faturamento: 'bg-canvas-soft text-ink-secondary',
 }
 
 function CelulaCut({ totais }: { totais: TotaisRateio }) {
@@ -62,6 +70,24 @@ function CelulaCut({ totais }: { totais: TotaisRateio }) {
     <span className={valor !== null && valor > 0 ? 'text-red-600' : 'text-ink-secondary'}>
       {formatarCut(valor)}
     </span>
+  )
+}
+
+/** Lançadas em cima; embaixo, em cinza, as fora do faturamento (só quando
+ *  houver) — não somam nas lançadas. */
+function CelulaLancadas({ totais, className }: { totais: TotaisRateio; className: string }) {
+  return (
+    <div className="leading-tight">
+      <div className={className}>{h(totais.lancadas)}</div>
+      {totais.foraFaturamento > 0 ? (
+        <div
+          className="text-[10px] font-normal text-ink-mute"
+          title="Horas de contrato ou caso inativo: nunca entram no faturamento e não somam nas lançadas nem no cut"
+        >
+          + {h(totais.foraFaturamento)} fora do fat.
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -184,7 +210,8 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
       <p className="text-[11px] text-ink-mute">
         Só casos que cobram por hora. Competência de faturamento: a aba de um mês mostra as horas faturadas nele
         (trabalhadas no mês anterior). Centro de custo = área de quem lançou. Cobradas = horas aprovadas no
-        faturamento (aprovado ou faturado); ignorado ou excluído da fila conta como cortado.
+        faturamento (aprovado ou faturado); ignorado ou excluído da fila conta como cortado. Hora de contrato ou
+        caso inativo nunca entra no faturamento: fica à parte (fora do faturamento), sem somar em lançadas nem no cut.
       </p>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -251,7 +278,7 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
         <>
           {/* Minidashboard */}
           <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-xl border bg-white p-4">
                 <p className="text-[11px] uppercase tracking-wide text-ink-mute">Horas lançadas</p>
                 <p className="mt-1 text-xl font-semibold text-ink font-tabular">{h(totais.lancadas)}</p>
@@ -278,6 +305,15 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
                   {totais.emRevisao > 0
                     ? `contam como não cobradas; se forem cobradas, o cut fica em ${formatarCut(cutPiso)}`
                     : 'nada pendente: o cut do mês está fechado'}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-white p-4">
+                <p className="text-[11px] uppercase tracking-wide text-ink-mute">Fora do faturamento</p>
+                <p className="mt-1 text-xl font-semibold font-tabular text-ink-secondary">{h(totais.foraFaturamento)}</p>
+                <p className="text-[11px] text-ink-mute">
+                  contrato ou caso inativo
+                  {totais.lancamentosForaFaturamento > 0 ? ` · ${totais.lancamentosForaFaturamento} lançamento(s)` : ''}
+                  {' · '}não entram em lançadas nem no cut
                 </p>
               </div>
             </div>
@@ -322,7 +358,9 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
                         <tr className="border-b align-top text-xs hover:bg-canvas-soft/60">
                           <td className="px-3 py-2 text-ink">{caso.clienteNome}</td>
                           <td className="px-3 py-2 text-ink-secondary">{rotuloCaso(caso)}</td>
-                          <td className="px-3 py-2 text-right font-tabular text-ink-secondary">{h(caso.totais.lancadas)}</td>
+                          <td className="px-3 py-2 text-right font-tabular">
+                            <CelulaLancadas totais={caso.totais} className="text-ink-secondary" />
+                          </td>
                           <td className="px-3 py-2 text-right font-tabular">
                             <CelulaCobradas totais={caso.totais} />
                           </td>
@@ -377,7 +415,10 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
                                 </thead>
                                 <tbody>
                                   {caso.lancamentos.map((l) => (
-                                    <tr key={l.timesheetId} className="border-t border-hairline align-top">
+                                    <tr
+                                      key={l.timesheetId}
+                                      className={`border-t border-hairline align-top ${l.situacao === 'fora_faturamento' ? 'opacity-70' : ''}`}
+                                    >
                                       <td className="px-2 py-1.5 text-ink">{l.usuarioNome}</td>
                                       <td className="px-2 py-1.5 text-ink-secondary">{nomeCentroCusto(l)}</td>
                                       <td className="px-2 py-1.5 text-ink-secondary font-tabular">{fmtData(l.dataLancamento)}</td>
@@ -385,7 +426,9 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
                                         <span className="line-clamp-3 whitespace-pre-line" title={l.descricao}>{l.descricao || '—'}</span>
                                       </td>
                                       <td className="px-2 py-1.5 text-right font-tabular text-ink-secondary">{h(l.horasLancadas)}</td>
-                                      <td className="px-2 py-1.5 text-right font-tabular text-ink">{h(l.horasCobradas)}</td>
+                                      <td className="px-2 py-1.5 text-right font-tabular text-ink">
+                                        {l.situacao === 'fora_faturamento' ? <span className="text-ink-mute">—</span> : h(l.horasCobradas)}
+                                      </td>
                                       <td className="px-2 py-1.5">
                                         <span
                                           className={`inline-flex rounded-full px-2 py-0.5 text-[11px] ${COR_SITUACAO[l.situacao]}`}
@@ -418,7 +461,9 @@ export default function RateioHorasPanel({ competenciaInicial }: { competenciaIn
                     <td className="px-3 py-2 text-ink" colSpan={2}>
                       Total ({casos.length} caso{casos.length === 1 ? '' : 's'})
                     </td>
-                    <td className="px-3 py-2 text-right font-tabular text-ink">{h(totais.lancadas)}</td>
+                    <td className="px-3 py-2 text-right font-tabular">
+                      <CelulaLancadas totais={totais} className="text-ink" />
+                    </td>
                     <td className="px-3 py-2 text-right font-tabular">
                       <CelulaCobradas totais={totais} />
                     </td>
