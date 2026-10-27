@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   Banknote,
+  CalendarClock,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -15,10 +16,12 @@ import {
   FileText,
   Loader2,
   Mail,
+  Merge,
   Pencil,
   Printer,
   Receipt,
   RotateCcw,
+  Split,
   Undo2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +30,7 @@ import { cn } from '@/lib/utils/cn'
 import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatarLinhaDigitavel } from '@/lib/utils/boleto-ficha'
+import { somarMeses } from '@/lib/faturamento/competencia'
 import {
   SITUACAO_INFO,
   STATUS_KIT_INFO,
@@ -48,12 +52,16 @@ import {
   nfseEmitida,
   nfsesDoKit,
   progressoDoKit,
+  sequenciaDoKit,
   situacaoDosKits,
   somarProgresso,
   type ClienteKits,
+  type DecisaoPosFinalizacao,
   type DocGerado,
   type DocNfsePagador,
+  type ItemKit,
   type KitCaso,
+  type PosFinalizacao,
   type ProgressoKit,
 } from './types'
 
@@ -86,6 +94,11 @@ export interface AcoesKit {
   /** Baixa manual do kit (finalizar_kit) — Filipe 24/09: o e-mail ainda vai pelo Gmail. */
   onFinalizar: (kit: KitCaso) => void
   onReabrir: (kit: KitCaso) => void
+  /**
+   * Aprovados depois de finalizar (Filipe 16/10): unificar no kit, faturar
+   * separado ou postergar para o mês seguinte.
+   */
+  onDecidirPosFinalizacao: (kit: KitCaso, acao: DecisaoPosFinalizacao) => void
   /** Seleção em massa (6.1): chaves dos kits marcados. */
   selecionados: ReadonlySet<string>
   onSelecionar: (kit: KitCaso, marcar: boolean) => void
@@ -323,6 +336,14 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
                 {finalizado ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
                 {info.label}
               </Badge>
+              {sequenciaDoKit(kit) > 1 ? (
+                <Badge
+                  className="border-sky-200 bg-sky-50 text-sky-800"
+                  title="Lançamentos aprovados depois de finalizar o kit anterior deste caso, faturados à parte (documentos próprios)."
+                >
+                  Kit {sequenciaDoKit(kit)} · separado
+                </Badge>
+              ) : null}
             </div>
             <p className="mt-0.5 text-xs text-ink-mute">
               {contratoLabel} · {labelRegra(kit.regra_cobranca)} · {labelCompetencia(kit.competencia)}
@@ -446,7 +467,12 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
                   // Nota conjunta com erro/sem status: quem resolve é a nota, em Notas geradas.
                   <span className="text-xs text-ink-mute">Nota conjunta do contrato</span>
                 ) : (
-                  <Button size="sm" onClick={() => acoes.onEmitirNfse(kit)} disabled={ocupado('nfse') || kit.valor_servico <= 0}>
+                  <Button
+                    size="sm"
+                    onClick={() => acoes.onEmitirNfse(kit)}
+                    disabled={ocupado('nfse') || kit.valor_servico <= 0 || !!kit.nfse_aguarda_kit_anterior}
+                    title={kit.nfse_aguarda_kit_anterior ? 'Emita antes a NFS-e do kit anterior deste caso: a nota cobre um kit por vez.' : undefined}
+                  >
                     {ocupado('nfse') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
                     Emitir
                   </Button>
@@ -683,6 +709,93 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             Devolver para revisão
           </Button>
         </div>
+      </div>
+
+      {kit.pos_finalizacao ? <BlocoPosFinalizacao kit={kit} bloco={kit.pos_finalizacao} acoes={acoes} /> : null}
+    </div>
+  )
+}
+
+/**
+ * Lançamentos aprovados depois de finalizar (Filipe 16/10, Osul caso 1954).
+ * Ficam fora do kit — e da NFS-e — até a pessoa escolher o destino.
+ */
+function BlocoPosFinalizacao({ kit, bloco, acoes }: { kit: KitCaso; bloco: PosFinalizacao; acoes: AcoesKit }) {
+  const ocupado = (acao: DecisaoPosFinalizacao) => acoes.ocupado === acaoKey(kit, `pos:${acao}`)
+  const qualquer = !!acoes.ocupado
+  const proximo = labelCompetencia(somarMeses(kit.competencia, 1))
+  const icone = (acao: DecisaoPosFinalizacao, Icon: typeof Merge) =>
+    ocupado(acao) ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Icon className="mr-1.5 h-3.5 w-3.5" />
+  return (
+    <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50/60 p-3" role="group" aria-label="Lançamentos aprovados depois de finalizar">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Aprovados depois de finalizar
+          </p>
+          <p className="mt-0.5 text-xs text-amber-900/80">
+            Não entraram no kit finalizado. Escolha o destino.
+          </p>
+        </div>
+        <div className="text-right text-sm">
+          <p className="font-semibold font-tabular text-ink">{formatMoney(bloco.valor_total)}</p>
+          <p className="text-xs text-ink-mute">
+            {bloco.itens_count} lançamento(s)
+            {bloco.horas > 0 ? ` · ${formatHorasMin(bloco.horas)}` : ''}
+          </p>
+        </div>
+      </div>
+      <ul className="mt-2 divide-y divide-amber-200/70 text-xs">
+        {bloco.itens.map((item: ItemKit) => (
+          <li key={item.id} className="flex items-center justify-between gap-3 py-1.5">
+            <span className="min-w-0 truncate text-ink-secondary" title={item.descricao}>
+              <span className="text-ink-mute">{labelOrigem(item.origem_tipo)}</span>
+              {item.data_referencia ? ` · ${dataBR(item.data_referencia)}` : ''} · {item.descricao}
+            </span>
+            <span className="shrink-0 font-tabular text-ink">
+              {item.origem_tipo === 'timesheet' && item.horas > 0 ? `${formatHorasMin(item.horas)} · ` : ''}
+              {formatMoney(item.valor)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => acoes.onDecidirPosFinalizacao(kit, 'unificar')}
+          disabled={qualquer || !bloco.pode_unificar}
+          title={bloco.pode_unificar
+            ? 'Reabre o kit e junta estes lançamentos. Gere de novo os documentos e finalize outra vez.'
+            : `${bloco.motivo_nao_unificar ?? 'Kit bloqueado'}: não dá para unificar.`}
+        >
+          {icone('unificar', Merge)}
+          Unificar no kit
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => acoes.onDecidirPosFinalizacao(kit, 'separar')}
+          disabled={qualquer}
+          title="Vira um kit próprio neste mês, com relatório, NFS-e e boleto dele."
+        >
+          {icone('separar', Split)}
+          Faturar separado
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => acoes.onDecidirPosFinalizacao(kit, 'postergar')}
+          disabled={qualquer}
+          title={`Tira desta competência e manda para ${proximo}.`}
+        >
+          {icone('postergar', CalendarClock)}
+          Postergar para {proximo}
+        </Button>
+        {!bloco.pode_unificar ? (
+          <span className="text-xs text-amber-900/80">{bloco.motivo_nao_unificar}: só separado ou postergado.</span>
+        ) : null}
       </div>
     </div>
   )

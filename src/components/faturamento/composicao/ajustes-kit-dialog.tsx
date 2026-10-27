@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { lerNumero } from '@/lib/utils/numero-br'
-import { labelCompetencia, type KitCaso } from './types'
+import { labelCompetencia, paramSequencia, type KitCaso } from './types'
 
 // Grupo de impostos e pagadores editáveis no kit (Filipe, 21/09, D14-b),
 // enquanto a NFS-e não saiu. As opções vêm da mesma RPC da prévia
@@ -121,6 +121,8 @@ export default function AjustesKitDialog({
           pagadores: lista.length ? lista : null,
         },
         p_salvar_no_cadastro: salvarNoCadastro,
+        // Kit separado (Filipe 16/10) tem os ajustes dele.
+        ...paramSequencia(kit),
       })
       if (error) { setErro(error.message); return }
       const r = (data ?? {}) as { ok?: boolean; alterado_no_cadastro?: boolean; motivo?: string; error?: string }

@@ -282,6 +282,57 @@ export interface KitCaso {
   irmaos_no_contrato?: number
   /** A NFS-e deste kit é do contrato inteiro ou cobre itens de mais de um kit. */
   nota_compartilhada?: boolean
+  /**
+   * Filipe 16/10 (Osul, caso 1954): 1 = o kit do caso+competência; 2, 3… =
+   * kit faturado separado dos lançamentos aprovados depois de finalizar.
+   * Ausente na RPC antiga = 1.
+   */
+  kit_sequencia?: number
+  /** Kit finalizado guarda os itens que tinha: o que for aprovado depois não entra. */
+  congelado?: boolean
+  /**
+   * Kit separado cuja NFS-e ainda não pode sair: a emissão cobre um kit por
+   * vez e o anterior do mesmo caso+competência ainda tem serviço sem nota.
+   */
+  nfse_aguarda_kit_anterior?: boolean
+  /** Lançamentos aprovados depois de finalizar, à espera de decisão (só no último kit do caso+mês). */
+  pos_finalizacao?: PosFinalizacao | null
+}
+
+/**
+ * Bloco "aprovados depois de finalizar" (Filipe 16/10). Não está em kit
+ * nenhum nem entra na NFS-e até a pessoa decidir: unificar (reabre o kit —
+ * só sem NFS-e autorizada/processando e sem boleto vivo), faturar separado
+ * (kit próprio na mesma competência) ou postergar para o mês seguinte.
+ */
+export interface PosFinalizacao {
+  chave: string
+  itens_count: number
+  valor_servico: number
+  valor_despesa: number
+  horas: number
+  lancamentos_timesheet: number
+  valor_total: number
+  itens: ItemKit[]
+  pode_unificar: boolean
+  motivo_nao_unificar: string | null
+}
+
+export type DecisaoPosFinalizacao = 'unificar' | 'separar' | 'postergar'
+
+/** Sequência do kit (1 quando a RPC não manda). */
+export function sequenciaDoKit(kit: Pick<KitCaso, 'kit_sequencia'>): number {
+  const n = Number(kit.kit_sequencia ?? 1)
+  return Number.isFinite(n) && n > 1 ? n : 1
+}
+
+/**
+ * Parâmetro p_kit_sequencia das RPCs — só para kit separado. O kit 1 chama
+ * como sempre, então a tela funciona igual com o banco antigo ou novo.
+ */
+export function paramSequencia(kit: Pick<KitCaso, 'kit_sequencia'>): { p_kit_sequencia?: number } {
+  const n = sequenciaDoKit(kit)
+  return n > 1 ? { p_kit_sequencia: n } : {}
 }
 
 export interface ClienteKits {
@@ -297,6 +348,8 @@ export interface ComposicaoPayload {
     kits: number
     valor_total: number
     por_status: Partial<Record<StatusKit, { kits: number; valor: number }>>
+    /** Blocos de aprovados depois de finalizar à espera de decisão (Filipe 16/10). */
+    pos_finalizacao?: { blocos: number; itens: number; valor: number }
   }
   opcoes: {
     competencias: string[]
