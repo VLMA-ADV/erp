@@ -608,6 +608,32 @@ function getRuleKind(item: RevisaoItem) {
   return asString(item.snapshot?.regra_cobranca || '').trim().toLowerCase()
 }
 
+// Mesmos rótulos da tela de Despesas (CATEGORIA_OPTIONS em despesas-list).
+const CATEGORIA_DESPESA_LABEL: Record<string, string> = {
+  custas: 'Custas',
+  cartorio: 'Cartório',
+  deslocamento: 'Deslocamento',
+  hospedagem: 'Hospedagem',
+  alimentacao: 'Alimentação',
+  outros: 'Outros',
+}
+
+// Texto da despesa como a pessoa lançou (Filipe 16/10: "revisor e aprovador
+// não veem a descrição da despesa" — a linha mostrava só "Despesa", o título
+// da regra). Vem do snapshot do billing_item / da fila, com a categoria na
+// frente; "Despesa" só quando a descrição veio vazia.
+function getDespesaTexto(item: RevisaoItem) {
+  const snapshot = (item.snapshot || {}) as Record<string, unknown>
+  const categoriaRaw = String(snapshot.categoria ?? '').trim()
+  const categoria = CATEGORIA_DESPESA_LABEL[categoriaRaw.toLowerCase()] || categoriaRaw
+  let descricao = String(snapshot.descricao ?? '').trim()
+  // Snapshot antigo sem descrição guarda a própria categoria (ou "Despesa")
+  // no lugar dela: não repete.
+  if (!descricao || descricao === 'Despesa' || descricao.toLowerCase() === categoriaRaw.toLowerCase()) descricao = ''
+  if (descricao && categoria) return `${categoria} · ${descricao}`
+  return descricao || (categoria ? `Despesa · ${categoria}` : 'Despesa')
+}
+
 function getRuleTitle(item: RevisaoItem) {
   if (item.origemTipo === 'despesa') return 'Despesa'
   const kind = getRuleKind(item)
@@ -692,7 +718,10 @@ function parseSnapshotValueRows(item: RevisaoItem): ValueRowDraft[] {
         return {
           id: asString(row.id) || createDraftRowId(),
           referencia: asString(row.referencia || row.data_referencia),
-          descricao: asString(row.descricao),
+          // Revisão salva antes de 16/10 gravou o título "Despesa" no lugar do texto.
+          descricao: item.origemTipo === 'despesa' && asString(row.descricao) === 'Despesa'
+            ? getDespesaTexto(item)
+            : asString(row.descricao),
           valorOriginal: String(asNumber(row.valor_original ?? row.valor_informado ?? row.valor)),
           valorRevisado: String(asNumber(row.valor_revisado ?? row.valor)),
         }
@@ -704,7 +733,7 @@ function parseSnapshotValueRows(item: RevisaoItem): ValueRowDraft[] {
     {
       id: createDraftRowId(),
       referencia: item.dataReferencia || '',
-      descricao: getRuleTitle(item),
+      descricao: item.origemTipo === 'despesa' ? getDespesaTexto(item) : getRuleTitle(item),
       valorOriginal: String(item.valorInformado ?? 0),
       valorRevisado: String(getEffectiveItemValue(item)),
     },
@@ -3948,7 +3977,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                         ? { label: 'Aprovado', cls: 'bg-purple-100 text-purple-700' }
                                         : { label: 'Faturado', cls: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200' }
                                 const envioData = item.timesheetDataLancamento || item.dataReferencia
-                                const envioTexto = mode === 'timesheet' ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
+                                const envioTexto = mode === 'timesheet'
+                                  ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição'
+                                  : item.origemTipo === 'despesa' ? getDespesaTexto(item) : getRuleTitle(item)
                                 const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
                                 // regra projeto aprovada pelo sistema ao liberar (chave do tenant)
                                 const autoAprovado = isAutoAprovado(item)
