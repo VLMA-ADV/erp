@@ -16,7 +16,7 @@ import { useToast } from '@/components/ui/toast'
  */
 interface Postergado {
   id: string
-  fonte: 'hora' | 'regra'
+  fonte: 'hora' | 'regra' | 'despesa'
   item_tipo: string
   descricao: string
   valor: number
@@ -35,6 +35,7 @@ const TIPO_LABEL: Record<string, string> = {
   projeto: 'Projeto',
   projeto_parcela: 'Parcela de projeto',
   exito: 'Êxito',
+  despesa: 'Despesa',
 }
 
 function fmtMoney(v: number | string | null | undefined) {
@@ -77,8 +78,10 @@ export default function PostergadosList() {
   useEffect(() => { void carregar() }, [carregar])
 
   const desfazer = async (item: Postergado) => {
-    if (item.fonte === 'hora') {
-      toastError('Hora adiada se desfaz na própria fila do mês de destino.')
+    if (item.fonte !== 'regra') {
+      toastError(item.fonte === 'despesa'
+        ? 'Despesa adiada se desfaz na própria fila do mês de destino.'
+        : 'Hora adiada se desfaz na própria fila do mês de destino.')
       return
     }
     if (!window.confirm(`Trazer "${item.descricao}" de volta para ${fmtMes(item.competencia)}?`)) return
@@ -160,7 +163,7 @@ export default function PostergadosList() {
                       {desfazendo === i.id ? '…' : 'Desfazer'}
                     </button>
                   ) : (
-                    <span className="text-xs text-ink-mute">hora</span>
+                    <span className="text-xs text-ink-mute">{i.fonte === 'despesa' ? 'despesa' : 'hora'}</span>
                   )}
                 </td>
               </tr>

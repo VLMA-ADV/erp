@@ -387,6 +387,14 @@ function areStageNumbersEqual(left: number | null | undefined, right: number | n
 
 
 
+// Despesa liberada (em revisão OU em aprovação) pode ser adiada. Os quatro
+// casos do Filipe (16/10: Álvaro, Gizeli, Fluvia, Osmar) já estavam em
+// aprovação — só em_revisao, como na hora, deixaria todos de fora.
+// postergar_despesa cancela o billing_item e devolve a despesa à fila.
+function ehDespesaPostergavel(item: Pick<RevisaoItem, 'origemTipo' | 'origemId' | 'status'>) {
+  return item.origemTipo === 'despesa' && !!item.origemId && (item.status === 'em_revisao' || item.status === 'em_aprovacao')
+}
+
 function isReviewQueueStatus(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
 }
@@ -2284,7 +2292,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     let ok = 0
     for (const id of ids) {
       const item = items.find((entry) => entry.id === id)
-      if (item && (item.timesheetId || isFila(item))) {
+      if (item && (item.timesheetId || isFila(item) || ehDespesaPostergavel(item))) {
         const done = await postergarItem(item, postergarData || undefined)
         if (done) ok += 1
       }
@@ -2570,7 +2578,18 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       // parcela) nao e linha de tabela nenhuma e vai por
       // finance.faturamento_adiamentos, com a competencia da aba — e de la
       // que ela esta saindo.
+      // Despesa (Filipe 16/10: "não deixa postergar despesa"): mesmo campo da
+      // hora (operations.despesas.periodo_faturamento), RPC própria — antes ia
+      // para postergar_timesheet com timesheet_id nulo e falhava.
+      const postergarDespesa = () =>
+        supabase.rpc('postergar_despesa', {
+          p_user_id: user.id,
+          p_despesa_id: item.origemId,
+          p_periodo: periodoFaturamento,
+        })
+
       const postergarNaFila = async () => {
+        if (item.origemTipo === 'despesa') return postergarDespesa()
         if (item.origemTipo === 'timesheet') {
           return supabase.rpc('postergar_timesheet', {
             p_user_id: user.id,
@@ -2596,7 +2615,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       // fila de "A liberar" do mes escolhido.
       const { error } = isFila(item)
         ? await postergarNaFila()
-        : await supabase.rpc('postergar_timesheet', {
+        : item.origemTipo === 'despesa'
+          ? await postergarDespesa()
+          : await supabase.rpc('postergar_timesheet', {
             p_user_id: user.id,
             p_timesheet_id: item.timesheetId,
             p_periodo: periodoFaturamento,
@@ -4507,21 +4528,20 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                             {liberandoEsteCaso ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
                                             Liberar caso
                                           </Button>
-                                          {item.origemTipo !== 'despesa' ? (
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              className="w-full justify-start text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
-                                              onClick={() => {
-                                                const base = getNextBillingPeriodDate(item)
-                                                setPostergarData(base.toISOString().slice(0, 10))
-                                                setPostergarConfirmId(item.id)
-                                              }}
-                                              disabled={busy}
-                                            >
-                                              <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
-                                            </Button>
-                                          ) : null}
+                                          {/* Despesa também posterga (Filipe 16/10) — postergar_despesa. */}
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="w-full justify-start text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
+                                            onClick={() => {
+                                              const base = getNextBillingPeriodDate(item)
+                                              setPostergarData(base.toISOString().slice(0, 10))
+                                              setPostergarConfirmId(item.id)
+                                            }}
+                                            disabled={busy}
+                                          >
+                                            <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
+                                          </Button>
                                           {item.origemTipo === 'timesheet' ? (
                                             <Button
                                               size="sm"
@@ -4595,7 +4615,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                           Editar
                                         </Button>
                                       ) : null}
-                                      {(item.timesheetId && item.status === 'em_revisao') ? (
+                                      {((item.timesheetId && item.status === 'em_revisao') || ehDespesaPostergavel(item)) ? (
                                         <Button
                                           size="sm"
                                           variant="ghost"
