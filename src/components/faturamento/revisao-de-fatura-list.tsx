@@ -387,6 +387,14 @@ function areStageNumbersEqual(left: number | null | undefined, right: number | n
 
 
 
+// Despesa liberada (em revisão OU em aprovação) pode ser adiada. Os quatro
+// casos do Filipe (16/10: Álvaro, Gizeli, Fluvia, Osmar) já estavam em
+// aprovação — só em_revisao, como na hora, deixaria todos de fora.
+// postergar_despesa cancela o billing_item e devolve a despesa à fila.
+function ehDespesaPostergavel(item: Pick<RevisaoItem, 'origemTipo' | 'origemId' | 'status'>) {
+  return item.origemTipo === 'despesa' && !!item.origemId && (item.status === 'em_revisao' || item.status === 'em_aprovacao')
+}
+
 function isReviewQueueStatus(status: string) {
   return status === 'em_revisao' || status === 'em_aprovacao'
 }
@@ -600,6 +608,32 @@ function getRuleKind(item: RevisaoItem) {
   return asString(item.snapshot?.regra_cobranca || '').trim().toLowerCase()
 }
 
+// Mesmos rótulos da tela de Despesas (CATEGORIA_OPTIONS em despesas-list).
+const CATEGORIA_DESPESA_LABEL: Record<string, string> = {
+  custas: 'Custas',
+  cartorio: 'Cartório',
+  deslocamento: 'Deslocamento',
+  hospedagem: 'Hospedagem',
+  alimentacao: 'Alimentação',
+  outros: 'Outros',
+}
+
+// Texto da despesa como a pessoa lançou (Filipe 16/10: "revisor e aprovador
+// não veem a descrição da despesa" — a linha mostrava só "Despesa", o título
+// da regra). Vem do snapshot do billing_item / da fila, com a categoria na
+// frente; "Despesa" só quando a descrição veio vazia.
+function getDespesaTexto(item: RevisaoItem) {
+  const snapshot = (item.snapshot || {}) as Record<string, unknown>
+  const categoriaRaw = String(snapshot.categoria ?? '').trim()
+  const categoria = CATEGORIA_DESPESA_LABEL[categoriaRaw.toLowerCase()] || categoriaRaw
+  let descricao = String(snapshot.descricao ?? '').trim()
+  // Snapshot antigo sem descrição guarda a própria categoria (ou "Despesa")
+  // no lugar dela: não repete.
+  if (!descricao || descricao === 'Despesa' || descricao.toLowerCase() === categoriaRaw.toLowerCase()) descricao = ''
+  if (descricao && categoria) return `${categoria} · ${descricao}`
+  return descricao || (categoria ? `Despesa · ${categoria}` : 'Despesa')
+}
+
 function getRuleTitle(item: RevisaoItem) {
   if (item.origemTipo === 'despesa') return 'Despesa'
   const kind = getRuleKind(item)
@@ -684,7 +718,10 @@ function parseSnapshotValueRows(item: RevisaoItem): ValueRowDraft[] {
         return {
           id: asString(row.id) || createDraftRowId(),
           referencia: asString(row.referencia || row.data_referencia),
-          descricao: asString(row.descricao),
+          // Revisão salva antes de 16/10 gravou o título "Despesa" no lugar do texto.
+          descricao: item.origemTipo === 'despesa' && asString(row.descricao) === 'Despesa'
+            ? getDespesaTexto(item)
+            : asString(row.descricao),
           valorOriginal: String(asNumber(row.valor_original ?? row.valor_informado ?? row.valor)),
           valorRevisado: String(asNumber(row.valor_revisado ?? row.valor)),
         }
@@ -696,7 +733,7 @@ function parseSnapshotValueRows(item: RevisaoItem): ValueRowDraft[] {
     {
       id: createDraftRowId(),
       referencia: item.dataReferencia || '',
-      descricao: getRuleTitle(item),
+      descricao: item.origemTipo === 'despesa' ? getDespesaTexto(item) : getRuleTitle(item),
       valorOriginal: String(item.valorInformado ?? 0),
       valorRevisado: String(getEffectiveItemValue(item)),
     },
@@ -2284,7 +2321,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     let ok = 0
     for (const id of ids) {
       const item = items.find((entry) => entry.id === id)
-      if (item && (item.timesheetId || isFila(item))) {
+      if (item && (item.timesheetId || isFila(item) || ehDespesaPostergavel(item))) {
         const done = await postergarItem(item, postergarData || undefined)
         if (done) ok += 1
       }
@@ -2570,7 +2607,18 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       // parcela) nao e linha de tabela nenhuma e vai por
       // finance.faturamento_adiamentos, com a competencia da aba — e de la
       // que ela esta saindo.
+      // Despesa (Filipe 16/10: "não deixa postergar despesa"): mesmo campo da
+      // hora (operations.despesas.periodo_faturamento), RPC própria — antes ia
+      // para postergar_timesheet com timesheet_id nulo e falhava.
+      const postergarDespesa = () =>
+        supabase.rpc('postergar_despesa', {
+          p_user_id: user.id,
+          p_despesa_id: item.origemId,
+          p_periodo: periodoFaturamento,
+        })
+
       const postergarNaFila = async () => {
+        if (item.origemTipo === 'despesa') return postergarDespesa()
         if (item.origemTipo === 'timesheet') {
           return supabase.rpc('postergar_timesheet', {
             p_user_id: user.id,
@@ -2596,7 +2644,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       // fila de "A liberar" do mes escolhido.
       const { error } = isFila(item)
         ? await postergarNaFila()
-        : await supabase.rpc('postergar_timesheet', {
+        : item.origemTipo === 'despesa'
+          ? await postergarDespesa()
+          : await supabase.rpc('postergar_timesheet', {
             p_user_id: user.id,
             p_timesheet_id: item.timesheetId,
             p_periodo: periodoFaturamento,
@@ -3927,7 +3977,9 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                         ? { label: 'Aprovado', cls: 'bg-purple-100 text-purple-700' }
                                         : { label: 'Faturado', cls: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200' }
                                 const envioData = item.timesheetDataLancamento || item.dataReferencia
-                                const envioTexto = mode === 'timesheet' ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição' : getRuleTitle(item)
+                                const envioTexto = mode === 'timesheet'
+                                  ? item.timesheetDescricaoOriginal || item.timesheetDescricao || 'Sem descrição'
+                                  : item.origemTipo === 'despesa' ? getDespesaTexto(item) : getRuleTitle(item)
                                 const revisado = item.status === 'em_aprovacao' || item.status === 'aprovado'
                                 // regra projeto aprovada pelo sistema ao liberar (chave do tenant)
                                 const autoAprovado = isAutoAprovado(item)
@@ -4507,21 +4559,20 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                             {liberandoEsteCaso ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-3.5 w-3.5" />}
                                             Liberar caso
                                           </Button>
-                                          {item.origemTipo !== 'despesa' ? (
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              className="w-full justify-start text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
-                                              onClick={() => {
-                                                const base = getNextBillingPeriodDate(item)
-                                                setPostergarData(base.toISOString().slice(0, 10))
-                                                setPostergarConfirmId(item.id)
-                                              }}
-                                              disabled={busy}
-                                            >
-                                              <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
-                                            </Button>
-                                          ) : null}
+                                          {/* Despesa também posterga (Filipe 16/10) — postergar_despesa. */}
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="w-full justify-start text-primary hover:bg-primary-soft-bg hover:text-primary-deep"
+                                            onClick={() => {
+                                              const base = getNextBillingPeriodDate(item)
+                                              setPostergarData(base.toISOString().slice(0, 10))
+                                              setPostergarConfirmId(item.id)
+                                            }}
+                                            disabled={busy}
+                                          >
+                                            <Clock className="mr-1 h-3.5 w-3.5" /> Postergar
+                                          </Button>
                                           {item.origemTipo === 'timesheet' ? (
                                             <Button
                                               size="sm"
@@ -4595,7 +4646,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                           Editar
                                         </Button>
                                       ) : null}
-                                      {(item.timesheetId && item.status === 'em_revisao') ? (
+                                      {((item.timesheetId && item.status === 'em_revisao') || ehDespesaPostergavel(item)) ? (
                                         <Button
                                           size="sm"
                                           variant="ghost"

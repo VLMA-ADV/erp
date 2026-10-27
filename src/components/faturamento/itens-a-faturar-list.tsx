@@ -810,8 +810,13 @@ export default function ItensAFaturarList() {
       const t = (l.tipo || '').trim().toLowerCase()
       return t === 'timesheet' || t === 'hora'
     }
+    // Despesa tem o mesmo campo da hora (periodo_faturamento) e RPC própria;
+    // antes caía em postergar_item_regra, que grava um adiamento que a fila
+    // de despesas nunca lê — a despesa "postergada" seguia no mês (Filipe 16/10).
+    const ehDespesa = (l: { tipo?: string | null }) => (l.tipo || '').trim().toLowerCase() === 'despesa'
     const horas = linhas.filter(ehHora)
-    const regras = linhas.filter((l) => !ehHora(l))
+    const despesas = linhas.filter(ehDespesa)
+    const regras = linhas.filter((l) => !ehHora(l) && !ehDespesa(l))
 
     if (linhas.length === 0) {
       toastError('Este caso não tem lançamentos postergáveis.')
@@ -851,6 +856,16 @@ export default function ItensAFaturarList() {
         const { error } = await supabase.rpc('postergar_timesheet', {
           p_user_id: user.id,
           p_timesheet_id: timesheetId,
+          p_periodo: postergarDate,
+        })
+        if (!error) okCount += 1
+        else failCount += 1
+      }
+
+      for (const despesaId of despesas.map((l) => l.origem_id as string)) {
+        const { error } = await supabase.rpc('postergar_despesa', {
+          p_user_id: user.id,
+          p_despesa_id: despesaId,
           p_periodo: postergarDate,
         })
         if (!error) okCount += 1
