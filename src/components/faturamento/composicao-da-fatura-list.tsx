@@ -43,9 +43,12 @@ import {
   labelCompetenciaCurta,
   montarAbasCompetencia,
   nfseConjuntaViva,
+  paramSequencia,
+  sequenciaDoKit,
   temFiltroAlemDaCompetencia,
   situacaoDoKit,
   type ComposicaoPayload,
+  type DecisaoPosFinalizacao,
   type FiltrosComposicao,
   type KitCaso,
   type SituacaoKit,
@@ -76,6 +79,12 @@ import {
 // no cabeçalho do cliente (Charles Sturmer, casos 1873 e 1877): uma NFS-e
 // por contrato+competência, pelo mesmo emit-nfse sem caso_id. A Composição
 // já casava a nota pelos item_ids, então ela aparece em todos os kits.
+//
+// 16/10 (Filipe, Osul caso 1954): kit finalizado fica congelado com os itens
+// que tinha (finance.kits.item_ids). Lançamento aprovado depois aparece no
+// bloco "aprovados depois de finalizar" do kit, e a pessoa decide: unificar
+// (reabre o kit), faturar separado (kit 2 do mesmo caso+mês, com documentos
+// próprios — as RPCs recebem p_kit_sequencia) ou postergar para o mês seguinte.
 
 const FUNCTIONS = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
 
@@ -88,7 +97,14 @@ const identidadeNotaDebito = (kit: KitCaso) => ({
   casoId: kit.caso_id,
   contratoId: kit.contrato_id,
   competencia: kit.competencia,
+  kitSequencia: sequenciaDoKit(kit),
 })
+
+/** Sufixo do arquivo do kit separado ("-kit2"); vazio no kit 1. */
+const sufixoKit = (kit: KitCaso) => (sequenciaDoKit(kit) > 1 ? `-kit${sequenciaDoKit(kit)}` : '')
+
+/** metadata.kit_sequencia dos documentos do kit separado (registrar_documento_kit). */
+const metadataKit = (kit: KitCaso) => (sequenciaDoKit(kit) > 1 ? { kit_sequencia: sequenciaDoKit(kit) } : {})
 
 /** finance.kits.ajustes → AjustesDaNota (só o que a nota entende: grupo e pagadores). */
 function ajustesDoKitParaNota(kit: KitCaso | null): AjustesDaNota | null {
@@ -351,7 +367,8 @@ export default function ComposicaoDaFaturaList() {
   // aprovados do caso, não só este kit — aviso na prévia.
   const casosComVariosKits = useMemo(() => {
     const contagem = new Map<string, number>()
-    for (const c of payload?.clientes ?? []) for (const k of c.casos) if (k.caso_id) contagem.set(k.caso_id, (contagem.get(k.caso_id) ?? 0) + 1)
+    // Kit separado (16/10) é o mesmo mês: não conta como outra competência.
+    for (const c of payload?.clientes ?? []) for (const k of c.casos) if (k.caso_id && sequenciaDoKit(k) === 1) contagem.set(k.caso_id, (contagem.get(k.caso_id) ?? 0) + 1)
     return contagem
   }, [payload])
 
@@ -609,6 +626,7 @@ export default function ComposicaoDaFaturaList() {
         casoId: kit.caso_id,
         contratoId: kit.contrato_id,
         competencia: kit.competencia,
+        kitSequencia: sequenciaDoKit(kit),
       })
       // Pagadores do kit: o PDF fecha com "Divisão por pagador" quando há
       // rateio ou o pagador não é o cliente (Filipe, 08/10); senão, nada muda.
@@ -629,12 +647,13 @@ export default function ComposicaoDaFaturaList() {
       const { path, numero_documento } = await gerarERegistrarDocumento({
         tipo: 'relatorio_timesheet',
         bytes,
-        nomeArquivo: `Relatorio-timesheet${numeroDocumento ? `-n${numeroDocumento}` : ''}-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
+        nomeArquivo: `Relatorio-timesheet${numeroDocumento ? `-n${numeroDocumento}` : ''}-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}${sufixoKit(kit)}.pdf`,
         casoId: kit.caso_id,
         contratoId: kit.contrato_id,
         competencia: kit.competencia,
         itemIds: itensTs.map((i) => i.id),
         metadata: {
+          ...metadataKit(kit),
           horas: rows.reduce((acc, r) => acc + r.horas, 0),
           linhas: rows.length,
           linhas_ocultas: ocultas.length,
@@ -748,7 +767,7 @@ export default function ComposicaoDaFaturaList() {
     const registro = await gerarERegistrarDocumento({
       tipo: 'nota_debito',
       bytes,
-      nomeArquivo: `Nota-de-debito${numeroDocumento ? `-n${numeroDocumento}` : ''}-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}.pdf`,
+      nomeArquivo: `Nota-de-debito${numeroDocumento ? `-n${numeroDocumento}` : ''}-${anoMes(kit.competencia)}${kit.caso_numero ? `-caso-${kit.caso_numero}` : ''}${sufixoKit(kit)}.pdf`,
       casoId: kit.caso_id,
       contratoId: kit.contrato_id,
       competencia: kit.competencia,
@@ -756,6 +775,7 @@ export default function ComposicaoDaFaturaList() {
       // vencimento_override: o mesmo campo que a emit-nfse grava; é o que
       // finance.vencimento_para_nota lê ao criar a conta a receber da ND.
       metadata: {
+        ...metadataKit(kit),
         valor_total: kit.valor_despesa,
         arquivo_baixado: nomeArquivo,
         ...(vencimento ? { vencimento_override: vencimento } : {}),
@@ -834,6 +854,7 @@ export default function ComposicaoDaFaturaList() {
         p_contrato_id: kit.contrato_id,
         p_caso_id: kit.caso_id,
         p_competencia: kit.competencia,
+        ...paramSequencia(kit),
       })
       if (e) { toastError(e.message); return }
       const dados = (data ?? {}) as {
@@ -872,7 +893,10 @@ export default function ComposicaoDaFaturaList() {
       const supabase = createClient()
       const destinatarios = para.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
       const { data, error: e } = await supabase.functions.invoke('enviar-fatura', {
-        body: { contrato_id: kit.contrato_id, caso_id: kit.caso_id, competencia: kit.competencia, assunto, corpo, destinatarios },
+        body: {
+          contrato_id: kit.contrato_id, caso_id: kit.caso_id, competencia: kit.competencia, assunto, corpo, destinatarios,
+          ...(sequenciaDoKit(kit) > 1 ? { kit_sequencia: sequenciaDoKit(kit) } : {}),
+        },
       })
       const resposta = data as { enviado?: boolean; destinatarios?: string[]; anexos?: string[]; error?: string } | null
       if (e || resposta?.error || !resposta?.enviado) {
@@ -903,6 +927,7 @@ export default function ComposicaoDaFaturaList() {
       p_caso_id: kit.caso_id,
       p_competencia: kit.competencia,
       p_obs: obs,
+      ...paramSequencia(kit),
     })
     if (e) throw new Error(e.message)
     const r = data as { ok?: boolean; motivo?: string; error?: string } | null
@@ -912,7 +937,8 @@ export default function ComposicaoDaFaturaList() {
   const finalizarKit = (kit: KitCaso) => executar(kit, 'finalizar', async () => {
     const ok = window.confirm(
       `Finalizar o faturamento de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)})?\n\n` +
-      'Marca o kit como finalizado (baixa manual). Nada é emitido nem enviado; dá para reabrir.',
+      'Marca o kit como finalizado (baixa manual). Nada é emitido nem enviado; dá para reabrir.\n\n' +
+      'O kit fica com o que tem agora: lançamento aprovado depois aparece à parte, para decidir.',
     )
     if (!ok) return
     try {
@@ -932,6 +958,7 @@ export default function ComposicaoDaFaturaList() {
         p_contrato_id: kit.contrato_id,
         p_caso_id: kit.caso_id,
         p_competencia: kit.competencia,
+        ...paramSequencia(kit),
       })
       if (e) { toastError(e.message); return }
       const r = data as { ok?: boolean; motivo?: string; error?: string } | null
@@ -984,13 +1011,13 @@ export default function ComposicaoDaFaturaList() {
       const { supabase, userId } = await sessao()
       const { data, error: e } = await supabase.rpc('excluir_kits', {
         p_user_id: userId,
-        p_kits: kits.map((k) => ({ contrato_id: k.contrato_id, caso_id: k.caso_id, competencia: k.competencia })),
+        p_kits: kits.map((k) => ({ contrato_id: k.contrato_id, caso_id: k.caso_id, competencia: k.competencia, kit_sequencia: sequenciaDoKit(k) })),
       })
       if (e) { toastError(e.message); return }
       const r = (data ?? {}) as {
         ok?: boolean
         devolvidos?: number
-        recusados?: Array<{ caso_id: string | null; competencia: string; motivo: string | null }>
+        recusados?: Array<{ caso_id: string | null; competencia: string; kit_sequencia?: number | null; motivo: string | null }>
         motivo?: string
       }
       if (r.ok === false && !r.devolvidos) { toastError(r.motivo || 'Não foi possível devolver os kits.'); return }
@@ -998,7 +1025,10 @@ export default function ComposicaoDaFaturaList() {
       if ((r.devolvidos ?? 0) > 0) success(`${r.devolvidos} kit(s) devolvido(s) para a revisão.`)
       if (recusados.length) {
         const nomes = recusados.map((rec) => {
-          const kit = kits.find((k) => (k.caso_id ?? null) === (rec.caso_id ?? null) && k.competencia.slice(0, 7) === String(rec.competencia).slice(0, 7))
+          const kit = kits.find((k) =>
+            (k.caso_id ?? null) === (rec.caso_id ?? null) &&
+            k.competencia.slice(0, 7) === String(rec.competencia).slice(0, 7) &&
+            sequenciaDoKit(k) === Number(rec.kit_sequencia ?? 1))
           return `${kit ? labelCaso(kit) : rec.caso_id ?? 'sem caso'}${rec.motivo ? ` (${rec.motivo})` : ''}`
         })
         toastError(`${recusados.length} kit(s) recusado(s): ${nomes.join('; ')}`)
@@ -1033,6 +1063,7 @@ export default function ComposicaoDaFaturaList() {
         p_caso_id: kit.caso_id,
         p_contrato_id: kit.contrato_id,
         p_competencia: kit.competencia,
+        ...paramSequencia(kit),
       })
       if (e) { toastError(e.message); return }
       const r = data as { ok?: boolean; itens_devolvidos?: number; motivo?: string | null }
@@ -1041,6 +1072,57 @@ export default function ComposicaoDaFaturaList() {
       await recarregar()
     } catch (e) {
       toastError(e instanceof Error ? e.message : 'Erro ao excluir o kit.')
+    }
+  })
+
+  // ── Aprovados depois de finalizar (Filipe 16/10) ─────────────────────
+  // O kit finalizado não muda; o bloco à parte espera uma destas decisões.
+  // Tudo numa RPC (decidir_lancamentos_pos_kit): unificar reabre o kit (a
+  // RPC recusa com NFS-e autorizada/processando ou boleto vivo), separar cria
+  // o kit seguinte do caso+mês e postergar usa as RPCs de postergar de sempre.
+  const decidirPosFinalizacao = (kit: KitCaso, acao: DecisaoPosFinalizacao) => executar(kit, `pos:${acao}`, async () => {
+    const bloco = kit.pos_finalizacao
+    if (!bloco) return
+    const proximo = labelCompetencia(somarMeses(kit.competencia, 1))
+    const qtd = `${bloco.itens_count} lançamento(s) (${formatMoney(bloco.valor_total)})`
+    if (acao === 'unificar' && !bloco.pode_unificar) {
+      toastError(`${bloco.motivo_nao_unificar ?? 'Kit bloqueado'}: não dá para unificar. Fature separado ou postergue.`)
+      return
+    }
+    const texto: Record<DecisaoPosFinalizacao, string> = {
+      unificar:
+        `Unificar ${qtd} no kit de ${labelCaso(kit)}?\n\n` +
+        'O kit é reaberto e passa a ter tudo. Gere de novo os documentos que já saíram e finalize outra vez.',
+      separar:
+        `Faturar ${qtd} separado?\n\n` +
+        `Vira um kit próprio de ${labelCaso(kit)} em ${labelCompetencia(kit.competencia)}, com relatório, NFS-e e boleto dele. O kit finalizado não muda.`,
+      postergar:
+        `Postergar ${qtd} para ${proximo}?\n\n` +
+        'Saem desta competência e voltam na fila do mês seguinte. O kit finalizado não muda.',
+    }
+    if (!window.confirm(texto[acao])) return
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('decidir_lancamentos_pos_kit', {
+        p_user_id: userId,
+        p_contrato_id: kit.contrato_id,
+        p_caso_id: kit.caso_id,
+        p_competencia: kit.competencia,
+        p_acao: acao,
+      })
+      if (e) { toastError(e.message); return }
+      const r = (data ?? {}) as {
+        ok?: boolean; motivo?: string | null; kit_sequencia?: number
+        postergados?: number; falhas?: Array<{ motivo: string }>
+      }
+      if (!r.ok) { toastError(r.motivo || 'Não foi possível concluir.'); return }
+      if (acao === 'unificar') success('Lançamentos unificados: o kit foi reaberto.')
+      else if (acao === 'separar') success(`Kit ${r.kit_sequencia ?? 'novo'} criado com os lançamentos novos.`)
+      else success(`${r.postergados ?? 0} lançamento(s) postergado(s) para ${proximo}.`)
+      if (r.falhas?.length) toastError(`${r.falhas.length} não postergado(s): ${r.falhas.map((f) => f.motivo).join('; ')}`)
+      await recarregar()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Erro ao decidir os lançamentos novos.')
     }
   })
 
@@ -1053,6 +1135,11 @@ export default function ComposicaoDaFaturaList() {
       }
       if (nfseConjuntaViva(kit)) {
         notify('Este kit está coberto por uma NFS-e conjunta do contrato. Para emitir outra, cancele a conjunta em Notas geradas.')
+        return
+      }
+      // A emissão cobre um kit do caso+mês por vez (16/10): o anterior primeiro.
+      if (kit.nfse_aguarda_kit_anterior) {
+        notify('Emita antes a NFS-e do kit anterior deste caso: a nota cobre um kit por vez.')
         return
       }
       abrirNfseDoKit(kit)
@@ -1070,6 +1157,7 @@ export default function ComposicaoDaFaturaList() {
     onExcluir: (kit) => void excluirKit(kit),
     onFinalizar: (kit) => void finalizarKit(kit),
     onReabrir: (kit) => void reabrirKit(kit),
+    onDecidirPosFinalizacao: (kit, acao) => void decidirPosFinalizacao(kit, acao),
     selecionados,
     onSelecionar: (kit, marcar) => setSelecionados((atual) => {
       const novo = new Set(atual)

@@ -58,10 +58,12 @@ Deno.serve(async (req) => {
     if (userError || !user) return json({ error: "Invalid token" }, 401)
 
     const body = await req.json().catch(() => ({}))
-    const { contrato_id, caso_id, competencia, assunto, corpo, destinatarios } = body as {
+    const { contrato_id, caso_id, competencia, assunto, corpo, destinatarios, kit_sequencia } = body as {
       contrato_id?: string
       caso_id?: string | null
       competencia?: string | null
+      // Kit separado (Filipe 16/10): os anexos são os documentos desse kit.
+      kit_sequencia?: number | null
       assunto?: string
       corpo?: string
       destinatarios?: string[]
@@ -84,7 +86,10 @@ Deno.serve(async (req) => {
     const { data: dados, error: dadosErr } = await supabase.rpc(
       "get_dados_envio_fatura",
       porKit
-        ? { p_user_id: user.id, p_contrato_id: contrato_id, p_caso_id: caso_id ?? null, p_competencia: competenciaNorm }
+        ? {
+            p_user_id: user.id, p_contrato_id: contrato_id, p_caso_id: caso_id ?? null, p_competencia: competenciaNorm,
+            ...(Number(kit_sequencia) > 1 ? { p_kit_sequencia: Number(kit_sequencia) } : {}),
+          }
         : { p_user_id: user.id, p_contrato_id: contrato_id },
     )
     if (dadosErr) return json({ error: dadosErr.message }, 403)

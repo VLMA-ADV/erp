@@ -56,6 +56,8 @@ export interface IdentidadeDocumento {
   /** 'YYYY-MM-01' (ou 'YYYY-MM…'). */
   competencia: string
   pagadorClienteId?: string | null
+  /** Kit separado (Filipe 16/10): número próprio. 1/ausente = kit de sempre. */
+  kitSequencia?: number
 }
 
 /** RPC ainda não aplicada no banco: o documento sai sem número, como antes. */
@@ -96,6 +98,8 @@ export async function reservarNumeroDocumento(
     p_tipo: doc.tipo,
     p_pagador_cliente_id: doc.pagadorClienteId ?? null,
     p_reservar: opcoes.reservar ?? true,
+    // Só manda no kit separado: o kit 1 chama como sempre.
+    ...(doc.kitSequencia && doc.kitSequencia > 1 ? { p_kit_sequencia: doc.kitSequencia } : {}),
   })
   if (error) {
     if (rpcAusente(error)) return null
