@@ -387,7 +387,7 @@ GRANT EXECUTE ON FUNCTION public.reabrir_kit(uuid, uuid, uuid, date, integer) TO
 -- p_acao: 'unificar' (reabre o último kit congelado do grupo — mesma trava
 -- do reabrir), 'separar' (cria o kit N+1, aberto, que recebe os itens) ou
 -- 'postergar' (manda cada item para a competência seguinte pelas RPCs de
--- postergar de sempre; despesa pelo periodo_faturamento, como o timesheet).
+-- postergar de sempre; despesa por postergar_despesa).
 CREATE OR REPLACE FUNCTION public.decidir_lancamentos_pos_kit(p_user_id uuid, p_contrato_id uuid, p_caso_id uuid,
                                                               p_competencia date, p_acao text)
  RETURNS jsonb
@@ -478,16 +478,10 @@ BEGIN
       IF r.origem_tipo = 'timesheet' THEN
         PERFORM public.postergar_timesheet(p_user_id, r.origem_id, v_proxima);
       ELSIF r.origem_tipo = 'despesa' THEN
-        -- Não existe postergar_despesa: mesmo efeito do postergar_timesheet
-        -- (sai da fatura atual e volta na fila do mês seguinte, que filtra
-        -- despesa por COALESCE(periodo_faturamento, data_lancamento)).
-        UPDATE finance.billing_items
-           SET status = 'cancelado', grupo_id = NULL, updated_at = now(), updated_by = p_user_id
-         WHERE id = r.id AND status = 'aprovado';
-        IF NOT FOUND THEN RAISE EXCEPTION 'Despesa já faturada não pode ser postergada'; END IF;
-        UPDATE operations.despesas
-           SET periodo_faturamento = v_proxima, updated_at = now(), updated_by = p_user_id
-         WHERE id = r.origem_id AND tenant_id = v_tenant;
+        -- postergar_despesa (#460) também devolve a despesa a 'em_lancamento';
+        -- só cancelar o item deixaria o trigger marcá-la 'cancelado' e ela
+        -- sumiria da fila do mês seguinte.
+        PERFORM public.postergar_despesa(p_user_id, r.origem_id, v_proxima);
       ELSE
         PERFORM public.postergar_item_regra(
           p_user_id, r.caso_id, r.origem_id,
