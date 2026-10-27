@@ -37,6 +37,7 @@ import {
   formatMoney,
   isoHoje,
   kitSoDespesas,
+  boletoEmitido,
   labelCaso,
   labelCompetencia,
   labelCompetenciaCurta,
@@ -708,6 +709,17 @@ export default function ComposicaoDaFaturaList() {
       // pagador" depois do total, como o relatório de timesheet. Sem rateio,
       // nada muda. A conta a receber/boleto da ND continuam um só.
       pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
+      // Kit só de despesas: a ND cria a conta a receber do boleto, então o
+      // vencimento se escolhe aqui (Filipe 16/10: "não deixa mudar o
+      // vencimento"). Com boleto vivo ou conta baixada, registrar_documento_kit
+      // mantém a conta antiga — o campo fica travado com o motivo.
+      vencimentoEditavel: kitSoDespesas(kit) && kit.boleto_base === 'nota_debito',
+      vencimentoInicial: kit.conta_receber?.vencimento ?? null,
+      vencimentoTravadoMotivo: boletoEmitido(kit.documentos.boleto)
+        ? 'O boleto já está registrado no banco: para mudar o vencimento, cancele o boleto antes.'
+        : kit.conta_receber && (kit.conta_receber.pago_em || ['pago', 'recebido'].includes(kit.conta_receber.status))
+          ? 'A conta a receber desta nota já foi baixada.'
+          : null,
       itens: despesas.map((i) => ({
         data_lancamento: i.despesa?.data ?? i.data_referencia ?? '',
         categoria: i.despesa?.categoria ?? '',
@@ -725,7 +737,12 @@ export default function ComposicaoDaFaturaList() {
     return reservarNumeroDocumento(identidadeNotaDebito(kit))
   }
 
-  const registrarNotaDebito = async (bytes: Uint8Array, nomeArquivo: string, numeroDocumento?: number | null) => {
+  const registrarNotaDebito = async (
+    bytes: Uint8Array,
+    nomeArquivo: string,
+    numeroDocumento?: number | null,
+    vencimento?: string | null,
+  ) => {
     const kit = notaKit
     if (!kit) return
     const registro = await gerarERegistrarDocumento({
@@ -736,7 +753,13 @@ export default function ComposicaoDaFaturaList() {
       contratoId: kit.contrato_id,
       competencia: kit.competencia,
       itemIds: kit.itens.filter((i) => i.origem_tipo === 'despesa').map((i) => i.id),
-      metadata: { valor_total: kit.valor_despesa, arquivo_baixado: nomeArquivo },
+      // vencimento_override: o mesmo campo que a emit-nfse grava; é o que
+      // finance.vencimento_para_nota lê ao criar a conta a receber da ND.
+      metadata: {
+        valor_total: kit.valor_despesa,
+        arquivo_baixado: nomeArquivo,
+        ...(vencimento ? { vencimento_override: vencimento } : {}),
+      },
     })
     // 07/10: num kit só de despesas a RPC cria a conta a receber junto
     // (lancamento_id) — é sobre ela que o boleto sai. `aviso` vem quando a

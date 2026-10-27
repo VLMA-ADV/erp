@@ -64,6 +64,21 @@ export interface NotaDespesaData {
    * nota de sempre. Ver divisaoDaNota em lib/utils/nota-despesa-pdf.ts.
    */
   pagadores?: PagadorRelatorio[] | null
+  /**
+   * Kit só de despesas (Filipe 16/10: "não deixa mudar o vencimento"): a ND é
+   * quem cria a conta a receber do boleto, então a prévia ganha o campo de
+   * vencimento — como o "Vencimento do boleto" da prévia da NFS-e. Sem isto
+   * (kit com serviço, outras telas) o vencimento é só o impresso.
+   */
+  vencimentoEditavel?: boolean
+  /**
+   * Vencimento que o campo já traz (ISO): o da conta a receber atual. Sem
+   * isso, "Gerar de novo" sem mexer no campo recriaria a conta pela regra e
+   * perderia a data escolhida antes.
+   */
+  vencimentoInicial?: string | null
+  /** Por que o vencimento não muda mais (boleto vivo ou conta já baixada). */
+  vencimentoTravadoMotivo?: string | null
 }
 
 function money(v: number) {
@@ -180,7 +195,13 @@ export default function NotaDespesaPreview({
    * A Composição da fatura usa para REGISTRAR o documento no kit (Filipe,
    * 21/09, D12-a); as outras telas seguem só baixando.
    */
-  onGerado?: (bytes: Uint8Array, nomeArquivo: string, numeroDocumento?: number | null) => Promise<void> | void
+  onGerado?: (
+    bytes: Uint8Array,
+    nomeArquivo: string,
+    numeroDocumento?: number | null,
+    /** Vencimento escolhido na prévia (ISO); null = regra do caso/contrato. */
+    vencimento?: string | null,
+  ) => Promise<void> | void
   /**
    * Reserva o nº do documento ANTES de montar o PDF (ele sai impresso). Só a
    * Composição passa — é quem registra. Regerar a mesma nota devolve o mesmo nº.
@@ -190,11 +211,24 @@ export default function NotaDespesaPreview({
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   // Número reservado ao montar o PDF: a prévia passa a mostrá-lo também.
   const [numeroReservado, setNumeroReservado] = useState<string | null>(null)
-  useEffect(() => { setNumeroReservado(null) }, [data])
-  const html = useMemo(
-    () => (data ? buildNotaHtml(numeroReservado ? { ...data, documentoNumero: numeroReservado } : data) : ''),
-    [data, numeroReservado],
-  )
+  // Vazio = regra de sempre (vencimento_para_nota: dia de pagamento do caso
+  // ou +7 dias). Preenchido, sai impresso na nota e vai como
+  // vencimento_override para a conta a receber/boleto, igual à NFS-e.
+  const [vencimentoEscolhido, setVencimentoEscolhido] = useState('')
+  useEffect(() => {
+    setNumeroReservado(null)
+    setVencimentoEscolhido((data?.vencimentoInicial || '').slice(0, 10))
+  }, [data])
+  const podeEscolherVencimento = !!data?.vencimentoEditavel && !data?.vencimentoTravadoMotivo
+  const vencimentoValido = podeEscolherVencimento && /^\d{4}-\d{2}-\d{2}$/.test(vencimentoEscolhido) ? vencimentoEscolhido : null
+  const dataComAjustes = useMemo(() => {
+    if (!data) return null
+    let d = data
+    if (vencimentoValido) d = { ...d, vencimento: vencimentoValido }
+    if (numeroReservado) d = { ...d, documentoNumero: numeroReservado }
+    return d
+  }, [data, numeroReservado, vencimentoValido])
+  const html = useMemo(() => (dataComAjustes ? buildNotaHtml(dataComAjustes) : ''), [dataComAjustes])
   const { error: toastError, success } = useToast()
   const [montando, setMontando] = useState(false)
 
@@ -213,7 +247,7 @@ export default function NotaDespesaPreview({
     try {
       // Nº do documento primeiro: sem ele o PDF registrado sairia sem número.
       let numeroDocumento: number | null = null
-      let dataPdf = data
+      let dataPdf = vencimentoValido ? { ...data, vencimento: vencimentoValido } : data
       if (reservarNumero) {
         try {
           numeroDocumento = await reservarNumero()
@@ -222,7 +256,7 @@ export default function NotaDespesaPreview({
           return
         }
         if (numeroDocumento) {
-          dataPdf = { ...data, documentoNumero: String(numeroDocumento) }
+          dataPdf = { ...dataPdf, documentoNumero: String(numeroDocumento) }
           setNumeroReservado(String(numeroDocumento))
         }
       }
@@ -264,7 +298,7 @@ export default function NotaDespesaPreview({
       // já tem o arquivo na mão e o erro aparece separado.
       if (onGerado) {
         try {
-          await onGerado(bytes, nomeArquivo, numeroDocumento)
+          await onGerado(bytes, nomeArquivo, numeroDocumento, vencimentoValido)
         } catch (e) {
           console.error('registrar nota de débito', e)
           toastError(e instanceof Error ? e.message : 'O PDF foi baixado, mas não foi possível registrá-lo no kit.')
@@ -312,6 +346,25 @@ export default function NotaDespesaPreview({
               ? 'Não foi possível localizar as despesas de origem: o PDF sai sem comprovantes. Feche e tente de novo; se persistir, baixe os arquivos pela tela de Despesas.'
               : `${despesasSemOrigem} de ${data?.itens.length} despesa(s) sem origem localizada — o PDF sai só com os comprovantes das demais.`}
           </p>
+        ) : null}
+        {data?.vencimentoEditavel ? (
+          <div className="flex flex-wrap items-end gap-3 rounded-md border border-hairline bg-canvas-soft px-3 py-2 text-sm">
+            <label className="space-y-1">
+              <span className="block text-xs text-ink-mute">Vencimento do boleto</span>
+              <input
+                type="date"
+                value={vencimentoEscolhido}
+                onChange={(e) => setVencimentoEscolhido(e.target.value)}
+                disabled={!podeEscolherVencimento || montando}
+                className="rounded-md border px-2 py-1"
+              />
+            </label>
+            <p className="max-w-md text-xs text-ink-mute">
+              {data.vencimentoTravadoMotivo
+                ? data.vencimentoTravadoMotivo
+                : 'Vazio mantém a regra do caso (dia de pagamento ou 7 dias). A data escolhida sai na nota e na conta a receber ao baixar o PDF.'}
+            </p>
+          </div>
         ) : null}
         <div className="rounded-md border bg-white">
           <iframe
