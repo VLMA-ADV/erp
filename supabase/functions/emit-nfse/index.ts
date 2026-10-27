@@ -29,12 +29,15 @@ function isoBrt(secondsAgo: number = 60): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}-03:00`
 }
 
+// Texto igual ao da prévia (nfse-preview-dialog): alíquotas nominais 0,1%/0,9%,
+// validadas pelo contador em 27/10. As efetivas (0,07/0,63) saem nos campos
+// fiscais de IBS/CBS da DANFSe, calculadas pelo processamento nacional.
 const DESCRICAO_FIXA = [
   "Honorários Advocatícios",
   "Pagamento conforme boleto bancário em anexo",
   "Dados bancários: Banco Itaú (341) - Ag. 3835 - C/C 31141-0",
   "Pix/CNPJ: 14.491.612/0001-39",
-  "Conforme Lei 12.741/2012 o valor aproximado dos tributos é 14,53%. Em atendimento à Reforma Tributária (LC 214/2025), nesta operação são informados 0,07% a título de IBS e 0,63% a título de CBS para fins de obrigação acessória no ano-teste de 2026.",
+  "Conforme Lei 12.741/2012 o valor aproximado dos tributos é 14,53%. Em atendimento à Reforma Tributária (LC 214/2025), nesta operação são informados 0,1% a título de IBS e 0,9% a título de CBS para fins de obrigação acessória no ano-teste de 2026.",
 ].join("\n")
 
 // IBS/CBS — Reforma Tributária (LC 214/2025), pedido Filipe 12/08.
