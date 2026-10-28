@@ -136,10 +136,12 @@ Deno.serve(async (req) => {
       .eq("tenant_id", tenantId)
     if (updError) return jsonResponse({ error: updError.message }, 500)
 
-    // Cancelar a nota devolve os itens para revisao. Sem isto eles ficavam em
-    // 'faturado' — estado final — e o caso travava: sem nota valida e sem como
-    // refazer (Filipe, 03/09). Se falhar, a nota ja foi cancelada e o resultado
-    // avisa, em vez de fingir que deu tudo certo.
+    // Cancelar a nota libera o kit para emitir de novo: os itens voltam de
+    // 'faturado' para 'aprovado' e o kit fica na Composicao como Pendente.
+    // Antes eles voltavam para a revisao (Filipe, 03/09); desde Filipe 16/10
+    // voltar para a revisao e so pelo "Devolver para revisao" do kit. A RPC
+    // mantem o nome antigo (migration 20261028110000). Se falhar, a nota ja
+    // foi cancelada e o resultado avisa, em vez de fingir que deu tudo certo.
     const { data: devolucao, error: devErro } = await supabase.rpc("bol_devolver_itens_da_nota", {
       p_user_id: user.id,
       p_nota_id: nota.id,
@@ -152,7 +154,7 @@ Deno.serve(async (req) => {
       focus_response: focusCancel,
       itens_devolvidos: devErro ? null : devolucao,
       aviso_devolucao: devErro
-        ? "Nota cancelada, mas os itens não voltaram para revisão. Avise o suporte."
+        ? "Nota cancelada, mas o kit não foi liberado para emitir de novo. Avise o suporte."
         : undefined,
     }, 200)
   } catch (e) {
