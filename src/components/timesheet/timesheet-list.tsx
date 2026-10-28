@@ -58,7 +58,7 @@ interface ContratoItem {
   cliente_nome?: string
   nome_contrato: string
   status?: string
-  casos?: Array<{ id: string; numero?: number; nome: string }>
+  casos?: Array<{ id: string; numero?: number; nome: string; status?: string }>
 }
 
 interface FormState {
@@ -224,14 +224,18 @@ export default function TimesheetList() {
     return contratos
       .filter((c) => c.cliente_id === form.cliente_id)
       .flatMap((contrato) =>
-        (contrato.casos || []).map((caso) => ({
-          ...caso,
-          contrato_id: contrato.id,
-          contrato_nome: contrato.nome_contrato,
-          contrato_numero: contrato.numero,
-        })),
+        (contrato.casos || [])
+          // Caso inativo não recebe lançamento (Filipe 28/10); só continua na
+          // lista quando é o caso do lançamento que está sendo editado.
+          .filter((caso) => caso.status !== 'inativo' || caso.id === form.caso_id)
+          .map((caso) => ({
+            ...caso,
+            contrato_id: contrato.id,
+            contrato_nome: contrato.nome_contrato,
+            contrato_numero: contrato.numero,
+          })),
       )
-  }, [contratos, form.cliente_id])
+  }, [contratos, form.cliente_id, form.caso_id])
 
   const filterCaseOptions = useMemo(() => {
     const fonte = filterClienteId ? contratos.filter((c) => c.cliente_id === filterClienteId) : contratos
