@@ -12,10 +12,13 @@ import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
 import { gerarRelatorioTimesheetPdf, type ImpostosRelatorio, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
 import { parametrosQuadroImpostos, quadroImpostosDoKit, type RespostaQuadroImpostos } from './composicao/quadro-impostos-kit'
 import { assinarFotosColaboradores } from '@/lib/utils/foto-colaborador'
-import { abrirDocumentoDoKit, gerarERegistrarDocumento, registrarRelatorioConsolidado, reservarNumeroDocumento } from '@/lib/faturamento/documentos-kit'
+import {
+  abrirDocumentoDoKit, gerarERegistrarDocumento, registrarNotasDebitoRateio, registrarRelatorioConsolidado, reservarNumeroDocumento,
+} from '@/lib/faturamento/documentos-kit'
 import { kitTemNumeroDocumento } from '@/lib/faturamento/numero-documento'
 import { competenciaAtual, lerCompetenciaSalva, salvarCompetencia, somarMeses } from '@/lib/faturamento/competencia'
-import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
+import NotaDespesaPreview, { type NotaDebitoGerada, type NotaDespesaData } from './nota-despesa-preview'
+import { divisaoPorPagador } from '@/lib/utils/timesheet-report-pdf'
 import FaturaEmailPreview, { type FaturaEmailData } from './fatura-email-preview'
 import NfsePreviewDialog, { type AjustesDaNota } from './nfse-preview-dialog'
 import BarraFiltros from './composicao/filtros-composicao'
@@ -45,6 +48,8 @@ import {
   labelCompetenciaCurta,
   montarAbasCompetencia,
   nfseConjuntaViva,
+  notasDebitoDoKit,
+  pagadoresDoRateioDespesas,
   paramSequencia,
   sequenciaDoKit,
   temFiltroAlemDaCompetencia,
@@ -509,10 +514,14 @@ export default function ComposicaoDaFaturaList() {
   // sempre.
   const emitirBoleto = (kit: KitCaso, notaId?: string) => executar(kit, notaId ? `boleto:${notaId}` : 'boleto', async () => {
     const notaAlvo = notaId ? (kit.documentos.nfses ?? []).find((n) => n.id === notaId) ?? null : null
-    if (notaId && !notaAlvo) { toastError('Nota não encontrada neste kit — atualize a tela.'); return }
+    // Rateio das despesas (29/10): boleto sobre a ND daquele pagador.
+    const ndAlvo = notaId && !notaAlvo ? notasDebitoDoKit(kit).find((n) => n.id === notaId) ?? null : null
+    if (notaId && !notaAlvo && !ndAlvo) { toastError('Nota não encontrada neste kit — atualize a tela.'); return }
     const base: ReturnType<typeof documentoBaseDoBoleto> = notaAlvo
       ? { base: 'nfse', notaId: notaAlvo.id }
-      : documentoBaseDoBoleto(kit)
+      : ndAlvo
+        ? { base: 'nota_debito', notaId: ndAlvo.id }
+        : documentoBaseDoBoleto(kit)
     if (!base) {
       if (kitSoDespesas(kit) && kit.boleto_base !== undefined) {
         notify(kit.documentos.nota_debito
@@ -544,6 +553,7 @@ export default function ComposicaoDaFaturaList() {
       const ok = window.confirm(
         `Registrar boleto no Itaú?\n\n${info.descricao}\n${formatMoney(info.valor || 0)} — vence ${venc}\n\n` +
         (notaAlvo ? `Boleto de ${notaAlvo.pagador?.nome || 'pagador'}, sobre a NFS-e dele (rateio: uma nota e um boleto por pagador).\n` : '') +
+        (ndAlvo ? `Boleto de ${ndAlvo.pagador?.nome || 'pagador'}, sobre a nota de débito dele (despesas divididas: uma nota e um boleto por pagador).\n` : '') +
         (base.base === 'nota_debito' ? 'Boleto só das despesas (kit sem nota fiscal), sobre a conta da nota de débito.\n' : '') +
         (conjunta ? 'A nota é conjunta: este boleto cobre todos os casos dela — não emita outro nos demais kits.\n' : '') +
         'O título passa a existir no banco e o cliente pode pagar.',
@@ -846,6 +856,14 @@ export default function ComposicaoDaFaturaList() {
     // despesas): a conta a receber da ND sai no nome dele
     // (criar_recebivel_da_nota_debito), então a nota é endereçada a ele.
     const pagadorAjustado = kit.ajustes_kit?.pagadores?.length === 1 ? kit.ajustes_kit.pagadores[0].nome : null
+    const pagadoresRateio = pagadoresDoRateioDespesas(kit)
+    const totalDespesas = despesas.reduce((acc, i) => acc + Number(i.valor || 0), 0)
+    const partes = pagadoresRateio
+      ? divisaoPorPagador(totalDespesas, '', pagadoresRateio.map((p) => ({ nome: p.nome, percentual: Number(p.percentual || 0) })))
+      : null
+    const rateioDespesas = pagadoresRateio && partes
+      ? pagadoresRateio.map((p, i) => ({ clienteId: p.cliente_id, nome: p.nome?.trim() || 'Pagador', percentual: partes[i].percentual, valor: partes[i].valor }))
+      : null
     const clienteNome = pagadorAjustado
       || payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome
       || ''
@@ -865,17 +883,20 @@ export default function ComposicaoDaFaturaList() {
       emissao: isoHoje(),
       vencimento: kit.documentos.boleto?.vencimento ?? kit.conta_receber?.vencimento ?? isoHoje(),
       despesaIds: despesas.map((i) => origemPorItem.get(i.id)).filter((v): v is string => !!v),
-      // Pagadores do kit: com rateio a nota (uma só) mostra a "Divisão por
-      // pagador" depois do total, como o relatório de timesheet. Sem rateio,
-      // nada muda. A conta a receber/boleto da ND continuam um só.
+      // Pagadores do kit: com rateio a nota mostra a "Divisão por pagador"
+      // depois do total, como o relatório de timesheet. Sem rateio, nada muda.
       pagadores: (kit.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) })),
+      // Kit só de despesas com vários pagadores (Filipe 29/10): uma ND, uma
+      // conta e um boleto por pagador. As partes saem da mesma divisão que o
+      // PDF imprime; registrar_notas_debito_rateio confere que fecham o total.
+      rateioPagadores: rateioDespesas,
       // Kit só de despesas: a ND cria a conta a receber do boleto, então o
       // vencimento se escolhe aqui (Filipe 16/10: "não deixa mudar o
       // vencimento"). Com boleto vivo ou conta baixada, registrar_documento_kit
       // mantém a conta antiga — o campo fica travado com o motivo.
       vencimentoEditavel: kitSoDespesas(kit) && kit.boleto_base === 'nota_debito',
       vencimentoInicial: kit.conta_receber?.vencimento ?? null,
-      vencimentoTravadoMotivo: boletoEmitido(kit.documentos.boleto)
+      vencimentoTravadoMotivo: boletoEmitido(kit.documentos.boleto) || notasDebitoDoKit(kit).some((n) => boletoEmitido(n.boleto))
         ? 'O boleto já está registrado no banco: para mudar o vencimento, cancele o boleto antes.'
         : kit.conta_receber && (kit.conta_receber.pago_em || ['pago', 'recebido'].includes(kit.conta_receber.status))
           ? 'A conta a receber desta nota já foi baixada.'
@@ -891,10 +912,33 @@ export default function ComposicaoDaFaturaList() {
 
   // Reserva do nº na hora de montar o PDF da nota (vai impresso). A prévia
   // chama isto antes de gerar os bytes; o registro abaixo grava o mesmo nº.
-  const reservarNumeroNotaDebito = async () => {
+  const reservarNumeroNotaDebito = async (pagadorClienteId?: string) => {
     const kit = notaKit
     if (!kit) return null
-    return reservarNumeroDocumento(identidadeNotaDebito(kit))
+    // Rateio: a numeração separa por pagador — cada ND tem o seu nº.
+    return reservarNumeroDocumento({ ...identidadeNotaDebito(kit), pagadorClienteId: pagadorClienteId ?? null })
+  }
+
+  // Rateio das despesas (Filipe 29/10): as NDs de todos os pagadores numa vez.
+  const registrarNotasDebitoDoRateio = async (notas: NotaDebitoGerada[], vencimento?: string | null) => {
+    const kit = notaKit
+    if (!kit || !kit.caso_id) return
+    const registradas = await registrarNotasDebitoRateio({
+      casoId: kit.caso_id,
+      contratoId: kit.contrato_id,
+      competencia: kit.competencia,
+      kitSequencia: sequenciaDoKit(kit),
+      itemIds: kit.itens.filter((i) => i.origem_tipo === 'despesa').map((i) => i.id),
+      notas,
+      metadata: {
+        valor_total: kit.valor_despesa,
+        ...(vencimento ? { vencimento_override: vencimento } : {}),
+      },
+    })
+    success(`${registradas.length} notas de débito registradas, uma por pagador, cada uma com a sua conta a receber — os boletos já podem ser emitidos.`)
+    setNotaData(null)
+    setNotaKit(null)
+    await recarregar()
   }
 
   const registrarNotaDebito = async (
@@ -1579,6 +1623,7 @@ export default function ComposicaoDaFaturaList() {
         data={notaData}
         reservarNumero={reservarNumeroNotaDebito}
         onGerado={registrarNotaDebito}
+        onGeradoRateio={registrarNotasDebitoDoRateio}
       />
 
       <FaturaEmailPreview
