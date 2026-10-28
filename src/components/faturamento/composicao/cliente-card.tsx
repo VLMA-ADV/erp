@@ -101,6 +101,12 @@ export interface AcoesKit {
    * separado ou postergar para o mês seguinte.
    */
   onDecidirPosFinalizacao: (kit: KitCaso, acao: DecisaoPosFinalizacao) => void
+  /**
+   * Filipe 28/10 (Gramarcal): faturar honorários e despesas em kits separados
+   * (pagador próprio para as despesas) e desfazer enquanto nada foi emitido.
+   */
+  onSepararDespesas: (kit: KitCaso) => void
+  onUnirDespesas: (kit: KitCaso) => void
   /** Seleção em massa (6.1): chaves dos kits marcados. */
   selecionados: ReadonlySet<string>
   onSelecionar: (kit: KitCaso, marcar: boolean) => void
@@ -350,7 +356,16 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
                 {finalizado ? <CheckCircle2 className="mr-1 h-3 w-3" /> : null}
                 {info.label}
               </Badge>
-              {sequenciaDoKit(kit) > 1 ? (
+              {kit.conteudo ? (
+                <Badge
+                  className="border-sky-200 bg-sky-50 text-sky-800"
+                  title={kit.conteudo === 'despesas'
+                    ? 'Só as despesas deste caso no mês: nota de débito e boleto próprios, com pagador próprio. Os honorários estão no outro kit.'
+                    : 'Só os honorários deste caso no mês: NFS-e e boleto sem as despesas, que estão no outro kit.'}
+                >
+                  {kit.conteudo === 'despesas' ? 'Despesas' : 'Honorários'}
+                </Badge>
+              ) : sequenciaDoKit(kit) > 1 ? (
                 <Badge
                   className="border-sky-200 bg-sky-50 text-sky-800"
                   title="Lançamentos aprovados depois de finalizar o kit anterior deste caso, faturados à parte (documentos próprios)."
@@ -728,6 +743,36 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
               </Button>
             </span>
           )}
+          {/* Padrão: honorários e despesas juntos. Separar só nas exceções
+              (Filipe 28/10); unir de novo enquanto nada foi emitido. */}
+          {/* Só aparece quando dá para separar: kit finalizado ou com documento
+              emitido (a maioria dos faturados) não ganha um botão morto. */}
+          {kit.pode_separar_despesas ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => acoes.onSepararDespesas(kit)}
+              disabled={ocupado('separar-despesas')}
+              title="Fatura as despesas num kit próprio (nota de débito e boleto, com pagador próprio); os honorários ficam neste."
+            >
+              {ocupado('separar-despesas') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Split className="mr-1.5 h-3.5 w-3.5" />}
+              Separar despesas
+            </Button>
+          ) : null}
+          {kit.conteudo ? (
+            <span title={kit.motivo_nao_unir ?? undefined}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => acoes.onUnirDespesas(kit)}
+                disabled={!kit.pode_unir_despesas || ocupado('unir-despesas')}
+                title={kit.motivo_nao_unir ?? 'Volta a faturar honorários e despesas num kit só.'}
+              >
+                {ocupado('unir-despesas') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Merge className="mr-1.5 h-3.5 w-3.5" />}
+                Unir de novo
+              </Button>
+            </span>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

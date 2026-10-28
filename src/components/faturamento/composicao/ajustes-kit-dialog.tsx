@@ -78,7 +78,13 @@ export default function AjustesKitDialog({
     return () => { cancelado = true }
   }, [kit])
 
-  const soma = pagadores.reduce((acc, p) => acc + (lerNumero(p.percentual) || 0), 0)
+  // Kit só de despesas separado dos honorários (Filipe 28/10, Gramarcal): a
+  // nota de débito gera um boleto só, então o pagador é um (100%), trocável.
+  // O cadastro do caso guarda os pagadores dos honorários — não se grava lá.
+  const kitDespesas = kit?.conteudo === 'despesas'
+  const soma = kitDespesas
+    ? (pagadores.length ? 100 : 0)
+    : pagadores.reduce((acc, p) => acc + (lerNumero(p.percentual) || 0), 0)
 
   const salvar = async () => {
     if (!kit || salvando) return
@@ -90,9 +96,10 @@ export default function AjustesKitDialog({
           .map((p) => ({
             cliente_id: p.cliente_id,
             nome: clientes.find((c) => c.id === p.cliente_id)?.nome ?? null,
-            percentual: lerNumero(p.percentual) || 0,
+            percentual: kitDespesas ? 100 : lerNumero(p.percentual) || 0,
           }))
       : []
+    if (kitDespesas && lista.length > 1) { setErro('O kit de despesas tem um pagador só (a nota de débito gera um boleto).'); return }
     if (kit.caso_id && lista.length === 0) { setErro('Informe ao menos um pagador.'); return }
     if (kit.caso_id && Math.abs(soma - 100) > 0.01) {
       setErro(`Os percentuais somam ${soma.toFixed(2)}%. Ajuste para 100% antes de salvar.`)
@@ -120,7 +127,7 @@ export default function AjustesKitDialog({
           grupo_imposto_id: grupoImpostoId || null,
           pagadores: lista.length ? lista : null,
         },
-        p_salvar_no_cadastro: salvarNoCadastro,
+        p_salvar_no_cadastro: kitDespesas ? false : salvarNoCadastro,
         // Kit separado (Filipe 16/10) tem os ajustes dele.
         ...paramSequencia(kit),
       })
@@ -144,6 +151,7 @@ export default function AjustesKitDialog({
           <DialogDescription>
             Vale só para este faturamento (competência {labelCompetencia(kit?.competencia)}). O cadastro do caso não muda.
             {kit && !kit.caso_id ? ' Sem caso: só o grupo de impostos pode ser alterado aqui.' : ''}
+            {kitDespesas ? ' Kit só de despesas: um pagador, que recebe a nota de débito e o boleto.' : ''}
           </DialogDescription>
         </DialogHeader>
 
@@ -165,16 +173,25 @@ export default function AjustesKitDialog({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-ink-mute">
-                    Pagadores — os percentuais precisam somar 100% (hoje: {soma.toFixed(2)}%)
+                    {kitDespesas
+                      ? 'Pagador das despesas (100%)'
+                      : `Pagadores — os percentuais precisam somar 100% (hoje: ${soma.toFixed(2)}%)`}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPagadores((l) => [...l, { cliente_id: '', percentual: '0' }])}
-                  >
-                    Incluir pagador
-                  </Button>
+                  {kitDespesas && pagadores.length >= 1 ? null : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPagadores((l) => [...l, { cliente_id: '', percentual: kitDespesas ? '100' : '0' }])}
+                    >
+                      Incluir pagador
+                    </Button>
+                  )}
                 </div>
+                {kitDespesas && pagadores.length > 1 ? (
+                  <p className="text-xs text-amber-800">
+                    Ficou mais de um pagador (vem do cadastro do caso). Deixe só o que paga as despesas.
+                  </p>
+                ) : null}
                 {pagadores.map((p, i) => (
                   <div key={i} className="flex flex-wrap items-center gap-2">
                     <NativeSelect
@@ -186,7 +203,8 @@ export default function AjustesKitDialog({
                       {clientes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                     </NativeSelect>
                     <input
-                      value={p.percentual}
+                      value={kitDespesas ? '100' : p.percentual}
+                      readOnly={kitDespesas}
                       onChange={(e) => setPagadores((l) => l.map((x, j) => (j === i ? { ...x, percentual: e.target.value } : x)))}
                       inputMode="decimal"
                       className="h-10 w-20 rounded-md border px-2 text-right"
@@ -200,15 +218,17 @@ export default function AjustesKitDialog({
               </div>
             ) : null}
 
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-secondary">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={salvarNoCadastro}
-                onChange={(e) => setSalvarNoCadastro(e.target.checked)}
-              />
-              Salvar também no cadastro do caso/contrato (vale para as próximas faturas)
-            </label>
+            {kitDespesas ? null : (
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-secondary">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={salvarNoCadastro}
+                  onChange={(e) => setSalvarNoCadastro(e.target.checked)}
+                />
+                Salvar também no cadastro do caso/contrato (vale para as próximas faturas)
+              </label>
+            )}
 
             {erro ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{erro}</p>
