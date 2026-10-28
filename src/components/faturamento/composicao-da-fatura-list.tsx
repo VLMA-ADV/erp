@@ -12,7 +12,7 @@ import { abrirFichaBoleto, copiarTexto } from '@/lib/utils/boleto-ficha'
 import { gerarRelatorioTimesheetPdf, type ImpostosRelatorio, type TimesheetPdfRow } from '@/lib/utils/timesheet-report-pdf'
 import { parametrosQuadroImpostos, quadroImpostosDoKit, type RespostaQuadroImpostos } from './composicao/quadro-impostos-kit'
 import { assinarFotosColaboradores } from '@/lib/utils/foto-colaborador'
-import { abrirDocumentoDoKit, gerarERegistrarDocumento, reservarNumeroDocumento } from '@/lib/faturamento/documentos-kit'
+import { abrirDocumentoDoKit, gerarERegistrarDocumento, registrarRelatorioConsolidado, reservarNumeroDocumento } from '@/lib/faturamento/documentos-kit'
 import { kitTemNumeroDocumento } from '@/lib/faturamento/numero-documento'
 import { competenciaAtual, lerCompetenciaSalva, salvarCompetencia, somarMeses } from '@/lib/faturamento/competencia'
 import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview'
@@ -24,6 +24,8 @@ import ChipsStatusKit from './composicao/chips-status-kit'
 import ResumoStatus from './composicao/resumo-status'
 import ClienteCard, { acaoKey, type AcoesKit } from './composicao/cliente-card'
 import AjustesKitDialog from './composicao/ajustes-kit-dialog'
+import RelatorioConsolidadoDialog from './composicao/relatorio-consolidado-dialog'
+import { ordemDoRegistro } from './composicao/relatorio-consolidado'
 import { mapearOrigemDasDespesas, parametrosBuscaOrigem } from './composicao/origem-despesas'
 import { linhasDoRelatorio } from './composicao/linhas-relatorio'
 import { avisoValorFixo, valorFixoDoKit, valorFixoParaPdf, valoresDasLinhasValorFixo } from './composicao/valor-fixo-relatorio'
@@ -106,6 +108,30 @@ const sufixoKit = (kit: KitCaso) => (sequenciaDoKit(kit) > 1 ? `-kit${sequenciaD
 /** metadata.kit_sequencia dos documentos do kit separado (registrar_documento_kit). */
 const metadataKit = (kit: KitCaso) => (sequenciaDoKit(kit) > 1 ? { kit_sequencia: sequenciaDoKit(kit) } : {})
 
+/**
+ * Linhas do relatório de timesheet de um kit, como o PDF as imprime (ver
+ * gerarRelatorio). `fotos` = fotos já assinadas (assinarFotosColaboradores).
+ */
+function linhasPdfDoKit(kit: KitCaso, outrosKits: KitCaso[], fotos: Map<string, string>) {
+  const { visiveis: linhas, ocultas, valorOculto } = linhasDoRelatorio(kit.itens)
+  const fixo = valorFixoDoKit(kit, outrosKits)
+  const valoresFixo = fixo ? valoresDasLinhasValorFixo(linhas) : null
+  const rows: TimesheetPdfRow[] = linhas
+    .map(({ item, l }, idx) => ({
+      data: l.data ?? item.data_referencia ?? '',
+      profissional: l.profissional ?? '',
+      cargo: l.cargo,
+      descricao: l.descricao ?? item.descricao,
+      horas: Number(l.horas || 0),
+      valorHora: l.valor_hora ?? null,
+      // Valor fixo: o valor do item de cobrança (excedente ou nada), não o da linha.
+      valor: valoresFixo ? valoresFixo[idx] : (l.valor ?? null),
+      fotoUrl: (l.foto_url && fotos.get(l.foto_url)) || null,
+    }))
+    .sort((a, b) => a.data.localeCompare(b.data))
+  return { linhas, rows, ocultas, valorOculto, fixo }
+}
+
 /** finance.kits.ajustes → AjustesDaNota (só o que a nota entende: grupo e pagadores). */
 function ajustesDoKitParaNota(kit: KitCaso | null): AjustesDaNota | null {
   const a = kit?.ajustes_kit
@@ -164,6 +190,7 @@ export default function ComposicaoDaFaturaList() {
 
   // Diálogos
   const [ajustesKit, setAjustesKit] = useState<KitCaso | null>(null)
+  const [consolidadoGrupo, setConsolidadoGrupo] = useState<KitCaso[] | null>(null)
   const [nfseAlvo, setNfseAlvo] = useState<AlvoNfse | null>(null)
   const [notaKit, setNotaKit] = useState<KitCaso | null>(null)
   const [notaData, setNotaData] = useState<NotaDespesaData | null>(null)
@@ -580,25 +607,12 @@ export default function ComposicaoDaFaturaList() {
     const fixo = valorFixoDoKit(kit, payload?.clientes.flatMap((c) => c.casos) ?? [])
     const avisoFixo = fixo ? avisoValorFixo(fixo) : null
     if (avisoFixo) notify(avisoFixo)
-    const valoresFixo = fixo ? valoresDasLinhasValorFixo(linhas) : null
     try {
       // Foto do profissional (Filipe, 28/09). A RPC devolve foto_url cru
       // (path no bucket privado); assina em lote e o PDF baixa uma vez por
       // profissional. Sem foto, o PDF desenha as iniciais.
       const fotos = await assinarFotosColaboradores(linhas.map(({ l }) => l.foto_url))
-      const rows: TimesheetPdfRow[] = linhas
-        .map(({ item, l }, idx) => ({
-          data: l.data ?? item.data_referencia ?? '',
-          profissional: l.profissional ?? '',
-          cargo: l.cargo,
-          descricao: l.descricao ?? item.descricao,
-          horas: Number(l.horas || 0),
-          valorHora: l.valor_hora ?? null,
-          // Valor fixo: o valor do item de cobrança (excedente ou nada), não o da linha.
-          valor: valoresFixo ? valoresFixo[idx] : (l.valor ?? null),
-          fotoUrl: (l.foto_url && fotos.get(l.foto_url)) || null,
-        }))
-        .sort((a, b) => a.data.localeCompare(b.data))
+      const { rows } = linhasPdfDoKit(kit, payload?.clientes.flatMap((c) => c.casos) ?? [], fotos)
       const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
       // Quadro "Impostos" por pagador (cliente, out/2026): valores da NFS-e
       // quando já emitida, estimados quando não. Se a RPC falhar, o relatório
@@ -674,6 +688,127 @@ export default function ComposicaoDaFaturaList() {
       toastError(e instanceof Error ? e.message : 'Não foi possível gerar o relatório.')
     }
   })
+
+  // ── Relatório consolidado do contrato (Filipe, 16/10) ─────────────────
+  // Os kits escolhidos num PDF só: uma seção por caso, o valor fixo no fim e
+  // o total geral. Um nº (o do contrato) e um registro por kit — ver
+  // composicao/relatorio-consolidado.ts.
+  const gerarRelatorioConsolidado = (escolhidos: KitCaso[]) => {
+    const primeiro = escolhidos[0]
+    if (!primeiro || escolhidos.length < 2) return
+    if (escolhidos.some((k) => k.contrato_id !== primeiro.contrato_id || k.competencia !== primeiro.competencia)) {
+      toastError('O relatório consolidado só junta casos do mesmo contrato e da mesma competência.')
+      return
+    }
+    return executarComChave(`consolidado:${primeiro.contrato_id}|${primeiro.competencia}`, async () => {
+      const todos = payload?.clientes.flatMap((c) => c.casos) ?? []
+      const kits = ordemDoRegistro(escolhidos)
+      // Na ordem do caso no PDF; a via principal só manda na ordem do registro.
+      const naOrdemDoCaso = [...kits].sort((a, b) => (a.caso_numero ?? 0) - (b.caso_numero ?? 0))
+      const escolhidosChaves = new Set(kits.map((k) => k.chave))
+      try {
+        const fotos = await assinarFotosColaboradores(
+          kits.flatMap((k) => linhasDoRelatorio(k.itens).visiveis.map(({ l }) => l.foto_url)),
+        )
+        let valorOculto = 0
+        const secoes = naOrdemDoCaso.map((kit) => {
+          const r = linhasPdfDoKit(kit, todos, fotos)
+          valorOculto += r.valorOculto
+          // Mensalidade da carteira cobrada noutro caso que também está no
+          // consolidado: a linha dela já sai lá, não repete aqui.
+          const fixo = r.fixo
+          const fixoNoOutro = fixo?.situacao === 'outro_caso'
+            && naOrdemDoCaso.some((k) => k.caso_numero === fixo.casoNumero && escolhidosChaves.has(k.chave))
+          return {
+            kit,
+            casoLabel: labelCaso(kit),
+            rows: r.rows,
+            valorFixo: r.fixo && !fixoNoOutro ? valorFixoParaPdf(r.fixo) : null,
+            itemIds: kit.itens.filter((i) => i.origem_tipo === 'timesheet').map((i) => i.id),
+          }
+        })
+        if (secoes.every((s) => s.rows.length === 0 && !s.valorFixo)) { notify('Estes kits não têm horas para relatar.'); return }
+        if (valorOculto > 0) {
+          notify(`Linhas fora do relatório (excluídas/ignoradas) somam ${formatMoney(valorOculto)} — esse valor não entra no total.`)
+        }
+        const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === primeiro.chave))?.nome ?? ''
+
+        // Quadro "Impostos": as NFS-e de cada kit, uma linha por nota e pagador.
+        let impostos: ImpostosRelatorio | null = null
+        try {
+          const { supabase, userId } = await sessao()
+          const linhasQuadro: ImpostosRelatorio['linhas'] = []
+          let grupoNome: string | null = null
+          for (const kit of naOrdemDoCaso) {
+            const { data: resp, error: errQuadro } = await supabase.rpc('get_quadro_impostos_kit', {
+              p_user_id: userId,
+              ...parametrosQuadroImpostos(kit),
+            })
+            if (errQuadro) throw errQuadro
+            const q = quadroImpostosDoKit(kit, resp as RespostaQuadroImpostos, {
+              contratoClienteId: payload?.opcoes.contratos.find((c) => c.id === kit.contrato_id)?.cliente_id ?? null,
+              nomePadrao: clienteNome || 'Cliente',
+            })
+            grupoNome = grupoNome ?? q?.grupoNome ?? null
+            for (const l of q?.linhas ?? []) linhasQuadro.push({ ...l, nome: `${l.nome} · caso ${kit.caso_numero ? `#${kit.caso_numero}` : kit.caso_nome}` })
+          }
+          impostos = linhasQuadro.length ? { linhas: linhasQuadro, grupoNome } : null
+        } catch (e) {
+          console.error('get_quadro_impostos_kit (consolidado)', e)
+          notify('Não foi possível montar o quadro de impostos — o relatório sai sem ele.')
+        }
+
+        // Pagadores no cabeçalho só quando todos os kits têm os mesmos.
+        const pagadoresDe = (k: KitCaso) => JSON.stringify((k.pagadores ?? []).map((p) => [p.nome, Number(p.percentual || 0)]))
+        const mesmosPagadores = kits.every((k) => pagadoresDe(k) === pagadoresDe(primeiro))
+
+        // Nº do contrato (caso vazio): registrar_relatorio_consolidado grava o mesmo.
+        const numeroDocumento = await reservarNumeroDocumento({
+          tipo: 'relatorio_timesheet',
+          casoId: null,
+          contratoId: primeiro.contrato_id,
+          competencia: primeiro.competencia,
+        })
+        const bytes = await gerarRelatorioTimesheetPdf({
+          titulo: 'Relatório de timesheet',
+          numeroDocumento,
+          cliente: clienteNome,
+          pagadores: mesmosPagadores
+            ? (primeiro.pagadores ?? []).map((pg) => ({ nome: pg.nome, percentual: Number(pg.percentual || 0) }))
+            : null,
+          contratoLabel: formatContratoDisplay(contratoNumeroExibicao(primeiro), primeiro.contrato_nome).full,
+          competenciaLabel: labelCompetenciaCurta(competenciaDoServico(primeiro.competencia, 'timesheet')),
+          mostrarValor: true,
+          rows: [],
+          secoes: secoes.map(({ casoLabel, rows, valorFixo }) => ({ casoLabel, rows, valorFixo })),
+          impostos,
+        })
+
+        const competencia = anoMes(primeiro.competencia)
+        const porKit = new Map(secoes.map((s) => [s.kit.chave, s]))
+        const { path, numero_documento } = await registrarRelatorioConsolidado({
+          bytes,
+          nomeArquivo: `Relatorio-timesheet${numeroDocumento ? `-n${numeroDocumento}` : ''}-${competencia}-contrato-${contratoNumeroExibicao(primeiro) ?? ''}-consolidado.pdf`,
+          contratoId: primeiro.contrato_id,
+          competencia: primeiro.competencia,
+          kits: kits.map((k) => ({ casoId: k.caso_id, kitSequencia: sequenciaDoKit(k), itemIds: porKit.get(k.chave)?.itemIds ?? [] })),
+          metadata: {
+            horas: secoes.reduce((acc, s) => acc + s.rows.reduce((a, r) => a + r.horas, 0), 0),
+            linhas: secoes.reduce((acc, s) => acc + s.rows.length, 0),
+            competencia_servico: competenciaDoServico(primeiro.competencia, 'timesheet'),
+          },
+        })
+        const n = numero_documento ?? numeroDocumento
+        success(`Relatório consolidado${n ? ` nº ${n}` : ''} gerado e registrado em ${kits.length} kits.`)
+        setConsolidadoGrupo(null)
+        await recarregar()
+        const abriu = await abrirDocumentoDoKit(path).catch(() => false)
+        if (!abriu) notify('O navegador bloqueou a aba — use o botão "Abrir" na linha do relatório.')
+      } catch (e) {
+        toastError(e instanceof Error ? e.message : 'Não foi possível gerar o relatório consolidado.')
+      }
+    })
+  }
 
   // ── Nota de débito ─────────────────────────────────────────────────────
   // A prévia/PDF é a NotaDespesaPreview de sempre (nota + comprovantes). Os
@@ -1227,6 +1362,7 @@ export default function ComposicaoDaFaturaList() {
       abrirNfseDoKit(kit)
     },
     onEmitirNotaUnica: (kits) => abrirNotaUnica(kits),
+    onRelatorioConsolidado: (kits) => setConsolidadoGrupo(kits),
     onAbrirUrl: (url) => void abrirUrl(url),
     onEmitirBoleto: (kit, notaId) => void emitirBoleto(kit, notaId),
     onVerBoleto: (id) => void verBoleto(id),
@@ -1404,6 +1540,12 @@ export default function ComposicaoDaFaturaList() {
         </div>
       ) : null}
 
+      <RelatorioConsolidadoDialog
+        grupo={consolidadoGrupo}
+        gerando={!!ocupado?.startsWith('consolidado:')}
+        onClose={() => setConsolidadoGrupo(null)}
+        onGerar={(kits) => void gerarRelatorioConsolidado(kits)}
+      />
       <AjustesKitDialog
         kit={ajustesKit}
         onClose={() => setAjustesKit(null)}
