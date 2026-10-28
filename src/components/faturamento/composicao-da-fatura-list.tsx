@@ -707,7 +707,13 @@ export default function ComposicaoDaFaturaList() {
           : `${semOrigem} de ${despesas.length} despesa(s) sem comprovante localizado; a nota sai só com os demais.`,
       )
     }
-    const clienteNome = payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome ?? ''
+    // Pagador único ajustado no kit (Filipe 28/10, Gramarcal: outro paga as
+    // despesas): a conta a receber da ND sai no nome dele
+    // (criar_recebivel_da_nota_debito), então a nota é endereçada a ele.
+    const pagadorAjustado = kit.ajustes_kit?.pagadores?.length === 1 ? kit.ajustes_kit.pagadores[0].nome : null
+    const clienteNome = pagadorAjustado
+      || payload?.clientes.find((c) => c.casos.some((k) => k.chave === kit.chave))?.nome
+      || ''
     // Prévia: o nº aparece se esta nota já foi gerada alguma vez (regerar
     // mantém o número). Sem reservar — quem só abre e fecha não gasta número;
     // a reserva acontece ao montar o PDF (reservarNumeroNotaDebito).
@@ -970,6 +976,70 @@ export default function ComposicaoDaFaturaList() {
     }
   })
 
+  // ── Honorários e despesas separados (Filipe 28/10, Gramarcal) ─────────
+  // O padrão é faturar junto. "Separar despesas" leva as despesas para um kit
+  // próprio do caso+mês (nota de débito → boleto, com pagador próprio); o kit
+  // original fica só com os honorários. O banco recusa com documento vivo ou
+  // kit finalizado — a tela só antecipa o mesmo motivo.
+  const separarDespesas = (kit: KitCaso) => executar(kit, 'separar-despesas', async () => {
+    if (!kit.pode_separar_despesas) {
+      if (kit.motivo_nao_separar) toastError(kit.motivo_nao_separar)
+      return
+    }
+    const ok = window.confirm(
+      `Separar as despesas de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)})?\n\n` +
+      `Honorários (${formatMoney(kit.valor_servico)}): NFS-e e boleto só deles.\n` +
+      `Despesas (${formatMoney(kit.valor_despesa)}): kit próprio, com nota de débito e boleto — e pagador que pode ser trocado em "Editar".\n\n` +
+      'Dá para unir de novo enquanto nenhum dos dois tiver documento emitido.',
+    )
+    if (!ok) return
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('separar_despesas_kit', {
+        p_user_id: userId,
+        p_contrato_id: kit.contrato_id,
+        p_caso_id: kit.caso_id,
+        p_competencia: kit.competencia,
+        ...paramSequencia(kit),
+      })
+      if (e) { toastError(e.message); return }
+      const r = (data ?? {}) as { ok?: boolean; motivo?: string | null }
+      if (!r.ok) { toastError(r.motivo || 'Não foi possível separar as despesas.'); return }
+      success('Despesas separadas: agora são dois kits, um de honorários e um de despesas.')
+      await recarregar()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Erro ao separar as despesas.')
+    }
+  })
+
+  const unirDespesas = (kit: KitCaso) => executar(kit, 'unir-despesas', async () => {
+    if (!kit.pode_unir_despesas) {
+      if (kit.motivo_nao_unir) toastError(kit.motivo_nao_unir)
+      return
+    }
+    const ok = window.confirm(
+      `Unir de novo honorários e despesas de ${labelCaso(kit)} (${labelCompetencia(kit.competencia)})?\n\n` +
+      'Volta a ser um kit só, como antes: as despesas entram no boleto da NFS-e. O pagador ajustado no kit de despesas é descartado.',
+    )
+    if (!ok) return
+    try {
+      const { supabase, userId } = await sessao()
+      const { data, error: e } = await supabase.rpc('unir_despesas_kit', {
+        p_user_id: userId,
+        p_contrato_id: kit.contrato_id,
+        p_caso_id: kit.caso_id,
+        p_competencia: kit.competencia,
+      })
+      if (e) { toastError(e.message); return }
+      const r = (data ?? {}) as { ok?: boolean; motivo?: string | null }
+      if (!r.ok) { toastError(r.motivo || 'Não foi possível unir os kits.'); return }
+      success('Honorários e despesas unidos de novo num kit só.')
+      await recarregar()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Erro ao unir os kits.')
+    }
+  })
+
   // ── Ações em massa (6.1) ───────────────────────────────────────────────
   const finalizarSelecionados = () => executarEmMassa('finalizar', async () => {
     const abertos = kitsSelecionados.filter((k) => !k.finalizado)
@@ -1170,6 +1240,8 @@ export default function ComposicaoDaFaturaList() {
     onFinalizar: (kit) => void finalizarKit(kit),
     onReabrir: (kit) => void reabrirKit(kit),
     onDecidirPosFinalizacao: (kit, acao) => void decidirPosFinalizacao(kit, acao),
+    onSepararDespesas: (kit) => void separarDespesas(kit),
+    onUnirDespesas: (kit) => void unirDespesas(kit),
     selecionados,
     onSelecionar: (kit, marcar) => setSelecionados((atual) => {
       const novo = new Set(atual)

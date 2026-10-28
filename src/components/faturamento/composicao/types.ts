@@ -308,7 +308,22 @@ export interface KitCaso {
    * ausente = RPC antiga.
    */
   pendencias?: PendenciasContrato | null
+  /**
+   * Filipe 28/10 (Gramarcal): honorários e despesas do caso+competência em
+   * kits separados — 'honorarios' (NFS-e + boleto sem despesas) ou 'despesas'
+   * (nota de débito → boleto, com pagador próprio). null/ausente = juntos.
+   */
+  conteudo?: ConteudoKit | null
+  /** "Separar despesas": kit com honorários e despesas, sem documento vivo e não finalizado. */
+  pode_separar_despesas?: boolean
+  /** Por que não dá para separar um kit que tem honorários e despesas (null = pode ou não se aplica). */
+  motivo_nao_separar?: string | null
+  /** "Unir de novo": nenhum dos dois kits tem documento vivo nem está finalizado. */
+  pode_unir_despesas?: boolean
+  motivo_nao_unir?: string | null
 }
+
+export type ConteudoKit = 'honorarios' | 'despesas'
 
 /**
  * De onde vem o vencimento do kit: do boleto vivo, da conta a receber viva,
