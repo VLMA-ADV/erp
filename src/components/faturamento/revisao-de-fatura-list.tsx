@@ -23,6 +23,7 @@ import NotaDespesaPreview, { type NotaDespesaData } from './nota-despesa-preview
 import PostergadosList from './postergados-list'
 import LixeiraFaturamentoList from './lixeira-faturamento-list'
 import RateioHorasPanel from './rateio-horas-panel'
+import { BolinhaPendencias, SEM_PENDENCIAS, somarPendencias, type MapaPendencias } from './pendencias-contrato'
 import {
   ABAS_DE_REGRA,
   LINHAS_DO_PAINEL,
@@ -1031,6 +1032,11 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   const [rateioAberto, setRateioAberto] = useState(false)
   const [podeVerRateio, setPodeVerRateio] = useState(false)
   const [items, setItems] = useState<RevisaoItem[]>([])
+  // Pendências por contrato no mês (Filipe 16/10 / Jessika 28/10): bolinha
+  // verde/vermelha no cabeçalho do cliente e de cada contrato. Conta o
+  // contrato INTEIRO (fila, revisão, aprovação), não só o que está na tela.
+  // null = não carregou (RPC indisponível): sem bolinha.
+  const [pendencias, setPendencias] = useState<MapaPendencias | null>(null)
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
   const [ruleFilter, setRuleFilter] = useState<RuleFilterKey>('all')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
@@ -1187,7 +1193,26 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
         }
       })()
 
-      const [response, filaRaw] = await Promise.all([
+      // Pendências por contrato (get_pendencias_contratos): uma chamada por
+      // aba, em paralelo. Falhou = sem bolinha, a tela segue.
+      const pendenciasPromise = (async (): Promise<MapaPendencias | null> => {
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) return null
+          const { data, error: rpcError } = await supabase.rpc('get_pendencias_contratos', {
+            p_user_id: user.id,
+            p_competencia: competencia,
+          })
+          if (rpcError) throw rpcError
+          return data && typeof data === 'object' && !Array.isArray(data) ? (data as MapaPendencias) : {}
+        } catch (pendError) {
+          console.warn('get_pendencias_contratos indisponível — sem bolinha de pendências', pendError)
+          return null
+        }
+      })()
+
+      const [response, filaRaw, mapaPendencias] = await Promise.all([
         fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-revisao-fatura${params.toString() ? `?${params}` : ''}`,
           {
@@ -1200,10 +1225,12 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           },
         ),
         filaPromise,
+        pendenciasPromise,
       ])
 
       const payload = await response.json().catch(() => ({}))
       if (seq !== loadSeq.current) return
+      setPendencias(mapaPendencias)
       if (!response.ok) {
         setError(payload.error || 'Erro ao carregar revisão de fatura')
         setItems([])
@@ -3444,6 +3471,13 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
               },
               { horas: 0, valor: 0, itens: 0 },
             )
+            // Contratos do cliente visíveis na tela; ausente no mapa = nada pendente.
+            const contratosDoCliente = Array.from(
+              new Set(clienteGroup.casos.flatMap((casoGroup) => casoGroup.itens.map((item) => item.contratoId).filter(Boolean))),
+            )
+            const pendenciasCliente = pendencias
+              ? somarPendencias(contratosDoCliente.map((id) => pendencias[id] ?? SEM_PENDENCIAS))
+              : null
 
             return (
               <section key={clienteGroup.key} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
@@ -3456,7 +3490,10 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                     <div className="flex items-center gap-2">
                       {clienteExpanded ? <ChevronDown className="h-4 w-4 text-ink-mute" /> : <ChevronRight className="h-4 w-4 text-ink-mute" />}
                       <div>
-                        <p className="text-sm font-semibold text-ink">{clienteGroup.nome}</p>
+                        <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+                          <BolinhaPendencias pendencias={pendenciasCliente} escopo="cliente" />
+                          {clienteGroup.nome}
+                        </p>
                         <p className="text-xs text-ink-mute">
                           {clienteTotals.itens} item(ns) · {formatHours(clienteTotals.horas)}
                         </p>
@@ -3541,35 +3578,37 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                             ),
                         )
                       return (
-                        <Button
-                          key={contratoId}
-                          size="sm"
-                          variant="outline"
-                          className="text-xs"
-                          disabled={linhas.length === 0}
-                          title={`Relatório de horas com os ${info.casos.size} caso(s) deste contrato num documento só`}
-                          onClick={() =>
-                            openTimesheetReport({
-                              titulo: 'Relatório de horas do contrato',
-                              subtitulo: `${clienteGroup.nome} · ${info.label} · ${info.casos.size} caso(s) · ${linhas.length} lançamento(s)`,
-                              mostrarValor: true,
-                              rows: linhas.map((it) => ({
-                                data: it.timesheetDataLancamento
-                                  ? formatDate(it.timesheetDataLancamento)
-                                  : formatDate(it.dataReferencia || ''),
-                                cliente: it.clienteNome || '',
-                                caso: `${it.casoNumero || ''} - ${it.casoNome || ''}`,
-                                profissional: it.enviadoPorNome || it.timesheetProfissional || '',
-                                descricao: getLatestTexto(it),
-                                horas: formatHistoryHours(it.grupoHoras ?? getEffectiveItemHours(it)),
-                                valor: it.grupoValor ?? getEffectiveItemValue(it),
-                              })),
-                            })
-                          }
-                        >
-                          <Layers className="mr-1 h-3.5 w-3.5" />
-                          Relatório do {info.label}
-                        </Button>
+                        <span key={contratoId} className="inline-flex items-center gap-1.5">
+                          <BolinhaPendencias pendencias={pendencias ? (pendencias[contratoId] ?? SEM_PENDENCIAS) : null} />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            disabled={linhas.length === 0}
+                            title={`Relatório de horas com os ${info.casos.size} caso(s) deste contrato num documento só`}
+                            onClick={() =>
+                              openTimesheetReport({
+                                titulo: 'Relatório de horas do contrato',
+                                subtitulo: `${clienteGroup.nome} · ${info.label} · ${info.casos.size} caso(s) · ${linhas.length} lançamento(s)`,
+                                mostrarValor: true,
+                                rows: linhas.map((it) => ({
+                                  data: it.timesheetDataLancamento
+                                    ? formatDate(it.timesheetDataLancamento)
+                                    : formatDate(it.dataReferencia || ''),
+                                  cliente: it.clienteNome || '',
+                                  caso: `${it.casoNumero || ''} - ${it.casoNome || ''}`,
+                                  profissional: it.enviadoPorNome || it.timesheetProfissional || '',
+                                  descricao: getLatestTexto(it),
+                                  horas: formatHistoryHours(it.grupoHoras ?? getEffectiveItemHours(it)),
+                                  valor: it.grupoValor ?? getEffectiveItemValue(it),
+                                })),
+                              })
+                            }
+                          >
+                            <Layers className="mr-1 h-3.5 w-3.5" />
+                            Relatório do {info.label}
+                          </Button>
+                        </span>
                       )
                     })}
                   </div>
