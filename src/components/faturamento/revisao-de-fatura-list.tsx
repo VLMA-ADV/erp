@@ -1490,7 +1490,8 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       if (boletos > 0) {
         toastError(`NFS-e cancelada, mas ${boletos === 1 ? 'há um boleto registrado' : `há ${boletos} boletos registrados`} no Itaú sobre esta nota. Dê baixa no banco para o cliente não pagar.`)
       } else {
-        success(payload.cancelado_na_prefeitura ? 'NFS-e cancelada na prefeitura.' : 'NFS-e cancelada.')
+        // Filipe 16/10: o kit não volta para a revisão; fica na Composição.
+        success(`${payload.cancelado_na_prefeitura ? 'NFS-e cancelada na prefeitura.' : 'NFS-e cancelada.'} O kit continua na Composição da fatura para emitir de novo.`)
       }
       await loadNotasEmitidas()
       void loadItems({ silent: true })
