@@ -297,6 +297,21 @@ export interface KitCaso {
   nfse_aguarda_kit_anterior?: boolean
   /** Lançamentos aprovados depois de finalizar, à espera de decisão (só no último kit do caso+mês). */
   pos_finalizacao?: PosFinalizacao | null
+  /** Vencimento do kit para o resumo (Filipe 16/10, item 6). Ausente na RPC antiga. */
+  vencimento?: VencimentoKit | null
+}
+
+/**
+ * De onde vem o vencimento do kit: do boleto vivo, da conta a receber viva,
+ * da NFS-e viva que ainda não gerou conta, ou — sem nada emitido — da regra
+ * do caso (dia de pagamento) aplicada a hoje, a mesma conta da emissão.
+ */
+export type OrigemVencimento = 'boleto' | 'conta_receber' | 'nota' | 'regra'
+
+export interface VencimentoKit {
+  /** 'YYYY-MM-DD' */
+  data: string | null
+  origem: OrigemVencimento
 }
 
 /**
@@ -465,6 +480,23 @@ export function dataBR(value: string | null | undefined) {
   if (!value) return '—'
   if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10).split('-').reverse().join('/')
   return value
+}
+
+/**
+ * "vence dd/mm" do cabeçalho do kit (Filipe 16/10, item 6) e o tooltip que
+ * diz de onde veio a data. null sem data (RPC antiga ou caso sem contrato).
+ */
+export function vencimentoDoKit(kit: Pick<KitCaso, 'vencimento'>): { texto: string; titulo: string } | null {
+  const v = kit.vencimento
+  const m = v?.data ? /^(\d{4})-(\d{2})-(\d{2})/.exec(v.data) : null
+  if (!v || !m) return null
+  const titulo = {
+    boleto: 'Vencimento do boleto registrado.',
+    conta_receber: 'Vencimento da conta a receber.',
+    nota: 'Vencimento que a conta a receber da NFS-e emitida vai ter.',
+    regra: 'Vencimento previsto pela regra do caso se a nota for emitida hoje.',
+  }[v.origem]
+  return { texto: `vence ${m[3]}/${m[2]}`, titulo: `${titulo} ${m[3]}/${m[2]}/${m[1]}` }
 }
 
 export function dataHoraBR(value: string | null | undefined) {

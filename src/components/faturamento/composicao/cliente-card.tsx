@@ -55,6 +55,7 @@ import {
   sequenciaDoKit,
   situacaoDosKits,
   somarProgresso,
+  vencimentoDoKit,
   type ClienteKits,
   type DecisaoPosFinalizacao,
   type DocGerado,
@@ -293,6 +294,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   // Rateio já emitido (Filipe 08/10, caso 318): uma NFS-e e um boleto por
   // pagador no lugar das linhas únicas. Com 0 ou 1 nota, tudo como antes.
   const variasNotas = kitComVariasNotas(kit)
+  const vencimento = vencimentoDoKit(kit)
 
   return (
     <div
@@ -351,7 +353,21 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           </div>
         </div>
         <div className="text-right text-sm">
-          <p className="font-semibold font-tabular text-ink">{formatMoney(kit.valor_total)}</p>
+          <p className="font-semibold font-tabular text-ink">
+            {formatMoney(kit.valor_total)}
+            {/* Filipe 16/10: vencimento à vista, sem abrir o kit. */}
+            {vencimento ? (
+              <span
+                className={cn(
+                  'ml-2 text-xs font-normal',
+                  kit.vencimento?.origem === 'regra' ? 'text-ink-mute' : 'text-ink-secondary',
+                )}
+                title={vencimento.titulo}
+              >
+                {vencimento.texto}
+              </span>
+            ) : null}
+          </p>
           <p className="text-xs text-ink-mute">
             {kit.horas > 0 ? `${formatHorasMin(kit.horas)} · ` : ''}
             serviço {formatMoney(kit.valor_servico)}
