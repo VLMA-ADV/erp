@@ -32,6 +32,7 @@ import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatarLinhaDigitavel } from '@/lib/utils/boleto-ficha'
 import { somarMeses } from '@/lib/faturamento/competencia'
 import { BolinhaPendencias, motivoNaoFinalizar, pendenciasDosContratos } from '../pendencias-contrato'
+import { gruposParaRelatorioConsolidado } from './relatorio-consolidado'
 import {
   SITUACAO_INFO,
   STATUS_KIT_INFO,
@@ -78,6 +79,11 @@ export interface AcoesKit {
    * kits que ela vai cobrir; quem orquestra abre a prévia sem caso_id.
    */
   onEmitirNotaUnica: (kits: KitCaso[]) => void
+  /**
+   * Relatório consolidado do contrato (Filipe 16/10, Pattac e Jamute): abre a
+   * escolha dos kits que entram num relatório de timesheet só.
+   */
+  onRelatorioConsolidado: (kits: KitCaso[]) => void
   onAbrirUrl: (url: string) => void
   /**
    * Sem `notaId`, o boleto do kit (como sempre). Com `notaId`, o boleto da
@@ -124,6 +130,9 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
   // nota única (Filipe 07/10). Cada grupo vira um botão; a competência é a da
   // aba, então normalmente é um por contrato.
   const gruposNotaUnica = gruposParaNotaUnica(cliente.casos)
+  // Contratos com ≥ 2 kits com horas (ou mensalidade) no mês: relatório
+  // consolidado (Filipe 16/10).
+  const gruposConsolidado = gruposParaRelatorioConsolidado(cliente.casos)
   // Filipe 16/10 / Jessika 28/10: verde = nada pendente nos contratos deste
   // cliente no mês; vermelho = há lançamento na fila, revisão ou aprovação.
   const pendenciasCliente = pendenciasDosContratos(cliente.casos)
@@ -155,7 +164,7 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
             {progresso.emitidos}/{progresso.necessarios} · {progresso.pct}%
           </span>
         </div>
-        {gruposNotaUnica.length ? (
+        {gruposNotaUnica.length || gruposConsolidado.length ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {gruposNotaUnica.map((grupo) => {
               const primeiro = grupo[0]
@@ -174,6 +183,24 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
                   {ocupadoGrupo ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileStack className="mr-1.5 h-3.5 w-3.5" />}
                   Emitir nota única · {formatContratoDisplay(contratoNumeroExibicao(primeiro), primeiro.contrato_nome).full}
                   <span className="ml-1 font-normal text-ink-mute">({grupo.length} casos · {formatMoney(total)})</span>
+                </Button>
+              )
+            })}
+            {gruposConsolidado.map((grupo) => {
+              const primeiro = grupo[0]
+              const chave = `${primeiro.contrato_id}|${primeiro.competencia}`
+              return (
+                <Button
+                  key={`consolidado:${chave}`}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => acoes.onRelatorioConsolidado(grupo)}
+                  disabled={!!acoes.ocupado}
+                  title={`Um relatório de timesheet só para ${grupo.map((k) => labelCaso(k)).join(', ')} (${labelCompetencia(primeiro.competencia)}): uma seção por caso, o valor fixo no fim e o total geral.`}
+                >
+                  {acoes.ocupado === `consolidado:${chave}` ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Clock className="mr-1.5 h-3.5 w-3.5" />}
+                  Relatório consolidado · {formatContratoDisplay(contratoNumeroExibicao(primeiro), primeiro.contrato_nome).full}
+                  <span className="ml-1 font-normal text-ink-mute">({grupo.length} casos)</span>
                 </Button>
               )
             })}

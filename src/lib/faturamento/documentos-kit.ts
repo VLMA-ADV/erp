@@ -185,6 +185,55 @@ export async function gerarERegistrarDocumento(input: GerarERegistrarDocumentoIn
   }
 }
 
+export interface RegistrarRelatorioConsolidadoInput {
+  bytes: Uint8Array
+  nomeArquivo: string
+  contratoId: string
+  competencia: string
+  /** Na ordem do registro: o primeiro é a via principal (a que vai no e-mail). */
+  kits: Array<{ casoId: string | null; kitSequencia: number; itemIds: string[] }>
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Relatório consolidado do contrato (Filipe, 16/10): sobe o PDF uma vez e
+ * registra em cada kit (registrar_relatorio_consolidado), com o nº do contrato.
+ */
+export async function registrarRelatorioConsolidado(
+  input: RegistrarRelatorioConsolidadoInput,
+): Promise<{ id: string; path: string; numero_documento: number | null }> {
+  const supabase = createClient()
+  const { userId, tenantId } = await sessaoETenant(supabase)
+  const competencia = /^\d{4}-\d{2}/.exec(input.competencia)?.[0]
+  if (!competencia) throw new Error('Competência inválida para registrar o documento.')
+  if (!input.bytes?.length) throw new Error('O PDF saiu vazio; nada foi registrado.')
+
+  const path = `${tenantId}/${competencia}/${input.contratoId}/relatorio_timesheet-consolidado-${Date.now()}.pdf`
+  const { error: upErr } = await supabase.storage
+    .from(BUCKET_DOCUMENTOS)
+    .upload(path, input.bytes, { contentType: 'application/pdf', upsert: false })
+  if (upErr) {
+    throw new Error(mensagemDoErro(upErr, 'Não foi possível guardar o PDF no armazenamento'))
+  }
+
+  const { data, error } = await supabase.rpc('registrar_relatorio_consolidado', {
+    p_user_id: userId,
+    p_contrato_id: input.contratoId,
+    p_competencia: `${competencia}-01`,
+    p_kits: input.kits.map((k) => ({ caso_id: k.casoId, kit_sequencia: k.kitSequencia, item_ids: k.itemIds })),
+    p_arquivo_nome: input.nomeArquivo,
+    p_arquivo_url: path,
+    p_metadata: input.metadata ?? {},
+  })
+  if (error) {
+    await supabase.storage.from(BUCKET_DOCUMENTOS).remove([path]).catch(() => null)
+    throw new Error(mensagemDoErro(error, 'O PDF foi gerado mas não foi possível registrá-lo'))
+  }
+  const resposta = (data ?? null) as { id?: string; numero_documento?: number | null } | null
+  if (!resposta?.id) throw new Error('O registro do documento não devolveu um id.')
+  return { id: resposta.id, path, numero_documento: resposta.numero_documento ?? null }
+}
+
 /**
  * URL assinada (60 s) para um documento do bucket. Serve para abrir numa aba
  * ou passar adiante; quem precisa só abrir usa abrirDocumentoDoKit.

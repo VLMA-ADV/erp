@@ -199,6 +199,42 @@ export function totaisDoRelatorio(rows: TimesheetPdfRow[], valorFixo?: ValorFixo
   }
 }
 
+/**
+ * Uma seção do relatório consolidado por contrato (Filipe, 16/10: Pattac com
+ * seis casos num relatório só; Jamute com o fixo no caso 365 e as horas no
+ * 1828): as linhas de um caso, com o total dele. O valor fixo do caso não
+ * entra no total da seção — vai para o fim, antes do total geral.
+ */
+export interface SecaoRelatorio {
+  casoLabel: string
+  rows: TimesheetPdfRow[]
+  valorFixo?: ValorFixoRelatorio | null
+}
+
+/**
+ * Totais do consolidado. Por seção: horas e o valor das linhas (no caso de
+ * valor fixo, só o excedente/horas cobradas, como no relatório do caso). No
+ * fim: cada valor fixo e o total geral = soma das linhas + valores fixos.
+ */
+export function totaisConsolidados(secoes: SecaoRelatorio[], mostrarValor = true) {
+  const porSecao = secoes.map((s) => {
+    const t = totaisDoRelatorio(s.rows, s.valorFixo ?? null, mostrarValor)
+    return { casoLabel: s.casoLabel, horas: t.horas, valorLinhas: t.valorLinhas, valorFixo: s.valorFixo ?? null }
+  })
+  const fixos = porSecao.filter((s) => s.valorFixo).map((s) => ({ casoLabel: s.casoLabel, ...s.valorFixo! }))
+  const centavosLinhas = porSecao.reduce((acc, s) => acc + Math.round(s.valorLinhas * 100), 0)
+  const centavosFixos = fixos.reduce((acc, f) => acc + Math.round(Number(f.valor ?? 0) * 100), 0)
+  return {
+    porSecao,
+    fixos,
+    horas: porSecao.reduce((acc, s) => acc + s.horas, 0),
+    valorLinhas: centavosLinhas / 100,
+    total: (centavosLinhas + centavosFixos) / 100,
+    // Coluna Valor: some só quando TODA seção é de valor fixo sem hora cobrada.
+    colunaValor: mostrarValor && secoes.some((s) => !s.valorFixo || s.rows.some((r) => temValor(r.valor))),
+  }
+}
+
 /** Bytes de uma foto já baixada e o content-type que veio na resposta. */
 export interface FotoBaixada {
   bytes: Uint8Array
@@ -250,6 +286,11 @@ export interface TimesheetPdfInput {
    * projeto, hora), o relatório de sempre.
    */
   valorFixo?: ValorFixoRelatorio | null
+  /**
+   * Relatório consolidado por contrato: uma seção por caso. Com seções,
+   * `rows`, `casoLabel` e `valorFixo` são ignorados — cada seção traz os seus.
+   */
+  secoes?: SecaoRelatorio[] | null
   /**
    * Como baixar cada foto (padrão: `fetch` global). Injetável para teste e
    * para quem já tem os bytes. Deve devolver null quando não conseguir.
@@ -461,14 +502,19 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
   const normal = await pdf.embedFont(StandardFonts.Helvetica)
   const negrito = await pdf.embedFont(StandardFonts.HelveticaBold)
   const mostrarValor = input.mostrarValor !== false
-  const valorFixo = mostrarValor ? input.valorFixo ?? null : null
-  const totais = totaisDoRelatorio(input.rows, valorFixo, mostrarValor)
+  const secoes = input.secoes?.length
+    ? input.secoes.map((s) => ({ ...s, valorFixo: mostrarValor ? s.valorFixo ?? null : null }))
+    : null
+  const valorFixo = mostrarValor && !secoes ? input.valorFixo ?? null : null
+  const todasAsLinhas = secoes ? secoes.flatMap((s) => s.rows) : input.rows
+  const totais = totaisDoRelatorio(todasAsLinhas, valorFixo, mostrarValor)
+  const consolidado = secoes ? totaisConsolidados(secoes, mostrarValor) : null
   // Coluna Valor: sempre no relatório comum; no de valor fixo, só com excedente.
-  const colunaValor = totais.colunaValor
+  const colunaValor = consolidado ? consolidado.colunaValor : totais.colunaValor
   // Avatar só existe se alguma linha veio com foto; senão o layout é o de
   // sempre (nome encostado na coluna).
-  const comAvatar = input.rows.some((r) => !!r.fotoUrl)
-  const fotos = comAvatar ? await carregarFotos(pdf, input.rows, input.baixarFoto ?? baixarFotoPadrao) : new Map<string, PDFImage>()
+  const comAvatar = todasAsLinhas.some((r) => !!r.fotoUrl)
+  const fotos = comAvatar ? await carregarFotos(pdf, todasAsLinhas, input.baixarFoto ?? baixarFotoPadrao) : new Map<string, PDFImage>()
   const recuoNome = comAvatar ? AVATAR + 4 : 0
 
   const larguraUtil = A4_PAISAGEM[0] - MARGEM * 2
@@ -551,7 +597,7 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     texto(`Contrato   ${input.contratoLabel}`, MARGEM + 4, y, 8.4, negrito)
     y -= 18
   }
-  if (input.casoLabel) {
+  if (input.casoLabel && !secoes) {
     texto('Caso', MARGEM + 4, y, 8.4, normal, CINZA)
     texto(input.casoLabel, MARGEM + 34, y, 8.4)
     y -= 16
@@ -567,83 +613,137 @@ export async function gerarRelatorioTimesheetPdf(input: TimesheetPdfInput): Prom
     linha(y)
     y -= 12
   }
-  cabecalhoTabela()
-
   const limiteInferior = MARGEM + RODAPE_ALTURA
   const ALTURA_LINHA = 10
 
-  for (const item of input.rows) {
-    const linhasDesc = quebrar(item.descricao || '—', normal, 8, larguraDescricao)
-    const linhasProf = quebrar(
-      [item.profissional, item.cargo].filter(Boolean).join(' · ') || '—',
-      normal, 8, colunas.descricao - colunas.profissional - 8 - recuoNome,
-    )
-    // Com avatar a linha precisa de um pouco mais para os círculos não se tocarem.
-    const altura = Math.max(Math.max(linhasDesc.length, linhasProf.length) * ALTURA_LINHA, comAvatar ? AVATAR - 2 : 0)
-    if (y - altura < limiteInferior) {
-      novaPagina()
-      cabecalhoTabela()
+  // `fixoNaSecao`: linha dentro da mensalidade fica em branco (nem "R$ 0,00" nem "—").
+  const desenharLinhas = (rows: TimesheetPdfRow[], fixoNaSecao: boolean) => {
+    for (const item of rows) {
+      const linhasDesc = quebrar(item.descricao || '—', normal, 8, larguraDescricao)
+      const linhasProf = quebrar(
+        [item.profissional, item.cargo].filter(Boolean).join(' · ') || '—',
+        normal, 8, colunas.descricao - colunas.profissional - 8 - recuoNome,
+      )
+      // Com avatar a linha precisa de um pouco mais para os círculos não se tocarem.
+      const altura = Math.max(Math.max(linhasDesc.length, linhasProf.length) * ALTURA_LINHA, comAvatar ? AVATAR - 2 : 0)
+      if (y - altura < limiteInferior) {
+        novaPagina()
+        cabecalhoTabela()
+      }
+      texto(dataBR(item.data), colunas.data, y, 8)
+      if (comAvatar) {
+        // Topo do avatar alinhado com o topo das maiúsculas da primeira linha
+        // (baseline y + ~6pt para fonte 8).
+        desenharAvatar(pagina, negrito, item.profissional, item.fotoUrl ? fotos.get(item.fotoUrl) : undefined, colunas.profissional, y + 7)
+      }
+      linhasProf.forEach((l, i) => texto(l, colunas.profissional + recuoNome, y - i * ALTURA_LINHA, 8))
+      linhasDesc.forEach((l, i) => texto(l, colunas.descricao, y - i * ALTURA_LINHA, 8))
+      textoDireita(formatarHoras(item.horas), colunas.horas, y, 8)
+      if (colunaValor) {
+        const celula = fixoNaSecao
+          ? (temValor(item.valor) ? money(Number(item.valor)) : '')
+          : (item.valor != null ? money(Number(item.valor)) : '—')
+        if (celula) textoDireita(celula, colunas.valor, y, 8)
+      }
+      y -= altura + 4
     }
-    texto(dataBR(item.data), colunas.data, y, 8)
-    if (comAvatar) {
-      // Topo do avatar alinhado com o topo das maiúsculas da primeira linha
-      // (baseline y + ~6pt para fonte 8).
-      desenharAvatar(pagina, negrito, item.profissional, item.fotoUrl ? fotos.get(item.fotoUrl) : undefined, colunas.profissional, y + 7)
-    }
-    linhasProf.forEach((l, i) => texto(l, colunas.profissional + recuoNome, y - i * ALTURA_LINHA, 8))
-    linhasDesc.forEach((l, i) => texto(l, colunas.descricao, y - i * ALTURA_LINHA, 8))
-    textoDireita(formatarHoras(item.horas), colunas.horas, y, 8)
-    if (colunaValor) {
-      // Valor fixo: linha dentro da mensalidade fica em branco (nem "R$ 0,00" nem "—").
-      const celula = valorFixo
-        ? (temValor(item.valor) ? money(Number(item.valor)) : '')
-        : (item.valor != null ? money(Number(item.valor)) : '—')
-      if (celula) textoDireita(celula, colunas.valor, y, 8)
-    }
-    y -= altura + 4
   }
-  const totalHoras = totais.horas
+  const totalHoras = consolidado ? consolidado.horas : totais.horas
   // Total que vale para o quadro de impostos e a divisão por pagador.
-  const totalValor = totais.total
+  const totalValor = consolidado ? consolidado.total : totais.total
 
-  // Totais: nunca sozinhos no topo da página seguinte se couber evitar.
-  if (y - (valorFixo ? 80 : 40) < limiteInferior) {
-    novaPagina()
-  }
-  y -= 4
-  linha(y)
-  y -= 14
-  if (!valorFixo) {
-    texto('Total', colunas.descricao, y, 9.6, negrito)
-    textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9.6, negrito)
-    if (mostrarValor) textoDireita(money(totalValor), colunas.valor, y, 9.6, negrito)
-    y -= 10
-  } else {
-    // Valor fixo: horas do mês, a mensalidade, o excedente (se houver) e o total.
-    texto('Total de horas', colunas.descricao, y, 9, negrito)
-    textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9, negrito)
-    if (colunaValor) textoDireita(money(totais.excedente), colunas.valor, y, 9, negrito)
-    y -= 15
-    if (valorFixo.valor != null) {
-      texto(valorFixo.rotulo, colunas.descricao, y, 8.6)
-      textoDireita(money(Number(valorFixo.valor)), direita, y, 8.6)
-    } else {
-      texto(`${valorFixo.rotulo} - ${valorFixo.observacao || 'não incluída neste kit'}`, colunas.descricao, y, 8.6, normal, CINZA)
-    }
-    y -= 12
-    if (temValor(totais.excedente)) {
-      texto(valorFixo.rotuloHoras || ROTULO_HORAS_EXCEDENTES, colunas.descricao, y, 8.6)
-      textoDireita(money(totais.excedente), direita, y, 8.6)
+  if (secoes && consolidado) {
+    // Uma faixa por caso, as linhas dele e o total do caso.
+    secoes.forEach((s, idx) => {
+      if (y - 60 < limiteInferior) novaPagina()
+      pagina.drawRectangle({ x: MARGEM, y: y - 4, width: larguraUtil, height: 16, color: CINZA_CLARO })
+      texto('Caso', MARGEM + 4, y, 8.4, normal, CINZA)
+      texto(s.casoLabel, MARGEM + 34, y, 8.4, negrito)
+      y -= 20
+      cabecalhoTabela()
+      desenharLinhas(s.rows, !!s.valorFixo)
+      if (y - 24 < limiteInferior) novaPagina()
+      const t = consolidado.porSecao[idx]
+      pagina.drawLine({ start: { x: colunas.descricao, y: y + 6 }, end: { x: direita, y: y + 6 }, thickness: 0.4, color: CINZA })
+      y -= 6
+      texto('Total do caso', colunas.descricao, y, 8.6, negrito)
+      textoDireita(formatarHoras(t.horas), colunas.horas, y, 8.6, negrito)
+      if (colunaValor && (!s.valorFixo || temValor(t.valorLinhas))) textoDireita(money(t.valorLinhas), colunas.valor, y, 8.6, negrito)
+      y -= 22
+    })
+
+    // Fim: total de cada caso, os valores fixos e o total geral.
+    const linhasResumo = consolidado.porSecao.length + consolidado.fixos.length
+    if (y - (40 + linhasResumo * 12) < limiteInferior) novaPagina()
+    linha(y)
+    y -= 14
+    texto('Resumo', colunas.descricao, y, 9.6, negrito)
+    y -= 14
+    for (const s of consolidado.porSecao) {
+      texto(`Caso ${s.casoLabel}`, colunas.descricao, y, 8.6)
+      textoDireita(formatarHoras(s.horas), colunas.horas, y, 8.6)
+      // Caso de valor fixo sem hora cobrada: em branco, como a linha dele.
+      if (colunaValor && (!s.valorFixo || temValor(s.valorLinhas))) textoDireita(money(s.valorLinhas), colunas.valor, y, 8.6)
       y -= 12
     }
-    // Sem mensalidade no kit e sem excedente não há o que totalizar: a linha
-    // acima já diz por quê, e um "Total R$ 0,00" leria como serviço gratuito.
-    if (valorFixo.valor != null || temValor(totais.excedente)) {
-      pagina.drawLine({ start: { x: colunas.descricao, y: y + 8 }, end: { x: direita, y: y + 8 }, thickness: 0.4, color: CINZA })
-      y -= 4
+    for (const f of consolidado.fixos) {
+      if (f.valor != null) {
+        texto(`${f.rotulo} - caso ${f.casoLabel}`, colunas.descricao, y, 8.6)
+        textoDireita(money(Number(f.valor)), direita, y, 8.6)
+      } else {
+        texto(`${f.rotulo} - caso ${f.casoLabel}: ${f.observacao || 'não incluída neste kit'}`, colunas.descricao, y, 8.6, normal, CINZA)
+      }
+      y -= 12
+    }
+    pagina.drawLine({ start: { x: colunas.descricao, y: y + 8 }, end: { x: direita, y: y + 8 }, thickness: 0.4, color: CINZA })
+    y -= 4
+    texto('Total geral', colunas.descricao, y, 9.6, negrito)
+    textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9.6, negrito)
+    if (mostrarValor) textoDireita(money(totalValor), direita, y, 9.6, negrito)
+    y -= 10
+  } else {
+    cabecalhoTabela()
+    desenharLinhas(input.rows, !!valorFixo)
+
+    // Totais: nunca sozinhos no topo da página seguinte se couber evitar.
+    if (y - (valorFixo ? 80 : 40) < limiteInferior) {
+      novaPagina()
+    }
+    y -= 4
+    linha(y)
+    y -= 14
+    if (!valorFixo) {
       texto('Total', colunas.descricao, y, 9.6, negrito)
-      textoDireita(money(totalValor), direita, y, 9.6, negrito)
+      textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9.6, negrito)
+      if (mostrarValor) textoDireita(money(totalValor), colunas.valor, y, 9.6, negrito)
       y -= 10
+    } else {
+      // Valor fixo: horas do mês, a mensalidade, o excedente (se houver) e o total.
+      texto('Total de horas', colunas.descricao, y, 9, negrito)
+      textoDireita(formatarHoras(totalHoras), colunas.horas, y, 9, negrito)
+      if (colunaValor) textoDireita(money(totais.excedente), colunas.valor, y, 9, negrito)
+      y -= 15
+      if (valorFixo.valor != null) {
+        texto(valorFixo.rotulo, colunas.descricao, y, 8.6)
+        textoDireita(money(Number(valorFixo.valor)), direita, y, 8.6)
+      } else {
+        texto(`${valorFixo.rotulo} - ${valorFixo.observacao || 'não incluída neste kit'}`, colunas.descricao, y, 8.6, normal, CINZA)
+      }
+      y -= 12
+      if (temValor(totais.excedente)) {
+        texto(valorFixo.rotuloHoras || ROTULO_HORAS_EXCEDENTES, colunas.descricao, y, 8.6)
+        textoDireita(money(totais.excedente), direita, y, 8.6)
+        y -= 12
+      }
+      // Sem mensalidade no kit e sem excedente não há o que totalizar: a linha
+      // acima já diz por quê, e um "Total R$ 0,00" leria como serviço gratuito.
+      if (valorFixo.valor != null || temValor(totais.excedente)) {
+        pagina.drawLine({ start: { x: colunas.descricao, y: y + 8 }, end: { x: direita, y: y + 8 }, thickness: 0.4, color: CINZA })
+        y -= 4
+        texto('Total', colunas.descricao, y, 9.6, negrito)
+        textoDireita(money(totalValor), direita, y, 9.6, negrito)
+        y -= 10
+      }
     }
   }
 

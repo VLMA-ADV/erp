@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib'
 import {
   divisaoPorPagador, formatarHoras, gerarRelatorioTimesheetPdf, layoutQuadroImpostos, pagadoresDoCabecalho,
-  totaisDoRelatorio, type FotoBaixada, type TimesheetPdfRow,
+  totaisConsolidados, totaisDoRelatorio, type FotoBaixada, type SecaoRelatorio, type TimesheetPdfRow,
 } from './timesheet-report-pdf'
 import { divisaoDaNota, montarPaginasDaNota } from './nota-despesa-pdf'
 import { LOGO_VLMA } from './documento-vlma'
@@ -646,5 +646,56 @@ describe('caso de valor fixo (mensalidade)', () => {
     expect(textos).toContain('R$ 0,00')
     expect(textos).not.toContain('Total de horas')
     expect(totaisDoRelatorio(r)).toMatchObject({ fixo: null, total: 0, colunaValor: true })
+  })
+})
+
+describe('relatório consolidado por contrato', () => {
+  // Filipe, 16/10: Pattac (vários casos de hora num relatório só) e Jamute
+  // (mensalidade do caso 365 + horas do projeto 1828).
+  const base = {
+    titulo: 'Relatório de timesheet', cliente: 'Cliente', contratoLabel: '440 - Contrato', competenciaLabel: 'setembro/2026',
+    mostrarValor: true, emissao: '28/10/2026', rows: [],
+  }
+
+  it('casos de hora: uma seção por caso com o total dele e o total geral', async () => {
+    const secoes: SecaoRelatorio[] = [
+      { casoLabel: '#337 · Societário', rows: [linha(1, { horas: 2, valor: 1100 }), linha(2, { horas: 1, valor: 550 })] },
+      { casoLabel: '#1911 · Contencioso', rows: [linha(3, { horas: 0.5, valor: 284 })] },
+    ]
+    expect(totaisConsolidados(secoes)).toMatchObject({ horas: 3.5, valorLinhas: 1934, total: 1934, colunaValor: true, fixos: [] })
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({ ...base, secoes }))).split('\n')
+    expect(textos.filter((t) => t === 'Total do caso').length).toBe(2)
+    expect(textos).toEqual(expect.arrayContaining([
+      '#337 · Societário', '#1911 · Contencioso', 'R$ 1.650,00', 'R$ 284,00', 'Resumo', 'Caso #337 · Societário', 'Total geral', '3h 30min', 'R$ 1.934,00',
+    ]))
+    // Seção do 1911 depois da do 337, e o resumo no fim.
+    expect(textos.indexOf('#1911 · Contencioso')).toBeGreaterThan(textos.indexOf('#337 · Societário'))
+    expect(textos.indexOf('Total geral')).toBeGreaterThan(textos.lastIndexOf('Total do caso'))
+  })
+
+  it('mensalidade num caso e horas no outro: o fixo vai para o fim e soma no total geral', async () => {
+    const secoes: SecaoRelatorio[] = [
+      { casoLabel: '#365', rows: [linha(1, { horas: 3, valor: null })], valorFixo: { rotulo: 'Mensalidade setembro/2026', valor: 3454.35 } },
+      { casoLabel: '#1828', rows: [linha(2, { horas: 1, valor: 0 })] },
+    ]
+    const t = totaisConsolidados(secoes)
+    expect(t).toMatchObject({ horas: 4, valorLinhas: 0, total: 3454.35 })
+    expect(t.fixos).toEqual([expect.objectContaining({ casoLabel: '#365', valor: 3454.35 })])
+    const textos = (await textosDoPdf(await gerarRelatorioTimesheetPdf({ ...base, secoes }))).split('\n')
+    const i = textos.indexOf('Mensalidade setembro/2026 - caso #365')
+    expect(i).toBeGreaterThan(textos.indexOf('Resumo'))
+    expect(textos[i + 1]).toBe('R$ 3.454,35')
+    expect(textos.slice(textos.indexOf('Total geral'))).toEqual(expect.arrayContaining(['4h', 'R$ 3.454,35']))
+    // Resumo: o caso mensal sem hora cobrada sai sem valor, como a linha dele.
+    const r365 = textos.indexOf('Caso #365')
+    expect(textos.slice(r365, r365 + 3)).toEqual(['Caso #365', '3h', 'Caso #1828'])
+  })
+
+  it('sem seções o relatório do caso continua igual', async () => {
+    const rows = [linha(1)]
+    const sem = (await textosDoPdf(await gerarRelatorioTimesheetPdf({ ...base, rows, casoLabel: '#337' }))).split('\n')
+    expect(sem).toContain('Caso')
+    expect(sem).not.toContain('Total geral')
+    expect(sem).toContain('Total')
   })
 })
