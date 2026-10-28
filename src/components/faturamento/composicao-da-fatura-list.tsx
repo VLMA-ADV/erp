@@ -972,10 +972,22 @@ export default function ComposicaoDaFaturaList() {
 
   // ── Ações em massa (6.1) ───────────────────────────────────────────────
   const finalizarSelecionados = () => executarEmMassa('finalizar', async () => {
-    const kits = kitsSelecionados.filter((k) => !k.finalizado)
-    if (kits.length === 0) { notify('Os kits selecionados já estão finalizados.'); return }
+    const abertos = kitsSelecionados.filter((k) => !k.finalizado)
+    if (abertos.length === 0) { notify('Os kits selecionados já estão finalizados.'); return }
+    // Jessika 28/10 (pedido do Filipe 16/10): contrato com lançamento pendente
+    // no mês não finaliza. Fica de fora do lote e é dito por quê; o banco
+    // recusaria de qualquer jeito.
+    const comPendencia = abertos.filter((k) => (k.pendencias?.total ?? 0) > 0)
+    const kits = abertos.filter((k) => (k.pendencias?.total ?? 0) <= 0)
+    if (kits.length === 0) {
+      toastError(`Nenhum kit pode ser finalizado: ${comPendencia.length === 1 ? 'o contrato dele tem' : 'os contratos deles têm'} lançamento pendente (fila, revisão ou aprovação).`)
+      return
+    }
     const ok = window.confirm(
-      `Finalizar ${kits.length} kit(s)?\n\nMarca cada um como finalizado (baixa manual). Nada é emitido nem enviado; dá para reabrir um a um.`,
+      `Finalizar ${kits.length} kit(s)?\n\nMarca cada um como finalizado (baixa manual). Nada é emitido nem enviado; dá para reabrir um a um.` +
+        (comPendencia.length
+          ? `\n\n${comPendencia.length} kit(s) ficam de fora: o contrato ainda tem lançamento pendente (${comPendencia.map((k) => labelCaso(k)).join(', ')}).`
+          : ''),
     )
     if (!ok) return
     let feitos = 0

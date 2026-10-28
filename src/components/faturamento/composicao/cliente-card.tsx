@@ -31,6 +31,7 @@ import { formatContratoDisplay } from '@/lib/utils/contrato-display'
 import { formatHorasMin } from '@/lib/utils/format-horas'
 import { formatarLinhaDigitavel } from '@/lib/utils/boleto-ficha'
 import { somarMeses } from '@/lib/faturamento/competencia'
+import { BolinhaPendencias, motivoNaoFinalizar, pendenciasDosContratos } from '../pendencias-contrato'
 import {
   SITUACAO_INFO,
   STATUS_KIT_INFO,
@@ -117,6 +118,9 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
   // nota única (Filipe 07/10). Cada grupo vira um botão; a competência é a da
   // aba, então normalmente é um por contrato.
   const gruposNotaUnica = gruposParaNotaUnica(cliente.casos)
+  // Filipe 16/10 / Jessika 28/10: verde = nada pendente nos contratos deste
+  // cliente no mês; vermelho = há lançamento na fila, revisão ou aprovação.
+  const pendenciasCliente = pendenciasDosContratos(cliente.casos)
   return (
     <section className="flex flex-col overflow-hidden rounded-xl border border-hairline bg-white shadow-lift-1">
       <header className="border-b border-hairline bg-canvas-soft px-5 py-4">
@@ -128,7 +132,10 @@ export default function ClienteCard({ cliente, acoes }: { cliente: ClienteKits; 
             {iniciaisCliente(cliente.nome)}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold text-ink" title={cliente.nome}>{cliente.nome}</h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <BolinhaPendencias pendencias={pendenciasCliente} escopo="cliente" />
+              <h2 className="truncate text-base font-semibold text-ink" title={cliente.nome}>{cliente.nome}</h2>
+            </div>
             <p className="text-xs text-ink-mute">{cliente.kits} {cliente.kits === 1 ? 'kit' : 'kits'}</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
@@ -295,6 +302,10 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   // pagador no lugar das linhas únicas. Com 0 ou 1 nota, tudo como antes.
   const variasNotas = kitComVariasNotas(kit)
   const vencimento = vencimentoDoKit(kit)
+  // Decisão da Jessika 28/10 (pedido do Filipe 16/10): não finaliza com
+  // lançamento do CONTRATO pendente no mês. O banco recusa de qualquer jeito;
+  // aqui o botão já sai desabilitado com o mesmo motivo.
+  const bloqueioFinalizar = motivoNaoFinalizar(kit.pendencias, contratoLabel)
 
   return (
     <div
@@ -319,6 +330,7 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
+              <BolinhaPendencias pendencias={kit.pendencias} />
               <h3 className="text-sm font-semibold text-ink">{labelCaso(kit)}</h3>
               {/* Atalho só para o caso (cliente 15/10); da tela do caso, o Voltar leva ao contrato. */}
               {kit.caso_id ? (
@@ -702,16 +714,19 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
               Reabrir
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => acoes.onFinalizar(kit)}
-              disabled={ocupado('finalizar')}
-              className="bg-green-700 text-white hover:bg-green-800"
-              title="Dá baixa manual no kit (o e-mail ao cliente vai por fora). Os documentos continuam podendo ser emitidos."
-            >
-              {ocupado('finalizar') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
-              Finalizar faturamento
-            </Button>
+            // O span segura o tooltip: botão desabilitado não recebe o hover.
+            <span title={bloqueioFinalizar ?? undefined}>
+              <Button
+                size="sm"
+                onClick={() => acoes.onFinalizar(kit)}
+                disabled={ocupado('finalizar') || !!bloqueioFinalizar}
+                className="bg-green-700 text-white hover:bg-green-800"
+                title={bloqueioFinalizar ?? 'Dá baixa manual no kit (o e-mail ao cliente vai por fora). Os documentos continuam podendo ser emitidos.'}
+              >
+                {ocupado('finalizar') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                Finalizar faturamento
+              </Button>
+            </span>
           )}
           <Button
             variant="ghost"

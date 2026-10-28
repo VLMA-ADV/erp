@@ -5,6 +5,8 @@
 // item sem caso agrupa num bloco "Sem caso" por contrato. Quem muda o
 // contrato da RPC muda aqui — não há geração automática de tipos.
 
+import type { PendenciasContrato } from '../pendencias-contrato'
+
 // 'finalizado' entrou em 25/09 (Filipe, 24/09): o e-mail ainda sai manual
 // pelo Gmail, então "Finalizar faturamento" é a baixa manual do kit. Na RPC
 // ele tem prioridade sobre pendente/nf_emitida/enviado; recebido fica acima.
@@ -299,6 +301,13 @@ export interface KitCaso {
   pos_finalizacao?: PosFinalizacao | null
   /** Vencimento do kit para o resumo (Filipe 16/10, item 6). Ausente na RPC antiga. */
   vencimento?: VencimentoKit | null
+  /**
+   * Pendências do CONTRATO (não do caso) na competência: fila, revisão e
+   * aprovação (Filipe 16/10, decisão da Jessika 28/10). Com total > 0 o
+   * finalizar_kit recusa. null = não calculado (chamada sem competência);
+   * ausente = RPC antiga.
+   */
+  pendencias?: PendenciasContrato | null
 }
 
 /**
