@@ -382,6 +382,24 @@ describe('nota de débito', () => {
   it('sem competência a nota sai como antes', async () => {
     expect(await textosDoPdf(await gerar())).not.toContain('Competência')
   })
+
+  // Rateio das despesas (Filipe 29/10): a nota de UM pagador — total das
+  // despesas impresso e o "Valor a pagar" é a parte dele.
+  it('nota do pagador no rateio: total das despesas, a parte dele e o valor a pagar = parte', async () => {
+    const textos = (await textosDoPdf(await gerar({
+      clienteNome: 'Pagador B',
+      parte: { nome: 'Pagador B', percentual: 40, valor: 48 },
+      pagadores: [{ nome: 'Pagador A', percentual: 60 }, { nome: 'Pagador B', percentual: 40 }],
+    }))).split('\n')
+    const i = textos.indexOf('Total das despesas')
+    expect(textos.slice(i, i + 6)).toEqual(['Total das despesas', 'R$ 120,00', 'Parte de Pagador B (40%)', 'R$ 48,00', 'Valor a pagar', 'R$ 48,00'])
+  })
+
+  it('sem rateio o "Valor a pagar" é o total, sem linha de parte', async () => {
+    const textos = (await textosDoPdf(await gerar())).split('\n')
+    expect(textos).not.toContain('Total das despesas')
+    expect(textos[textos.indexOf('Valor a pagar') + 1]).toBe('R$ 120,00')
+  })
   // Divisão por pagador (cliente, out/2026): nota única por kit, mas com
   // rateio mostra a parte de cada pagador. Regra do centavo = a do relatório
   // de timesheet: o ÚLTIMO pagador absorve a diferença e a soma fecha o total.

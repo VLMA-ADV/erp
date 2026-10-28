@@ -234,6 +234,65 @@ export async function registrarRelatorioConsolidado(
   return { id: resposta.id, path, numero_documento: resposta.numero_documento ?? null }
 }
 
+export interface RegistrarNotasDebitoRateioInput {
+  casoId: string
+  contratoId: string
+  competencia: string
+  kitSequencia: number
+  itemIds: string[]
+  notas: Array<{ bytes: Uint8Array; nomeArquivo: string; pagadorClienteId: string; percentual: number; valor: number }>
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Rateio das despesas (Filipe 29/10): sobe a ND de cada pagador e registra
+ * todas numa transação (registrar_notas_debito_rateio), cada uma com a sua
+ * conta a receber. Falhou o registro, os PDFs enviados são apagados.
+ */
+export async function registrarNotasDebitoRateio(
+  input: RegistrarNotasDebitoRateioInput,
+): Promise<Array<{ id: string; lancamento_id: string | null; numero_documento: number | null; pagador_cliente_id: string }>> {
+  const supabase = createClient()
+  const { userId, tenantId } = await sessaoETenant(supabase)
+  const competencia = /^\d{4}-\d{2}/.exec(input.competencia)?.[0]
+  if (!competencia) throw new Error('Competência inválida para registrar o documento.')
+  const paths: string[] = []
+  try {
+    for (const [i, nota] of input.notas.entries()) {
+      if (!nota.bytes?.length) throw new Error('Um dos PDFs saiu vazio; nada foi registrado.')
+      const path = `${tenantId}/${competencia}/${input.casoId}/nota_debito-${Date.now()}-${i + 1}.pdf`
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET_DOCUMENTOS)
+        .upload(path, nota.bytes, { contentType: 'application/pdf', upsert: false })
+      if (upErr) throw new Error(mensagemDoErro(upErr, 'Não foi possível guardar o PDF no armazenamento'))
+      paths.push(path)
+    }
+    const { data, error } = await supabase.rpc('registrar_notas_debito_rateio', {
+      p_user_id: userId,
+      p_caso_id: input.casoId,
+      p_contrato_id: input.contratoId,
+      p_competencia: `${competencia}-01`,
+      p_kit_sequencia: input.kitSequencia,
+      p_item_ids: input.itemIds,
+      p_notas: input.notas.map((n, i) => ({
+        pagador_cliente_id: n.pagadorClienteId,
+        percentual: n.percentual,
+        valor: n.valor,
+        arquivo_nome: n.nomeArquivo,
+        arquivo_url: paths[i],
+      })),
+      p_metadata: input.metadata ?? {},
+    })
+    if (error) throw new Error(mensagemDoErro(error, 'Os PDFs foram gerados mas não foi possível registrá-los'))
+    return ((data as { notas?: unknown[] } | null)?.notas ?? []) as Array<{
+      id: string; lancamento_id: string | null; numero_documento: number | null; pagador_cliente_id: string
+    }>
+  } catch (e) {
+    if (paths.length) await supabase.storage.from(BUCKET_DOCUMENTOS).remove(paths).catch(() => null)
+    throw e
+  }
+}
+
 /**
  * URL assinada (60 s) para um documento do bucket. Serve para abrir numa aba
  * ou passar adiante; quem precisa só abrir usa abrirDocumentoDoKit.

@@ -176,8 +176,18 @@ export function montarPaginasDaNota(pdf: PDFDocument, data: NotaDespesaData, fon
   y -= 4
   linha(y)
   y -= 14
+  // Rateio das despesas (Filipe 29/10): a nota é de um pagador — o total das
+  // despesas fica impresso e o "Valor a pagar" é a parte dele.
+  if (data.parte) {
+    texto('Total das despesas', colunas.descricao, y, 8.6)
+    textoDireita(money(total), colunas.valor, y, 8.6)
+    y -= 12
+    texto(`Parte de ${data.parte.nome} (${percentualBR(data.parte.percentual)})`, colunas.descricao, y, 8.6)
+    textoDireita(money(data.parte.valor), colunas.valor, y, 8.6)
+    y -= 14
+  }
   texto('Valor a pagar', colunas.descricao, y, 9.6, negrito)
-  textoDireita(money(total), colunas.valor, y, 9.6, negrito)
+  textoDireita(money(data.parte ? data.parte.valor : total), colunas.valor, y, 9.6, negrito)
   y -= 24
 
   // Divisão por pagador (só com rateio / pagador diferente do cliente), logo

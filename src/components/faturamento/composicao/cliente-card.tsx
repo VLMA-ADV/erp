@@ -45,6 +45,8 @@ import {
   gruposParaNotaUnica,
   iniciaisCliente,
   kitComVariasNotas,
+  kitComVariasNotasDebito,
+  notasDebitoDoKit,
   kitSoDespesas,
   labelCaso,
   labelCompetencia,
@@ -61,6 +63,7 @@ import {
   type ClienteKits,
   type DecisaoPosFinalizacao,
   type DocGerado,
+  type DocNotaDebitoPagador,
   type DocNfsePagador,
   type ItemKit,
   type KitCaso,
@@ -334,6 +337,9 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
   // Rateio já emitido (Filipe 08/10, caso 318): uma NFS-e e um boleto por
   // pagador no lugar das linhas únicas. Com 0 ou 1 nota, tudo como antes.
   const variasNotas = kitComVariasNotas(kit)
+  // Despesas divididas entre pagadores (Filipe 29/10): uma ND e um boleto por
+  // pagador — as linhas saem por pagador e o boleto único some.
+  const variasNotasDebito = kitComVariasNotasDebito(kit)
   const vencimento = vencimentoDoKit(kit)
   // Decisão da Jessika 28/10 (pedido do Filipe 16/10): não finaliza com
   // lançamento do CONTRATO pendente no mês. O banco recusa de qualquer jeito;
@@ -551,60 +557,63 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
             />
 
             {/* 2. Boleto — sai em cima da conta a receber: a da NFS-e autorizada ou,
-                num kit só de despesas, a que a nota de débito criou (07/10). */}
-            <DocumentoLinha
-              icon={<Banknote className="h-4 w-4" />}
-              titulo="Boleto"
-              status={
-                docs.boleto
-                  ? docs.boleto.status === 'erro'
-                    ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
-                    : ['cancelado', 'baixado'].includes(docs.boleto.status)
-                      ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${docs.boleto.status} — emita de novo.` }
-                      : ['pago', 'liquidado'].includes(docs.boleto.status)
-                        ? { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
-                        : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}${nfConjunta ? ' · um boleto para os casos da nota conjunta' : boletoPelaNotaDebito ? ' · sobre a nota de débito' : ''}` }
-                  : boletoPelaNotaDebito
-                    ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Boleto das despesas, sem nota fiscal — registra o título no Itaú sobre a conta da nota de débito.' }
-                    : nfseAutorizada
-                      ? { tipo: 'pendente', badge: 'Pendente', explicacao: nfConjunta ? 'Registra o título no Itaú sobre a nota conjunta — um boleto para todos os casos dela.' : 'Registra o título no Itaú sobre a conta a receber da nota.' }
-                      : soDespesas && kit.boleto_base !== undefined
-                        ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Gere a nota de débito primeiro — o boleto das despesas é gerado sobre ela.' }
-                        : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
-              }
-              valor={docs.boleto?.valor ?? kit.conta_receber?.valor ?? null}
-              acoes={
-                boletoEmitido(docs.boleto) ? (
-                  <>
-                    <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(docs.boleto!.id)}>
-                      <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
+                num kit só de despesas, a que a nota de débito criou (07/10). Com
+                as despesas divididas, cada pagador tem o seu (linhas da ND). */}
+            {variasNotasDebito ? null : (
+              <DocumentoLinha
+                icon={<Banknote className="h-4 w-4" />}
+                titulo="Boleto"
+                status={
+                  docs.boleto
+                    ? docs.boleto.status === 'erro'
+                      ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
+                      : ['cancelado', 'baixado'].includes(docs.boleto.status)
+                        ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${docs.boleto.status} — emita de novo.` }
+                        : ['pago', 'liquidado'].includes(docs.boleto.status)
+                          ? { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(docs.boleto.vencimento)}` }
+                          : { tipo: 'ok', badge: docs.boleto.nosso_numero ? `Boleto nº ${docs.boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(docs.boleto.vencimento)}${nfConjunta ? ' · um boleto para os casos da nota conjunta' : boletoPelaNotaDebito ? ' · sobre a nota de débito' : ''}` }
+                    : boletoPelaNotaDebito
+                      ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Boleto das despesas, sem nota fiscal — registra o título no Itaú sobre a conta da nota de débito.' }
+                      : nfseAutorizada
+                        ? { tipo: 'pendente', badge: 'Pendente', explicacao: nfConjunta ? 'Registra o título no Itaú sobre a nota conjunta — um boleto para todos os casos dela.' : 'Registra o título no Itaú sobre a conta a receber da nota.' }
+                        : soDespesas && kit.boleto_base !== undefined
+                          ? { tipo: 'pendente', badge: 'Pendente', explicacao: 'Gere a nota de débito primeiro — o boleto das despesas é gerado sobre ela.' }
+                          : { tipo: 'pendente', badge: 'Pendente', explicacao: 'Emita a nota fiscal primeiro — o boleto é gerado sobre ela.' }
+                }
+                valor={docs.boleto?.valor ?? kit.conta_receber?.valor ?? null}
+                acoes={
+                  boletoEmitido(docs.boleto) ? (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(docs.boleto!.id)}>
+                        <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
+                      </Button>
+                      {docs.boleto!.linha_digitavel ? (
+                        <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.linha_digitavel!, 'Linha digitável')}>
+                          <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
+                        </Button>
+                      ) : null}
+                      {docs.boleto!.pix_emv ? (
+                        <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.pix_emv!, 'Pix copia e cola')}>
+                          <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit)} disabled={!podeEmitirBoleto || ocupado('boleto')}>
+                      {ocupado('boleto') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                      Emitir
                     </Button>
-                    {docs.boleto!.linha_digitavel ? (
-                      <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.linha_digitavel!, 'Linha digitável')}>
-                        <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
-                      </Button>
-                    ) : null}
-                    {docs.boleto!.pix_emv ? (
-                      <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(docs.boleto!.pix_emv!, 'Pix copia e cola')}>
-                        <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
-                      </Button>
-                    ) : null}
-                  </>
-                ) : (
-                  <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit)} disabled={!podeEmitirBoleto || ocupado('boleto')}>
-                    {ocupado('boleto') ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                    Emitir
-                  </Button>
-                )
-              }
-              rodape={
-                docs.boleto?.linha_digitavel && boletoEmitido(docs.boleto) ? (
-                  <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
-                    {formatarLinhaDigitavel(docs.boleto.linha_digitavel)}
-                  </code>
-                ) : null
-              }
-            />
+                  )
+                }
+                rodape={
+                  docs.boleto?.linha_digitavel && boletoEmitido(docs.boleto) ? (
+                    <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
+                      {formatarLinhaDigitavel(docs.boleto.linha_digitavel)}
+                    </code>
+                  ) : null
+                }
+              />
+            )}
           </>
         )}
 
@@ -653,7 +662,28 @@ function KitCasoBloco({ kit, clienteNome, acoes }: { kit: KitCaso; clienteNome: 
         ) : null}
 
         {/* 4. Despesas (nota de débito) — só quando há despesa reembolsável. */}
-        {temDespesa ? (
+        {temDespesa && variasNotasDebito ? (
+          <>
+            <DocumentoLinha
+              icon={<Receipt className="h-4 w-4" />}
+              titulo="Despesas · Notas de débito"
+              status={{
+                tipo: 'ok',
+                badge: `${notasDebitoDoKit(kit).length} pagadores`,
+                explicacao: 'Uma nota de débito, uma conta a receber e um boleto por pagador, cada um com a sua parte.',
+              }}
+              valor={kit.valor_despesa}
+              acoes={
+                <Button size="sm" variant="ghost" onClick={() => acoes.onGerarNotaDebito(kit)} disabled={ocupado('nota')}>
+                  Gerar de novo
+                </Button>
+              }
+            />
+            {notasDebitoDoKit(kit).map((nd) => (
+              <NotaDebitoDoPagador key={nd.id} kit={kit} nd={nd} acoes={acoes} />
+            ))}
+          </>
+        ) : temDespesa ? (
           <DocumentoLinha
             icon={<Receipt className="h-4 w-4" />}
             titulo={docs.nota_debito?.numero_documento ? comNumeroDoc('Despesas · Nota de débito', docs.nota_debito.numero_documento) : 'Despesas'}
@@ -974,6 +1004,86 @@ function DocumentosDoPagador({ kit, nota, acoes }: { kit: KitCaso; nota: DocNfse
             </>
           ) : (
             <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit, nota.id)} disabled={!autorizada || ocupadoBoleto}>
+              {ocupadoBoleto ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+              Emitir
+            </Button>
+          )
+        }
+        rodape={
+          boleto?.linha_digitavel && boletoEmitido(boleto) ? (
+            <code className="rounded border border-hairline bg-canvas-soft px-2 py-0.5 font-mono text-[11px] text-ink">
+              {formatarLinhaDigitavel(boleto.linha_digitavel)}
+            </code>
+          ) : null
+        }
+      />
+    </>
+  )
+}
+
+/** ND e boleto de um pagador no rateio das despesas (Filipe 29/10). */
+function NotaDebitoDoPagador({ kit, nd, acoes }: { kit: KitCaso; nd: DocNotaDebitoPagador; acoes: AcoesKit }) {
+  const pagador = nd.pagador?.nome?.trim() || 'Pagador'
+  const boleto = nd.boleto
+  const ocupadoBoleto = acoes.ocupado === acaoKey(kit, `boleto:${nd.id}`)
+  const parte = nd.percentual != null ? ` (${Number(nd.percentual).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)` : ''
+  return (
+    <>
+      <DocumentoLinha
+        icon={<Receipt className="h-4 w-4" />}
+        titulo={comNumeroDoc(`Nota de débito · ${pagador}${parte}`, nd.numero_documento)}
+        status={{
+          tipo: 'ok',
+          badge: 'Gerada',
+          explicacao: nd.conta_receber
+            ? `Conta a receber criada · vence ${dataBR(nd.conta_receber.vencimento)}`
+            : 'Sem conta a receber — gere as notas de novo.',
+        }}
+        valor={nd.valor}
+        acoes={
+          nd.arquivo_url ? (
+            <Button variant="outline" size="sm" onClick={() => acoes.onAbrirUrl(nd.arquivo_url!)}>
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir
+            </Button>
+          ) : null
+        }
+      />
+      <DocumentoLinha
+        icon={<Banknote className="h-4 w-4" />}
+        titulo={`Boleto · ${pagador}`}
+        status={
+          boleto
+            ? boleto.status === 'erro'
+              ? { tipo: 'erro', badge: 'Erro', explicacao: 'Erro no registro no Itaú — emita de novo.' }
+              : ['cancelado', 'baixado'].includes(boleto.status)
+                ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Boleto anterior ${boleto.status} — emita de novo.` }
+                : ['pago', 'liquidado'].includes(boleto.status)
+                  ? { tipo: 'ok', badge: boleto.nosso_numero ? `Boleto nº ${boleto.nosso_numero}` : 'Pago', explicacao: `Pago · vencia ${dataBR(boleto.vencimento)}` }
+                  : { tipo: 'ok', badge: boleto.nosso_numero ? `Boleto nº ${boleto.nosso_numero}` : 'Emitido', explicacao: `Registrado no Itaú · vence ${dataBR(boleto.vencimento)} · em nome de ${pagador}` }
+            : nd.conta_receber
+              ? { tipo: 'pendente', badge: 'Pendente', explicacao: `Registra o título no Itaú sobre a conta da nota de débito de ${pagador}.` }
+              : { tipo: 'pendente', badge: 'Pendente', explicacao: 'A nota de débito ainda não tem conta a receber.' }
+        }
+        valor={boleto?.valor ?? nd.conta_receber?.valor ?? null}
+        acoes={
+          boletoEmitido(boleto) ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => acoes.onVerBoleto(boleto!.id)}>
+                <Printer className="mr-1.5 h-3.5 w-3.5" /> Ver ficha
+              </Button>
+              {boleto!.linha_digitavel ? (
+                <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(boleto!.linha_digitavel!, 'Linha digitável')}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar linha
+                </Button>
+              ) : null}
+              {boleto!.pix_emv ? (
+                <Button variant="ghost" size="sm" onClick={() => acoes.onCopiar(boleto!.pix_emv!, 'Pix copia e cola')}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar Pix
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <Button size="sm" onClick={() => acoes.onEmitirBoleto(kit, nd.id)} disabled={!nd.conta_receber || ocupadoBoleto}>
               {ocupadoBoleto ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
               Emitir
             </Button>

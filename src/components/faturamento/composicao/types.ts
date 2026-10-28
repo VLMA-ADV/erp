@@ -156,6 +156,24 @@ export interface DocNfsePagador {
   boleto: DocBoleto | null
 }
 
+/**
+ * Nota de débito de um pagador no rateio das despesas (Filipe 29/10: kit só
+ * de despesas com vários pagadores tem uma ND, uma conta e um boleto por
+ * pagador — registrar_notas_debito_rateio).
+ */
+export interface DocNotaDebitoPagador {
+  id: string
+  numero_documento?: number | null
+  arquivo_url: string | null
+  gerado_em: string | null
+  percentual: number | null
+  /** Parte deste pagador nas despesas do kit. */
+  valor: number | null
+  pagador: { cliente_id: string | null; nome: string | null }
+  conta_receber: ContaReceberKit | null
+  boleto: DocBoleto | null
+}
+
 export interface DocGerado {
   id: string
   /**
@@ -259,6 +277,8 @@ export interface KitCaso {
      * Ausente na RPC antiga; `[]` sem nota. Só muda a tela com mais de uma.
      */
     nfses?: DocNfsePagador[]
+    /** NDs do rateio das despesas (uma por pagador); vazio fora dele. */
+    notas_debito?: DocNotaDebitoPagador[]
   }
   envio: EnvioKit | null
   /** Lançamento a receber do kit: o da NFS-e ou, sem NFS-e, o da nota de débito (ver boleto_base). */
@@ -723,12 +743,35 @@ export function kitComVariasNotas(kit: KitCaso) {
   return nfsesDoKit(kit).length > 1
 }
 
+/** NDs do rateio das despesas vivas no kit (vazio sem rateio ou com RPC antiga). */
+export function notasDebitoDoKit(kit: KitCaso): DocNotaDebitoPagador[] {
+  return kit.documentos.notas_debito ?? []
+}
+
+/** Kit com as despesas já divididas: uma ND por pagador. */
+export function kitComVariasNotasDebito(kit: KitCaso) {
+  return notasDebitoDoKit(kit).length > 1
+}
+
+/**
+ * Pagadores entre os quais a nota de débito se divide (Filipe 29/10): kit só
+ * de despesas, cuja ND cria a conta do boleto, com mais de um pagador (ajuste
+ * do kit ou rateio do caso). null = uma nota de débito, como sempre.
+ */
+export function pagadoresDoRateioDespesas(kit: KitCaso): Pagador[] | null {
+  if (!kitSoDespesas(kit) || kit.boleto_base === undefined) return null
+  const lista = (kit.pagadores ?? []).filter((p) => p.cliente_id)
+  return lista.length > 1 ? lista : null
+}
+
 export function etapasDoKit(kit: KitCaso): EtapaKit[] {
   const docs = kit.documentos
   // Várias notas (rateio): o boleto só está feito quando TODAS têm o seu.
   const boletoOk = kitComVariasNotas(kit)
     ? nfsesDoKit(kit).every((n) => boletoEmitido(n.boleto))
-    : boletoEmitido(docs.boleto)
+    : kitComVariasNotasDebito(kit)
+      ? notasDebitoDoKit(kit).every((n) => boletoEmitido(n.boleto))
+      : boletoEmitido(docs.boleto)
   return [
     // Kit só de despesas não tem NFS-e a emitir (07/10): a etapa fica
     // "não se aplica" em vez de pendente para sempre.

@@ -38,6 +38,16 @@ export interface NotaDespesaItem {
   valor: number
 }
 
+/** Uma ND do rateio, pronta para registrar. */
+export interface NotaDebitoGerada {
+  bytes: Uint8Array
+  nomeArquivo: string
+  numeroDocumento: number | null
+  pagadorClienteId: string
+  percentual: number
+  valor: number
+}
+
 export interface NotaDespesaData {
   clienteNome: string
   clienteEndereco?: string | null
@@ -64,6 +74,17 @@ export interface NotaDespesaData {
    * nota de sempre. Ver divisaoDaNota em lib/utils/nota-despesa-pdf.ts.
    */
   pagadores?: PagadorRelatorio[] | null
+  /**
+   * Rateio das despesas (Filipe 29/10): esta nota é a de UM pagador. O total
+   * das despesas continua impresso e o "Valor a pagar" é a parte dele.
+   */
+  parte?: { nome: string; percentual: number; valor: number } | null
+  /**
+   * Kit só de despesas com vários pagadores (Filipe 29/10): ao baixar, sai
+   * uma nota por pagador (destinatário e "Valor a pagar" = parte dele).
+   * `valor` já vem dividido (divisaoPorPagador: o último absorve os centavos).
+   */
+  rateioPagadores?: Array<{ clienteId: string; nome: string; percentual: number; valor: number }> | null
   /**
    * Kit só de despesas (Filipe 16/10: "não deixa mudar o vencimento"): a ND é
    * quem cria a conta a receber do boleto, então a prévia ganha o campo de
@@ -157,8 +178,9 @@ function buildNotaHtml(data: NotaDespesaData) {
       <th class="num" style="width:26mm">Valor (R$)</th>
     </tr></thead>
     <tbody>${linhas || '<tr><td class="item" colspan="4">Sem despesas reembolsáveis aprovadas.</td></tr>'}</tbody>
-    <tr class="total"><td class="lbl" colspan="3">Total</td><td class="num">${money(total)}</td></tr>
-    <tr class="totalgeral"><td class="lbl" colspan="3">Valor a pagar&nbsp;&nbsp;R$</td><td class="num">${money(total)}</td></tr>
+    <tr class="total"><td class="lbl" colspan="3">Total${data.parte ? ' das despesas' : ''}</td><td class="num">${money(total)}</td></tr>
+    ${data.parte ? `<tr class="total"><td class="lbl" colspan="3">Parte de ${escapeHtml(data.parte.nome)} (${percentualBR(data.parte.percentual)})</td><td class="num">${money(data.parte.valor)}</td></tr>` : ''}
+    <tr class="totalgeral"><td class="lbl" colspan="3">Valor a pagar&nbsp;&nbsp;R$</td><td class="num">${money(data.parte ? data.parte.valor : total)}</td></tr>
   </table>${divisaoHtml(data)}`
 
   // Mesma moldura do relatório de horas: logo, timbre, paisagem e rodapé.
@@ -186,6 +208,7 @@ export default function NotaDespesaPreview({
   data,
   onGerado,
   reservarNumero,
+  onGeradoRateio,
 }: {
   open: boolean
   onClose: () => void
@@ -206,7 +229,9 @@ export default function NotaDespesaPreview({
    * Reserva o nº do documento ANTES de montar o PDF (ele sai impresso). Só a
    * Composição passa — é quem registra. Regerar a mesma nota devolve o mesmo nº.
    */
-  reservarNumero?: () => Promise<number | null>
+  reservarNumero?: (pagadorClienteId?: string) => Promise<number | null>
+  /** Rateio das despesas (data.rateioPagadores): as NDs de todos os pagadores, de uma vez. */
+  onGeradoRateio?: (notas: NotaDebitoGerada[], vencimento?: string | null) => Promise<void> | void
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   // Número reservado ao montar o PDF: a prévia passa a mostrá-lo também.
@@ -245,6 +270,10 @@ export default function NotaDespesaPreview({
     if (!data || montando) return
     setMontando(true)
     try {
+      if (data.rateioPagadores && data.rateioPagadores.length > 1 && onGeradoRateio) {
+        await baixarRateio(data.rateioPagadores)
+        return
+      }
       // Nº do documento primeiro: sem ele o PDF registrado sairia sem número.
       let numeroDocumento: number | null = null
       let dataPdf = vencimentoValido ? { ...data, vencimento: vencimentoValido } : data
@@ -324,6 +353,91 @@ export default function NotaDespesaPreview({
     }
   }
 
+  // Comprovantes da nota: lista e arquivos, baixados uma vez só mesmo quando
+  // saem várias notas (rateio).
+  const carregarComprovantes = async () => {
+    if (!data) return null
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { toastError('Sessão expirada.'); return null }
+    const ids = (data.despesaIds || []).filter(Boolean)
+    let anexos: AnexoDespesa[] = []
+    if (ids.length > 0) {
+      const { data: lista, error } = await supabase.rpc('get_anexos_das_despesas', {
+        p_user_id: session.user.id,
+        p_despesa_ids: ids,
+      })
+      if (error) { toastError(error.message || 'Erro ao listar os comprovantes'); return null }
+      anexos = (Array.isArray(lista) ? lista : []) as AnexoDespesa[]
+    }
+    const cache = new Map<string, Promise<{ base64: string; mime: string | null } | null>>()
+    const baixarAnexo = (kind: 'primario' | 'extra', id: string) => {
+      const chave = `${kind}:${id}`
+      if (!cache.has(chave)) {
+        cache.set(chave, (async () => {
+          const resp = await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-despesa-arquivo?kind=${kind}&id=${id}`,
+            { headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' } },
+          )
+          const payload = await resp.json().catch(() => ({}))
+          if (!resp.ok || !payload.arquivo_base64) return null
+          return { base64: payload.arquivo_base64 as string, mime: (payload.mime_type as string) ?? null }
+        })())
+      }
+      return cache.get(chave)!
+    }
+    return { anexos, baixarAnexo, ids }
+  }
+
+  // Rateio das despesas (Filipe 29/10): uma nota por pagador, cada uma com o
+  // nº dela (a numeração separa por pagador), baixadas e registradas juntas.
+  const baixarRateio = async (pagadores: NonNullable<NotaDespesaData['rateioPagadores']>) => {
+    if (!data || !onGeradoRateio) return
+    const comprovantes = await carregarComprovantes()
+    if (!comprovantes) return
+    const notas: NotaDebitoGerada[] = []
+    let naoAnexados = 0
+    for (const p of pagadores) {
+      let numeroDocumento: number | null = null
+      if (reservarNumero) {
+        try {
+          numeroDocumento = await reservarNumero(p.clienteId)
+        } catch (e) {
+          toastError(e instanceof Error ? e.message : 'Não foi possível numerar a nota de débito.')
+          return
+        }
+      }
+      const dataPdf: NotaDespesaData = {
+        ...data,
+        ...(vencimentoValido ? { vencimento: vencimentoValido } : {}),
+        clienteNome: p.nome,
+        clienteDocumento: null,
+        clienteEndereco: null,
+        documentoNumero: numeroDocumento ? String(numeroDocumento) : null,
+        parte: { nome: p.nome, percentual: p.percentual, valor: p.valor },
+      }
+      const r = await montarNotaComComprovantes({ data: dataPdf, anexos: comprovantes.anexos, baixarAnexo: comprovantes.baixarAnexo })
+      naoAnexados = Math.max(naoAnexados, r.naoAnexados.length)
+      const nomeArquivo = `nota-de-debito-${numeroDocumento ? `n${numeroDocumento}-` : ''}${p.nome.replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
+      const blob = new Blob([r.bytes as BlobPart], { type: 'application/pdf' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = nomeArquivo
+      a.click()
+      URL.revokeObjectURL(a.href)
+      notas.push({ bytes: r.bytes, nomeArquivo, numeroDocumento, pagadorClienteId: p.clienteId, percentual: p.percentual, valor: p.valor })
+    }
+    try {
+      await onGeradoRateio(notas, vencimentoValido)
+    } catch (e) {
+      console.error('registrar notas de débito do rateio', e)
+      toastError(e instanceof Error ? e.message : 'Os PDFs foram baixados, mas não foi possível registrá-los no kit.')
+      return
+    }
+    if (naoAnexados > 0) toastError(`${naoAnexados} comprovante(s) não puderam ser anexados — veja a última página de cada nota.`)
+    else if (comprovantes.ids.length === 0) toastError('Notas geradas SEM comprovantes: as despesas de origem não foram localizadas.')
+  }
+
   const handlePrint = () => {
     const win = iframeRef.current?.contentWindow
     if (!win) return
@@ -345,6 +459,12 @@ export default function NotaDespesaPreview({
             {despesasSemOrigem === data?.itens.length
               ? 'Não foi possível localizar as despesas de origem: o PDF sai sem comprovantes. Feche e tente de novo; se persistir, baixe os arquivos pela tela de Despesas.'
               : `${despesasSemOrigem} de ${data?.itens.length} despesa(s) sem origem localizada — o PDF sai só com os comprovantes das demais.`}
+          </p>
+        ) : null}
+        {data?.rateioPagadores && data.rateioPagadores.length > 1 ? (
+          <p className="rounded-md border border-hairline bg-canvas-soft px-3 py-2 text-sm text-ink">
+            Despesas divididas entre {data.rateioPagadores.length} pagadores: sai uma nota de débito para cada, com conta a receber e boleto próprios —{' '}
+            {data.rateioPagadores.map((p) => `${p.nome} (${percentualBR(p.percentual)}, R$ ${money(p.valor)})`).join('; ')}.
           </p>
         ) : null}
         {data?.vencimentoEditavel ? (
@@ -379,7 +499,11 @@ export default function NotaDespesaPreview({
             Fechar
           </Button>
           <Button variant="outline" onClick={() => void baixarComComprovantes()} disabled={montando}>
-            {montando ? 'Montando PDF...' : 'Baixar com comprovantes (PDF)'}
+            {montando
+              ? 'Montando PDF...'
+              : data?.rateioPagadores && data.rateioPagadores.length > 1
+                ? `Gerar ${data.rateioPagadores.length} notas com comprovantes (PDF)`
+                : 'Baixar com comprovantes (PDF)'}
           </Button>
           <Button onClick={handlePrint}>
             <Printer className="mr-2 h-4 w-4" />
