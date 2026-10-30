@@ -24,6 +24,7 @@ import {
   rotuloDiasRestantes,
   rotuloMesLixeira,
   tipoDoItem,
+  mostraValor,
   type ItemLixeira,
   type TipoItemLixeira,
 } from '@/lib/faturamento/lixeira'
@@ -31,8 +32,9 @@ import {
 /**
  * Lixeira do faturamento, por 12 meses: lançamentos de hora excluídos da fila
  * de faturar (etapa 1) e timesheets/despesas apagados nas telas de lançamento
- * (etapa 2, soft delete). Itens ignorados e itens cancelados na revisão não
- * entram — os cancelados já voltam sozinhos para a fila.
+ * (etapa 2, soft delete) e itens ignorados na revisão (etapa 3, Filipe 30/10 —
+ * voltam para a revisão do mês deles). Itens cancelados na revisão não entram:
+ * já voltam sozinhos para a fila.
  *
  * Restaurar (restaurar_lixeira_faturamento, uma chamada para os três tipos)
  * devolve o registro como estava e o põe na fila do mês corrente (competência
@@ -58,6 +60,7 @@ const COR_TIPO: Record<TipoItemLixeira, string> = {
   excluido_fila: 'bg-canvas-soft text-ink-secondary',
   timesheet_apagado: 'bg-red-50 text-red-700',
   despesa_apagada: 'bg-red-50 text-red-700',
+  item_ignorado: 'bg-amber-50 text-amber-800',
 }
 
 function fmtMesCurto(iso: string | null | undefined) {
@@ -175,7 +178,7 @@ export default function LixeiraFaturamentoList({
   if (itens.length === 0) {
     return (
       <p className="rounded-lg border border-hairline bg-white p-6 text-sm text-ink-mute">
-        Lixeira vazia. O que for excluído da fila de faturar, e os timesheets e despesas apagados, ficam aqui por {RETENCAO_LIXEIRA_MESES} meses.
+        Lixeira vazia. O que for excluído da fila de faturar, ignorado na revisão, e os timesheets e despesas apagados ficam aqui por {RETENCAO_LIXEIRA_MESES} meses.
       </p>
     )
   }
@@ -284,11 +287,11 @@ export default function LixeiraFaturamentoList({
                   <td className="p-3 align-top">
                     <p className="text-ink">{i.profissional_nome || '—'} · <span className="font-tabular">{fmtData(i.data_lancamento)}</span></p>
                     <p className="mt-0.5 max-w-md text-xs text-ink-mute">
-                      {t === 'despesa_apagada' && i.categoria ? `${i.categoria} · ` : ''}{i.descricao || '—'}
+                      {(t === 'despesa_apagada' || t === 'item_ignorado') && i.categoria ? `${i.categoria} · ` : ''}{i.descricao || '—'}
                     </p>
                   </td>
                   <td className="p-3 text-right align-top font-tabular">
-                    {t === 'despesa_apagada' ? fmtValor(i.valor) : formatHorasMin(i.horas)}
+                    {mostraValor(i) ? fmtValor(i.valor) : formatHorasMin(i.horas)}
                   </td>
                   <td className="p-3 align-top">
                     <p className="text-ink">{i.excluido_por_nome || '—'}</p>
@@ -325,7 +328,8 @@ export default function LixeiraFaturamentoList({
             <DialogDescription>
               Voltam como estavam e entram na fila de faturamento de{' '}
               {destinos.length > 0 ? destinos.map(rotuloMesLixeira).join(', ') : 'este mês'}; saem da lixeira.
-              Apagados voltam também para as telas de Timesheet e Despesas.
+              Apagados voltam também para as telas de Timesheet e Despesas. Ignorados voltam para a
+              revisão do mês deles, com o valor lançado.
             </DialogDescription>
           </DialogHeader>
           {avisos.length > 0 ? (
