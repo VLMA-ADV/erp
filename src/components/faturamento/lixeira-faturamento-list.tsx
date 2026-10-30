@@ -276,6 +276,12 @@ export default function LixeiraFaturamentoList({
                     <span className={`inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ${COR_TIPO[t]}`}>
                       {ROTULO_TIPO_LIXEIRA[t]}
                     </span>
+                    {/* Ignorado (Lucas 30/10): o motivo junto da etiqueta, à vista. */}
+                    {t === 'item_ignorado' ? (
+                      <p className="mt-1 max-w-[180px] text-xs text-amber-900">
+                        <span className="font-medium">Motivo:</span> {i.motivo || 'não informado'}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="p-3 align-top">
                     <p className="font-medium text-ink">{i.cliente_nome || '—'}</p>
@@ -294,9 +300,10 @@ export default function LixeiraFaturamentoList({
                     {mostraValor(i) ? fmtValor(i.valor) : formatHorasMin(i.horas)}
                   </td>
                   <td className="p-3 align-top">
+                    {t === 'item_ignorado' ? <p className="text-xs text-ink-mute">Ignorado por</p> : null}
                     <p className="text-ink">{i.excluido_por_nome || '—'}</p>
                     <p className="text-xs text-ink-mute font-tabular">{fmtData(i.excluido_em)}</p>
-                    {i.motivo ? <p className="mt-0.5 max-w-xs text-xs text-ink-mute">“{i.motivo}”</p> : null}
+                    {i.motivo && t !== 'item_ignorado' ? <p className="mt-0.5 max-w-xs text-xs text-ink-mute">“{i.motivo}”</p> : null}
                   </td>
                   <td className="p-3 align-top">
                     <p className="font-tabular text-ink-mute">{fmtMesCurto(i.mes_original)}</p>
