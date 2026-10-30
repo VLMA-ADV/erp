@@ -3113,7 +3113,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-ink">Lixeira</p>
             <p className="text-[11px] text-ink-mute">
-              Horas excluídas da fila de faturar e timesheets/despesas apagados, por 12 meses. Restaurar devolve para a fila do mês corrente.
+              Horas excluídas da fila de faturar, itens ignorados na revisão e timesheets/despesas apagados, por 12 meses. Restaurar devolve para a fila do mês corrente; o ignorado volta para a revisão do mês dele.
             </p>
           </div>
           <LixeiraFaturamentoList onRestaurado={aposMexerNaFila} onTotalChange={setLixeiraCount} />
