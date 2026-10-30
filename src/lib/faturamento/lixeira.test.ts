@@ -8,6 +8,7 @@ import {
   lerPayloadLixeira,
   mesesDaLixeira,
   parametrosDeRestauracao,
+  mostraValor,
   rotuloDiasRestantes,
   tipoDoItem,
   type ItemLixeira,
@@ -178,8 +179,9 @@ describe('etapa 2: tipos (excluído da fila, timesheet apagado, despesa apagada)
       p_excluidos: ['t1'],
       p_timesheets: ['t9'],
       p_despesas: ['d1'],
+      p_ignorados: [],
     })
-    expect(parametrosDeRestauracao([])).toEqual({ p_excluidos: [], p_timesheets: [], p_despesas: [] })
+    expect(parametrosDeRestauracao([])).toEqual({ p_excluidos: [], p_timesheets: [], p_despesas: [], p_ignorados: [] })
   })
 
   it('filtra por tipo e busca pela categoria da despesa', () => {
@@ -191,6 +193,34 @@ describe('etapa 2: tipos (excluído da fila, timesheet apagado, despesa apagada)
   })
 
   it('tem rótulo para cada tipo', () => {
-    expect(Object.keys(ROTULO_TIPO_LIXEIRA).sort()).toEqual(['despesa_apagada', 'excluido_fila', 'timesheet_apagado'])
+    expect(Object.keys(ROTULO_TIPO_LIXEIRA).sort()).toEqual(['despesa_apagada', 'excluido_fila', 'item_ignorado', 'timesheet_apagado'])
+  })
+})
+
+// Etapa 3 (Filipe 30/10: Bruna ignorou horas da Mariana Heusy, Achei caso 376).
+describe('etapa 3: item ignorado na revisão', () => {
+  const ignorado = item({
+    tipo: 'item_ignorado', id: 'bi1', chave: 'item_ignorado:bi1', timesheet_id: null, billing_item_id: 'bi1',
+    origem_tipo: 'timesheet', motivo: 'Não cabe na fatura', mes_original: '2026-10-01', mes_destino: '2026-10-01',
+  })
+
+  it('vai para p_ignorados pelo id do item de cobrança', () => {
+    expect(tipoDoItem(ignorado)).toBe('item_ignorado')
+    expect(parametrosDeRestauracao([item(), ignorado]).p_ignorados).toEqual(['bi1'])
+    expect(parametrosDeRestauracao([item(), ignorado]).p_excluidos).toEqual(['t1'])
+  })
+
+  it('horas para timesheet; valor para despesa e regra de cobrança', () => {
+    expect(mostraValor(ignorado)).toBe(false)
+    expect(mostraValor({ ...ignorado, origem_tipo: 'regra_financeira' })).toBe(true)
+    expect(mostraValor({ ...ignorado, origem_tipo: 'despesa' })).toBe(true)
+  })
+
+  it('com kit no mês: avisa que volta para a revisão do mesmo mês, não para a fila', () => {
+    const avisos = avisosDeRestauracao([{ ...ignorado, kit_no_mes_original: true }])
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toContain('volta para a revisão de')
+    expect(avisos[0]).not.toContain('fila')
+    expect(avisosDeRestauracao([ignorado])).toEqual([])
   })
 })

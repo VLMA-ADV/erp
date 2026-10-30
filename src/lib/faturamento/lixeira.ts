@@ -1,7 +1,9 @@
 // Lixeira do faturamento, por até 12 meses:
 //  - etapa 1: lançamentos de hora excluídos da fila de faturar;
 //  - etapa 2: timesheets e despesas apagados nas telas de lançamento (soft
-//    delete — o registro fica no banco, marcado com apagado_em).
+//    delete — o registro fica no banco, marcado com apagado_em);
+//  - etapa 3 (Filipe 30/10): itens ignorados na revisão — restaurar devolve o
+//    item à revisão do mês dele.
 // Os dados vêm de get_lixeira_faturamento; aqui só o que a tela decide
 // sozinha — filtro, avisos antes de restaurar, rótulos, montagem da chamada de
 // restauração — para poder ser testado sem banco.
@@ -14,7 +16,7 @@ export const PERMISSAO_RESTAURAR_LIXEIRA = 'finance.faturamento.lixeira.restore'
 /** Mesmo número da RPC: passou disso, o item só some da lixeira (nada é apagado). */
 export const RETENCAO_LIXEIRA_MESES = 12
 
-export type TipoItemLixeira = 'excluido_fila' | 'timesheet_apagado' | 'despesa_apagada'
+export type TipoItemLixeira = 'excluido_fila' | 'timesheet_apagado' | 'despesa_apagada' | 'item_ignorado'
 
 export interface ItemLixeira {
   /** Itens da etapa 1 (antes do campo existir) são sempre 'excluido_fila'. */
@@ -26,6 +28,10 @@ export interface ItemLixeira {
   /** Preenchido para os dois tipos de timesheet. */
   timesheet_id: string | null
   despesa_id?: string | null
+  /** Só item ignorado: o item de cobrança (é o `id`). */
+  billing_item_id?: string | null
+  /** timesheet / despesa / regra_financeira — o que o item ignorado é. */
+  origem_tipo?: string | null
   /** Só despesa. */
   valor?: number | string | null
   categoria?: string | null
@@ -68,12 +74,14 @@ export interface LixeiraPayload {
 
 /** Tipo do item; o que veio sem tipo é da etapa 1 (excluído da fila). */
 export function tipoDoItem(item: ItemLixeira): TipoItemLixeira {
-  return item.tipo === 'timesheet_apagado' || item.tipo === 'despesa_apagada' ? item.tipo : 'excluido_fila'
+  return item.tipo === 'timesheet_apagado' || item.tipo === 'despesa_apagada' || item.tipo === 'item_ignorado'
+    ? item.tipo
+    : 'excluido_fila'
 }
 
 /** id do registro (timesheet ou despesa). */
 export function idDoItem(item: ItemLixeira): string {
-  return item.id || item.despesa_id || item.timesheet_id || ''
+  return item.id || item.billing_item_id || item.despesa_id || item.timesheet_id || ''
 }
 
 /** Chave única na lista: o mesmo timesheet não aparece em dois tipos, mas a chave não depende disso. */
@@ -85,6 +93,13 @@ export const ROTULO_TIPO_LIXEIRA: Record<TipoItemLixeira, string> = {
   excluido_fila: 'Excluído da fila',
   timesheet_apagado: 'Timesheet apagado',
   despesa_apagada: 'Despesa apagada',
+  item_ignorado: 'Ignorado na revisão',
+}
+
+/** O que a coluna de quantidade mostra: horas (timesheet) ou valor (despesa, regra). */
+export function mostraValor(item: ItemLixeira): boolean {
+  const t = tipoDoItem(item)
+  return t === 'despesa_apagada' || (t === 'item_ignorado' && item.origem_tipo !== 'timesheet')
 }
 
 /** Aceita o jsonb da RPC e devolve sempre um payload utilizável. */
@@ -101,16 +116,18 @@ export interface ParametrosRestauracao {
   p_excluidos: string[]
   p_timesheets: string[]
   p_despesas: string[]
+  p_ignorados: string[]
 }
 
 /** Separa a seleção por tipo para restaurar_lixeira_faturamento (uma chamada, atômica). */
 export function parametrosDeRestauracao(itens: ItemLixeira[]): ParametrosRestauracao {
-  const p: ParametrosRestauracao = { p_excluidos: [], p_timesheets: [], p_despesas: [] }
+  const p: ParametrosRestauracao = { p_excluidos: [], p_timesheets: [], p_despesas: [], p_ignorados: [] }
   for (const item of itens) {
     const id = idDoItem(item)
     if (!id) continue
     const tipo = tipoDoItem(item)
-    if (tipo === 'despesa_apagada') p.p_despesas.push(id)
+    if (tipo === 'item_ignorado') p.p_ignorados.push(id)
+    else if (tipo === 'despesa_apagada') p.p_despesas.push(id)
     else if (tipo === 'timesheet_apagado') p.p_timesheets.push(id)
     else p.p_excluidos.push(id)
   }
@@ -188,7 +205,15 @@ export function avisosDeRestauracao(itens: ItemLixeira[]): string[] {
       vistos.add(chave)
       const mes = normalizarCompetencia(item.mes_original)
       const mesTxt = mes ? mesPorExtenso(mes) : item.mes_original
-      if (item.nfse_no_mes_original) {
+      if (tipoDoItem(item) === 'item_ignorado') {
+        // Volta para a revisão do próprio mês: com kit fechado ele aparece,
+        // depois de aprovado, no bloco "aprovados depois de finalizar".
+        if (item.nfse_no_mes_original || item.kit_no_mes_original) {
+          avisos.push(
+            `${caso}: ${mesTxt} já tem ${item.nfse_no_mes_original ? `a NFS-e ${item.nfse_no_mes_original} emitida` : 'kit montado'}. O item volta para a revisão de ${mesTxt}; depois de aprovado, aparece no kit como aprovado depois de finalizar.`,
+          )
+        }
+      } else if (item.nfse_no_mes_original) {
         avisos.push(
           `${caso}: ${mesTxt} já tem a NFS-e ${item.nfse_no_mes_original} emitida. O lançamento não entra nela — volta para a fila de ${rotuloMesLixeira(item.mes_destino)}.`,
         )
