@@ -3728,7 +3728,7 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                     HTML inválido) e não expande/recolhe o grupo. */}
                                 {casoContratoId && casoGroup.itens[0]?.casoId ? (
                                   <a
-                                    href={`/contratos/${casoContratoId}/casos/${casoGroup.itens[0].casoId}/editar?view=1`}
+                                    href={`/contratos/${casoContratoId}/casos/${casoGroup.itens[0].casoId}/editar`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     title="Abrir caso"
