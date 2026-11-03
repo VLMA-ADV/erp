@@ -388,12 +388,14 @@ function areStageNumbersEqual(left: number | null | undefined, right: number | n
 
 
 
-// Despesa liberada (em revisão OU em aprovação) pode ser adiada. Os quatro
+// Despesa liberada pode ser adiada em qualquer etapa até faturar. Os quatro
 // casos do Filipe (16/10: Álvaro, Gizeli, Fluvia, Osmar) já estavam em
-// aprovação — só em_revisao, como na hora, deixaria todos de fora.
-// postergar_despesa cancela o billing_item e devolve a despesa à fila.
+// aprovação; as de R$ 28 mil (03/11), algumas já aprovadas. postergar_despesa
+// cancela o billing_item, devolve a despesa à fila e recusa a que já está em
+// nota viva ou kit finalizado.
 function ehDespesaPostergavel(item: Pick<RevisaoItem, 'origemTipo' | 'origemId' | 'status'>) {
-  return item.origemTipo === 'despesa' && !!item.origemId && (item.status === 'em_revisao' || item.status === 'em_aprovacao')
+  return item.origemTipo === 'despesa' && !!item.origemId
+    && (item.status === 'em_revisao' || item.status === 'em_aprovacao' || item.status === 'aprovado')
 }
 
 function isReviewQueueStatus(status: string) {
@@ -2343,18 +2345,39 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
   }
 
   // Postergar/transferir vários: reutilizam os diálogos com lista de ids.
+  // A data sugerida é o mês seguinte ao da aba, igual ao postergar da linha.
+  const abrirPostergarLote = (ids: string[], referencia: RevisaoItem) => {
+    setPostergarData(getNextBillingPeriodDate(referencia).toISOString().slice(0, 10))
+    setPostergarIds(ids)
+  }
+
   const postergarLote = async () => {
     const ids = postergarIds
     setPostergarIds([])
-    let ok = 0
+    const okIds: string[] = []
+    const erros: string[] = []
+    let pulados = 0
     for (const id of ids) {
       const item = items.find((entry) => entry.id === id)
-      if (item && (item.timesheetId || isFila(item) || ehDespesaPostergavel(item))) {
-        const done = await postergarItem(item, postergarData || undefined)
-        if (done) ok += 1
+      if (!item) continue
+      // Antes era pulado em silêncio, e para quem selecionou parecia que
+      // "simplesmente não transferia" (Jéssika, 03/11).
+      if (!(item.timesheetId || isFila(item) || ehDespesaPostergavel(item))) {
+        pulados += 1
+        continue
       }
+      const erro = await postergarItem(item, postergarData || undefined, true)
+      if (erro) erros.push(erro)
+      else okIds.push(id)
     }
-    if (ok > 0) success(`${ok} lançamento(s) postergado(s).`)
+    if (okIds.length > 0) {
+      success(`${okIds.length} lançamento(s) postergado(s).`)
+      setSelectedItemIds((prev) => prev.filter((id) => !okIds.includes(id)))
+      aposMexerNaFila()
+      await loadItems({ silent: true })
+    }
+    if (pulados > 0) toastError(`${pulados} lançamento(s) não postergado(s): este tipo de item não posterga nesta etapa.`)
+    if (erros.length > 0) toastError(`${erros.length} não postergado(s): ${Array.from(new Set(erros)).join(' ')}`)
   }
 
   const transferirLote = async () => {
@@ -2620,12 +2643,14 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
     void loadItems({ silent: true })
   }
 
-  const postergarItem = async (item: RevisaoItem, targetDateIso?: string) => {
+  // Devolve a mensagem de erro, ou null se postergou. Em lote, quem chama avisa
+  // e recarrega uma vez só.
+  const postergarItem = async (item: RevisaoItem, targetDateIso?: string, emLote = false): Promise<string | null> => {
     try {
       setBusyKey(`postergar:${item.id}`)
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return false
+      if (!user) return 'Sessão expirada.'
 
       const proximoMes = targetDateIso ? new Date(`${targetDateIso}T12:00:00`) : getNextBillingPeriodDate(item)
       const periodoFaturamento = proximoMes.toISOString().slice(0, 10)
@@ -2680,18 +2705,20 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             p_periodo: periodoFaturamento,
           })
       if (error) {
-        toastError(error.message || 'Erro ao postergar item')
-        return false
+        const mensagem = error.message || 'Erro ao postergar item'
+        if (!emLote) toastError(mensagem)
+        return mensagem
       }
 
+      if (emLote) return null
       success(`Item postergado para ${proximoMes.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}.`)
       if (isFila(item)) aposMexerNaFila()
       else await loadItems()
-      return true
+      return null
     } catch (postergarError) {
       console.error(postergarError)
-      toastError('Erro ao postergar item')
-      return false
+      if (!emLote) toastError('Erro ao postergar item')
+      return 'Erro ao postergar item'
     } finally {
       setBusyKey(null)
     }
@@ -3420,6 +3447,15 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             <Button
               size="sm"
               variant="outline"
+              disabled={busyKey !== null}
+              title={`Adia os ${reaisSelecionados.length} item(ns) marcados, de todos os casos`}
+              onClick={() => abrirPostergarLote(reaisSelecionados.map((item) => item.id), reaisSelecionados[0])}
+            >
+              <Clock className="mr-1 h-3.5 w-3.5" /> Postergar ({reaisSelecionados.length})
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               disabled={busyKey !== null || reaisSelecionadosResumo.emRevisao === 0}
               title={
                 reaisSelecionadosResumo.emRevisao === 0
@@ -3781,11 +3817,8 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
                                   variant="outline"
                                   className="text-xs"
                                   onClick={() => {
-                                    const base = new Date()
-                                    base.setMonth(base.getMonth() + 1)
-                                    base.setDate(1)
-                                    setPostergarData(base.toISOString().slice(0, 10))
-                                    setPostergarIds(selectedIds)
+                                    const primeiro = casoGroup.itens.find((entry) => selectedIds.includes(entry.id))
+                                    if (primeiro) abrirPostergarLote(selectedIds, primeiro)
                                   }}
                                   disabled={selectedIds.length === 0 || busyKey === batchKey}
                                   title={selectedIds.length === 0 ? 'Selecione os lançamentos que quer adiar' : undefined}
@@ -4888,10 +4921,12 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Postergar lançamento</DialogTitle>
+            <DialogTitle>{postergarIds.length > 1 ? `Postergar ${postergarIds.length} lançamentos` : 'Postergar lançamento'}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-ink-mute">
-            Escolha para quando este lançamento deve ser reagendado:
+            {postergarIds.length > 1
+              ? 'Escolha para quando estes lançamentos devem ser reagendados:'
+              : 'Escolha para quando este lançamento deve ser reagendado:'}
           </p>
           <Input
             type="date"
@@ -4902,7 +4937,13 @@ export default function RevisaoDeFaturaList({ onCompetenciaChange }: RevisaoDeFa
             O item sai da lista atual e reaparece no faturamento do período escolhido.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPostergarConfirmId(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPostergarConfirmId(null)
+                setPostergarIds([])
+              }}
+            >
               Cancelar
             </Button>
             <Button
