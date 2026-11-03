@@ -212,12 +212,17 @@ export default function TimesheetList() {
     const unique = new Map<string, string>()
     for (const contrato of contratos) {
       if (!contrato.cliente_id) continue
+      // Cliente só com caso inativo não aparece (Filipe 03/11), salvo o que já
+      // está escolhido no filtro ou no lançamento em edição.
+      const temCasoAtivo = (contrato.casos || []).some((caso) => caso.status !== 'inativo')
+      const emUso = contrato.cliente_id === form.cliente_id || contrato.cliente_id === filterClienteId
+      if (!temCasoAtivo && !emUso) continue
       if (!unique.has(contrato.cliente_id)) {
         unique.set(contrato.cliente_id, contrato.cliente_nome || 'Cliente sem nome')
       }
     }
     return Array.from(unique.entries()).map(([value, label]) => ({ value, label }))
-  }, [contratos])
+  }, [contratos, form.cliente_id, filterClienteId])
 
   const casosFromCliente = useMemo(() => {
     if (!form.cliente_id) return [] as Array<{ id: string; numero?: number; nome: string; contrato_id: string; contrato_nome: string; contrato_numero?: number }>
@@ -240,12 +245,16 @@ export default function TimesheetList() {
   const filterCaseOptions = useMemo(() => {
     const fonte = filterClienteId ? contratos.filter((c) => c.cliente_id === filterClienteId) : contratos
     return fonte.flatMap((c) =>
-      (c.casos || []).map((caso) => ({
-        value: caso.id,
-        label: `${caso.numero || '-'} - ${caso.nome}`,
-      })),
+      (c.casos || [])
+        // Inativo some para todos (Filipe 03/11); o já selecionado continua,
+        // para o filtro não ficar aplicado sem aparecer.
+        .filter((caso) => caso.status !== 'inativo' || caso.id === filterCasoId)
+        .map((caso) => ({
+          value: caso.id,
+          label: `${caso.numero || '-'} - ${caso.nome}`,
+        })),
     )
-  }, [contratos, filterClienteId])
+  }, [contratos, filterClienteId, filterCasoId])
 
   // Nome do cliente por contrato para a coluna Cliente e o filtro client-side.
   const contratoInfo = useMemo(() => {
@@ -268,7 +277,9 @@ export default function TimesheetList() {
     const m = new Map<string, { contrato_id: string; cliente_id: string }>()
     for (const c of contratos) {
       if (!c.cliente_id) continue
-      for (const caso of c.casos || []) m.set(caso.id, { contrato_id: c.id, cliente_id: c.cliente_id })
+      for (const caso of c.casos || []) {
+        if (caso.status !== 'inativo') m.set(caso.id, { contrato_id: c.id, cliente_id: c.cliente_id })
+      }
     }
     return m
   }, [contratos])
