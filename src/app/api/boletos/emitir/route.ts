@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createClienteServico } from '@/lib/supabase/service'
 import { emitirBoleto, emitirBoletoPix, lerConfigItau } from '@/lib/itau/client'
 import {
   lerRespostaEmissao,
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Antes de reservar o nosso número: sem esta chave, o desfecho não seria
+  // gravado e o boleto ficaria preso em 'preparado'.
+  const servico = createClienteServico()
+  if (!servico) {
+    return NextResponse.json({ error: 'Servidor sem configuração' }, { status: 500 })
+  }
+
   // bol_preparar já checa permissão (finance.nfse.manage), estado do
   // lançamento e boleto duplicado, e devolve mensagem pronta para a tela.
   const { data: prep, error: prepErr } = await supabase.rpc('bol_preparar', {
@@ -73,7 +81,7 @@ export async function POST(req: NextRequest) {
   const boletoId = preparado.boleto_id
 
   const registrar = (payload: unknown, resposta: unknown, erro: string | null) =>
-    supabase.rpc('bol_registrar', {
+    servico.rpc('bol_registrar', {
       p_user_id: user.id,
       p_boleto_id: boletoId,
       p_payload: payload ?? null,

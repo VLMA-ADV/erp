@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createClienteServico } from '@/lib/supabase/service'
 import { emitirBoleto, emitirBoletoPix, lerConfigItau } from '@/lib/itau/client'
 import {
   montarPayloadBoletoPix,
@@ -42,6 +43,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Antes de reservar o nosso número: sem esta chave, a reserva não seria
+  // encerrada e travaria a emissão desse lançamento.
+  const servico = createClienteServico()
+  if (!servico) return NextResponse.json({ error: 'Servidor sem configuração' }, { status: 500 })
+
   // bol_preparar reserva nosso número e devolve config, título e pagador —
   // o mesmo caminho da emissão, para o teste valer de alguma coisa.
   const { data: prep, error: prepErr } = await supabase.rpc('bol_preparar', {
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest) {
   // não travar uma emissão de verdade do mesmo lançamento (o índice parcial só
   // libera quando o status sai de 'preparado').
   const encerrarReserva = (erro: string) =>
-    supabase.rpc('bol_registrar', {
+    servico.rpc('bol_registrar', {
       p_user_id: user.id,
       p_boleto_id: preparado.boleto_id,
       p_payload: null,
